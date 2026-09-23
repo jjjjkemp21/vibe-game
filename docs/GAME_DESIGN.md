@@ -10,22 +10,33 @@ A first-person, open-world fishing sandbox for 1-4 friends: sail between sunny, 
 - First-person 3D. (The project started from the Third Person template; the camera and character are converted to first person, with visible arms holding the rod.)
 - Movement: walk, run, jump, crouch, go prone.
 - Keyboard + mouse and gamepad.
+- Fight controls (Jimmy, 2026-09-23): once a fish is hooked, the mouse steers the rod instead of the view, and the camera gently follows the rod and fish until the fish is landed or lost. Hold click (or trigger) to reel; the mouse wheel (or bumpers) sets the reel speed.
 - Co-op: online 2-4 players, sharing the world and the boat. The first playable level is solo, and all code is multiplayer-ready (server-authoritative) from day one. Co-op is the first milestone after the vertical slice.
 
 ## Core loop
-- Every 30 seconds the player: picks a spot, casts, waits and reads the bobber, hooks the bite, and fights the fish with the reel while managing line tension. Or moves (runs, climbs, crawls) to reach a better spot, staying quiet near danger.
-- Every 5 minutes the player: fills the cooler, sells the catch at a dock, spends money on better rods, line and hooks, levels up, logs new species in the journal, and takes or finishes an NPC request. Time of day moves on and changes what bites and what hunts.
+- Every 30 seconds the player: picks a spot on any water (bubbling or rippling water marks better fish), casts, waits and reads the bobber, hooks the bite, and fights the fish with the reel while managing line tension. Or moves (runs, climbs, crawls) to reach a better spot, staying quiet near danger.
+- Every 5 minutes the player: fills the physical cooler, carries it to the dock shop, sells the catch fish by fish at the counter, spends money on better rods, line and hooks, levels up, logs new species in the journal, and takes or finishes an NPC request. Time of day moves on and changes what bites and what hunts.
 - A session ends when: the player chooses to stop. There is no final goal: progress is player level, gear, the fish journal and reaching harder regions. Progress saves at docks and on quit.
 
 ## Player verbs and abilities
 - Move: walk, run (loud), jump, crouch (quieter, lower), prone (quietest, hides from sight lines, fits through low gaps).
-- Fish: cast (hold to charge distance, aim), wait and watch the bobber, hook (timed input when it bites), reel (hold to reel; ease off when tension spikes), let the fish run, and land it.
+- Fish: cast (hold to charge distance, aim), wait and watch the bobber, hook (timed input when it bites), then fight and land it:
+  - Anywhere (Jimmy, 2026-09-23): every body of water can be fished; there are no invisible fishing zones. Which species bite depends on the water area (shore shallows, reef, lagoon, deep drop, open sea), its depth, and the time. Every water area has at least one species that can bite at any time, once the fish batch fills in (T-009).
+  - Hot spots: bubbling or rippling water marks a spot with better odds (rarer, bigger or more valuable fish). They appear inside valid water, last a few minutes and move, so players read the water and explore. Rates, sizes and bonuses are data.
+  - Fighting (Jimmy, 2026-09-23): the mouse steers the rod. Pulling the rod back or up raises line tension; dipping it lowers tension. When the fish runs left, angle the rod up and to the right (the opposite side) to turn it; matching the fish's direction loses ground. Hold to reel, and the mouse wheel sets the reel speed: fast gains line but builds tension. Ease off when tension spikes, and let the fish run.
+  - You see the fish while you reel it in: it swims and fights in the water near the line's end. Shallow water is clear enough to see it.
+  - Landing: the caught fish hangs on the hook at the end of the line, swinging with simple physics. You grab it into your hand. There is an arms animation for holding a fish without the rod.
 - Gear matters (mix of arcade and realistic):
   - Rod: power (how hard you can pull) and cast distance.
   - Line: strength (breaks if tension goes over it for too long).
   - Hook / bait: which species will bite, and how securely they stay hooked.
   - Each fish has a level, weight, strength and fight pattern (darting, diving, sudden runs). Fish above your level or gear are possible but very hard: they snap weak line.
-- Collect: fish go into the cooler (limited space); sell at docks; each new species and record size is logged in the journal.
+- Collect (Jimmy, 2026-09-23): the cooler is a PHYSICAL object in the world.
+  - Put the fish you're holding into the cooler (a starter cooler holds 4 fish; bigger coolers are gear).
+  - Fish out of a cooler slowly go bad and lose value. In a cooler they stay fresh. Freshness rates are data.
+  - Pick the cooler up and carry it; both hands are busy, so no fishing while carrying. Put it down anywhere, e.g. next to your fishing spot.
+  - At the shop, open the cooler, take fish out one at a time and drop them on the counter. A Sell button shows the total value of what's on the counter.
+  - Each new species and record size is logged in the journal.
 - Talk: NPCs at docks run the shop and give requests (catch X, deliver Y, find Z) for money, XP and gear.
 - Boat (unlocked a bit into the beginner zone): a basic boat to reach other islands and fishing spots within the zone. Speed makes a wake, and wake makes noise.
 - Noise: every player gives off noise from:
@@ -49,7 +60,7 @@ Jimmy wants many species eventually, each catch varying in difficulty and value 
 ## Win / lose conditions
 - No final win. Goals are self-chosen: level up, complete the journal, finish requests, reach and survive tougher regions.
 - Level scaling instead of locked doors: every region is reachable from the start, but an under-levelled player can't hook or hold the fish there and won't survive the dangers, so beginners level up in the beginner zone first.
-- Getting caught (the shark rams you into the water, a boss catches you): you respawn at the region's respawn point. Unsold fish in the cooler are lost, and gear may be damaged (repairs cost money). Levels, journal and money are kept.
+- Getting caught (the shark rams you into the water, a boss catches you): you respawn at the region's respawn point. The fish you were holding is lost; a physical cooler stays where you left it, so you can go back for it (its fish keep going bad only if the cooler is open). Gear may be damaged (repairs cost money). Levels, journal and money are kept.
 - Respawn points: set places in each region (docks, camps). At higher level, players can buy a boat that works as a mobile respawn point.
 
 ## World, setting, tone
@@ -69,9 +80,9 @@ Stylized low-poly, inspired by Dredge but not copying it: clean chunky shapes, b
 What one short, polished, playable level must contain to prove the game is fun (target: 15-25 minutes of play, solo):
 - **Beginner island in the tropical zone** ("Palm Key"): a dock with an NPC shop and quest giver, a beach, reef shallows, a jetty, a rocky point, a small cave or hidden cove reachable by crouching or crawling, and a respawn point at the dock.
 - **First-person movement**: walk, run, jump, crouch, prone, with good feel.
-- **Fishing done well** (top priority): cast, bobber, bite, hook timing, tension reel-in fight, and line snaps. Gear (rod, line, hook) visibly changes what you can land.
+- **Fishing done well** (top priority): fish anywhere on the water with visible hot spots; cast, bobber, bite, hook timing; a mouse-steered rod fight with reel speed control, where you see the fish in the water; line snaps; the caught fish hangs on the line and is held by hand; a physics fishing line that dangles, floats and pulls taut. Gear (rod, line, hook) visibly changes what you can land.
 - **6 fish species** across shore, reef and deep-drop spots, with different levels and fight patterns; at least one dawn-only and one night-only fish.
-- **Progression**: cooler, sell at dock, shop with a few gear upgrades, XP and player level, fish journal with record sizes, and 3 short NPC requests.
+- **Progression**: a physical, carryable cooler (fish go bad outside it), selling fish by fish at the dock counter, shop with a few gear upgrades, XP and player level, fish journal with record sizes, and 3 short NPC requests.
 - **Day/night cycle** (compressed, about 20 real minutes per day).
 - **Tension**: a noise meter (actions + microphone, by proximity). A reef shark that gets curious when you're loud or fast near the water: it circles, steals fish off the line, and can knock you in. At the lagoon's edge, a huge dark shadow stirs if you get very loud; you must hide or go prone out of its sight line or get caught. Getting caught means losing the cooler and respawning at the dock.
 - **Boat unlock** at the end of the slice: a basic boat (unlocked at a player level) to reach one second fishing spot or islet in the beginner zone.
