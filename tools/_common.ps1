@@ -152,10 +152,12 @@ function Get-LogTail([string]$Path, [int]$Lines = 60) {
 
 # UnrealEditor.exe processes that have THIS project open.
 function Get-EditorProcesses {
-    $name = Get-ProjectName
+    # Editors that have THIS checkout's .uproject open (full path), so an editor running on the main
+    # checkout does not block builds in a worktree lane (C:\GameDev\VibeGame-lanes\<lane>) and vice versa.
+    $want = (Get-ProjectFile).Replace('/', '\')
     $mine = @()
     foreach ($p in @(Get-CimInstance -ClassName Win32_Process -Filter "Name = 'UnrealEditor.exe'" -ErrorAction SilentlyContinue)) {
-        if ($p.CommandLine -and ($p.CommandLine -like ('*' + $name + '.uproject*'))) { $mine += $p }
+        if ($p.CommandLine -and ($p.CommandLine.Replace('/', '\') -like ('*' + $want + '*'))) { $mine += $p }
     }
     return ,$mine
 }
