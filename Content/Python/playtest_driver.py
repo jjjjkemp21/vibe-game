@@ -14,7 +14,7 @@ Quick start (each block = one run_python call; `result = ...` is what you get ba
     result = pd.move(forward=1.0, frames=90)   # walks for 90 frames AFTER this call returns
 
     result = pd.state()                        # next call: where am I, stance, speed, swimming, fishing ...
-    result = pd.screenshot("walked")           # <session folder>/walked.png; the file appears after the next frame
+    result = pd.screenshot("walked")           # <session folder>/walked.png WITH the HUD/prompts (ui=False: 3D only)
     result = pd.stop_pie()                     # also stops all input and restores the play settings
 
 Rules
@@ -56,16 +56,26 @@ Helpers (every name here exists; self_check() verifies it)
             after(frames, fn, *args, **kwargs)   run fn N frames from now (from the tick); result in results()
             script(steps)                        steps = [(frame_offset, "helper_name", arg, ...), ...]
             results(ids=None) / pending()        results of after/script steps / steps not run yet
+                                                 (results are cleared by begin_session and start_pie)
   Move      teleport(marker, index=0, player=0)  Lure.Teleport: "tp_T3"/"T3", "Lure.FishingSpot", "dock_end", ...
             teleport_to(x, y, z, yaw=None, player=0)   feet location in cm
-            markers(tag=None)                    tagged markers (Lure.* tags, or one tag) with location and tags
+            markers(tag=None, all=False)         tagged markers (Lure.* tags, or one tag) with location and tags;
+                                                 without a tag, labels, lights and patrol points are left out
+                                                 unless all=True
   State     state(player=0, server=False)        location, velocity, stance, sprinting, swimming, eye height,
                                                  capsule, view, fishing (if the fishing component exists), holds
             states()                             state() of every player
   Commands  console(command, player=0)           run a console command in that player's world
-            set_stance(stance, player=0)         Lure.SetStance Stand|Crouch|Prone (like the stance keys)
-            give_fish(species, rarity=None, seed=None, player=0)   Lure.GiveFish (logged; read editor_log)
-  Pictures  screenshot(name, player=0, width=1280, height=720)   PNG in the session folder; exists(name) to check
+            set_stance(stance, player=0, retry_frames=60)   Lure.SetStance Stand|Crouch|Prone (like the stance
+                                                 keys); a refused request (e.g. Prone while still falling right
+                                                 after a teleport) is re-sent every frame until it sticks
+            give_fish(species, rarity=None, seed=None, player=0)   Lure.GiveFish: lands it like a catch
+                                                 (cooler + XP); read editor_log for the result
+  Pictures  screenshot(name, player=0, width=1280, height=720, ui=True)   PNG in the session folder.
+                                                 ui=True: Lure.Screenshot in that player's viewport, with the
+                                                 HUD text and prompts, viewport size, written at once.
+                                                 ui=False: 3D view only at width x height, after the next frame.
+                                                 exists(name) to check
             exists(name_or_path)                 True once a screenshot file is written
   Checks    self_check(report_path=None, play_settings_roundtrip=False)   every unreal API used exists (tests)
 """
@@ -80,7 +90,7 @@ import time
 
 import unreal
 
-DRIVER_VERSION = "1.0 (T-025)"
+DRIVER_VERSION = "1.1 (T-025 follow-ups)"
 
 HELPERS = [
     "begin_session", "set_folder", "folder", "session_log", "log_path", "editor_log",
@@ -275,6 +285,7 @@ def begin_session(topic, folder=None):
     safe = re.sub(r"[^A-Za-z0-9_.-]+", "-", str(topic)).strip("-") or "session"
     path = folder or os.path.join(_PROJECT_DIR, "Saved", "AgentLogs", "playtest", "%s-%s" % (_stamp(), safe))
     set_folder(path)
+    S["results"] = {}
     _log_line("session '%s' started (driver %s, project %s)" % (topic, DRIVER_VERSION, _PROJECT_DIR))
     return {"folder": S["folder"], "log": S["log"]}
 
@@ -388,9 +399,11 @@ def _tick_impl(delta_seconds):
             for step in due:
                 try:
                     value = step["fn"](*step["args"], **step["kwargs"])
-                    S["results"][step["id"]] = {"step": step["name"], "frame": S["frame"], "result": _plain(value)}
+                    if step["id"] is not None:
+                        S["results"][step["id"]] = {"step": step["name"], "frame": S["frame"], "result": _plain(value)}
                 except Exception as exc:
-                    S["results"][step["id"]] = {"step": step["name"], "frame": S["frame"], "error": repr(exc)}
+                    if step["id"] is not None:
+                        S["results"][step["id"]] = {"step": step["name"], "frame": S["frame"], "error": repr(exc)}
                     _tick_error("step %s" % step["name"], exc)
             for old in sorted(S["results"])[:-_MAX_RESULTS]:
                 S["results"].pop(old, None)
@@ -454,6 +467,7 @@ def start_pie(players=1, level=None):
     now = _set_play_settings(want)
     S["players"] = players
     S["sub_cache"] = {}
+    S["results"] = {}
     stop_input()
     _ensure_tick()
     les.editor_request_begin_play()
@@ -850,8 +864,13 @@ def teleport_to(x, y, z, yaw=None, player=0):
     return {"command": command, "state": state(player)}
 
 
-def markers(tag=None):
-    """Actors with Lure.* tags (or with `tag` exactly / as a Key=... tag): name, label, location, yaw, tags."""
+_MARKER_NOISE_TAGS = ("lure.editorlabel", "lure.light", "lure.patrolpoint")
+
+
+def markers(tag=None, all=False):
+    """Actors with Lure.* tags (or with `tag` exactly / as a Key=... tag): name, label, location, yaw, tags.
+    Without `tag`, editor labels, lights and patrol points (Lure.EditorLabel / Lure.Light / Lure.PatrolPoint) are left
+    out unless all=True."""
     w = server_world() if _pie_running() else _editor_subsystem(unreal.UnrealEditorSubsystem).get_editor_world()
     wanted = tag.lower() if tag else None
     out = []
@@ -864,6 +883,8 @@ def markers(tag=None):
             hit = any(t == wanted or t.startswith(wanted + "=") for t in low)
         else:
             hit = any(t.startswith("lure.") for t in low)
+            if hit and not all and any(t in _MARKER_NOISE_TAGS for t in low):
+                hit = False
         if not hit:
             continue
         try:
@@ -969,17 +990,51 @@ def console(command, player=0):
     return {"command": command, "player": player}
 
 
+def _requested_stance(player):
+    return str(_enum(_get(pawn(player), "get_requested_stance")) or "").upper()
+
+
+def _schedule(frames, fn, *args):
+    """Internal after(): runs fn from the tick without a results() entry or a session.log line."""
+    _ensure_tick()
+    S["scheduled"].append({"id": None, "at": S["frame"] + max(0, int(frames)), "fn": fn, "args": args, "kwargs": {},
+                           "name": fn.__name__})
+
+
+def _stance_retry(stance, player, frames_left):
+    # Runs from the tick: re-send the request until the character holds it (Prone is refused, not queued, while the
+    # pawn is falling, e.g. the few frames after a teleport drops it onto the floor).
+    wanted = str(stance).upper()
+    if _requested_stance(player) != wanted:
+        unreal.SystemLibrary.execute_console_command(world(player), "Lure.SetStance %s" % stance, pc(player))
+    if _requested_stance(player) == wanted:
+        _log_line("set_stance(%s, player=%d): applied on a retry" % (stance, player))
+        return True
+    if frames_left <= 0:
+        _log_line("set_stance(%s, player=%d): still refused after the retries (not on the ground?)" % (stance, player))
+        return False
+    _schedule(1, _stance_retry, stance, player, frames_left - 1)
+    return None
+
+
 @_logged
-def set_stance(stance, player=0):
-    """Lure.SetStance <Stand|Crouch|Prone> for `player` (same path as the stance keys; changes over a few frames)."""
+def set_stance(stance, player=0, retry_frames=60):
+    """Lure.SetStance <Stand|Crouch|Prone> for `player` (same path as the stance keys; changes over a few frames).
+    If the character refuses the request right now (Prone while falling, e.g. just after a teleport), it is re-sent
+    every frame for up to retry_frames frames, so set_stance in the same call as a teleport still applies before a
+    later screenshot. Check state()["requested_stance"] / ["stance"] next call."""
     console("Lure.SetStance %s" % stance, player)
-    return {"command": "Lure.SetStance %s" % stance, "stance_now": _enum(_get(pawn(player), "get_stance"))}
+    out = {"command": "Lure.SetStance %s" % stance, "stance_now": _enum(_get(pawn(player), "get_stance"))}
+    if _requested_stance(player) != str(stance).upper() and int(retry_frames) > 0:
+        _schedule(1, _stance_retry, stance, player, int(retry_frames) - 1)
+        out["retrying"] = "refused now (falling?); re-sent every frame for up to %d frames" % int(retry_frames)
+    return out
 
 
 @_logged
 def give_fish(species, rarity=None, seed=None, player=0):
-    """Lure.GiveFish on the server: rolls a fish with the real pipeline and logs it (the cooler comes with T-010).
-    Read the result with editor_log("Lure.GiveFish") in your next step."""
+    """Lure.GiveFish on the server: rolls a fish with the real pipeline and lands it like a real catch (into the
+    player's cooler, XP added). Read the result with editor_log("Lure.GiveFish") in your next step."""
     command = "Lure.GiveFish %s %s" % (species, rarity if rarity else "-")
     if seed is not None:
         command += " %d" % int(seed)
@@ -999,12 +1054,25 @@ def _shot_path(name):
 
 
 @_logged
-def screenshot(name, player=0, width=1280, height=720):
-    """Screenshot of `player`'s view to <folder>/<name>.png. Player 0 uses AutomationLibrary.take_high_res_screenshot;
-    other players run HighResShot in their own viewport. The file appears after the next rendered frame."""
+def screenshot(name, player=0, width=1280, height=720, ui=True):
+    """Screenshot of `player`'s view to <folder>/<name>.png.
+    ui=True (default): the C++ command Lure.Screenshot runs in that player's own world and captures its game viewport
+    through Slate, WITH the HUD text, prompts and widgets, at the viewport's size (width/height are ignored). The file
+    is written during this call.
+    ui=False: the 3D view only at width x height. Player 0 uses AutomationLibrary.take_high_res_screenshot, other
+    players run HighResShot in their own viewport. The file appears after the next rendered frame."""
     path = _shot_path(name)
     if os.path.exists(path):
         os.remove(path)
+    if ui:
+        console("Lure.Screenshot %s" % path, player)
+        method = "Lure.Screenshot with UI (player %d viewport)" % player
+        _ensure_tick()
+        if os.path.exists(path):
+            return {"path": path, "method": method, "written": True, "next": "Read the file"}
+        return {"path": path, "method": method, "written": False,
+                "next": "not written: read pd.editor_log('Lure.Screenshot') for the reason (is PIE running and the "
+                        "viewport visible?), or use ui=False"}
     if player == 0:
         unreal.AutomationLibrary.take_high_res_screenshot(int(width), int(height), path, force_game_view=True)
         method = "take_high_res_screenshot"

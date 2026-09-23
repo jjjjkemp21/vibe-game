@@ -10,6 +10,12 @@ DEFINE_LOG_CATEGORY(LogLureDev);
 #include "Components/CapsuleComponent.h"
 #include "Engine/DataTable.h"
 #include "Engine/Engine.h"
+#include "Engine/GameViewportClient.h"
+#include "Framework/Application/SlateApplication.h"
+#include "HAL/FileManager.h"
+#include "ImageCore.h"
+#include "ImageUtils.h"
+#include "Misc/Paths.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "Fish/FishInstance.h"
@@ -20,12 +26,15 @@ DEFINE_LOG_CATEGORY(LogLureDev);
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/PlayerState.h"
 #include "HAL/IConsoleManager.h"
+#include "Progression/LureProgressionLibrary.h"
 #include "Misc/OutputDevice.h"
 #include "UObject/Class.h"
+#include "Widgets/SViewport.h"
 
 const TCHAR* const FLureDevCommands::TeleportCommand = TEXT("Lure.Teleport");
 const TCHAR* const FLureDevCommands::SetStanceCommand = TEXT("Lure.SetStance");
 const TCHAR* const FLureDevCommands::GiveFishCommand = TEXT("Lure.GiveFish");
+const TCHAR* const FLureDevCommands::ScreenshotCommand = TEXT("Lure.Screenshot");
 
 namespace LureDevCommandsPrivate
 {
@@ -780,12 +789,99 @@ bool FLureDevCommands::RunGiveFish(const TArray<FString>& InArgs, UWorld* InWorl
 		Report(Ar, false, FString::Printf(TEXT("%s: %s"), GiveFishCommand, *Error));
 		return false;
 	}
-	// TODO(T-010): put the fish in the player's cooler once it exists; for now the roll is only logged.
-	Report(Ar, true, FString::Printf(TEXT("%s: %s rolled %s (not stored: the cooler comes with T-010)"), GiveFishCommand, *PlayerLabel(PC), *Fish.ToString()));
+	// Like a real catch (T-010): on the server the fish goes through HandleFishLanded (XP + cooler). Without a player
+	// (no world, or no player in it) the roll is only logged.
+	FString Stored = TEXT("not stored: no player");
+	if (PC)
+	{
+		AActor* Context = PC->GetPawn() ? static_cast<AActor*>(PC->GetPawn()) : static_cast<AActor*>(PC);
+		const FLureFishLandedResult Landed = ULureProgressionLibrary::HandleFishLanded(Context, Fish);
+		if (!Landed.bAccepted)
+		{
+			Stored = TEXT("not stored: the player has no progression (is the game mode ALureGameMode?)");
+		}
+		else
+		{
+			Stored = FString::Printf(TEXT("%s, +%d XP, level %d%s"),
+				Landed.bStoredInCooler ? *FString::Printf(TEXT("in cooler slot %d"), Landed.CoolerSlot) : TEXT("cooler full, released"),
+				Landed.XpGained, Landed.NewLevel, Landed.LevelsGained > 0 ? *FString::Printf(TEXT(" (+%d)"), Landed.LevelsGained) : TEXT(""));
+		}
+	}
+	Report(Ar, true, FString::Printf(TEXT("%s: %s rolled %s (%s)"), GiveFishCommand, *PlayerLabel(PC), *Fish.ToString(), *Stored));
 	if (OutFish)
 	{
 		*OutFish = Fish;
 	}
+	return true;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Screenshot
+// ---------------------------------------------------------------------------------------------------------------------
+
+bool FLureDevCommands::CaptureViewportWithUI(UWorld* World, const FString& File, FString& OutError, FIntPoint* OutSize)
+{
+	if (File.TrimStartAndEnd().IsEmpty())
+	{
+		OutError = TEXT("no file name");
+		return false;
+	}
+	UGameViewportClient* ViewportClient = World ? World->GetGameViewport() : nullptr;
+	if (!ViewportClient)
+	{
+		OutError = TEXT("this world has no game viewport (start PIE first; run it in the player's own world)");
+		return false;
+	}
+	const TSharedPtr<SViewport> Widget = ViewportClient->GetGameViewportWidget();
+	if (!FSlateApplication::IsInitialized() || !Widget.IsValid())
+	{
+		OutError = TEXT("the game viewport has no Slate widget to capture");
+		return false;
+	}
+	TArray<FColor> Pixels;
+	FIntVector Size = FIntVector::ZeroValue;
+	if (!FSlateApplication::Get().TakeScreenshot(Widget.ToSharedRef(), Pixels, Size) || Size.X <= 0 || Size.Y <= 0)
+	{
+		OutError = TEXT("Slate could not capture the game viewport (is it visible and not minimized?)");
+		return false;
+	}
+	for (FColor& Pixel : Pixels)
+	{
+		Pixel.A = 255;
+	}
+	const FString Full = FPaths::ConvertRelativePathToFull(File.TrimStartAndEnd());
+	IFileManager::Get().MakeDirectory(*FPaths::GetPath(Full), /*Tree*/ true);
+	if (!FImageUtils::SaveImageByExtension(*Full, FImageView(Pixels.GetData(), Size.X, Size.Y)))
+	{
+		OutError = FString::Printf(TEXT("could not write %s"), *Full);
+		return false;
+	}
+	if (OutSize)
+	{
+		*OutSize = FIntPoint(Size.X, Size.Y);
+	}
+	return true;
+}
+
+bool FLureDevCommands::RunScreenshot(const TArray<FString>& Args, UWorld* InWorld, FOutputDevice& Ar)
+{
+	using namespace LureDevCommandsPrivate;
+
+	// Joined so a path with spaces works without quotes; quotes are stripped.
+	const FString File = FString::Join(Args, TEXT(" ")).TrimStartAndEnd().TrimQuotes();
+	if (File.IsEmpty())
+	{
+		Report(Ar, false, FString::Printf(TEXT("%s: usage: %s <file.png>"), ScreenshotCommand, ScreenshotCommand));
+		return false;
+	}
+	FString Error;
+	FIntPoint Size;
+	if (!CaptureViewportWithUI(ResolveWorld(InWorld), File, Error, &Size))
+	{
+		Report(Ar, false, FString::Printf(TEXT("%s: %s"), ScreenshotCommand, *Error));
+		return false;
+	}
+	Report(Ar, true, FString::Printf(TEXT("%s: %dx%d with UI -> %s"), ScreenshotCommand, Size.X, Size.Y, *FPaths::ConvertRelativePathToFull(File)));
 	return true;
 }
 
@@ -816,11 +912,21 @@ namespace LureDevCommandsPrivate
 
 	FAutoConsoleCommandWithWorldArgsAndOutputDevice GiveFishConsoleCommand(
 		FLureDevCommands::GiveFishCommand,
-		TEXT("Dev: roll a fish with the real roll pipeline and log it (the cooler comes later). ")
+		TEXT("Dev: roll a fish with the real roll pipeline and land it like a real catch (cooler + XP) for the player. ")
 		TEXT("Lure.GiveFish <SpeciesId> [Rarity|-] [Seed] [Mods=A,B] [Weight=0..1] [Player=<PlayerId>]. Server/standalone only."),
 		FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateLambda([](const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
 		{
 			FLureDevCommands::RunGiveFish(Args, World, Ar);
+		}),
+		ECVF_Cheat);
+
+	FAutoConsoleCommandWithWorldArgsAndOutputDevice ScreenshotConsoleCommand(
+		FLureDevCommands::ScreenshotCommand,
+		TEXT("Dev: save this world's game viewport WITH its UI (HUD text, prompts) to a PNG now. Lure.Screenshot <file.png>. ")
+		TEXT("Run it in the player's own world (a client's PIE window for a client)."),
+		FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateLambda([](const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
+		{
+			FLureDevCommands::RunScreenshot(Args, World, Ar);
 		}),
 		ECVF_Cheat);
 

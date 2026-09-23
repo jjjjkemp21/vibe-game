@@ -69,6 +69,9 @@ struct FLureGiveFishArgs
  *    Lure.Teleport <X> <Y> <Z> [Yaw] [Player=<PlayerId>]       feet location in cm, yaw in degrees
  *    Lure.SetStance <Stand|Crouch|Prone> [Player=<PlayerId>]   the local player, exactly like pressing the stance key
  *    Lure.GiveFish <SpeciesId> [Rarity|-] [Seed] [Mods=A,B] [Weight=0..1] [Player=<PlayerId>]   server / standalone only
+ *      (lands the fish like a real catch: ULureProgressionLibrary::HandleFishLanded = cooler + XP)
+ *    Lure.Screenshot <file.png>                               this world's game viewport WITH its UI (HUD text, prompts,
+ *                                                             widgets), written at once; the viewport's size
  *    (TODO T-006: Lure.Fishing.ForceBite once the fishing component is in main.)
  *
  *  Markers (Lure.Teleport), matched case-insensitively in tiers; the first tier with a match wins, its actors are sorted
@@ -92,6 +95,7 @@ struct FLureDevCommands
 	static const TCHAR* const TeleportCommand;
 	static const TCHAR* const SetStanceCommand;
 	static const TCHAR* const GiveFishCommand;
+	static const TCHAR* const ScreenshotCommand;
 
 	/** The floor probe starts this far above the target point, cm. */
 	static constexpr float FloorProbeUp = 50.f;
@@ -156,12 +160,24 @@ struct FLureDevCommands
 	/** Checks the ids against the tables (errors list the valid ids) and rolls with FFishRoll::Roll. */
 	static bool GiveFish(const FFishTables& Tables, const FLureGiveFishArgs& Args, FFishInstance& OutFish, FString& OutError);
 
+	// ---- Screenshot ----
+
+	/**
+	 *  Captures World's game viewport widget through Slate (the 3D view plus the HUD canvas and any UMG on top of it) and
+	 *  saves it to File (format from the extension; folders are created). Needs a visible game viewport (PIE or game).
+	 */
+	static bool CaptureViewportWithUI(UWorld* World, const FString& File, FString& OutError, FIntPoint* OutSize = nullptr);
+
 	// ---- Console entry points (what the registered commands run; public for tests) ----
 
 	static bool RunTeleport(const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar);
+	static bool RunScreenshot(const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar);
 	static bool RunSetStance(const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar);
 
-	/** TablesOverride: tests pass tables built from data/tables/*.json; null = UFishSettings::LoadTables. */
+	/**
+	 *  Rolls the fish and, when the world has the target player, lands it through ULureProgressionLibrary::HandleFishLanded
+	 *  (cooler + XP, like a real catch). TablesOverride: tests pass tables built from data/tables/*.json; null = UFishSettings::LoadTables.
+	 */
 	static bool RunGiveFish(const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar, const FFishTables* TablesOverride = nullptr, FFishInstance* OutFish = nullptr);
 };
 

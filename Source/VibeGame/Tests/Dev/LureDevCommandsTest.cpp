@@ -20,6 +20,7 @@
 #include "Fish/FishInstance.h"
 #include "Fish/FishRoll.h"
 #include "Fish/FishSettings.h"
+#include "Game/LurePlayerState.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/PlayerState.h"
 #include "HAL/FileManager.h"
@@ -28,9 +29,13 @@
 #include "Misc/OutputDeviceNull.h"
 #include "Misc/Paths.h"
 #include "Modules/ModuleManager.h"
+#include "Progression/LureCoolerComponent.h"
+#include "Progression/LureProgressionComponent.h"
+#include "Progression/LureProgressionTypes.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 #include "Tests/AutomationCommon.h"
+#include "Tests/Progression/ProgressionTestUtils.h"
 #include "UObject/StrongObjectPtr.h"
 
 namespace LureDevTest
@@ -222,7 +227,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLureDevCommandsRegisteredTest, "Project.Dev.Co
 
 bool FLureDevCommandsRegisteredTest::RunTest(const FString& Parameters)
 {
-	for (const TCHAR* Name : { FLureDevCommands::TeleportCommand, FLureDevCommands::SetStanceCommand, FLureDevCommands::GiveFishCommand })
+	for (const TCHAR* Name : { FLureDevCommands::TeleportCommand, FLureDevCommands::SetStanceCommand, FLureDevCommands::GiveFishCommand,
+		FLureDevCommands::ScreenshotCommand })
 	{
 		IConsoleObject* Object = IConsoleManager::Get().FindConsoleObject(Name, false);
 		TestTrue(FString::Printf(TEXT("%s is a registered console command"), Name), Object && Object->AsCommand() != nullptr);
@@ -548,6 +554,77 @@ bool FLureDevGiveFishRollsTest::RunTest(const FString& Parameters)
 	FFishInstance Logged;
 	const FString Line = Fixture.Species->GetRowNames()[0].ToString() + TEXT(" 99");
 	TestTrue(TEXT("RunGiveFish rolls and reports"), FLureDevCommands::RunGiveFish(Args(*Line), nullptr, Null, &Tables, &Logged) && Logged.IsValid() && Logged.Seed == 99);
+	return true;
+}
+
+/** T-010 follow-up: on the server, Lure.GiveFish lands the fish like a real catch (cooler + XP) for the target player. */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLureDevGiveFishLandsTest, "Project.Dev.GiveFish.LandsInCoolerWithXp", LureDevTest::Flags)
+
+bool FLureDevGiveFishLandsTest::RunTest(const FString& Parameters)
+{
+	FFishFixture Fixture;
+	LPT::FWorld W;
+	if (!Fixture.Load(*this) || !W.Create(*this))
+	{
+		return false;
+	}
+	const TStrongObjectPtr<UDataTable> Levels = LPT::MakeTable(*this, FPlayerLevelRow::StaticStruct(), LPT::FixtureLevelCsv());
+	const TStrongObjectPtr<UDataTable> Coolers = LPT::MakeTable(*this, FCoolerRow::StaticStruct(), LPT::FixtureCoolerCsv());
+	LPT::FPlayer Player = LPT::SpawnPlayer(*this, W, Levels.Get(), Coolers.Get());
+	APlayerController* Controller = W.World->SpawnActor<APlayerController>();
+	if (!Player.IsValid() || !TestNotNull(TEXT("controller spawned"), Controller))
+	{
+		return false;
+	}
+	Controller->SetPlayerState(Player.State);
+	Player.State->SetPlayerId(7);
+	Controller->SetAsLocalPlayerController();
+	const int32 XpBefore = Player.Progression->GetTotalXp();
+
+	FOutputDeviceNull Null;
+	const FFishTables Tables = Fixture.Get();
+	FFishInstance Fish;
+	const FString Line = Fixture.Species->GetRowNames()[0].ToString() + TEXT(" - 99 Player=7");
+	if (!TestTrue(TEXT("RunGiveFish rolls on the server"), FLureDevCommands::RunGiveFish(Args(*Line), W.World, Null, &Tables, &Fish) && Fish.IsValid()))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the fish is in the player's cooler"), Player.Cooler->GetNumFish(), 1);
+	FFishInstance Stored;
+	TestTrue(TEXT("... in slot 0, the same roll"), Player.Cooler->GetFishAt(0, Stored) && Stored.Seed == 99 && Stored.ToString() == Fish.ToString());
+	TestEqual(TEXT("the fish's XP was added"), Player.Progression->GetTotalXp(), XpBefore + FMath::Max(0, Fish.Xp));
+
+	// Without Player= it is the world's first local player: the same player again.
+	const FString Second = Fixture.Species->GetRowNames()[0].ToString() + TEXT(" 5");
+	TestTrue(TEXT("a second GiveFish"), FLureDevCommands::RunGiveFish(Args(*Second), W.World, Null, &Tables, &Fish));
+	TestEqual(TEXT("... lands in the same cooler"), Player.Cooler->GetNumFish(), 2);
+	return true;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Screenshot
+// ---------------------------------------------------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLureDevScreenshotRefusesTest, "Project.Dev.Screenshot.RefusesWithoutViewport", LureDevTest::Flags)
+
+bool FLureDevScreenshotRefusesTest::RunTest(const FString& Parameters)
+{
+	FDevWorld W;
+	if (!W.Create(*this))
+	{
+		return false;
+	}
+	const FString File = FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir() / TEXT("AgentLogs/tests/lure_screenshot_refused.png"));
+	IFileManager::Get().Delete(*File, false, true, true);
+	FString Error;
+	TestFalse(TEXT("no file name is refused"), FLureDevCommands::CaptureViewportWithUI(W.World, TEXT("  "), Error));
+	TestFalse(TEXT("no world is refused"), FLureDevCommands::CaptureViewportWithUI(nullptr, File, Error));
+	TestFalse(TEXT("a world without a game viewport is refused"), FLureDevCommands::CaptureViewportWithUI(W.World, File, Error));
+	TestTrue(TEXT("... with a hint"), Error.Contains(TEXT("game viewport")));
+	FOutputDeviceNull Null;
+	TestFalse(TEXT("Lure.Screenshot without a file prints the usage"), FLureDevCommands::RunScreenshot(TArray<FString>(), W.World, Null));
+	TestFalse(TEXT("Lure.Screenshot in a world without a viewport fails"), FLureDevCommands::RunScreenshot(Args(*File), W.World, Null));
+	TestFalse(TEXT("nothing was written"), IFileManager::Get().FileExists(*File));
 	return true;
 }
 
