@@ -12,6 +12,18 @@ description: Definition of done and evidence rules for this game project - which
 | Level / layout | level saved + screenshots from gameplay-relevant angles looked at |
 | Gameplay feel | build + tests + a one-line note for Jimmy on what to try in the next playtest |
 | Performance-sensitive | frame timing captured before and after (e.g. `stat unit`, CSV profiler) |
+| Anything the player sees or does | `playtester` PIE report PASS (scenario + free play, screenshots) + `designer` review APPROVED (or must-fix items done) |
+
+## Who verifies
+- The implementer's own tests are a start, not the proof. The `qa-engineer` adds independent tests derived from the acceptance criteria (boundaries, invalid data, determinism, regressions) and keeps `docs/TEST_PLAN.md` (system -> tests -> gaps) current.
+- The `playtester` plays the feature in PIE and reports bugs and feel notes; the `designer` reviews those screenshots against GAME_DESIGN.md, ART_STYLE.md and `art/reference/` mood boards.
+
+## Release gate (before pushing to GitHub origin/main or handing a build to Jimmy)
+1. `tools/build.ps1` succeeded on the commit being published.
+2. `qa-engineer`: `tools/run-tests.ps1 -Filter Project` all green (report dir recorded).
+3. `playtester`: PASS for every feature changed since the last publish (report folder recorded).
+4. `designer`: APPROVED or APPROVED WITH CHANGES with all "must" items fixed (review file recorded).
+5. The lead records the evidence (commit message or the task's line in docs/TASKS.md), then pushes. Never skip a step to "save time"; if a step can't run, don't publish and tell Jimmy why.
 
 ## Looking at images
 Say concretely what you see. Check for: default/checker materials, objects floating or sunk into the floor, wrong scale (compare with the 1 m golden crate or the mannequin), black or blown-out lighting, clipping, missing objects.
@@ -19,6 +31,7 @@ Say concretely what you see. Check for: default/checker materials, objects float
 ## Writing tests
 - Automation test paths start with `Project.`; one behavior per test; deterministic; no reliance on the currently open level.
 - Prefer testing data and logic directly (spawn in a test world or call functions) over timing-based checks.
+- Data validation tests for every gameplay DataTable (content is data-driven; new rows must never silently break).
 - Planned (see docs/TASKS.md): a bot playthrough functional test that walks the player along waypoints and fails on stuck/unreachable objectives, and a performance capture script with budgets.
 
 ## Reporting

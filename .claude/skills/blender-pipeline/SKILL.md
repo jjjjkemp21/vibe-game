@@ -35,6 +35,14 @@ Open the preview PNG after each run. Compare with the request and ART_STYLE.md. 
 - Use MCP for inspection and debugging; production changes go into recipes so they are reproducible.
 - The PyPI package called `blender-mcp` is a different community project: never install it.
 
+## Animation (animation-artist)
+- Rig and animation recipes build ON the model-artist's mesh recipe (import its export or call its build function); never hand-edit the mesh inside an animation recipe.
+- 30 fps. Action names = Unreal asset names (`A_<Subject>_<Action>`, e.g. `A_FishGeneric_Swim`, `A_FPArms_Cast`). One Blender action per clip; push each to its own NLA track before export so all clips export.
+- Export skeletal assets with `apply_scale_options="FBX_SCALE_ALL"`, `add_leaf_bones=False`, `bake_anim=True`, `bake_anim_use_nla_strips=True`, `bake_anim_use_all_actions=False` (see Troubleshooting). Keep the root bone at the origin; use root motion only where the spec says so.
+- Scale over species: one rig per body type (e.g. a spine bone chain for all fish) with procedural or parameterized motion (amplitude, frequency, speed) that the game drives from data. Don't make per-species clips unless a species truly moves differently.
+- Every animated export gets `art/export/<Category>/<Name>.anim.md`: skeleton, actions (frame range, loop or one-shot, root motion, notify frames), and Unreal import/retarget/montage notes.
+- Preview: render a key-frame strip or contact sheet to `Saved/AgentLogs/previews/<Name>_anim.png` and look at it (pops, sliding, broken weights, interpenetration).
+
 ## Troubleshooting
 - FBX operator missing under `--factory-startup`: `ensure_fbx_exporter()` enables `io_scene_fbx`; or export GLB with `bpy.ops.export_scene.gltf(export_format='GLB')`.
 - Wrong size in Unreal (extent near 0.5 or 5000 instead of 50 for 1 m): check `apply_unit_scale` / scene unit scale.

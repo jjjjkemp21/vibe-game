@@ -26,7 +26,7 @@ description: How to build, launch, stop, test, and script this Unreal Engine 5.8
   ```
 - `call_tool` takes the SHORT tool name (e.g. `find_actors`) plus `toolset_name`; the dotted full name fails with "Unknown tool".
 - Epic's `ProgrammaticToolset.execute_tool_script` is a sandbox (json/math/re/time/datetime/copy only, no `unreal`): use it only to chain other MCP tools.
-- Serial only: one call at a time (game thread). Only the editor-operator (or the lead) calls unreal-mcp.
+- Serial only: one call at a time (game thread). Only the editor-operator or the playtester (or the lead), and only when the lead has handed them the editor, calls unreal-mcp (CLAUDE.md rule 4).
 - After visible changes: `pu.frame_viewport(target)` then the editor screenshot tool; look at the image.
 - Save what you change.
 
@@ -37,7 +37,7 @@ description: How to build, launch, stop, test, and script this Unreal Engine 5.8
 - Headless (editor closed): `tools/unreal-python.ps1` runs `Content/Python/pipeline_cli.py` in the pythonscript commandlet. It does not load a level on its own and cannot take screenshots.
 
 ## Importing art
-- Exports come from the blender-artist in `art/export/<Category>/<Name>.fbx`.
+- Exports come from the model-artist (meshes) and the animation-artist (skeletal meshes + animations, with an `<Name>.anim.md` import spec) in `art/export/<Category>/`.
 - `pu.import_static_mesh(src, "/Game/Art/<Category>", "<Name>")` returns `box_extent` in uu (half-size): a 1 m object should show about 50. Values near 0.5 or 5000 mean a unit/scale error in the export.
 - Re-import = the same call (replaces the asset).
 

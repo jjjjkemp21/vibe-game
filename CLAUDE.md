@@ -15,7 +15,7 @@ You are building a game for Jimmy. Jimmy does not read or write code: he plays b
 - Blender 5.2 LTS (5.1+ is required by the Blender MCP server).
 - MCP servers in `.mcp.json`: `unreal-mcp` = Epic's Unreal MCP running inside the editor (tool-search mode); `blender` = Blender Lab's official MCP server.
 - Epic's Claude Code plugin `unreal-engine-skills-for-claude-code` (skill `unreal-mcp`): read it before your first editor task in a session.
-- Git + Git LFS (binary assets tracked in LFS). No remote yet.
+- Git + Git LFS (binary assets tracked in LFS). Remote: private GitHub repo `vibe-game` (being set up); push only after the release gate (rule 10).
 
 ## Repository map
 - `Source/` C++ gameplay code; C++ automation tests in `Source/VibeGame/Tests/`.
@@ -28,12 +28,13 @@ You are building a game for Jimmy. Jimmy does not read or write code: he plays b
 1. Gameplay logic is C++. Blueprints only as thin child classes holding asset references and default values; no logic in Blueprint graphs.
 2. Tuning lives in data (DataTables with CSV/JSON sources in the repo, or DataAssets), so "feel" changes are data edits.
 3. Never edit `.uasset`, `.umap` or `.blend` as text (a hook blocks it). Change Unreal assets through the editor (unreal-mcp) or Unreal Python; Blender assets through recipes.
-4. One editor operator: only the `editor-operator` subagent (or you, when not delegating) calls `unreal-mcp`, one call at a time. Never run two editor operations in parallel.
+4. One editor user at a time: only `editor-operator` (building/changing things) or `playtester` (playing in PIE, read-only), or you when not delegating, may call `unreal-mcp`, and only after the lead hands them the editor. One call at a time; never two editor agents in parallel.
 5. Batch editor work: one Python script doing many operations beats many small tool calls. Put reusable code in `Content/Python/pipeline_unreal.py`.
 6. Evidence before "done": build result, test report, and for anything visible a screenshot or preview you actually looked at. Follow the `verification` skill.
 7. Commit after every verified step with a clear message. Commit before any long or risky editor session.
 8. Never use `--dangerously-skip-permissions`, never force-push, never delete assets, branches, or history without Jimmy's explicit OK.
 9. Ask Jimmy only about taste, feel, and priorities, in plain language, one question at a time. Decide technical matters yourself and explain them briefly.
+10. Release gate (before pushing to GitHub `origin/main`, or handing a build to Jimmy): (a) `tools/build.ps1` green; (b) `qa-engineer`: full `tools/run-tests.ps1 -Filter Project` passes and new behavior has tests it wrote; (c) `playtester`: PIE scenario + free play PASS for the changed features, with screenshots; (d) `designer`: screenshots APPROVED (or APPROVED WITH CHANGES and the must-fix items done). Record the evidence paths in the commit message or docs/TASKS.md. Local commits can happen anytime; publishing can't skip the gate.
 
 ## Commands (run from the repo root; always use forward slashes in script paths)
 Form: `powershell -NoProfile -ExecutionPolicy Bypass -File tools/<script>.ps1 [args]`
@@ -55,11 +56,15 @@ Every script writes `Saved/AgentLogs/status/<script>.json` (state, message, log 
 - C++ tests: paths start with `Project.` (e.g. `Project.Combat.DamageApplied`).
 
 ## Team (subagents in `.claude/agents/`)
-- `editor-operator`: live editor work through unreal-mcp (the only one allowed).
+- `editor-operator`: live editor work through unreal-mcp (builds levels, imports, materials).
 - `unreal-engineer`: C++ gameplay code, builds, C++ tests.
-- `blender-artist`: Blender recipes, exports, previews.
-- `qa-tester`: runs tests, reads logs and screenshots, reports PASS/FAIL with evidence.
-C++ work and Blender work can run in parallel. Anything touching the running editor, or closing/building/relaunching it, is serialized by you (the lead).
+- `model-artist`: Blender models (props, environment, fish, creatures, boat, arms/rod): recipes, materials, exports, previews.
+- `animation-artist`: rigs and animations in Blender (fish swim/fight, creatures, first-person arm/rod actions, NPC idles), animation exports + `.anim.md` specs for Unreal import/wiring.
+- `qa-engineer`: senior QA. Writes independent unit, data-validation and integration tests (owns `Source/VibeGame/Tests/`, `docs/TEST_PLAN.md`), runs the full suite, reports PASS/FAIL with evidence; never changes production code.
+- `playtester`: plays the game in PIE (injected input + screenshots), runs the feature scenario and free play, reports bugs and feel notes; read-only.
+- `designer`: reviews playtester screenshots and previews against GAME_DESIGN.md / ART_STYLE.md and the mood boards; verdict + prioritized change requests; changes nothing.
+- Typical flow per task: implementer (unreal-engineer / model-artist / animation-artist / editor-operator) -> qa-engineer tests -> playtester plays -> designer reviews -> lead fixes or accepts -> release gate before publishing.
+C++ work and Blender work (model-artist, animation-artist) can run in parallel; two Blender agents can too, as long as they work on different recipes. Anything touching the running editor, or closing/building/relaunching it, is serialized by you (the lead).
 - The lead is the project manager: assigns tasks, briefs agents with the relevant vision and rules, verifies results, and keeps `docs/TASKS.md` current.
 - Work log: when a task starts, the lead adds `In progress: <owner agent>, started <date>` to that task line in `docs/TASKS.md`; when it's done, the task moves to "Done" with its commit hash. Before starting work, every agent reads the task lines marked "In progress" so it knows what the others are doing and stays off their files.
 
