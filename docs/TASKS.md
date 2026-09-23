@@ -8,7 +8,11 @@ Last processed playtest folder: (none)
 **Resumed 2026-09-23 10:35.** In progress:
 - unreal-engineer-senior-max: T-026 netfix (eng2)
 - qa-engineer-mid-medium: T-006 QA (eng1)
-- unreal-engineer-mid-high: finishing T-007 (eng3)
+- T-007 implemented da8a25b (eng3; 419/422, only the 3 known failures; report Saved/AgentLogs/build/20260923-104851-T007.md; also fixes the fixture-table GC crash in QAMovementTestUtils.cpp). In progress: qa-engineer-senior-max review. After merge the editor imports DT_Gear, DT_FightPattern and DT_FishFight, and re-imports DT_Fishing (AutoLandDelay 0). Questions for Jimmy AFTER playtest A, one at a time:
+  1. the starter line snaps in under a second on a snapper held at full reel: too harsh, or a good gear signal?
+  2. losing a fish costs only the fish, or bait and line too?
+  3. is one hold-to-reel button enough?
+  4. are 8-15 s fights right?
 - qa-engineer-mid-medium: T-010 QA (eng5)
 - animation-artist-senior-max: fish rig and clips (main)
 - DONE 5137a5c: run-tests.ps1 now fails on a crash or an incomplete run (unreal-engineer-junior-medium)
