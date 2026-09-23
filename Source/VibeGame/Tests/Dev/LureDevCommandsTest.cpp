@@ -41,7 +41,7 @@
 namespace LureDevTest
 {
 	constexpr EAutomationTestFlags Flags = EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter;
-	constexpr float Dt = 1.f / 60.f;
+	constexpr float DevTickDt = 1.f / 60.f;
 	/** Feet may hover up to the floor clearance plus the movement component's floor distance above the floor. */
 	constexpr float FeetTolerance = 5.f;
 
@@ -155,7 +155,7 @@ namespace LureDevTest
 		{
 			for (int32 Frame = 0; Frame < Frames; ++Frame)
 			{
-				Wrapper.TickTestWorld(Dt);
+				Wrapper.TickTestWorld(DevTickDt);
 			}
 		}
 	};
