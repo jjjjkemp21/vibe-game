@@ -11,7 +11,7 @@ You are building a game for Jimmy. Jimmy does not read or write code: he plays b
 
 ## Repository map
 - `Source/` C++ gameplay code; C++ automation tests in `Source/VibeGame/Tests/`.
-- `Content/` Unreal assets (binary). `Content/Python/` Unreal-side Python (`pipeline_unreal.py`, `pipeline_cli.py`), on the editor's Python path.
+- `Content/` Unreal assets (binary). `Content/Python/` Unreal-side Python (`pipeline_unreal.py`, `pipeline_cli.py`, and `vibegame_tools.py` = the MCP toolset that runs real editor Python, registered by `init_unreal.py`), on the editor's Python path.
 - `art/recipes/` one Blender script per asset; `art/lib/` shared Blender helpers; `art/export/` exported FBX/GLB; `art/blend/` optional saved .blend files.
 - `tools/` PowerShell entry points (see Commands). `docs/` design docs and task list. `setup/` setup runbook and report.
 - `Saved/AgentLogs/` logs, status files, previews, screenshots, test reports (never committed).

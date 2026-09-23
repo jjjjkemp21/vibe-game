@@ -18,12 +18,14 @@ description: How to build, launch, stop, test, and script this Unreal Engine 5.8
 
 ## Using unreal-mcp
 - Tool-search mode: `list_toolsets` -> `describe_toolset <name>` -> `call_tool`. Use names exactly as returned; never guess parameters.
-- Batch through the programmatic Python tool (Epic: `ProgrammaticToolset.execute_tool_script`). Template:
+- Real editor Python goes through the project toolset `vibegame_tools.VibeGamePipelineTools` (`Content/Python/vibegame_tools.py`, registered at editor start by `Content/Python/init_unreal.py`). Call it with `call_tool`, `toolset_name` = `vibegame_tools.VibeGamePipelineTools`, `tool_name` = `run_python` (arg `code`) or `run_pipeline` (args `function`, `args_json`). Both return JSON `{ok, result, stdout, error}`; in `run_python` set `result = ...` to return a value. Template for `code`:
   ```python
   import importlib, pipeline_unreal as pu
   importlib.reload(pu)
-  print(pu.import_static_mesh(r"C:/GameDev/<Project>/art/export/Props/SM_X.fbx", "/Game/Art/Props", "SM_X"))
+  result = pu.import_static_mesh(r"C:/GameDev/<Project>/art/export/Props/SM_X.fbx", "/Game/Art/Props", "SM_X")
   ```
+- `call_tool` takes the SHORT tool name (e.g. `find_actors`) plus `toolset_name`; the dotted full name fails with "Unknown tool".
+- Epic's `ProgrammaticToolset.execute_tool_script` is a sandbox (json/math/re/time/datetime/copy only, no `unreal`): use it only to chain other MCP tools.
 - Serial only: one call at a time (game thread). Only the editor-operator (or the lead) calls unreal-mcp.
 - After visible changes: `pu.frame_viewport(target)` then the editor screenshot tool; look at the image.
 - Save what you change.
@@ -44,8 +46,11 @@ description: How to build, launch, stop, test, and script this Unreal Engine 5.8
 - Canonical run (before commits and milestones): editor closed, `tools/run-tests.ps1 -Filter Project`. Report JSON: `Saved/AgentLogs/tests/<timestamp>/index.json`.
 - Quick iteration: the testing toolset in unreal-mcp, inside the running editor.
 
-## Screenshot fallback
-`unreal.SystemLibrary.execute_console_command(None, "HighResShot 1920x1080")` writes to `Saved/Screenshots/WindowsEditor/` on the next frame.
+## Screenshots
+- Preferred: `pu.take_screenshot("C:/GameDev/<Project>/Saved/AgentLogs/<name>.png")` via `run_python`, then check the file exists (next frame) and Read it. Log line: `LogClient: High resolution screenshot saved as ...`.
+- It needs a rendering viewport. If no file appears, the editor is CPU-throttled in the background: `bThrottleCPUWhenNotForeground=False` must be set (it is in `Config/DefaultEditorPerProjectUserSettings.ini`; live: ConfigSettingsToolset `SetSectionProperties` Editor/General/EditorPerformanceSettings).
+- `HighResShot` via `execute_console_command(None, ...)` did NOT write a file in testing; avoid it.
+- Epic's `EditorAppToolset.CaptureViewport` returns a base64 PNG inline (large); use only when a file path is not needed.
 
 ## Troubleshooting
 - MCP unreachable: `tools/launch-editor.ps1`; check the editor log for `LogModelContextProtocol`.

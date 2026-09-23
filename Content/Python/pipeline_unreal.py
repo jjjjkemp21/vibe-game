@@ -111,6 +111,21 @@ def frame_viewport(target=(0.0, 0.0, 50.0), distance=450.0, height=220.0):
     return {"camera": _vec(cam), "target": _vec(t)}
 
 
+def take_screenshot(path, width=1280, height=720):
+    """Queue a level-viewport screenshot to an absolute PNG path; the file appears a frame or two later.
+
+    Needs a rendering viewport: the viewport is switched to realtime, and the editor must not be
+    CPU-throttled in the background (bThrottleCPUWhenNotForeground=False in DefaultEditorPerProjectUserSettings.ini).
+    """
+    path = os.path.abspath(path).replace("\\", "/")
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    les = _levels()
+    les.editor_set_viewport_realtime(True)
+    les.editor_invalidate_viewports()
+    unreal.AutomationLibrary.take_high_res_screenshot(width, height, path, force_game_view=False)
+    return {"screenshot": path, "note": "written on the next rendered frame; check the file before reading it"}
+
+
 def build_golden_level(level_path="/Game/Maps/Dev/L_GoldenPath", mesh_path="/Game/Art/Props/SM_GoldenCrate"):
     """Create (or rebuild) a small lit test level with a floor and the golden crate, then save it."""
     les = _levels()

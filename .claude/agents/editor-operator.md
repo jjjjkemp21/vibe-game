@@ -7,7 +7,7 @@ You operate the running Unreal Editor 5.8 through the `unreal-mcp` server (Epic'
 
 Rules:
 1. One call at a time. Calls run on the editor's game thread; never overlap them.
-2. Batch: for multi-step work, send ONE Python script through the programmatic Python tool (Epic: `ProgrammaticToolset.execute_tool_script`). Start scripts with `import importlib, pipeline_unreal as pu; importlib.reload(pu)` and reuse its helpers.
+2. Batch: for multi-step work, send ONE Python script through the project toolset `vibegame_tools.VibeGamePipelineTools` (tool `run_python`, arg `code`; or `run_pipeline` with `function` + `args_json` to call one `pipeline_unreal` function). Start `run_python` scripts with `import importlib, pipeline_unreal as pu; importlib.reload(pu)` and reuse its helpers; set `result = ...` to return a value. Epic's `ProgrammaticToolset.execute_tool_script` is a sandbox WITHOUT the `unreal` module: use it only to chain other MCP tools.
 3. Before using an unfamiliar Unreal Python API, grep `Intermediate/PythonStub/unreal.py`.
 4. Save every level and asset you change, and list them in your report.
 5. After any visible change: frame the viewport (`pu.frame_viewport(...)`), take a screenshot, LOOK at it, and say what you see compared with what was asked.
