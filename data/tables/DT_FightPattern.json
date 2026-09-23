@@ -1,0 +1,36 @@
+[
+	{
+		"Name": "Run",
+		"DisplayName": "Runner",
+		"OpeningMove": "Run",
+		"Moves": [
+			{ "Id": "Run", "Label": "running!", "Weight": 2, "AggressionWeight": 0.08, "DurationMin": 1.5, "DurationMax": 3.0, "Pull": 1.6, "Speed": 1.8, "Away": 1.0, "Side": 0.3, "RandomSide": true, "Down": 0, "Rest": false },
+			{ "Id": "Swim", "Label": "swimming", "Weight": 3, "AggressionWeight": 0, "DurationMin": 1.5, "DurationMax": 3.0, "Pull": 1.0, "Speed": 0.7, "Away": 0.7, "Side": 0.5, "RandomSide": true, "Down": 0, "Rest": false },
+			{ "Id": "Rest", "Label": "resting", "Weight": 2, "AggressionWeight": 0, "DurationMin": 1.0, "DurationMax": 2.5, "Pull": 0.3, "Speed": 0, "Away": 0, "Side": 0, "RandomSide": false, "Down": 0, "Rest": true }
+		],
+		"DevComment": "Sudden long runs straight away from you (Bonefish). Ease off during a run, reel while it rests. PLACEHOLDER numbers (T-007)."
+	},
+	{
+		"Name": "Dive",
+		"DisplayName": "Diver",
+		"OpeningMove": "Dive",
+		"Moves": [
+			{ "Id": "Dive", "Label": "diving for the reef!", "Weight": 2, "AggressionWeight": 0.06, "DurationMin": 1.5, "DurationMax": 3.0, "Pull": 1.4, "Speed": 1.0, "Away": 0.6, "Side": 0, "RandomSide": false, "Down": 1.0, "Rest": false },
+			{ "Id": "Swim", "Label": "swimming", "Weight": 3, "AggressionWeight": 0, "DurationMin": 1.5, "DurationMax": 3.0, "Pull": 1.0, "Speed": 0.7, "Away": 0.7, "Side": 0.4, "RandomSide": true, "Down": 0.2, "Rest": false },
+			{ "Id": "Sulk", "Label": "sulking", "Weight": 2, "AggressionWeight": 0, "DurationMin": 1.0, "DurationMax": 2.5, "Pull": 0.35, "Speed": 0, "Away": 0, "Side": 0, "RandomSide": false, "Down": 0, "Rest": true }
+		],
+		"DevComment": "Heavy dives down toward the reef (Coral Snapper). PLACEHOLDER numbers (T-007)."
+	},
+	{
+		"Name": "Dart",
+		"DisplayName": "Darter",
+		"OpeningMove": "Dart",
+		"Moves": [
+			{ "Id": "Dart", "Label": "darting!", "Weight": 3, "AggressionWeight": 0.08, "DurationMin": 0.4, "DurationMax": 0.9, "Pull": 1.3, "Speed": 2.0, "Away": 0.2, "Side": 1.0, "RandomSide": true, "Down": 0, "Rest": false },
+			{ "Id": "Charge", "Label": "swimming at you!", "Weight": 1, "AggressionWeight": 0.03, "DurationMin": 0.6, "DurationMax": 1.2, "Pull": 0, "Speed": 1.2, "Away": -1.0, "Side": 0, "RandomSide": false, "Down": 0, "Rest": false },
+			{ "Id": "Swim", "Label": "swimming", "Weight": 2, "AggressionWeight": 0, "DurationMin": 1.0, "DurationMax": 2.0, "Pull": 1.0, "Speed": 0.6, "Away": 0.7, "Side": 0.4, "RandomSide": true, "Down": 0, "Rest": false },
+			{ "Id": "Rest", "Label": "resting", "Weight": 1.5, "AggressionWeight": 0, "DurationMin": 0.8, "DurationMax": 1.8, "Pull": 0.3, "Speed": 0, "Away": 0, "Side": 0, "RandomSide": false, "Down": 0, "Rest": true }
+		],
+		"DevComment": "Quick side-to-side darts; a charge toward you slackens the line (reel or it throws the hook). No starter species uses it yet. PLACEHOLDER numbers (T-007)."
+	}
+]

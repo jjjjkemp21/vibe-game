@@ -458,7 +458,9 @@ bool FLureDevCommands::TeleportPawn(APawn* Pawn, const FVector& FeetLocation, co
 	{
 		if (AController* Controller = Pawn->GetController())
 		{
-			// Runs locally for the host / standalone player; an RPC to the owning client otherwise.
+			// The server's copy first (server-side aim and checks see the new yaw at once), then the owning client's view:
+			// ClientSetRotation runs locally for the host / standalone player and is a reliable RPC to a remote client.
+			Controller->SetControlRotation(ViewRotation.GetValue());
 			Controller->ClientSetRotation(ViewRotation.GetValue(), /*bResetCamera*/ true);
 		}
 	}

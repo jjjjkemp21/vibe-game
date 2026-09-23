@@ -1,10 +1,13 @@
-// Lure: casting, bobber, bite and hook (T-006). Server-authoritative and replicated. Decisions: docs/specs/fishing-rules.md.
+// Lure: casting, bobber, bite and hook (T-006), reel fight, line tension and gear (T-007). Server-authoritative and replicated.
+// Decisions: docs/specs/fishing-rules.md, docs/specs/reel-fight-rules.md.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
 #include "Fish/FishRoll.h"
+#include "Fishing/FishFight.h"
+#include "Fishing/FishFightTypes.h"
 #include "Fishing/FishingTypes.h"
 #include "LureFishingComponent.generated.h"
 
@@ -18,9 +21,15 @@ class ULureFishingSettings;
 class USoundBase;
 class UStaticMesh;
 class UStaticMeshComponent;
+class UAnimMontage;
+class ULureFishingComponent;
 
 /** Fired on the server (and on clients as their state replicates) when something happens to the line. Fish is empty unless hooked/landed/lost. */
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FLureFishingEventSignature, ELureFishingResult, Result, const FFishInstance&, Fish);
+
+/** Server only: a fish was landed (the cooler, T-010, stores the instance). */
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FLureFishingLandedSignature, ULureFishingComponent*, Fishing, const FFishInstance&, Fish);
+DECLARE_MULTICAST_DELEGATE_TwoParams(FLureFishingLandedNative, ULureFishingComponent* /*Fishing*/, const FFishInstance& /*Fish*/);
 
 /**
  *  One player's fishing: rod, cast, bobber, bite and hook.
@@ -37,6 +46,11 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FLureFishingEventSignature, ELureFi
  *  Visuals (never on a dedicated server): SM_Rod_Basic on the arms' hand_r_rod bone (owner only, world scale kept, so it
  *  survives a scaled root bone), SM_Bobber at BobberScale, and the line from the rod's LineTip (first-person corrected) to the
  *  bobber's LineAttach, drawn >= LinePixelWidth px wide. Placeholder cast motion: the rod swings (CastMontage replaces it).
+ *
+ *  Reel fight (T-007): once hooked, the server simulates the fight (FLureFight, fixed steps) from the fish's final stats, its
+ *  species' DT_FightPattern row, DT_FishFight tuning and the equipped gear (DT_Gear, replicated Loadout). The owning client only
+ *  sends its reel input (ServerSetReeling: the Cast button held while a fish is on). Clients get FightNet (tension, fish
+ *  state, line out) for the placeholder HUD, the rod bend and the line. Landing hands the instance to OnFishLanded (server).
  */
 UCLASS(ClassGroup=(Lure), meta=(BlueprintSpawnableComponent))
 class ULureFishingComponent : public UActorComponent
@@ -81,9 +95,31 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Lure|Fishing|Bite")
 	float GearLuck = 0.f;
 
-	/** Bait on the hook (T-011); none = ULureFishingSettings::DefaultBait. */
+	/** Bait override (debug); none = the equipped hook's bait (DT_Gear), then ULureFishingSettings::DefaultBait. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Lure|Fishing|Bite", meta=(Categories="Bait,Hook"))
 	FGameplayTag BaitTag;
+
+	/** Player level the fight compares the fish's level with (UFishSettings::LevelScaling). T-010 sets it; 1 until then. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Lure|Fishing|Fight", meta=(ClampMin="1"))
+	int32 PlayerLevel = 1;
+
+	// ---- Gear (T-007) ----
+
+	/** The equipped gear (DT_Gear row names; a None slot = ULureFishingSettings::DefaultLoadout). Replicated. */
+	UFUNCTION(BlueprintPure, Category="Lure|Fishing|Gear")
+	FLureGearLoadout GetLoadout() const;
+
+	/**
+	 *  Server: equips gear (the shop, T-012, saves). Per slot: a known row of that slot is equipped; None keeps the current
+	 *  item; an unknown id or a row of another slot is refused (warning) and keeps the current item. True if nothing was refused.
+	 *  Refused entirely while a fish is on (false).
+	 */
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category="Lure|Fishing|Gear")
+	bool AuthoritySetLoadout(const FLureGearLoadout& NewLoadout);
+
+	/** The equipped gear's numbers (resolved from DT_Gear on every machine). */
+	UFUNCTION(BlueprintPure, Category="Lure|Fishing|Gear")
+	FLureGearStats GetGearStats() const;
 
 	// ---- Input (owning client; the character binds the Cast and Hook actions here) ----
 
@@ -102,6 +138,14 @@ public:
 	/** Brings the line in (any state). */
 	UFUNCTION(BlueprintCallable, Category="Lure|Fishing")
 	void RequestReelIn();
+
+	/** Owning client: an extra reel button (debug tools, a future separate key). The Cast button held while a fish is on reels too. */
+	UFUNCTION(BlueprintCallable, Category="Lure|Fishing")
+	void SetReelHeld(bool bHeld) { bReelButtonHeld = bHeld; }
+
+	/** Owning client: the player holds reel (Cast button or SetReelHeld) while a fish is on. */
+	UFUNCTION(BlueprintPure, Category="Lure|Fishing")
+	bool WantsToReel() const;
 
 	/** Binds the Cast and Hook actions of ULureInputSubsystem. */
 	void BindInput(UEnhancedInputComponent& Input);
@@ -144,6 +188,15 @@ public:
 
 	UFUNCTION(BlueprintPure, Category="Lure|Fishing")
 	FFishInstance GetLastLandedFish() const { return LastLandedFish; }
+
+	/** The reel fight as clients see it (tension, fish state, line out). */
+	UFUNCTION(BlueprintPure, Category="Lure|Fishing|Fight")
+	FLureFightNetState GetFightNetState() const { return FightNet; }
+
+	const FLureFightNetState& GetFightNet() const { return FightNet; }
+
+	/** The fight tuning in use (DT_FishFight row, or the built-in one). */
+	const FLureFishFightRow& GetFightTuning() const;
 
 	/** Placeholder HUD text (plain lines): cast power, bite/hook prompt, results. */
 	UFUNCTION(BlueprintPure, Category="Lure|Fishing")
@@ -198,6 +251,28 @@ public:
 	/** Server: extra hook time this player gets (HookLatencyGrace for remote players, 0 for the host and standalone). */
 	float GetHookGrace() const;
 
+	/** Server: hooks Fish right away (the line must be in the water: Waiting or Biting). Tests and debug tools (T-025 Lure.GiveFish). */
+	bool AuthorityHookFish(const FFishInstance& Fish);
+
+	/** Server: the reel input the fight runs with (the ServerSetReeling RPC calls this; tests and debug tools too). */
+	void AuthoritySetReeling(bool bReeling);
+
+	/** Server: the reel input now. */
+	bool IsServerReeling() const { return bServerReeling; }
+
+	/** Server: the fight simulation (valid while FightNet.bActive). */
+	const FLureFightState& GetFightState() const { return Fight; }
+
+	/** Tables for the fight (tests). Null = the built-in data for that table. Default: the settings' tables. */
+	void SetFightTables(const UDataTable* InGearTable, const UDataTable* InPatternTable, const UDataTable* InFightTable);
+
+	/** Server only: a fish was landed (after the reel fight, or the AutoLandDelay debug placeholder). Hand-off to the cooler (T-010). */
+	UPROPERTY(BlueprintAssignable, Category="Lure|Fishing")
+	FLureFishingLandedSignature OnFishLanded;
+
+	/** Native OnFishLanded (C++ listeners and tests). */
+	FLureFishingLandedNative OnFishLandedNative;
+
 	UPROPERTY(BlueprintAssignable, Category="Lure|Fishing")
 	FLureFishingEventSignature OnFishingEvent;
 
@@ -221,8 +296,23 @@ protected:
 	UPROPERTY(Replicated, BlueprintReadOnly, Category="Lure|Fishing")
 	FFishInstance LastLandedFish;
 
+	/** The equipped gear (server-written). */
+	UPROPERTY(ReplicatedUsing=OnRep_Loadout, BlueprintReadOnly, Category="Lure|Fishing|Gear")
+	FLureGearLoadout Loadout;
+
+	/** The reel fight for clients (server-written every tick while a fish is on). */
+	UPROPERTY(Replicated, BlueprintReadOnly, Category="Lure|Fishing|Fight")
+	FLureFightNetState FightNet;
+
 	UFUNCTION()
 	void OnRep_NetState(const FLureFishingNetState& PreviousState);
+
+	UFUNCTION()
+	void OnRep_Loadout();
+
+	/** The owning client's reel input (hold = true). The only fight input a client sends: the server decides the outcome. */
+	UFUNCTION(Server, Reliable)
+	void ServerSetReeling(bool bReeling);
 
 	UFUNCTION(Server, Reliable)
 	void ServerCast(float Charge01, float AimYawDegrees);
@@ -269,6 +359,28 @@ private:
 	void Miss(double Now);
 	void LandFish(double Now);
 	void Refuse(ELureCastBlock Reason, double Now);
+
+	// Reel fight and gear (T-007).
+	FLureFightState Fight;
+	bool bServerReeling = false;
+	double FightLastTime = 0.0;
+	UPROPERTY(Transient)
+	TObjectPtr<UDataTable> GearTableRef;
+	UPROPERTY(Transient)
+	TObjectPtr<UDataTable> PatternTableRef;
+	UPROPERTY(Transient)
+	TObjectPtr<UDataTable> FightTableRef;
+	bool bFightTablesResolved = false;
+	FLureFishFightRow FightTuning;
+	mutable FLureGearStats GearStats;
+	mutable bool bGearResolved = false;
+	void ResolveFightTables();
+	FLureGearLoadout GetEffectiveLoadout() const;
+	FLureFightPatternRow FindPattern(FName PatternId, FName& OutUsedId);
+	void BeginFight(double Now);
+	void UpdateFight(double Now);
+	void EndFight(ELureFightOutcome Outcome, double Now);
+	void PublishFight();
 	bool EnsureFishTables();
 	FLureFishingEnvironment MakeEnvironment() const;
 
@@ -287,6 +399,10 @@ private:
 	float Charge = 0.f;
 	bool bAwaitingCast = false;
 	double AwaitingSince = 0.0;
+	bool bCastButtonHeld = false;
+	bool bReelButtonHeld = false;
+	bool bReelSent = false;
+	void UpdateReelInput();
 	uint8 AwaitedCastId = 0;
 	ELureCastBlock LocalRefusal = ELureCastBlock::None;
 	double LocalRefusalTime = -1000.0;
@@ -320,4 +436,7 @@ private:
 	void GetViewer(FVector& OutLocation, float& OutFovDeg) const;
 	void HandleStateChanged(const FLureFishingNetState& Previous);
 	void PlayFeedbackSound(const TSoftObjectPtr<USoundBase>& Sound, const FVector& Location) const;
+	void PlayArmsMontage(const TSoftObjectPtr<UAnimMontage>& Montage, bool bStop = false) const;
+	void UpdateFightMontages();
+	bool bReelMontagePlaying = false;
 };

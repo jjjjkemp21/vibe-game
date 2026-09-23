@@ -31,7 +31,7 @@ enum class ELureFishingState : uint8
 	Waiting,
 	/** A fish bites: the hook window is open (the bobber is pulled under). */
 	Biting,
-	/** A fish is on the line (the reel fight is T-007; a placeholder lands it after AutoLandDelay). */
+	/** A fish is on the line: the server runs the reel fight (T-007) until it is landed, snaps the line or throws the hook. */
 	Hooked
 };
 
@@ -53,7 +53,11 @@ enum class ELureFishingResult : uint8
 	/** A hooked fish was lost because the line had to come in (ResultReason). */
 	Lost,
 	/** An early hook scared the fish (EarlyHook = Spook): the next bite comes later. */
-	Spooked
+	Spooked,
+	/** Reel fight (T-007): the line broke (tension over its strength too long, or the fish took the whole spool). */
+	Snapped,
+	/** Reel fight (T-007): the line stayed slack too long and the fish threw the hook. */
+	ThrewHook
 };
 
 /** Why a cast is refused or a line comes in on its own. */
@@ -186,9 +190,9 @@ struct FLureFishingRow : public FTableRowBase
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Bite", meta=(ClampMin="0"))
 	float SpookDelay = 3.f;
 
-	/** Placeholder until the reel fight (T-007): seconds after the hook until the fish is landed. 0 = stay hooked. */
+	/** Debug/tests only: > 0 skips the reel fight and lands the fish this many seconds after the hook (the T-006 placeholder). 0 = the reel fight (T-007). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Bite", meta=(ClampMin="0"))
-	float AutoLandDelay = 1.5f;
+	float AutoLandDelay = 0.f;
 
 	/** Seconds of waiting before the HUD says nothing bites here (no spot in range, or no species fits). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Bite", meta=(ClampMin="0"))
@@ -196,9 +200,9 @@ struct FLureFishingRow : public FTableRowBase
 
 	// ---- Bobber (cosmetic, every machine) ----
 
-	/** Readability scale of SM_Bobber (ART_STYLE: ~3x; the mesh is real size). */
+	/** Readability scale of SM_Bobber (ART_STYLE: 4.5x; the mesh is real size). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Bobber", meta=(ClampMin="0.1"))
-	float BobberScale = 3.f;
+	float BobberScale = 4.5f;
 
 	/** Idle bob on the water, cm (up and down). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Bobber", meta=(ClampMin="0"))
@@ -218,7 +222,7 @@ struct FLureFishingRow : public FTableRowBase
 
 	/** How far the bite pulls the bobber under, cm (>= its scaled height, so the red top disappears; B-S4). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Bobber", meta=(ClampMin="0"))
-	float BiteDipDepth = 20.f;
+	float BiteDipDepth = 30.f;
 
 	/** Tugs per second while the fish bites. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Bobber", meta=(ClampMin="0"))

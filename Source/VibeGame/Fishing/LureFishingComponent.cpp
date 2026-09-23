@@ -1,4 +1,4 @@
-// Lure: casting, bobber, bite and hook (T-006).
+// Lure: casting, bobber, bite and hook (T-006); reel fight, line tension and gear (T-007).
 
 #include "Fishing/LureFishingComponent.h"
 #include "Animation/AnimInstance.h"
@@ -30,6 +30,7 @@
 #include "Materials/MaterialInterface.h"
 #include "Misc/PackageName.h"
 #include "Net/UnrealNetwork.h"
+#include "Progression/LureProgressionLibrary.h"
 #include "Sound/SoundBase.h"
 
 namespace LureFishingPrivate
@@ -92,6 +93,51 @@ namespace LureFishingPrivate
 
 	/** One warning per session for a missing fishing table (every character resolves it). */
 	bool bWarnedFallbackProfile = false;
+
+	/** One warning per session per missing fight table (T-007). */
+	bool bWarnedGearTable = false;
+	bool bWarnedPatternTable = false;
+	bool bWarnedFightTable = false;
+
+	/** Loads a settings table if its asset exists; warns once (bWarned) when it is missing. */
+	UDataTable* LoadFightTable(const TSoftObjectPtr<UDataTable>& Ref, const TCHAR* Source, const TCHAR* Using, bool& bWarned)
+	{
+		UDataTable* Table = LoadIfExists(Ref);
+		if (!Table && !bWarned)
+		{
+			bWarned = true;
+			UE_LOG(LogLureFishing, Warning, TEXT("Fight: '%s' is not imported (source data/tables/%s); using %s."), *Ref.ToString(), Source, Using);
+		}
+		return Table;
+	}
+
+	/** Plain-text tension bar for the placeholder HUD: 24 cells for 0..120 % of the line's strength, '|' at 100 %. */
+	FString TensionBar(float Tension01)
+	{
+		FString Bar = TEXT("[");
+		const float Value = FMath::IsFinite(Tension01) ? FMath::Max(0.f, Tension01) : 0.f;
+		for (int32 Cell = 0; Cell < 24; ++Cell)
+		{
+			if (Cell == 20)
+			{
+				Bar += TEXT("|");
+			}
+			Bar += (static_cast<float>(Cell) + 0.5f) * 0.05f <= Value ? TEXT("#") : TEXT(".");
+		}
+		return Bar + TEXT("]");
+	}
+
+	const TCHAR* OutcomeText(ELureFightOutcome Outcome)
+	{
+		switch (Outcome)
+		{
+		case ELureFightOutcome::Landed: return TEXT("landed");
+		case ELureFightOutcome::Snapped: return TEXT("the line snapped");
+		case ELureFightOutcome::Spooled: return TEXT("the fish took all the line");
+		case ELureFightOutcome::ThrewHook: return TEXT("the fish threw the hook");
+		default: return TEXT("");
+		}
+	}
 }
 
 ULureFishingComponent::ULureFishingComponent()
@@ -109,6 +155,8 @@ void ULureFishingComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>
 	DOREPLIFETIME(ULureFishingComponent, NetState);
 	DOREPLIFETIME(ULureFishingComponent, HookedFish);
 	DOREPLIFETIME(ULureFishingComponent, LastLandedFish);
+	DOREPLIFETIME(ULureFishingComponent, Loadout);
+	DOREPLIFETIME(ULureFishingComponent, FightNet);
 }
 
 void ULureFishingComponent::BeginPlay()
@@ -123,6 +171,11 @@ void ULureFishingComponent::BeginPlay()
 	if (!GetDefault<ULureFishingSettings>()->bRodInHandByDefault)
 	{
 		bRodEquipped = false; // project-wide: players start without the rod
+	}
+	if (GetOwner() && GetOwner()->HasAuthority())
+	{
+		Loadout = GetEffectiveLoadout(); // the default gear, replicated by name (the shop and saves change it later)
+		bGearResolved = false;
 	}
 }
 
@@ -219,6 +272,153 @@ bool ULureFishingComponent::IsUsingFallbackProfile() const
 {
 	GetProfile();
 	return bFallbackProfile;
+}
+
+// ---- Fight tables and gear (T-007) ----
+
+void ULureFishingComponent::ResolveFightTables()
+{
+	if (bFightTablesResolved)
+	{
+		return;
+	}
+	using namespace LureFishingPrivate;
+	const ULureFishingSettings* Settings = GetDefault<ULureFishingSettings>();
+	GearTableRef = LoadFightTable(Settings->GearTable, TEXT("DT_Gear.csv"), TEXT("the built-in starter gear"), bWarnedGearTable);
+	PatternTableRef = LoadFightTable(Settings->FightPatternTable, TEXT("DT_FightPattern.json"), TEXT("the built-in fight pattern"), bWarnedPatternTable);
+	FightTableRef = LoadFightTable(Settings->FishFightTable, TEXT("DT_FishFight.csv"), TEXT("the built-in fight tuning"), bWarnedFightTable);
+	SetFightTables(GearTableRef, PatternTableRef, FightTableRef);
+}
+
+void ULureFishingComponent::SetFightTables(const UDataTable* InGearTable, const UDataTable* InPatternTable, const UDataTable* InFightTable)
+{
+	bFightTablesResolved = true;
+	bGearResolved = false;
+	GearTableRef = const_cast<UDataTable*>(InGearTable);
+	PatternTableRef = const_cast<UDataTable*>(InPatternTable);
+	FightTableRef = const_cast<UDataTable*>(InFightTable);
+
+	FightTuning = FLureFishFightRow::GetFallbackRow();
+	if (!InFightTable)
+	{
+		return;
+	}
+	const FName RowName = GetDefault<ULureFishingSettings>()->FishFightRow;
+	FString Problem;
+	const FLureFishFightRow* Row = nullptr;
+	if (InFightTable->GetRowStruct() && InFightTable->GetRowStruct()->IsChildOf(FLureFishFightRow::StaticStruct()))
+	{
+		Row = reinterpret_cast<const FLureFishFightRow*>(InFightTable->FindRowUnchecked(RowName));
+	}
+	if (Row && Row->Validate(Problem))
+	{
+		FightTuning = *Row;
+		return;
+	}
+	UE_LOG(LogLureFishing, Warning, TEXT("Fight: %s row '%s' is missing or invalid (%s); using the built-in fight tuning."),
+		*InFightTable->GetName(), *RowName.ToString(), Problem.IsEmpty() ? TEXT("missing row or wrong row struct") : *Problem);
+}
+
+const FLureFishFightRow& ULureFishingComponent::GetFightTuning() const
+{
+	const_cast<ULureFishingComponent*>(this)->ResolveFightTables();
+	return FightTuning;
+}
+
+FLureGearLoadout ULureFishingComponent::GetEffectiveLoadout() const
+{
+	const FLureGearLoadout& Defaults = GetDefault<ULureFishingSettings>()->DefaultLoadout;
+	FLureGearLoadout Effective = Loadout;
+	for (const ELureGearSlot Slot : { ELureGearSlot::Rod, ELureGearSlot::Line, ELureGearSlot::Hook })
+	{
+		if (Effective.Get(Slot).IsNone())
+		{
+			Effective.Set(Slot, Defaults.Get(Slot));
+		}
+	}
+	return Effective;
+}
+
+FLureGearLoadout ULureFishingComponent::GetLoadout() const
+{
+	return GetEffectiveLoadout();
+}
+
+FLureGearStats ULureFishingComponent::GetGearStats() const
+{
+	if (!bGearResolved)
+	{
+		const_cast<ULureFishingComponent*>(this)->ResolveFightTables();
+		TArray<FString> Problems;
+		GearStats = FLureGear::Resolve(GearTableRef, GetEffectiveLoadout(), &Problems);
+		FLureGear::ApplyDragLineCap(GearStats, FightTuning.DragLineCap);
+		bGearResolved = true;
+		if (GearTableRef && Problems.Num() > 0)
+		{
+			UE_LOG(LogLureFishing, Warning, TEXT("%s: gear %s uses built-in items (%s)."), *GetNameSafe(GetOwner()), *GearTableRef->GetName(), *FString::Join(Problems, TEXT("; ")));
+		}
+	}
+	return GearStats;
+}
+
+bool ULureFishingComponent::AuthoritySetLoadout(const FLureGearLoadout& NewLoadout)
+{
+	if (!GetOwner() || !GetOwner()->HasAuthority() || NetState.State == ELureFishingState::Hooked)
+	{
+		return false;
+	}
+	ResolveFightTables();
+	bool bAllAccepted = true;
+	FLureGearLoadout Next = GetEffectiveLoadout();
+	for (const ELureGearSlot Slot : { ELureGearSlot::Rod, ELureGearSlot::Line, ELureGearSlot::Hook })
+	{
+		const FName Id = NewLoadout.Get(Slot);
+		if (Id.IsNone())
+		{
+			continue;
+		}
+		FString Problem;
+		if (FLureGear::CanEquip(GearTableRef, Slot, Id, &Problem))
+		{
+			Next.Set(Slot, Id);
+		}
+		else
+		{
+			bAllAccepted = false;
+			UE_LOG(LogLureFishing, Warning, TEXT("%s: can't equip %s (%s)."), *GetNameSafe(GetOwner()), *Id.ToString(), GearTableRef ? *Problem : TEXT("DT_Gear is not imported"));
+		}
+	}
+	Loadout = Next;
+	bGearResolved = false;
+	return bAllAccepted;
+}
+
+void ULureFishingComponent::OnRep_Loadout()
+{
+	bGearResolved = false;
+}
+
+FLureFightPatternRow ULureFishingComponent::FindPattern(FName PatternId, FName& OutUsedId)
+{
+	ResolveFightTables();
+	const FLureFightPatternRow* Row = nullptr;
+	if (PatternTableRef && !PatternId.IsNone() && PatternTableRef->GetRowStruct() && PatternTableRef->GetRowStruct()->IsChildOf(FLureFightPatternRow::StaticStruct()))
+	{
+		Row = reinterpret_cast<const FLureFightPatternRow*>(PatternTableRef->FindRowUnchecked(PatternId));
+	}
+	FString Problem;
+	if (Row && Row->Validate(Problem))
+	{
+		OutUsedId = PatternId;
+		return *Row;
+	}
+	if (PatternTableRef)
+	{
+		UE_LOG(LogLureFishing, Warning, TEXT("Fight: fight pattern '%s' is %s in %s; using the built-in pattern."), *PatternId.ToString(),
+			Row ? *FString::Printf(TEXT("invalid (%s)"), *Problem) : TEXT("missing"), *PatternTableRef->GetName());
+	}
+	OutUsedId = NAME_None;
+	return FLureFightPatternRow::GetFallbackPattern();
 }
 
 // ---- Owner queries ----
@@ -366,6 +566,7 @@ void ULureFishingComponent::BindInput(UEnhancedInputComponent& Input)
 
 void ULureFishingComponent::PressCast()
 {
+	bCastButtonHeld = true; // held while a fish is on = reel (T-007)
 	if (IsLineOut())
 	{
 		PressHook();
@@ -389,6 +590,7 @@ void ULureFishingComponent::PressCast()
 
 void ULureFishingComponent::ReleaseCast()
 {
+	bCastButtonHeld = false;
 	if (!bCharging)
 	{
 		return;
@@ -454,6 +656,39 @@ void ULureFishingComponent::ServerReelIn_Implementation()
 	AuthorityReelIn(ELureCastBlock::None);
 }
 
+void ULureFishingComponent::ServerSetReeling_Implementation(bool bReeling)
+{
+	AuthoritySetReeling(bReeling);
+}
+
+bool ULureFishingComponent::WantsToReel() const
+{
+	return (bCastButtonHeld || bReelButtonHeld) && NetState.State == ELureFishingState::Hooked;
+}
+
+void ULureFishingComponent::UpdateReelInput()
+{
+	const bool bWant = WantsToReel();
+	if (bWant != bReelSent)
+	{
+		bReelSent = bWant;
+		ServerSetReeling(bWant); // the only fight input a client sends; the server simulates and decides
+	}
+}
+
+void ULureFishingComponent::AuthoritySetReeling(bool bReeling)
+{
+	if (!GetOwner() || !GetOwner()->HasAuthority())
+	{
+		return;
+	}
+	bServerReeling = bReeling;
+	if (FightNet.bActive)
+	{
+		FightNet.bReeling = bReeling;
+	}
+}
+
 void ULureFishingComponent::UpdateCharge()
 {
 	if (bCharging)
@@ -512,8 +747,10 @@ FLureFishingEnvironment ULureFishingComponent::MakeEnvironment() const
 	const ULureFishingSettings* Settings = GetDefault<ULureFishingSettings>();
 	FLureFishingEnvironment Environment;
 	Environment.TimeOfDayHours = TimeOfDayOverride >= 0.f ? TimeOfDayOverride : Settings->DefaultTimeOfDayHours;
-	Environment.BaitTag = BaitTag.IsValid() ? BaitTag : FGameplayTag::RequestGameplayTag(Settings->DefaultBait, /*ErrorIfNotFound*/ false);
-	Environment.GearLuck = GearLuck;
+	const FLureGearStats Gear = GetGearStats();
+	Environment.BaitTag = BaitTag.IsValid() ? BaitTag
+		: (Gear.BaitTag.IsValid() ? Gear.BaitTag : FGameplayTag::RequestGameplayTag(Settings->DefaultBait, /*ErrorIfNotFound*/ false));
+	Environment.GearLuck = GearLuck + (FMath::IsFinite(Gear.Luck) ? FMath::Max(0.f, Gear.Luck) : 0.f);
 	Environment.DefaultRegionTag = FGameplayTag::RequestGameplayTag(Settings->DefaultRegion, /*ErrorIfNotFound*/ false);
 	Environment.OffSpotHabitatTag = FGameplayTag::RequestGameplayTag(Settings->OffSpotHabitat, /*ErrorIfNotFound*/ false);
 	return Environment;
@@ -582,7 +819,7 @@ bool ULureFishingComponent::AuthorityCast(float Charge01, float AimYawDegrees)
 		}
 	}
 
-	const float Distance = FLureFishingRules::CastDistance(Row, CastCharge);
+	const float Distance = FLureFishingRules::CastDistance(Row, CastCharge) * FMath::Max(0.f, GetGearStats().CastDistanceMultiplier);
 	const FLureCastLanding Landing = FLureFishingSpots::ResolveLanding(World, Owner, Origin, FVector2D(Eye.X, Eye.Y),
 		FVector2D(Aim.Vector().X, Aim.Vector().Y), Distance, *Settings);
 
@@ -686,6 +923,9 @@ void ULureFishingComponent::AuthorityReelIn(ELureCastBlock Reason)
 	NextBiteTime = -1.0;
 	NibbleSchedule.Reset();
 	NextNibbleIndex = 0;
+	bServerReeling = false;
+	FightNet.bActive = false;
+	FightNet.bReeling = false;
 
 	FLureFishingNetState New = NetState;
 	New.State = ELureFishingState::Idle;
@@ -702,8 +942,11 @@ void ULureFishingComponent::ServerTick(double Now)
 		return;
 	}
 
-	// Rules that bring the line in: sprinting, swimming (the climb out included), climbing, crawling with a tucked rod, too far from the bobber.
-	const float BobberDistance = GetOwner() ? static_cast<float>(FVector::Dist2D(GetOwner()->GetActorLocation(), NetState.BobberRest)) : 0.f;
+	// Rules that bring the line in: sprinting, swimming (the climb out included), climbing, crawling with a tucked rod,
+	// too far from the bobber. They also end a fight in progress (the fish is lost; reel-fight-rules.md). While a fish is
+	// on, the fight has its own line rules (spool length), so only the bobber distance rule does not apply.
+	const bool bFighting = NetState.State == ELureFishingState::Hooked && FightNet.bActive;
+	const float BobberDistance = (GetOwner() && !bFighting) ? static_cast<float>(FVector::Dist2D(GetOwner()->GetActorLocation(), NetState.BobberRest)) : 0.f;
 	const ELureCastBlock Cancel = FLureFishingRules::GetLineCancel(GetConditions(), GetMovementRow(), GetProfile(), BobberDistance);
 	if (Cancel != ELureCastBlock::None)
 	{
@@ -737,9 +980,16 @@ void ULureFishingComponent::ServerTick(double Now)
 		break;
 
 	case ELureFishingState::Hooked:
-		if (Row.AutoLandDelay > 0.f && Now >= NetState.StateStartTime + Row.AutoLandDelay)
+		if (Row.AutoLandDelay > 0.f)
 		{
-			LandFish(Now);
+			if (Now >= NetState.StateStartTime + Row.AutoLandDelay)
+			{
+				LandFish(Now); // debug/tests placeholder: no fight
+			}
+		}
+		else if (FightNet.bActive)
+		{
+			UpdateFight(Now);
 		}
 		break;
 
@@ -852,7 +1102,119 @@ void ULureFishingComponent::Hook(double Now)
 	New.StateStartTime = Now;
 	BeginResult(New, ELureFishingResult::Hooked, ELureCastBlock::None, Now);
 	SetNetState(New);
+	if (GetProfile().AutoLandDelay <= 0.f)
+	{
+		BeginFight(Now);
+	}
 	OnFishingEvent.Broadcast(ELureFishingResult::Hooked, HookedFish);
+}
+
+bool ULureFishingComponent::AuthorityHookFish(const FFishInstance& Fish)
+{
+	if (!GetOwner() || !GetOwner()->HasAuthority() || !Fish.IsValid()
+		|| (NetState.State != ELureFishingState::Waiting && NetState.State != ELureFishingState::Biting))
+	{
+		return false;
+	}
+	PendingFish = Fish;
+	Hook(GetFishingTime());
+	return true;
+}
+
+// ---- Reel fight (T-007) ----
+
+void ULureFishingComponent::BeginFight(double Now)
+{
+	ResolveFightTables();
+	FName SpeciesPattern = NAME_None;
+	if (EnsureFishTables())
+	{
+		if (const FFishSpeciesRow* Species = Tables.FindSpecies(HookedFish.SpeciesId))
+		{
+			SpeciesPattern = Species->FightPatternId;
+		}
+	}
+	FName PatternId = NAME_None;
+	const FLureFightPatternRow Pattern = FindPattern(SpeciesPattern, PatternId);
+	const FLureFightFish FishStats = FLureFight::MakeFish(HookedFish, FightTuning, PlayerLevel, GetDefault<UFishSettings>()->LevelScaling);
+	const FLureGearStats Gear = GetGearStats();
+	const float Start = GetOwner() ? static_cast<float>(FVector::Dist2D(GetOwner()->GetActorLocation(), NetState.BobberRest)) : 0.f;
+	FLureFight::Begin(Fight, FishStats, Pattern, PatternId, Gear, FightTuning, FLureFight::FightSeed(HookedFish.Seed), Start);
+	FightLastTime = Now;
+
+	const uint8 NextId = static_cast<uint8>(FightNet.FightId + 1);
+	FightNet = FLureFightNetState();
+	FightNet.bActive = true;
+	FightNet.FightId = NextId;
+	PublishFight();
+	UE_LOG(LogLureFishing, Log, TEXT("%s: fight with %s (pattern %s): pull %.1f, speed %.0f cm/s, stamina %.0f, level x%.2f; gear %s/%s/%s (power %.1f, drag %.1f, line %.1f), %.0f cm out."),
+		*GetNameSafe(GetOwner()), *HookedFish.SpeciesId.ToString(), PatternId.IsNone() ? TEXT("built-in") : *PatternId.ToString(), FishStats.BasePull,
+		FishStats.BaseSpeed, FishStats.StaminaPool, FishStats.LevelMultiplier, *Gear.RodId.ToString(), *Gear.LineId.ToString(), *Gear.HookId.ToString(),
+		Gear.RodPower, Gear.Drag, Gear.LineStrength, Start);
+}
+
+void ULureFishingComponent::UpdateFight(double Now)
+{
+	const float Delta = static_cast<float>(FMath::Clamp(Now - FightLastTime, 0.0, 0.5));
+	FightLastTime = Now;
+	FLureFightInput Input;
+	Input.bReeling = bServerReeling;
+	const ELureFightOutcome Outcome = FLureFight::Advance(Fight, Input, Delta);
+	PublishFight();
+	if (Outcome != ELureFightOutcome::None)
+	{
+		EndFight(Outcome, Now);
+	}
+}
+
+void ULureFishingComponent::PublishFight()
+{
+	const FLureFishFightRow& Tuning = Fight.Tuning;
+	FightNet.bReeling = bServerReeling;
+	FightNet.bExhausted = Fight.bExhausted;
+	FightNet.Outcome = Fight.Outcome;
+	FightNet.PatternId = Fight.PatternId;
+	FightNet.MoveId = Fight.GetMoveId();
+	FightNet.Tension = Fight.Tension;
+	FightNet.LineStrength = Fight.Gear.LineStrength;
+	FightNet.SlackTension = FLureFight::SlackTension(Fight.Fish, Tuning);
+	FightNet.Stamina = Fight.Stamina;
+	FightNet.LineOut = Fight.LineOut;
+	FightNet.SpoolLength = Fight.Gear.SpoolLength;
+	FightNet.Depth = Fight.Depth;
+	FightNet.SideDeg = Fight.SideDeg;
+	FightNet.SnapProgress = FMath::Clamp(Fight.OverTime / FMath::Max(1.0e-3f, Tuning.SnapGraceTime), 0.f, 1.f);
+	FightNet.SlackProgress = FMath::Clamp(Fight.SlackTime / FMath::Max(1.0e-3f, FLureFight::SlackGrace(Fight.Gear, Tuning)), 0.f, 1.f);
+}
+
+void ULureFishingComponent::EndFight(ELureFightOutcome Outcome, double Now)
+{
+	FightNet.bActive = false;
+	FightNet.Outcome = Outcome;
+	FightNet.bReeling = false;
+	bServerReeling = false;
+	if (Outcome == ELureFightOutcome::Landed)
+	{
+		LandFish(Now);
+		return;
+	}
+
+	UE_LOG(LogLureFishing, Log, TEXT("%s: %s after %.1f s (%s; tension %.1f / line %.1f, %.0f cm out) - %s lost."), *GetNameSafe(GetOwner()),
+		LureFishingPrivate::OutcomeText(Outcome), Fight.Elapsed, Fight.bReeling ? TEXT("reeling") : TEXT("not reeling"), Fight.Tension,
+		Fight.Gear.LineStrength, Fight.LineOut, *HookedFish.SpeciesId.ToString());
+	const FFishInstance Lost = HookedFish;
+	const ELureFishingResult Result = Outcome == ELureFightOutcome::ThrewHook ? ELureFishingResult::ThrewHook : ELureFishingResult::Snapped;
+	HookedFish = FFishInstance();
+	PendingFish = FFishInstance();
+	NextBiteTime = -1.0;
+	NibbleSchedule.Reset();
+	NextNibbleIndex = 0;
+	FLureFishingNetState New = NetState;
+	New.State = ELureFishingState::Idle;
+	New.StateStartTime = Now;
+	BeginResult(New, Result, ELureCastBlock::None, Now);
+	SetNetState(New);
+	OnFishingEvent.Broadcast(Result, Lost);
 }
 
 void ULureFishingComponent::Miss(double Now)
@@ -887,8 +1249,35 @@ void ULureFishingComponent::LandFish(double Now)
 	New.StateStartTime = Now;
 	BeginResult(New, ELureFishingResult::Landed, ELureCastBlock::None, Now);
 	SetNetState(New);
-	UE_LOG(LogLureFishing, Log, TEXT("%s landed %s."), *GetNameSafe(GetOwner()), *LastLandedFish.ToString());
+	FightNet.bActive = false;
+	bServerReeling = false;
+
+	// The catch log (species, rarity, weight, value), then the hand-off to the cooler (T-010) and anyone else listening.
+	TArray<FString> Mods;
+	for (const FName& Mod : LastLandedFish.ModifierIds)
+	{
+		Mods.Add(Mod.ToString());
+	}
+	UE_LOG(LogLureFish, Log, TEXT("Catch: %s landed %s (%s), %.2f kg, %d coins, level %d%s%s."), *GetNameSafe(GetOwner()),
+		*LastLandedFish.SpeciesId.ToString(), *LastLandedFish.RarityId.ToString(), LastLandedFish.WeightKg, LastLandedFish.Value, LastLandedFish.Level,
+		Mods.Num() > 0 ? *FString::Printf(TEXT(", [%s]"), *FString::Join(Mods, TEXT(", "))) : TEXT(""),
+		Fight.Elapsed > 0.f && Fight.Outcome == ELureFightOutcome::Landed ? *FString::Printf(TEXT(", fight %.1f s"), Fight.Elapsed) : TEXT(""));
+	// T-010 hand-off: XP + cooler, exactly once per landed fish (LandFish only runs on the server).
+	// A pawn without a player's progression (tests, a bare character) just logs it.
+	if (GetOwner() && GetOwner()->HasAuthority())
+	{
+		if (ULureProgressionLibrary::GetProgression(GetOwner()))
+		{
+			ULureProgressionLibrary::HandleFishLanded(GetOwner(), LastLandedFish);
+		}
+		else
+		{
+			UE_LOG(LogLureFishing, Log, TEXT("%s has no player progression: the landed fish is not stored or counted for XP."), *GetNameSafe(GetOwner()));
+		}
+	}
 	OnFishingEvent.Broadcast(ELureFishingResult::Landed, LastLandedFish);
+	OnFishLanded.Broadcast(this, LastLandedFish);
+	OnFishLandedNative.Broadcast(this, LastLandedFish);
 }
 
 // ---- Tick ----
@@ -920,6 +1309,7 @@ void ULureFishingComponent::TickComponent(float DeltaTime, ELevelTick TickType, 
 		{
 			bAwaitingCast = false; // the server never answered (lost connection); let the player try again
 		}
+		UpdateReelInput();
 	}
 
 	if (ALurePlayerCharacter* Lure = Cast<ALurePlayerCharacter>(GetOwner()))
@@ -983,6 +1373,52 @@ void ULureFishingComponent::HandleStateChanged(const FLureFishingNetState& Previ
 				}
 			}
 		}
+		PlayArmsMontage(Settings->FightMontage); // T-007 slot (none by default)
+	}
+	if (Previous.State == ELureFishingState::Hooked && NetState.State != ELureFishingState::Hooked)
+	{
+		PlayArmsMontage(Settings->FightMontage, /*bStop*/ true);
+	}
+	if (NetState.ResultId != Previous.ResultId && NetState.LastResult == ELureFishingResult::Landed)
+	{
+		PlayArmsMontage(Settings->LandMontage);
+	}
+}
+
+void ULureFishingComponent::PlayArmsMontage(const TSoftObjectPtr<UAnimMontage>& Montage, bool bStop) const
+{
+	const ALurePlayerCharacter* Lure = Cast<ALurePlayerCharacter>(GetOwner());
+	if (!Lure || !IsOwnerLocallyControlled() || Montage.IsNull())
+	{
+		return;
+	}
+	UAnimMontage* Loaded = LureFishingPrivate::LoadIfExists(Montage);
+	UAnimInstance* Anim = (Loaded && Lure->GetFirstPersonArms()) ? Lure->GetFirstPersonArms()->GetAnimInstance() : nullptr;
+	if (!Anim)
+	{
+		return;
+	}
+	if (bStop)
+	{
+		if (Anim->Montage_IsPlaying(Loaded))
+		{
+			Anim->Montage_Stop(0.2f, Loaded);
+		}
+	}
+	else if (!Anim->Montage_IsPlaying(Loaded))
+	{
+		Anim->Montage_Play(Loaded);
+	}
+}
+
+void ULureFishingComponent::UpdateFightMontages()
+{
+	// Reel montage (T-007 slot): looped while the player holds reel during a fight.
+	const bool bReel = FightNet.bActive && NetState.State == ELureFishingState::Hooked && (IsOwnerLocallyControlled() ? WantsToReel() : FightNet.bReeling);
+	if (bReel != bReelMontagePlaying)
+	{
+		bReelMontagePlaying = bReel;
+		PlayArmsMontage(GetDefault<ULureFishingSettings>()->ReelMontage, /*bStop*/ !bReel);
 	}
 }
 
@@ -998,6 +1434,7 @@ void ULureFishingComponent::UpdateVisuals(float DeltaTime)
 {
 	EnsureRod();
 	UpdateRod();
+	UpdateFightMontages();
 
 	if (IsLineOut())
 	{
@@ -1033,6 +1470,10 @@ void ULureFishingComponent::UpdateVisuals(float DeltaTime)
 			if (NetState.State == ELureFishingState::Casting)
 			{
 				Sag *= 0.3f;
+			}
+			else if (NetState.State == ELureFishingState::Hooked && FightNet.bActive)
+			{
+				Sag = FLureFight::LineSag(Row->LineSag, FightNet.GetTension01(), GetFightTuning()); // taut under load, sags when slack
 			}
 			else if (NetState.State == ELureFishingState::Biting || NetState.State == ELureFishingState::Hooked)
 			{
@@ -1129,6 +1570,11 @@ void ULureFishingComponent::UpdateRod()
 				Pitch = FMath::Lerp(-Row.CastSwingForwardDeg, 0.f, FMath::InterpEaseInOut(0.f, 1.f, (T - 0.35f) / 0.65f, 2.f));
 			}
 		}
+	}
+	if (NetState.State == ELureFishingState::Hooked && FightNet.bActive)
+	{
+		// Placeholder rod bend (T-007): the tip dips toward the fish with the tension and shakes over the line's strength.
+		Pitch += FLureFight::RodPitch(FightNet.GetTension01(), static_cast<float>(GetLocalTime()), GetFightTuning());
 	}
 	RodMesh->SetRelativeRotation(FRotator(Pitch, 0.f, 0.f));
 }
@@ -1245,6 +1691,22 @@ void ULureFishingComponent::ComputeBobberPose(double Now, FVector& OutLocation, 
 	}
 	case ELureFishingState::Hooked:
 		OutLocation.Z = NetState.BobberRest.Z - Row.BiteDipDepth;
+		if (FightNet.bActive && GetOwner())
+		{
+			// The bobber rides on the fish: LineOut from the player, swung by SideDeg, pulled under with the tension and dives.
+			const FVector Player = GetOwner()->GetActorLocation();
+			FVector Direction = (FVector(NetState.BobberRest) - Player).GetSafeNormal2D();
+			if (Direction.IsNearlyZero())
+			{
+				Direction = GetOwner()->GetActorForwardVector().GetSafeNormal2D();
+			}
+			Direction = Direction.RotateAngleAxis(FightNet.SideDeg, FVector::UpVector);
+			const FLureFishFightRow& Tuning = GetFightTuning();
+			OutLocation = Player + Direction * FightNet.LineOut;
+			OutLocation.Z = NetState.BobberRest.Z - Row.BiteDipDepth * (0.5f + 0.5f * FMath::Clamp(FightNet.GetTension01(), 0.f, 1.f))
+				- Tuning.DiveBobberShare * FightNet.Depth;
+			OutRotation = FRotator(FMath::Clamp(40.f * FightNet.GetTension01(), 0.f, 60.f), Direction.Rotation().Yaw, 0.f);
+		}
 		break;
 	default:
 		break;
@@ -1334,6 +1796,40 @@ FString ULureFishingComponent::GetStatusText() const
 		break;
 	case ELureFishingState::Hooked:
 		Lines.Add(FString::Printf(TEXT("Hooked: %s"), *FishLabel(HookedFish)));
+		if (FightNet.bActive)
+		{
+			// Placeholder fight readout (plain text; Jimmy directs the real UI later).
+			GetFightTuning(); // resolves the fight tables on this machine (the move labels live in DT_FightPattern)
+			FString FishState = FightNet.bExhausted ? TEXT("tired") : FightNet.MoveId.ToString();
+			if (!FightNet.bExhausted)
+			{
+				if (const UDataTable* Patterns = PatternTableRef.Get(); Patterns && !FightNet.PatternId.IsNone()
+					&& Patterns->GetRowStruct() && Patterns->GetRowStruct()->IsChildOf(FLureFightPatternRow::StaticStruct()))
+				{
+					if (const FLureFightPatternRow* Pattern = reinterpret_cast<const FLureFightPatternRow*>(Patterns->FindRowUnchecked(FightNet.PatternId)))
+					{
+						const int32 MoveIndex = Pattern->FindMove(FightNet.MoveId);
+						if (MoveIndex != INDEX_NONE && !Pattern->Moves[MoveIndex].Label.IsEmpty())
+						{
+							FishState = Pattern->Moves[MoveIndex].Label.ToString();
+						}
+					}
+				}
+			}
+			const float Tension01 = FightNet.GetTension01();
+			Lines.Add(FString::Printf(TEXT("Fish: %s   stamina %d%%"), *FishState, FMath::RoundToInt(FightNet.Stamina * 100.f)));
+			Lines.Add(FString::Printf(TEXT("Tension %s %d%%"), *TensionBar(Tension01), FMath::RoundToInt(Tension01 * 100.f)));
+			Lines.Add(FString::Printf(TEXT("Line out %.1f m of %.0f m"), FightNet.LineOut / 100.f, FightNet.SpoolLength / 100.f));
+			Lines.Add(FightNet.bReeling || WantsToReel() ? TEXT("Reeling. Release to let it run.") : TEXT("Hold Click/RT to reel."));
+			if (FightNet.SnapProgress > 0.f)
+			{
+				Lines.Add(TEXT("!! The line is about to snap: ease off !!"));
+			}
+			else if (FightNet.SlackProgress > 0.4f)
+			{
+				Lines.Add(TEXT("!! Slack line: reel or it throws the hook !!"));
+			}
+		}
 		break;
 	default:
 		break;
@@ -1364,6 +1860,12 @@ FString ULureFishingComponent::GetStatusText() const
 			break;
 		case ELureFishingResult::Spooked:
 			Lines.Add(TEXT("Too early! You scared the fish."));
+			break;
+		case ELureFishingResult::Snapped:
+			Lines.Add(FightNet.Outcome == ELureFightOutcome::Spooled ? TEXT("The fish took all your line. It snapped!") : TEXT("SNAP! The line broke. The fish got away."));
+			break;
+		case ELureFishingResult::ThrewHook:
+			Lines.Add(TEXT("The fish threw the hook! Keep the line tight."));
 			break;
 		default:
 			break;

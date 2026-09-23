@@ -7,7 +7,7 @@ Stylized low-poly, atmosphere-first. Inspired by Dredge (moody water, strong sil
 - Clean, chunky shapes with a slight bevel; no fine detail that would read as noise at a distance.
 - Flat or gradient colors with simple materials; texture only where it helps readability (wood grain strips, fish markings).
 - Mood comes from lighting, fog, sky and water color, which change by region and time of day.
-- Readability first: fish silhouettes, bobber, line and danger must read instantly. Measured: a real-size bobber (5 cm) is ~3 px wide at 15 m at 1080p/90 deg FOV (invisible); at 3x it's ~12 px and reads at 10-20 m. Gameplay objects that must be tracked at distance get a readability scale (bobber: ~3x, or scaled with distance).
+- Readability first: fish silhouettes, bobber, line and danger must read instantly. Measured: a real-size bobber (5 cm) is ~3 px wide at 15 m at 1080p/90 deg FOV (invisible); at 3x it's ~12 px and reads at 10-20 m. Gameplay objects that must be tracked at distance get a readability scale (bobber: 4.5x since the T-006 playtest, 2026-09-23, or scaled with distance).
 - Reference images: we don't copy Dredge art. Our own mood boards (renders from our recipes plus color studies) go in `art/reference/` as part of T-002.
 
 ## Palette (hex values)

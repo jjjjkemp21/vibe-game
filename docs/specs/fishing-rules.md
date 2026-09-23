@@ -24,8 +24,8 @@ The lead may overrule any of these; a change is a data edit unless marked (code)
   (0 = the layouts' `water_z`). Level-designer: tagging the water planes `Lure.Water` is optional today.
 - No casting while: no rod in hand, swimming, climbing, in the air, in a DT_Movement row with `CanFish = False` (Sprint), or moving
   (speed > RodMoveSpeedIn) in a row whose moving pose is `ProneTuck` (prone crawl). Prone and still casts.
-- A line out comes in on its own (result ReeledIn, or Lost with a hooked fish) when you start sprinting, swim, climb, crawl prone
-  (the rod tucks), or get farther than MaxLineLength from the bobber. Jumping keeps the line (a jump that ends in a pull-up does not).
+- A line out comes in on its own (result ReeledIn, or Lost with a hooked fish, a fight in progress included) when you start sprinting, swim, climb, crawl prone
+  (the rod tucks), or get farther than MaxLineLength from the bobber (not during a fight; reel-fight-rules.md). Jumping keeps the line (a jump that ends in a pull-up does not).
 - Swimming and climbing (T-026 merge, review D1; tests `Project.Fishing.Rules.ClimbingIsBusy`, `Project.Fishing.Swim.*`,
   `Project.Fishing.Climb.*`):
   - "Swimming" is `ALurePlayerCharacter::IsSwimming()`: from falling in until standing on land again, the climb out of the
@@ -63,8 +63,8 @@ The lead may overrule any of these; a change is a data edit unless marked (code)
   after RebiteWait; True = the line comes in.
 - Early press (before a bite, nibbles included): `EarlyHook` = ReelIn (default: press to reel in and recast), Ignore, or
   Spook (the bite is pushed back SpookDelay). On land or with nothing biting, a press always reels in.
-- Hooked: the reel fight is T-007. Placeholder: after AutoLandDelay (1.5 s) the fish is landed (`LastLandedFish`, HUD
-  "Caught: ..."). AutoLandDelay 0 = stay hooked (for T-007).
+- Hooked: the reel fight (T-007) runs until landed, snapped or the hook is thrown: see docs/specs/reel-fight-rules.md.
+  Debug only: AutoLandDelay > 0 skips the fight and lands the fish after that many seconds (shipped: 0).
 
 ## Controls (runtime Enhanced Input, `ULureInputSubsystem::GetInputActionByName`)
 - `Cast` (LMB, gamepad RT): hold to charge, release to cast; while the line is out a press hooks (or reels in early).
@@ -90,5 +90,5 @@ The lead may overrule any of these; a change is a data edit unless marked (code)
 1. No fishing spot in range = no bite, plus a plain-text hint ("Nothing biting here"). The off-spot fish pool stays a setting, empty by default.
 2. Bait: every hook uses Bait.Shrimp until gear exists (T-010/T-012); the default bait is a setting, not code.
 3. Crawling prone, sprinting or swimming while the line is out reels it in automatically (no blocked movement). Jimmy can change this after his playtest.
-4. A hooked fish is landed after 1.5 s (placeholder) until the reel fight (T-007) replaces it.
+4. A hooked fish is landed after 1.5 s (placeholder) until the reel fight (T-007) replaces it. (Superseded by T-007: docs/specs/reel-fight-rules.md.)
 5. Other players see the line start from an estimated rod tip until a third-person rod exists (after the slice).

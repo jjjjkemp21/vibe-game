@@ -106,6 +106,9 @@ fish plus mouth-only fish. New tags for `Config/Tags/FishTags.ini`: `Habitat.Lag
 `Habitat.Shore.Cove`. `Habitat.DeepDrop` and `Region.Tropical.PalmKey` already exist in lane eng2.
 **Spot luck:** the Hidden Cove carries `luck: 0.5`. It should add to the rarity roll's Luck input (fish-system-rules
 stage 3) when a bite comes from that spot (T-006).
+**DeepDrop spots have no species yet (playtest 2026-09-23):** Point Ledge and Gull Key Drop (`point_ledge`, `islet_drop`,
+`Habitat.DeepDrop`) have no fish in DT_Fish yet; they wait for the next fish batch, and until then a cast there says
+"Nothing is biting here". Their habitat stays as is.
 
 ## 6. Threats, cover and sight lines
 ### Reef shark (T-015)
@@ -169,6 +172,10 @@ wade round the arms, and the headland is walled off from it by the ridge (+6.2-6
 Four PlayerStarts at the dock root (1.5 m apart, co-op 2-4), `PlayerStartTag = Respawn.Dock`, tags `Lure.Respawn`,
 `Respawn=Dock`. Spawn and respawn are the same place, facing north-north-east, yaw 23 (Beacon ahead, Tall Palm and
 jetty water right, shop 11 m left). No other respawn in the slice.
+**Teleport targets (Lure.Teleport):** every fishing spot gets `tp_<spot>` at its cast-from point; `npc_dock` resolves to
+`tp_npc_dock` [-3300,-560,100], yaw 270: the customer side of the shop counter (counter front y=-700), on the apron,
+facing the counter. All teleport targets and PlayerStarts were checked clear of colliding geometry (capsule r 34,
+h 180; side rays at 15/60/120/175 cm and a head ray): all clear (2026-09-23).
 
 ## 10. Water and hazards (T-026: surface swimming)
 The water planes never collide (they are only the look). The water itself is ONE `ALureWaterVolume` (marker

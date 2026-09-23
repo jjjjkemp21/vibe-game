@@ -69,9 +69,34 @@ namespace QAMovement
 		return FFileHelper::LoadFileToString(OutCsv, *ShippedCsvPath());
 	}
 
+	/**
+	 *  Tests hold fixture tables by raw pointer across test-world ticks, and UWorld::Tick ends with
+	 *  GEngine->ConditionalCollectGarbage() (time-based), so once the full suite runs past the GC interval a fixture
+	 *  could be collected mid-test (seen in T-007: crash in Eye.MidTransitionIsBetween). Root the most recent fixtures;
+	 *  a small ring bounds the leak (no test uses more than a few tables at once). Weak pointers: safe at static shutdown.
+	 */
+	static void KeepFixtureAlive(UDataTable* Table)
+	{
+		static TArray<TWeakObjectPtr<UDataTable>> Ring;
+		static int32 Next = 0;
+		constexpr int32 RingSize = 32;
+		if (Ring.Num() < RingSize)
+		{
+			Ring.SetNum(RingSize);
+		}
+		if (UDataTable* Evicted = Ring[Next].Get())
+		{
+			Evicted->RemoveFromRoot();
+		}
+		Table->AddToRoot();
+		Ring[Next] = Table;
+		Next = (Next + 1) % RingSize;
+	}
+
 	UDataTable* MakeTable(const FString& Csv, TArray<FString>* OutProblems)
 	{
 		UDataTable* Table = NewObject<UDataTable>(GetTransientPackage(), NAME_None, RF_Transient);
+		KeepFixtureAlive(Table);
 		Table->RowStruct = FLureMovementRow::StaticStruct();
 		const TArray<FString> Problems = Table->CreateTableFromCSVString(Csv);
 		if (OutProblems)

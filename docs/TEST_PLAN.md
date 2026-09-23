@@ -173,6 +173,78 @@ Latest runs (lane eng1, 2026-09-23): `-Filter Project.Fishing.QA` 86/90 pass (`S
 - The real key -> action path through a LocalPlayer: playtester / T-025.
 - The reel fight after Hooked: T-007.
 
+## T-007 reel fight, line tension and gear (lane eng3)
+Implementer tests: `Tests/FishFightTest.cpp`, `Project.Fishing.Fight.*`, 10 tests (unreal-engineer).
+Independent tests: `Tests/FishFight/FightQA*.cpp` + `FightQATestUtils.h`, `Project.Fishing.Fight.QA.*`, 45 tests (qa-engineer, 2026-09-23), written from
+`docs/specs/reel-fight-rules.md` and the formula comment in `Fishing/FishFight.h`. Fixtures: the text sources in `data/tables/` (never the binary
+assets), in-memory fixture rows, and "timing" tuning with instant tension easing so time over/under a threshold is a whole number of steps.
+Clients are copies of the component whose owner has a non-authority role; replication goes through FRepLayout (bits written from the server
+object, read into the copy, RepNotifies called on change), not a property copy.
+
+| Area | Tests (`Project.Fishing.Fight.QA.` + ...) | Level | What they prove |
+|---|---|---|---|
+| Tension math at the edges | Math.{ZeroDragFreeSpool, MaxDragLocksTheLine, DragAtLineStrengthNeverSnaps, ZeroRodPowerIsSafe, FormulaSwitchPoints, DegenerateFishIsSafe} | U | Drag 0 = free spool (no tension, full swim speed, the hook is thrown); a locked drag (1e6, FLT_MAX) never gives line and snaps a weaker line; drag = line strength never snaps; rod power 0 gains nothing, stays finite, and such DT_Gear rows fall back; every switch point of steps 3-4; NaN/Inf/negative/huge stats stay finite through a whole fight |
+| Snap / slack boundaries | Snap.{ExactlyAtGraceHolds, TimerResetsWhenTensionDrops, ZeroGraceSnapsOnFirstStepOver}; Slack.{ExactlyAtGraceHolds, TautStepResetsTimer, AtThresholdIsNotSlack} | U | "Longer than" the grace: exactly N steps holds, N+1 ends it (shipped data + fixtures; every DT_Gear hook); one step under/taut resets the timer; grace 0; tension exactly at the slack threshold is not slack |
+| Spool | Spool.{FishTakesWholeSpool, BoundaryIsMoreThanTheSpool} | U | A fish let run (or out-pulling the rod 2x while reeled) takes the whole spool on the first step past it; exactly the spool length holds; a hook beyond the spool ends at once |
+| Outcomes | Outcome.{FirstThatAppliesWins, LandedAtExactlyLandDistance, FrozenAfterTheEnd} | U | Landed > Spooled > Snapped > ThrewHook on the same step; LandDistance inclusive; Step/Advance do nothing after the end |
+| Whole step vs the spec | Sim.StepMatchesSpecFormulas | U | An independent transcription of FishFight.h steps 2-6 matches every step of 172 fights (random fish, gear, tuning within the validated ranges, shipped/built-in/random patterns, random reel input, real rolled fish): 137k steps, all four outcomes reached |
+| Moves, determinism | Sim.{MovePickFollowsWeights, MoveDurationsAndExhaustion, FrameRateIndependent, HitchIsBounded, IgnoresGlobalRandom} | U | Pick shares = max(0, W + A x AW) / sum; durations in [Min, Max] (rest x RestScale) and both ends reached; exhausted for good; 30/60/144 fps and random frame times give the identical fight; hitches capped at 30 steps; the global RNG changes nothing; FightSeed per record |
+| Acceptance, one stat at a time | Gear.EachStatChangesTheOutcome | U | Line strength alone (Mono snaps / Braid lands the reference Coral Snapper), rod power alone (spooled / landed), hook security alone (Shrimp throws / Squid lands) |
+| Data validation | Data.{GearEveryRow, GearBadRowsRejected, PatternEveryRow, PatternBadRowsRejected, PatternNeedsAPlainWeight, FishFightEveryRow, FishFightBadRowsRejected, FishFightStatTagsMustBeFishStats, CrossTableDistances, NewGearRowsNeedNoCode} | D/I | Every row of DT_Gear, DT_FightPattern, DT_FishFight against rules restated here (unique names the way FName compares, ranges, labels, starter free/shop priced, stats are Fish.Stat.* with DT_FishStat rows, TiredPull x ReelStrain >= SlackShare); 12 bad gear rows, 16 bad pattern rows and 20 bad tuning rows typed into CSV/JSON (plus non-finite values built in code and an unknown gear slot) are refused and fall back; every species' pattern valid; cross-table: shortest cast > LandDistance, longest cast <= MaxLineLength, spool > MaxLineLength; a new rod/line row works with no code |
+| Authority | Authority.{ClientCannotLandOrSetTension, RequestsDuringFightDontReset} | I | A client copy can't hook, re-gear, cast, reel (its RPC is absorbed) or land; a forged copy is never simulated or landed and is overwritten by the next update; a cast/hook request during a fight is refused and the fight is untouched |
+| Replication | Replication.{PropsReachOwnerAndProxies, FightStateRoundTrips, ProxyFollowsServerFight} | I | Loadout, FightNet, HookedFish, LastLandedFish, NetState are COND_None (owner and proxies); FLureFightNetState (68 bytes) and FLureGearLoadout round-trip; an owner copy and a simulated proxy follow three loadout changes (OnRep_Loadout re-resolves) and every fight update (bobber on the fish, HUD readout), never simulate or fire OnFishLanded |
+| Landing | Landing.{OnFishLandedFiresOnce, LostFishNeverLands} | I | Exactly once per fish: re-entrant listener, two players, the AutoLandDelay switch mid-fight, one Catch: line each; snapped/spooled/thrown/reeled-in/line-cancelled fish never land, nothing left in hand, HUD text per outcome |
+| Roll pipeline | Pipeline.{HookedFishFromTheRollPipeline, FightReadsFinalStats} | I/U | A natural bite's hooked fish IS FFishRoll's record (DecideBite and Roll replay it), the fight fish = MakeFish(record), seeded by FightSeed(record.Seed), landed unchanged; the fight reads the record, not the species row; 450 species x rarity x modifier x size x level records follow the spec formulas |
+| Component | Component.{FrameRateIndependentOutcome, FightSuspendsBobberDistanceRule} | I | 30/60/120 fps worlds land the same fish on the same fixed step; beyond MaxLineLength during a fight the line stays, outside a fight it comes in (TooFar) |
+
+### T-007 open bugs (failing tests; each test is the regression test for its bug)
+- T007-B1 (minor) `Snap.ExactlyAtGraceHolds`, `Slack.ExactlyAtGraceHolds`: OverTime/SlackTime add float step times, so at exact multiples the
+  "longer than the grace" check fires one step early: shipped SnapGraceTime 0.6 at 60 Hz snaps after 36 steps = exactly 0.600 s (OverTime
+  0.600000083 > 0.6); also 0.5 s at 20 Hz, 0.25 s at 120 Hz, SlackGraceTime 0.5 at 60 Hz. Fix: count whole steps, or compare with half a
+  step of tolerance. The implementer's `Fight.SnapAfterGraceNotBefore` check `OverBeforeSnap <= Grace` needs the same tolerance after the fix.
+- T007-B2 (minor) `Data.PatternNeedsAPlainWeight`: `FLureFightPatternRow::Validate` accepts a pattern whose moves only have AggressionWeight
+  (spec: "at least one move with a positive weight"). A calm fish (aggression 0, the DT_FishStat default) gets no move after the opening: it
+  sulks at the tired pull and the HUD shows "Fish: None". Fix: require some move with Weight > 0.
+- T007-B3 (minor) `Data.FishFightStatTagsMustBeFishStats`: `FLureFishFightRow::Validate` only checks the four stat tags are valid, not that
+  they are Fish.Stat tags (its own message says so). StrengthStat = Bait.Shrimp imports cleanly and every fish pulls the 0.05 minimum.
+
+### T-007 test updates after the B1-B3 fixes (qa-engineer, 2026-09-23)
+- `Sim.StepMatchesSpecFormulas`: the oracle's snap and slack checks now count whole steps (round(t / dt) > grace / dt), like the B1 fix.
+- `Fight.GearDecidesOutcome` (lead balance decision): part A (reference snapper, seeds 1-8) full reel snaps the starter line, the reef kit lands it; on the 7 kg snapper full reel snaps the starter line (and also the reef
+  braid in 0.8 s: logged, for the lead); careful play lands with both kits, and the reef kit has a higher land rate or a shorter mean land time (seeds 1-8); the world run
+  lands with both kits.
+- T-006 tests updated to the T-007 design: `QA.Interrupt.TooFarFromTheBobber` (bobber distance rule enforced before Hooked, suspended in a
+  fight), `QA.Net.ReplicatedToEveryone` (+FightNet, Loadout, COND_None), `QA.Net.ClientFollowsServerAtEveryStage` (Hooked: FightNet reaches
+  the copy and the bobber rides on the fish; the rig's copy pawn is moved to the server pawn's spot). `QAFishingStateTest.cpp` and
+  `QAFishingNetTest.cpp` no longer use a namespace-scope `using namespace`.
+
+### T-007 observations (no failing test; for the lead)
+- T007-O1 (balance, T-012): Rod_Reef's Drag 12 is above Line_Mono's strength 10, so letting a fish run can't protect the starter line. Prototype
+  (independent Python transcription of the spec, 40 seeds): a careful player (reels < 70 %, eases off > 90 %) lands the reference Coral Snapper
+  with the starter kit (13-17 s) but snaps it in 0.7 s with Rod_Reef + Line_Mono; a player who never reels during dives lands it with both.
+  Upgrading the rod before the line makes the snapper harder. Options: effective drag = min(rod drag, share x line strength), or data.
+- T007-O2 (design): during a move with little or no pull, reeling holds the tension at about RodPower x ReelLoad (1.2 on the starter rod), while
+  "slack" is SlackShare x the fish's BasePull; for fish with BasePull above ~3.4 the line counts as slack even while you reel. No shipped species
+  uses Dart (Charge has Pull 0); a Dart snapper would throw the hook in ~3.5 % of fights while the player holds reel (prototype). Also the
+  heaviest Rare bonefish during rests below ~20 % stamina. The spec says "reel or it throws the hook".
+- T007-O3 (minor exploit): the fight starts at the player-bobber distance at the hook; within LandDistance (150 cm) it is landed on the first step.
+  Only reachable by walking to the bobber (e.g. wading at a shallow shore).
+- T007-O4: the pattern fallback warns on every fight with an unknown/invalid FightPatternId (the table warnings are once per session); a species
+  with FightPatternId None also warns every fight.
+- T007-O5 (debug only): hooked with AutoLandDelay > 0, then switching the profile to AutoLandDelay 0 leaves the fish hooked forever (no fight begins).
+- Review of the implementer's tests: they prove the headline acceptance (GearDecidesOutcome) but could pass with a broken fight in these ways:
+  Spooled is never required (a missing spool check passes all 10); replication is a manual property copy (a COND_OwnerOnly regression passes);
+  the snap/slack timing tolerances (+-2 steps) can't see the boundary; `HoldToReelInput` asserts `LineWhileReeling > 0` (always true) and accepts
+  any result; the rod-bend check is skipped where the arms aren't imported (lanes); formula checks are spot values, not the integrated step.
+
+### T-007 gaps (not covered by automation)
+- Real network play: latency on ServerSetReeling, the owner's HUD under lag, bandwidth of FightNet updated every server tick (68 bytes full),
+  2-player PIE: playtester. Iris replication is not enabled; the FRepLayout path is covered.
+- Feel: fight length, snap speed, the tension bar, rod bend and line sag visuals, arms montages (empty slots until the animation-artist
+  delivers): playtester and designer; Jimmy's open questions in the spec.
+- The binary assets (DT_Gear, DT_FightPattern, DT_FishFight) don't exist until the editor-operator imports them in main; the settings path then
+  replaces the built-in fallbacks. After the import, check once in main that the component resolves the imported tables (no fallback warning).
+
 ## Rules
 - Every new behavior gets at least one test written by someone other than its implementer (qa-engineer).
 - Every gameplay DataTable gets a data-validation test (D) when it is created.

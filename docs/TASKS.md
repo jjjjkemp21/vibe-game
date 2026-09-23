@@ -31,6 +31,19 @@ In progress: unreal-engineer-junior-medium in eng3 (after the T-007 test update 
     - editor-operator-junior-low: DT_Movement re-import
     - level-designer-mid-medium: water volumes and exits in both layouts, plus a dev-map pool; dock_end radius 650
     - unreal-engineer-mid-high: `git merge main` into eng3 (T-007 plus playtest fixes 679583f), and check the QA.Eye GC crash in a single pass
+- 14:00 status:
+  - T-007 MERGED into main fe1ae49, via merge e9d2fb2 + fe1ae49. The integration has T-007 + T-026 + T-006 + T-010. Rule: swimming or climbing mid-fight cuts the line. The QA.Eye GC crash is fixed. Main 699/700; the 1 failure is DT_Fishing binary vs CSV until re-import.
+  - EDITOR CRASH during the L_PalmKey rebuild: `Actor->Brush` assert, because ALureWaterVolume is an APhysicsVolume brush spawned without a brush. unreal-engineer-senior-max is fixing it in eng2. No level rebuilds until fixed.
+  - In progress: editor-operator-junior-low importing DT_Gear, DT_FightPattern and DT_FishFight and re-importing DT_Fishing.
+- 14:20 status:
+  - The fishing-loop playtest FAILED (Saved/AgentLogs/playtest/20260923-141005-fishing-loop/report.md). The loop itself works: fight, land, cooler plus XP, sell, 2P. Progress 14.
+  - In progress:
+    - unreal-engineer-mid-high (eng1): the cast trace ignores trigger zones (shark_zone and shadow_zone block jetty_end and lagoon_mouth); B4 client yaw, real cause; a fight tune so careful play beats holding reel.
+    - unreal-engineer-junior-medium (eng4): level-up and "Sold N fish" HUD messages; move the fight text to the lower-left.
+    - level-designer-junior-low: npc_dock teleport outside the stall; teleport targets clear of geometry.
+    - unreal-engineer-senior-max (eng2): the water volume editor crash.
+  - Content gap: the DeepDrop spots (point_ledge, islet_drop) have no species until the next fish batch.
+  - Deferred cosmetic: the line clips through the dock post when prone.
 - DONE: the T-025 smoke check PASS (Saved/AgentLogs/playtest/20260923-104259-T025-smoke/report.md; about 17 calls for the whole scenario including 2 players). Driver follow-ups (junior, later):
   - clear pd.results() per session
   - a default filter for pd.markers()

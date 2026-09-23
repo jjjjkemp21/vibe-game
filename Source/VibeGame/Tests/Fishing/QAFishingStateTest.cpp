@@ -158,7 +158,8 @@ namespace StateLocal
 	}
 }
 
-using namespace StateLocal;
+namespace StateLocal
+{
 
 // =====================================================================================================================
 // The happy path, in order
@@ -511,8 +512,10 @@ bool FQAFishInterruptRodPutAwayEndsEveryStage::RunTest(const FString& Parameters
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FQAFishInterruptTooFarFromTheBobber, "Project.Fishing.QA.Interrupt.TooFarFromTheBobber", QAFishing::Flags)
 bool FQAFishInterruptTooFarFromTheBobber::RunTest(const FString& Parameters)
 {
-	// Spec: the line comes in when you get farther than MaxLineLength (900 here) from the bobber; just inside it stays.
-	const TArray<EStage> LineStages = { EStage::Casting, EStage::Waiting, EStage::Nibble, EStage::Biting, EStage::Hooked };
+	// Spec: before a fish is hooked, the line comes in when you get farther than MaxLineLength (900 here) from the bobber;
+	// just inside it stays. T-007: during the fight (Hooked) the fight's own line rules (SpoolLength) apply instead, so
+	// walking past MaxLineLength does not end it (checked below).
+	const TArray<EStage> LineStages = { EStage::Casting, EStage::Waiting, EStage::Nibble, EStage::Biting };
 	ForEachStage(*this, false,
 		[this](FRig& Rig, EStage Stage)
 		{
@@ -527,6 +530,22 @@ bool FQAFishInterruptTooFarFromTheBobber::RunTest(const FString& Parameters)
 		},
 		[this](FRig& Rig, EStage Stage, const FSnapshot& Before) { ExpectEnded(*this, StageName(Stage) + TEXT(" + 10 cm beyond MaxLineLength"), Rig, Stage, ELureCastBlock::TooFar, Before); },
 		LineStages);
+	ForEachStage(*this, false,
+		[](FRig& Rig, EStage)
+		{
+			const FVector Rest = Rig.Fishing->GetNetState().BobberRest;
+			const float MaxLine = Rig.Fishing->GetProfile().MaxLineLength;
+			const FVector Location = Rig.Character->GetActorLocation();
+			Rig.Character->SetActorLocation(FVector(Rest.X - (MaxLine + 10.f), Location.Y, Location.Z), false, nullptr, ETeleportType::TeleportPhysics);
+			Rig.Scene.Tick(2);
+		},
+		[this](FRig& Rig, EStage Stage, const FSnapshot&)
+		{
+			TestEqual(StageName(Stage) + TEXT(" + 10 cm beyond MaxLineLength: the fight goes on (no bobber distance rule during a fight)"),
+				static_cast<int32>(Rig.Fishing->GetFishingState()), static_cast<int32>(ELureFishingState::Hooked));
+			TestTrue(StageName(Stage) + TEXT(": the line is still out"), Rig.Fishing->IsLineOut());
+		},
+		TArray<EStage>{ EStage::Hooked });
 	return true;
 }
 
@@ -594,6 +613,8 @@ bool FQAFishInterruptSpotLostWhileFishing::RunTest(const FString& Parameters)
 		{ EStage::Casting, EStage::Waiting, EStage::Nibble, EStage::Biting, EStage::Hooked });
 	return true;
 }
+
+} // namespace StateLocal
 
 } // namespace QAFishing
 
