@@ -11,8 +11,8 @@ Last processed playtest folder: (none)
 - unreal-engineer-mid-high: finishing T-007 (eng3)
 - qa-engineer-mid-medium: T-010 QA (eng5)
 - animation-artist-senior-max: fish rig and clips (main)
-- unreal-engineer-junior-medium: run-tests.ps1 crash detection (main)
-- editor: relaunch, then the L_PalmKey cave rebuild (editor-operator-junior-low), then the T-025 smoke check (playtester-low)
+- DONE 5137a5c: run-tests.ps1 now fails on a crash or an incomplete run (unreal-engineer-junior-medium)
+- editor relaunched (Jimmy reconnected /mcp). editor-operator-junior-low: L_PalmKey cave rebuild. Then playtester-low: the T-025 smoke check
 Each open task has a handoff note in `Saved/AgentLogs/handoff/`. Where a task line says "In progress", the state below overrides it.
 - main: T-025 merged (c021d08, 2ae0c5a). Build green; full suite 401/401 (Saved/AgentLogs/tests/20260923-020238). The editor is closed.
 - T-026 + T-004 fixes (lane eng2, 1ab1dc6), in 3 steps:
