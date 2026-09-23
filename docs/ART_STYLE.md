@@ -13,10 +13,10 @@ Stylized low-poly, atmosphere-first. Inspired by Dredge (moody water, strong sil
 ## Palette (hex values)
 Tropical / sunny (beginner zone, vertical slice):
 - Shallow water `#3ED1C4`, deep water `#0E6F7A`, reef `#F28F6B`
-- Sand `#F2D6A2`, palm green `#3F8F4A`, leaf dark `#2A5E36`
+- Sand `#F2D6A2`, palm green `#3F8F4A`, leaf dark `#2A5E36`, grass `#3F7A42`, rock `#6B7275` (grass and rock added 2026-09-23 after the greybox review)
 - Weathered wood `#8A5A3B`, rope `#C9A66B`
 - Sky day `#8FD3F0`, sunset `#FF9A5A`, night `#1B2440`
-- Accent (bobber, UI highlights) `#FF4D3D`
+- Accent (bobber, UI highlights) `#FF4D3D`. Use it only on the bobber, UI highlights and a few interaction landmarks (the shop awning, the Beacon bands). Never on large surfaces or props on fishing water: the bobber is the only red thing on the water.
 
 Foggy / eerie: fog `#8A9A9C`, rock `#3E4A4F`, water `#2C3E40`, lantern `#E8C46A`, wrong-light accent `#9DB36B`
 Frozen / cold: snow `#E6F2F5`, ice `#9CC7D8`, deep ice `#2F4A5E`, accent `#FFB347`
@@ -37,6 +37,7 @@ Character (placeholder first-person arms, 7cd2157): sleeve `#7C8A63` (faded oliv
 - Wet or glossy: fish, wet rocks and the bobber at roughness 0.25-0.45.
 - Textures: only small shared ones (gradient, wood strip, fish pattern masks); no photo textures.
 - Water, fog and sky are Unreal materials and systems, tuned per region and time of day in data.
+- Palette hex values are on-screen targets under the region's day preset. Exposure is fixed per time-of-day preset (data), not auto exposure, so sunlit surfaces sample within about 10% of their hex, nights stay dark and caves stay dim.
 
 ## Budgets
 - Small prop <= 2k triangles, large prop <= 10k, hero prop <= 30k.
