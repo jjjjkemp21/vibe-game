@@ -28,5 +28,9 @@ public:
 	UPROPERTY(Transient, BlueprintReadOnly, Category="Lure|Arms")
 	ELureStance Stance = ELureStance::Stand;
 
+	/** True while the owner is in the water (T-026; optional use in the graph, e.g. a swim pose). */
+	UPROPERTY(Transient, BlueprintReadOnly, Category="Lure|Arms")
+	bool bSwimming = false;
+
 	virtual void NativeUpdateAnimation(float DeltaSeconds) override;
 };

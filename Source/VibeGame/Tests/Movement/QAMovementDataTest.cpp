@@ -61,17 +61,19 @@ bool FQAMoveDataAllFourStancesPresent::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
+	// T-026 added the Swim and SwimSprint rows (the test name predates them).
 	TArray<FName> Names = Table->GetRowNames();
-	for (const TCHAR* Required : { TEXT("Stand"), TEXT("Sprint"), TEXT("Crouch"), TEXT("Prone") })
+	for (const TCHAR* Required : { TEXT("Stand"), TEXT("Sprint"), TEXT("Crouch"), TEXT("Prone"), TEXT("Swim"), TEXT("SwimSprint") })
 	{
 		TestTrue(FString::Printf(TEXT("row %s present"), Required), Names.Contains(FName(Required)));
 	}
 	for (const FName& Name : Names)
 	{
-		const bool bKnown = Name == TEXT("Stand") || Name == TEXT("Sprint") || Name == TEXT("Crouch") || Name == TEXT("Prone");
+		const bool bKnown = Name == TEXT("Stand") || Name == TEXT("Sprint") || Name == TEXT("Crouch") || Name == TEXT("Prone")
+			|| Name == TEXT("Swim") || Name == TEXT("SwimSprint");
 		TestTrue(FString::Printf(TEXT("row '%s' is a known stance (typo?)"), *Name.ToString()), bKnown);
 	}
-	TestEqual(TEXT("exactly 4 rows"), Names.Num(), 4);
+	TestEqual(TEXT("exactly 6 rows"), Names.Num(), 6);
 	return true;
 }
 
@@ -538,7 +540,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FQAMoveFallbackUnknownExtraRowIgnored, "Project
 bool FQAMoveFallbackUnknownExtraRowIgnored::RunTest(const FString& Parameters)
 {
 	TArray<QAM::FRowSpec> Rows = QAM::FixtureARows();
-	Rows.Add({ TEXT("Swim"), 120.f, 1000.f, 40.f, 30.f, 50.f, 0.3f, 0.3f, 0.f, false });
+	Rows.Add({ TEXT("Swimm"), 120.f, 1000.f, 40.f, 30.f, 50.f, 0.3f, 0.3f, 0.f, false }); // a typo row ("Swim" is a real row since T-026)
 	uint8 Mask = 0xFF;
 	const TArray<FLureMovementRow> Resolved = QAM::Resolve(QAM::MakeTable(*this, Rows), &Mask);
 	TestEqual(TEXT("no stance falls back because of an extra row"), static_cast<int32>(Mask), 0);

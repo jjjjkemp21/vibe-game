@@ -69,6 +69,7 @@ ALurePlayerCharacter::ALurePlayerCharacter(const FObjectInitializer& ObjectIniti
 	FirstPersonArmsAnimClass = TSoftClassPtr<UAnimInstance>(FSoftObjectPath(TEXT("/Game/Art/Characters/FPArms/ABP_FPArms.ABP_FPArms_C")));
 	StanceDipAnimation = TSoftObjectPtr<UAnimSequenceBase>(FSoftObjectPath(TEXT("/Game/Art/Characters/FPArms/A_FPArms_StanceDip.A_FPArms_StanceDip")));
 	StanceAdditiveSlot = TEXT("StanceAdditive");
+	SwimStrokeAnimation = TSoftObjectPtr<UAnimSequenceBase>(FSoftObjectPath(TEXT("/Game/Art/Characters/FPArms/A_FPArms_SwimStroke.A_FPArms_SwimStroke"))); // not made yet (T-026)
 
 	// Third-person body slot (empty for now): never visible to its owner, origin at the feet.
 	GetMesh()->SetOwnerNoSee(true);
@@ -232,6 +233,7 @@ void ALurePlayerCharacter::LoadArmsAnimation()
 			LoadedStanceDip = StanceDipAnimation.LoadSynchronous();
 		}
 	}
+	LoadSwimStroke();
 }
 
 void ALurePlayerCharacter::UpdateArmsMotion(float DeltaSeconds)
@@ -257,7 +259,8 @@ void ALurePlayerCharacter::UpdateArmsMotion(float DeltaSeconds)
 	const FLureMovementRow& Row = Movement->GetRow(Movement->GetMovementState());
 	const FTransform Offset = FLureArmsBob::Step(ArmsBobState, Row, GetDefault<ULureCharacterSettings>()->ArmsMotion,
 		static_cast<float>(Movement->Velocity.Size2D()), Movement->IsMovingOnGround(), bHoldingRod, LookRate, DeltaSeconds);
-	FirstPersonArms->SetRelativeLocationAndRotation(Offset.GetLocation(), Offset.Rotator());
+	const FTransform ArmsOffset = ApplySwimArms(Offset, DeltaSeconds);
+	FirstPersonArms->SetRelativeLocationAndRotation(ArmsOffset.GetLocation(), ArmsOffset.Rotator());
 
 	// Additive dip whenever the posture changes.
 	const ELureStance Stance = Movement->GetStance();
@@ -513,6 +516,10 @@ void ALurePlayerCharacter::RequestStance(ELureStance Stance)
 	if (!Movement)
 	{
 		return;
+	}
+	if (Stance != ELureStance::Stand && IsSwimming())
+	{
+		return; // no crouch or prone in the water (T-026): refused, not queued
 	}
 
 	switch (Stance)

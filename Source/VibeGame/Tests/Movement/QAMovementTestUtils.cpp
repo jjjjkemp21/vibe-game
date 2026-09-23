@@ -24,6 +24,9 @@ namespace QAMovement
 		Rows.Add({ TEXT("Sprint"), 577.f, 2048.f, 87.f, 33.f, 158.f, 0.20f, 1.7f, 440.f, true });
 		Rows.Add({ TEXT("Crouch"), 173.f, 2048.f, 53.f, 33.f, 88.f, 0.25f, 0.5f, 380.f, false });
 		Rows.Add({ TEXT("Prone"), 89.f, 2048.f, 27.f, 25.f, 33.f, 0.40f, 0.2f, 0.f, false });
+		// T-026 swim rows (Stand capsule; the optional Water columns stay 0 in QA fixtures).
+		Rows.Add({ TEXT("Swim"), 151.f, 800.f, 87.f, 33.f, 112.f, 0.30f, 1.4f, 0.f, false });
+		Rows.Add({ TEXT("SwimSprint"), 263.f, 900.f, 87.f, 33.f, 112.f, 0.30f, 2.6f, 0.f, false });
 		return Rows;
 	}
 
@@ -34,6 +37,8 @@ namespace QAMovement
 		Rows.Add({ TEXT("Sprint"), 650.f, 2048.f, 92.f, 35.f, 170.f, 0.10f, 2.0f, 440.f, true });
 		Rows.Add({ TEXT("Crouch"), 150.f, 2048.f, 48.f, 35.f, 80.f, 0.30f, 0.4f, 380.f, true });
 		Rows.Add({ TEXT("Prone"), 70.f, 2048.f, 28.f, 24.f, 30.f, 0.0f, 0.1f, 0.f, false });
+		Rows.Add({ TEXT("Swim"), 140.f, 700.f, 92.f, 35.f, 120.f, 0.20f, 1.3f, 0.f, false });
+		Rows.Add({ TEXT("SwimSprint"), 250.f, 700.f, 92.f, 35.f, 120.f, 0.20f, 2.2f, 0.f, false });
 		return Rows;
 	}
 
@@ -162,6 +167,8 @@ namespace QAMovement
 		case ELureMovementState::Sprint: return TEXT("Sprint");
 		case ELureMovementState::Crouch: return TEXT("Crouch");
 		case ELureMovementState::Prone: return TEXT("Prone");
+		case ELureMovementState::Swim: return TEXT("Swim");
+		case ELureMovementState::SwimSprint: return TEXT("SwimSprint");
 		default: return TEXT("Stand");
 		}
 	}

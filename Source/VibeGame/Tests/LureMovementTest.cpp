@@ -228,7 +228,7 @@ bool FLureMovementCsvParsesTest::RunTest(const FString& Parameters)
 	}
 
 	TArray<FName> Names = Table->GetRowNames();
-	TestEqual(TEXT("exactly 4 rows"), Names.Num(), FLureMovementData::NumStates);
+	TestEqual(TEXT("one row per movement state (Stand, Sprint, Crouch, Prone, Swim, SwimSprint)"), Names.Num(), FLureMovementData::NumStates);
 	for (ELureMovementState State : TEnumRange<ELureMovementState>())
 	{
 		const FName Name = FLureMovementData::GetRowName(State);
@@ -347,7 +347,7 @@ bool FLureMovementFallbackTest::RunTest(const FString& Parameters)
 		TestEqual(TEXT("wrong struct: all rows fall back"), static_cast<int32>(FLureMovementData::ResolveRows(WrongTable, Rows, Problems)), static_cast<int32>(FLureMovementData::AllStatesMask));
 	}
 
-	// 3. Per-row fallback: Prone missing, Crouch invalid (MaxSpeed 0), Stand and Sprint used as given.
+	// 3. Per-row fallback: Prone missing, Crouch invalid (MaxSpeed 0), Stand and Sprint used as given (the swim rows are missing too).
 	{
 		TArray<FString> ImportProblems;
 		UDataTable* Partial = MakeTable(FString(CsvHeader)
@@ -358,7 +358,8 @@ bool FLureMovementFallbackTest::RunTest(const FString& Parameters)
 		TArray<FLureMovementRow> Rows;
 		TArray<FString> Problems;
 		const uint8 Mask = FLureMovementData::ResolveRows(Partial, Rows, Problems);
-		const uint8 Expected = (1u << static_cast<int32>(ELureMovementState::Crouch)) | (1u << static_cast<int32>(ELureMovementState::Prone));
+		const uint8 Expected = (1u << static_cast<int32>(ELureMovementState::Crouch)) | (1u << static_cast<int32>(ELureMovementState::Prone))
+			| (1u << static_cast<int32>(ELureMovementState::Swim)) | (1u << static_cast<int32>(ELureMovementState::SwimSprint));
 		TestEqual(TEXT("partial table: Crouch and Prone fall back"), static_cast<int32>(Mask), static_cast<int32>(Expected));
 		TestNearlyEqual(TEXT("partial table: Stand from the table"), Row(Rows, ELureMovementState::Stand).MaxSpeed, 311.f);
 		TestNearlyEqual(TEXT("partial table: Sprint from the table"), Row(Rows, ELureMovementState::Sprint).MaxSpeed, 577.f);
@@ -530,7 +531,9 @@ bool FLureMovementProneJumpTest::RunTest(const FString& Parameters)
 		+ TEXT("Stand,350,2048,90,34,165,0.25,1.0,420,True") + BobTail
 		+ TEXT("Sprint,600,2048,90,34,165,0.25,2.5,440,True") + BobTail
 		+ TEXT("Crouch,180,1600,55,34,95,0.2,0.5,380,True") + BobTail
-		+ TEXT("Prone,90,1200,26,25,35,0.45,0.2,300,True") + BobTail, ImportProblems);
+		+ TEXT("Prone,90,1200,26,25,35,0.45,0.2,300,True") + BobTail
+		+ TEXT("Swim,170,700,90,34,118,0.3,1.6,0,False") + BobTail
+		+ TEXT("SwimSprint,290,900,90,34,118,0.3,3.0,0,False") + BobTail, ImportProblems);
 	TestEqual(TEXT("fixture imports cleanly"), ImportProblems.Num(), 0);
 
 	FWorld World;

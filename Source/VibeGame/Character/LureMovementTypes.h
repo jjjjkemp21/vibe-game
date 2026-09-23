@@ -23,7 +23,7 @@ enum class ELureStance : uint8
 	Prone
 };
 
-/** The active DT_Movement row. One row per value; the row name is the value name (Stand, Sprint, Crouch, Prone). */
+/** The active DT_Movement row. One row per value; the row name is the value name (Stand, Sprint, Crouch, Prone, Swim, SwimSprint). */
 UENUM(BlueprintType)
 enum class ELureMovementState : uint8
 {
@@ -31,6 +31,9 @@ enum class ELureMovementState : uint8
 	Sprint,
 	Crouch,
 	Prone,
+	/** In the water (T-026). Swimming uses the Stand capsule; Sprint maps to SwimSprint. */
+	Swim,
+	SwimSprint,
 	Count UMETA(Hidden)
 };
 ENUM_RANGE_BY_COUNT(ELureMovementState, ELureMovementState::Count)
@@ -39,6 +42,8 @@ ENUM_RANGE_BY_COUNT(ELureMovementState, ELureMovementState::Count)
  *  One row of DT_Movement (source: data/tables/DT_Movement.csv). Units are cm, cm/s, cm/s^2 and seconds.
  *  The column names in the CSV are the property names below.
  *  Sprint uses the Stand capsule; keep its capsule and EyeHeight equal to Stand (a data test checks this).
+ *  Swim and SwimSprint also use the Stand capsule (keep their capsule columns equal to Stand); their EyeHeight is the
+ *  swimming camera height above the feet, and the Water columns tune floating and climbing out (docs/specs/swimming.md).
  */
 USTRUCT(BlueprintType)
 struct FLureMovementRow : public FTableRowBase
@@ -115,6 +120,24 @@ struct FLureMovementRow : public FTableRowBase
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Arms Bob", meta=(ClampMin="0"))
 	float StanceDipPlayRate = 1.f;
 
+	// ---- Water (T-026). Used by the Swim rows; 0 on land rows. Optional CSV columns (missing = 0). ----
+
+	/**
+	 *  Surface swimming: the capsule center floats this far below the water surface, cm, so the eyes are
+	 *  EyeHeight - CapsuleHalfHeight - SurfaceFloatDepth above the water. 0 = no surface float (free 3D swimming,
+	 *  e.g. diving later). This is the only "stay at the surface" rule in the code.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Water", meta=(ClampMin="0", DataTableImportOptional="true"))
+	float SurfaceFloatDepth = 0.f;
+
+	/** Highest edge above the water surface that Jump climbs out onto, cm (0 = no climbing out). A ladder can allow more. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Water", meta=(ClampMin="0", DataTableImportOptional="true"))
+	float ClimbOutMaxHeight = 0.f;
+
+	/** Climb-out speed (up the edge, then onto it), cm/s. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Water", meta=(ClampMin="0", DataTableImportOptional="true"))
+	float ClimbOutSpeed = 0.f;
+
 	/** Runtime sanity check (finite, positive, HalfHeight >= Radius, eye inside the capsule, ...). Returns false and a reason if the row is unusable. */
 	bool Validate(FString& OutProblem) const;
 };
@@ -128,7 +151,7 @@ struct FLureMovementData
 	/** Substring present in every fallback warning (for AddExpectedMessage in tests). */
 	static const TCHAR* FallbackWarningMarker;
 
-	/** Row name of a state in DT_Movement: "Stand", "Sprint", "Crouch", "Prone". */
+	/** Row name of a state in DT_Movement: "Stand", "Sprint", "Crouch", "Prone", "Swim", "SwimSprint". */
 	static FName GetRowName(ELureMovementState State);
 
 	/** The row used when DT_Movement is missing or a row is invalid (same values as the shipped CSV at the time of writing). */

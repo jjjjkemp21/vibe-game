@@ -11,5 +11,6 @@ void UFPArmsAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 	{
 		bHoldingRod = Character->IsHoldingRod();
 		Stance = Character->GetStance();
+		bSwimming = Character->IsSwimming();
 	}
 }

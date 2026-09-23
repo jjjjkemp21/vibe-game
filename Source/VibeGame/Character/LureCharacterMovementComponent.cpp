@@ -1,4 +1,4 @@
-// Lure: first-person movement with sprint, crouch and prone (T-004).
+// Lure: first-person movement with sprint, crouch and prone (T-004). Swimming (T-026) is in LureSwimMovement.cpp.
 
 #include "Character/LureCharacterMovementComponent.h"
 #include "Character/LureCharacterSettings.h"
@@ -36,6 +36,9 @@ ULureCharacterMovementComponent::ULureCharacterMovementComponent()
 
 	AirControl = 0.35f;
 	BrakingDecelerationFalling = 1500.f;
+
+	// Swimming (T-026): coast to a stop in the water instead of gliding on (the engine default is 0).
+	BrakingDecelerationSwimming = 600.f;
 
 	SyncEngineFieldsFromRows();
 }
@@ -100,6 +103,7 @@ void ULureCharacterMovementComponent::SyncEngineFieldsFromRows()
 	const FLureMovementRow& Crouched = GetRow(ELureMovementState::Crouch);
 	MaxWalkSpeed = Stand.MaxSpeed;
 	MaxWalkSpeedCrouched = Crouched.MaxSpeed;
+	MaxSwimSpeed = GetRow(ELureMovementState::Swim).MaxSpeed;
 	MaxAcceleration = Stand.MaxAcceleration;
 	JumpZVelocity = Stand.JumpZVelocity;
 	SetCrouchedHalfHeight(FMath::Max(Crouched.CapsuleHalfHeight, Crouched.CapsuleRadius));
@@ -177,12 +181,16 @@ bool ULureCharacterMovementComponent::IsSprinting() const
 {
 	return bWantsToSprint
 		&& GetStance() == ELureStance::Stand
-		&& (IsMovingOnGround() || IsFalling())
+		&& (IsMovingOnGround() || IsFalling() || IsSwimming())
 		&& !Acceleration.IsNearlyZero();
 }
 
 ELureMovementState ULureCharacterMovementComponent::GetMovementState() const
 {
+	if (IsSwimming())
+	{
+		return IsSprinting() ? ELureMovementState::SwimSprint : ELureMovementState::Swim;
+	}
 	switch (GetStance())
 	{
 	case ELureStance::Prone:
@@ -211,6 +219,11 @@ float ULureCharacterMovementComponent::GetStanceNoiseMultiplier() const
 
 bool ULureCharacterMovementComponent::CanJumpInCurrentStance() const
 {
+	// In the water Jump means "climb out" (T-026): allowed where the row (or a ladder) allows a climb.
+	if (IsSwimming())
+	{
+		return GetClimbOutMaxHeight() > 0.f;
+	}
 	// Hard rule (GAME_DESIGN): never jump while prone or about to go prone, whatever DT_Movement says.
 	if (IsProne() || bWantsToProne)
 	{
@@ -289,6 +302,7 @@ float ULureCharacterMovementComponent::GetMaxSpeed() const
 	case MOVE_Walking:
 	case MOVE_NavWalking:
 	case MOVE_Falling:
+	case MOVE_Swimming:
 		return GetRow(GetMovementState()).MaxSpeed;
 	default:
 		return Super::GetMaxSpeed();
@@ -302,6 +316,7 @@ float ULureCharacterMovementComponent::GetMaxAcceleration() const
 	case MOVE_Walking:
 	case MOVE_NavWalking:
 	case MOVE_Falling:
+	case MOVE_Swimming:
 		return GetRow(GetMovementState()).MaxAcceleration;
 	default:
 		return Super::GetMaxAcceleration();
@@ -311,11 +326,16 @@ float ULureCharacterMovementComponent::GetMaxAcceleration() const
 bool ULureCharacterMovementComponent::CanAttemptJump() const
 {
 	// The engine version also refuses while bWantsToCrouch; here DT_Movement's CanJump decides (crouch jumps are allowed by default).
-	return IsJumpAllowed() && CanJumpInCurrentStance() && (IsMovingOnGround() || IsFalling());
+	// Swimming: Jump climbs out (see DoJump).
+	return IsJumpAllowed() && CanJumpInCurrentStance() && (IsMovingOnGround() || IsFalling() || IsSwimming());
 }
 
 bool ULureCharacterMovementComponent::DoJump(bool bReplayingMoves, float DeltaTime)
 {
+	if (IsSwimming())
+	{
+		return TryStartClimbOut(); // no jumping from the water: Jump pulls you out onto a low edge or up a ladder
+	}
 	JumpZVelocity = GetRow(GetMovementState()).JumpZVelocity;
 	return Super::DoJump(bReplayingMoves, DeltaTime);
 }
@@ -479,6 +499,14 @@ void ULureCharacterMovementComponent::UpdateCharacterStateBeforeMovement(float D
 	// Proxies get the replicated prone state (like crouch). Everyone else acts on the wishes (the server on the client's flags).
 	if (CharacterOwner && CharacterOwner->GetLocalRole() != ROLE_SimulatedProxy && GetLureCharacter())
 	{
+		// No crouch or prone in the water (T-026): the wishes are dropped, so you stand when you get out. The owning client
+		// and the server both do this in the same move, so the next moves carry the cleared flags.
+		if (IsSwimmingOrClimbingOut())
+		{
+			bWantsToCrouch = false;
+			bWantsToProne = false;
+		}
+
 		const bool bIsProneNow = IsProne();
 		if (bIsProneNow && (!bWantsToProne || !CanProneInCurrentState()))
 		{

@@ -5,8 +5,10 @@
 #include "CoreMinimal.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Character/LureMovementTypes.h"
+#include "Character/LureSwimTypes.h"
 #include "LureCharacterMovementComponent.generated.h"
 
+class ALureLadder;
 class ALurePlayerCharacter;
 class UDataTable;
 
@@ -141,6 +143,55 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Lure|Movement", meta=(ClampMin="0"))
 	float MaxStanceNudge = 8.f;
 
+	// ---- Swimming (T-026; defined in LureSwimMovement.cpp, spec docs/specs/swimming.md) ----
+	//  Water = a physics volume with bWaterVolume (ALureWaterVolume); the engine switches to MOVE_Swimming when the capsule
+	//  center enters it. While swimming: the Swim / SwimSprint rows, the Stand capsule, no crouch or prone (wishes are
+	//  cleared), Jump climbs out (MOVE_Custom ClimbOut). All of it runs in the predicted move, like the stances.
+
+	/** Climbing out of the water right now (MOVE_Custom, ELureCustomMovementMode::ClimbOut). */
+	UFUNCTION(BlueprintPure, Category="Lure|Swim")
+	bool IsClimbingOut() const;
+
+	/** In the water for gameplay: swimming or climbing out. No stances, no fishing. */
+	UFUNCTION(BlueprintPure, Category="Lure|Swim")
+	bool IsSwimmingOrClimbingOut() const { return IsSwimming() || IsClimbingOut(); }
+
+	/** The one surface rule: the row in use has SurfaceFloatDepth > 0 (the Swim rows). Otherwise the engine's free swimming runs (diving, later). */
+	UFUNCTION(BlueprintPure, Category="Lure|Swim")
+	bool ShouldFloatAtSurface() const;
+
+	/** Height of the water surface where the character is (its water volume's top), cm. False when not in water. */
+	UFUNCTION(BlueprintPure, Category="Lure|Swim")
+	bool GetWaterSurfaceHeight(float& OutSurfaceZ) const;
+
+	/** Highest edge (cm above the water) Jump would climb onto from here: the row's ClimbOutMaxHeight, or a ladder's. */
+	UFUNCTION(BlueprintPure, Category="Lure|Swim")
+	float GetClimbOutMaxHeight() const;
+
+	/** Pure query: is there an edge in front (or a ladder here) to climb out onto right now, and how? Changes nothing. */
+	UFUNCTION(BlueprintPure, Category="Lure|Swim")
+	bool FindClimbOutPlan(FLureClimbOutPlan& OutPlan) const;
+
+	/** The ladder whose grab zone holds Location (null if none). */
+	const ALureLadder* FindLadderAt(const FVector& Location) const;
+
+	/** Starts a climb out if FindClimbOutPlan finds one (what Jump does in the water). */
+	bool TryStartClimbOut();
+
+	/**
+	 *  Vertical speed of the surface float after DeltaTime: a critically damped spring pulling the capsule center to
+	 *  TargetZ (implicit, so any frame time is stable). SettleTime = seconds to settle within about 2%. Pure, for tests.
+	 */
+	static float ComputeSurfaceFloatVelocity(float CenterZ, float VerticalSpeed, float TargetZ, float SettleTime, float DeltaTime);
+
+	/** Seconds the body takes to settle at the float depth after falling in (the plunge and rise). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Lure|Swim", meta=(ClampMin="0.05"))
+	float SurfaceFloatSettleTime = 0.8f;
+
+	/** How far in front of the body (cm) an edge may be for Jump to climb out onto it. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Lure|Swim", meta=(ClampMin="0"))
+	float ClimbOutReach = 45.f;
+
 	// ---- UCharacterMovementComponent ----
 
 	virtual void BeginPlay() override;
@@ -158,6 +209,21 @@ public:
 protected:
 
 	virtual bool ClientUpdatePositionAfterServerUpdate() override;
+
+	// ---- Swimming (LureSwimMovement.cpp) ----
+	virtual void PhysSwimming(float DeltaTime, int32 Iterations) override;
+	virtual void PhysCustom(float DeltaTime, int32 Iterations) override;
+	virtual void OnMovementModeChanged(EMovementMode PreviousMovementMode, uint8 PreviousCustomMode) override;
+
+	/** Surface swimming: horizontal swim input, vertical float spring to the row's SurfaceFloatDepth. */
+	void PhysSurfaceSwimming(float DeltaTime, int32 Iterations, float SurfaceZ);
+
+	/** Follows ClimbOutPlan: straight up along the edge, then onto it; walking at the end. */
+	void PhysClimbOut(float DeltaTime, int32 Iterations);
+
+	/** The plan of the climb in progress (not replicated: client and server plan the same climb from the same move). */
+	FLureClimbOutPlan ClimbOutPlan;
+	bool bHasClimbOutPlan = false;
 
 	/** Resizes the capsule to Stance's row, keeping the feet in place on the ground. Checks for room when growing (not for client simulation or bForce). Returns false if blocked. */
 	bool ResizeCapsuleForStance(ELureStance Stance, bool bClientSimulation, bool bForce = false);

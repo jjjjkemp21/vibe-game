@@ -6,6 +6,7 @@
 #include "GameFramework/Character.h"
 #include "Character/LureArmsBob.h"
 #include "Character/LureMovementTypes.h"
+#include "Character/LureSwimTypes.h"
 #include "LurePlayerCharacter.generated.h"
 
 class APlayerController;
@@ -157,6 +158,38 @@ public:
 	UFUNCTION(BlueprintCallable, Category="Lure|First Person")
 	bool PlayStanceDip(float PlayRate);
 
+	// ---- Swimming (T-026; LurePlayerCharacterSwim.cpp) ----
+
+	/**
+	 *  In the water: swimming, or climbing out of it. True from the moment you fall in until you stand on land again.
+	 *  No crouch, prone or fishing while this is true (fishing, T-006: cancel on OnSwimStateChanged or when this is true).
+	 */
+	UFUNCTION(BlueprintPure, Category="Lure|Swim")
+	bool IsSwimming() const;
+
+	/** Fires on every machine (server, owner, other players) when IsSwimming changes. */
+	UPROPERTY(BlueprintAssignable, Category="Lure|Swim")
+	FLureSwimStateChangedSignature OnSwimStateChanged;
+
+	/** Swim-stroke clip for the arms (slot for the animation-artist). Loops in DefaultSlot while swimming; missing = the arms are lowered instead. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Lure|First Person")
+	TSoftObjectPtr<UAnimSequenceBase> SwimStrokeAnimation;
+
+	/** Placeholder while no swim-stroke clip exists: the arms drop this far (cm) and pitch down this much (degrees) in the water. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Lure|First Person", meta=(ClampMin="0"))
+	float SwimArmsDrop = 45.f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Lure|First Person")
+	float SwimArmsPitch = -35.f;
+
+	/** How fast the arms lower and come back (FInterpTo speed, 1/s). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Lure|First Person", meta=(ClampMin="0"))
+	float SwimArmsBlendSpeed = 6.f;
+
+	/** 0 = arms normal, 1 = fully lowered for swimming (local player only). */
+	UFUNCTION(BlueprintPure, Category="Lure|First Person")
+	float GetSwimArmsAlpha() const { return SwimArmsAlpha; }
+
 	/** The arms' current bob/sway offset relative to the camera. */
 	UFUNCTION(BlueprintPure, Category="Lure|First Person")
 	FTransform GetArmsBobOffset() const;
@@ -195,6 +228,7 @@ public:
 	virtual void RecalculateBaseEyeHeight() override;
 	virtual FVector GetPawnViewLocation() const override;
 	virtual void Landed(const FHitResult& Hit) override;
+	virtual void OnMovementModeChanged(EMovementMode PrevMovementMode, uint8 PreviousCustomMode = 0) override;
 
 protected:
 
@@ -235,6 +269,17 @@ private:
 
 	void UpdateArmsMotion(float DeltaSeconds);
 	void LoadArmsAnimation();
+
+	/** Swimming arms (T-026): the swim-stroke loop if the clip exists, else Offset lowered by SwimArmsAlpha. Returns the arms' offset. */
+	FTransform ApplySwimArms(const FTransform& Offset, float DeltaSeconds);
+	void LoadSwimStroke();
+
+	UPROPERTY(Transient)
+	TObjectPtr<UAnimSequenceBase> LoadedSwimStroke;
+
+	float SwimArmsAlpha = 0.f;
+	bool bSwimStrokePlaying = false;
+	bool bWasSwimming = false;
 
 	// Input handlers.
 	void HandleMove(const FInputActionValue& Value);

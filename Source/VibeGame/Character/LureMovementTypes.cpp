@@ -1,4 +1,4 @@
-// Lure: movement data types (T-004).
+// Lure: movement data types (T-004; swim rows T-026).
 
 #include "Character/LureMovementTypes.h"
 
@@ -9,7 +9,8 @@ const TCHAR* FLureMovementData::FallbackWarningMarker = TEXT("using built-in fal
 bool FLureMovementRow::Validate(FString& OutProblem) const
 {
 	const float Values[] = { MaxSpeed, MaxAcceleration, CapsuleHalfHeight, CapsuleRadius, EyeHeight, TransitionTime, NoiseMultiplier, JumpZVelocity,
-		BobStepRate, BobVertical, BobLateral, BobRoll, BobPitch, BobYaw, BobForward, StanceDipPlayRate };
+		BobStepRate, BobVertical, BobLateral, BobRoll, BobPitch, BobYaw, BobForward, StanceDipPlayRate,
+		SurfaceFloatDepth, ClimbOutMaxHeight, ClimbOutSpeed };
 	for (const float Value : Values)
 	{
 		if (!FMath::IsFinite(Value))
@@ -67,12 +68,22 @@ bool FLureMovementRow::Validate(FString& OutProblem) const
 		OutProblem = FString::Printf(TEXT("JumpZVelocity %.1f must be >= 0 (and > 0 when CanJump)"), JumpZVelocity);
 		return false;
 	}
+	if (SurfaceFloatDepth < 0.f || ClimbOutMaxHeight < 0.f || ClimbOutSpeed < 0.f)
+	{
+		OutProblem = TEXT("SurfaceFloatDepth, ClimbOutMaxHeight and ClimbOutSpeed must be >= 0");
+		return false;
+	}
+	if (ClimbOutMaxHeight > 0.f && ClimbOutSpeed <= 0.f)
+	{
+		OutProblem = FString::Printf(TEXT("ClimbOutSpeed must be > 0 when ClimbOutMaxHeight (%.1f) is set"), ClimbOutMaxHeight);
+		return false;
+	}
 	return true;
 }
 
 FName FLureMovementData::GetRowName(ELureMovementState State)
 {
-	static const FName Names[NumStates] = { TEXT("Stand"), TEXT("Sprint"), TEXT("Crouch"), TEXT("Prone") };
+	static const FName Names[NumStates] = { TEXT("Stand"), TEXT("Sprint"), TEXT("Crouch"), TEXT("Prone"), TEXT("Swim"), TEXT("SwimSprint") };
 	const int32 Index = static_cast<int32>(State);
 	return Names[FMath::Clamp(Index, 0, NumStates - 1)];
 }
@@ -109,8 +120,21 @@ FLureMovementRow FLureMovementData::GetFallbackRow(ELureMovementState State)
 		return Row;
 	};
 
+	// Swimming (T-026): the Stand capsule, eyes 18 cm above the water, no arms bob; Jump climbs out onto edges up to 60 cm.
+	auto WithWater = [](FLureMovementRow Row, float FloatDepth, float ClimbMaxHeight, float ClimbSpeed)
+	{
+		Row.SurfaceFloatDepth = FloatDepth;
+		Row.ClimbOutMaxHeight = ClimbMaxHeight;
+		Row.ClimbOutSpeed = ClimbSpeed;
+		return Row;
+	};
+
 	switch (State)
 	{
+	case ELureMovementState::Swim:
+		return WithWater(WithBob(MakeRow(170.f, 700.f, 90.f, 34.f, 118.f, 0.3f, 1.6f, 0.f, false), 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f), 10.f, 60.f, 300.f);
+	case ELureMovementState::SwimSprint:
+		return WithWater(WithBob(MakeRow(290.f, 900.f, 90.f, 34.f, 118.f, 0.3f, 3.0f, 0.f, false), 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f), 10.f, 60.f, 300.f);
 	case ELureMovementState::Sprint:
 		return WithBob(MakeRow(600.f, 2048.f, 90.f, 34.f, 165.f, 0.25f, 2.5f, 440.f, true), 1.6f, 1.0f, 1.2f, 0.9f, 0.f, 0.3f, 1.0f);
 	case ELureMovementState::Crouch:
