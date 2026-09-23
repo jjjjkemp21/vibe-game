@@ -5,6 +5,7 @@ Done tasks move to "Done" with their commit hash. Read the "In progress" markers
 Last processed playtest folder: (none)
 
 ## Status 2026-09-23 ~16:00 (lead)
+**Pushed to GitHub: origin/main 4d64f2c (2026-09-23, e74801b..4d64f2c). Janitor ran after the push.**
 Milestone A features are merged and passed the release gate: build green, full suite 714/714 (Saved/AgentLogs/tests/20260923-151434), Project.Fishing 178/178 with the 16:00 clock, final playtest PASS (Saved/AgentLogs/playtest/20260923-152855-final-gate/report.md), designer APPROVED WITH CHANGES, no must-fix (Saved/AgentLogs/design/20260923-153500-release-gate.md).
 Follow-ups (not blocking):
 - T-008 remaining: the landed fish in hand plus the fish clips driven by fight state (see the T-008 line).
