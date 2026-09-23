@@ -1,7 +1,7 @@
-Name,MaxSpeed,MaxAcceleration,CapsuleHalfHeight,CapsuleRadius,EyeHeight,TransitionTime,NoiseMultiplier,JumpZVelocity,CanJump,BobStepRate,BobVertical,BobLateral,BobRoll,BobPitch,BobYaw,BobForward,StanceDipPlayRate,ClimbMaxHeight,ClimbSpeed,SurfaceFloatDepth,ArmsPullBack,ExitTransitionTime
-Stand,350,2048,90,34,165,0.25,1.0,420,True,0,1.5,1.0,0.6,0.4,0,0,1.0,100,400,0,0,0
-Sprint,600,2048,90,34,165,0.25,2.5,440,True,0,3.0,1.8,1.2,1.5,0,0.3,1.0,100,400,0,0,0
-Crouch,180,1600,55,34,95,0.2,0.5,380,True,0,0.5,0.9,0.9,0.3,0,0,1.0,100,400,0,0,0
-Prone,90,1200,26,25,35,0.45,0.2,0,False,0,0.4,1.6,2.0,0.3,1.5,1.2,0.85,0,0,0,12,0.42
-Swim,170,700,90,34,118,0.3,1.6,0,False,0,0,0,0,0,0,0,0,60,300,10,0,0
-SwimSprint,290,900,90,34,118,0.3,3.0,0,False,0,0,0,0,0,0,0,0,60,300,10,0,0
+Name,MaxSpeed,MaxAcceleration,CapsuleHalfHeight,CapsuleRadius,EyeHeight,TransitionTime,NoiseMultiplier,JumpZVelocity,CanJump,BobStepRate,BobVertical,BobLateral,BobRoll,BobPitch,BobYaw,BobForward,StanceDipPlayRate,ClimbMaxHeight,ClimbSpeed,SurfaceFloatDepth,ArmsPullBack,ExitTransitionTime,ClimbOutLowestTop,ClimbOutReach,SurfaceFloatSettleTime,SwimBrakingDeceleration
+Stand,350,2048,90,34,165,0.25,1.0,420,True,0,1.5,1.0,0.6,0.4,0,0,1.0,100,400,0,0,0,-20,45,0.8,600
+Sprint,600,2048,90,34,165,0.25,2.5,440,True,0,3.0,1.8,1.2,1.5,0,0.3,1.0,100,400,0,0,0,-20,45,0.8,600
+Crouch,180,1600,55,34,95,0.2,0.5,380,True,0,0.5,0.9,0.9,0.3,0,0,1.0,100,400,0,0,0,-20,45,0.8,600
+Prone,90,1200,26,25,35,0.45,0.2,0,False,0,0.4,1.6,2.0,0.3,1.5,1.2,0.85,0,0,0,12,0.42,-20,45,0.8,600
+Swim,170,700,90,34,118,0.3,1.6,0,False,0,0,0,0,0,0,0,0,60,300,10,0,0,-20,45,0.8,600
+SwimSprint,290,900,90,34,118,0.3,3.0,0,False,0,0,0,0,0,0,0,0,60,300,10,0,0,-20,45,0.8,600

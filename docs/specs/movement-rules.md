@@ -33,6 +33,8 @@ Stance and IsSprinting getters; the public request functions the input handlers 
   way down, pressing toward a ledge whose top is within the rule and within the capsule radius above the feet pulls you
   up onto it (`ClimbSpeed`, 400 cm/s; MOVE_Custom LedgeClimb, predicted). Swimming uses the same columns from the water
   surface (60 cm). Tests: `Project.Movement.Climb.*`.
+  **0 or a missing column = no climb rule** (T-026 review D0): no ledge pull-up and no climb out, and landings are
+  the engine's (never refused), so a row imported before the column existed walks up slopes normally.
 - **B2, getting up next to walls:** `MaxStanceNudge` 14 cm, and never less than sqrt(2) x the radius difference + 1 cm
   (a corner), so prone flush against a wall or in a corner can always stand or crouch.
 - **B3, prone arms:** DT_Movement `ArmsPullBack` (Prone 12 cm) moves the arms toward the eye so the hands stay out of a

@@ -22,9 +22,6 @@ namespace LureSwimPrivate
 	/** An edge exactly at the allowed height counts; this much higher does not, cm. */
 	constexpr float LedgeHeightTolerance = 0.5f;
 
-	/** Edge tops lower than this (cm relative to the water surface) are the seabed: walk out there instead. */
-	constexpr float LowestLedgeHeight = -20.f;
-
 	/** How far past the face (beyond the capsule radius) the climb puts the body, cm. */
 	constexpr float TargetInset = 5.f;
 
@@ -252,8 +249,8 @@ bool ULureCharacterMovementComponent::FindClimbOutPlan(FLureClimbPlan& OutPlan) 
 	Query.Forward = FVector(CharacterOwner->GetActorForwardVector().X, CharacterOwner->GetActorForwardVector().Y, 0.0).GetSafeNormal();
 	Query.ReferenceZ = SurfaceZ;
 	Query.MaxHeight = Row.ClimbMaxHeight;
-	Query.LowestTopZ = SurfaceZ + LureSwimPrivate::LowestLedgeHeight;
-	Query.FaceReach = ClimbOutReach;
+	Query.LowestTopZ = SurfaceZ + FMath::Min(Row.ClimbOutLowestTop, 0.f);	// lower tops are the seabed: walk out there
+	Query.FaceReach = Row.ClimbOutReach;
 	Query.TargetRadius = FMath::Max(Stand.CapsuleRadius, 1.f) * Scale; // you get out standing
 	Query.TargetHalfHeight = FMath::Max(Stand.CapsuleHalfHeight, Stand.CapsuleRadius) * Scale;
 	Query.Speed = Row.ClimbSpeed;
@@ -355,7 +352,13 @@ bool ULureCharacterMovementComponent::IsValidLandingSpot(const FVector& CapsuleL
 	{
 		return true;
 	}
-	// The climb rule (T-004 B1). Landings from above are never refused. A landing that LIFTS the feet (the rounded
+	// The climb rule (T-004 B1). A row without one (ClimbMaxHeight 0 or missing) lands like the engine: nothing refused.
+	const float ClimbMaxHeight = GetRow(GetMovementState()).ClimbMaxHeight;
+	if (ClimbMaxHeight <= 0.f)
+	{
+		return true;
+	}
+	// Landings from above are never refused. A landing that LIFTS the feet (the rounded
 	// capsule bottom catching something above them) is refused when it is higher than ClimbMaxHeight above the takeoff,
 	// and whenever it is a ledge's edge rather than a slope: the jump climb then pulls you up onto ledges within the
 	// rule (PhysFalling), so you never hang perched below a ledge top and every edge shape behaves the same.
@@ -365,7 +368,7 @@ bool ULureCharacterMovementComponent::IsValidLandingSpot(const FVector& CapsuleL
 	{
 		return true;
 	}
-	if (FloorZ > TakeoffFeetHeight + GetRow(GetMovementState()).ClimbMaxHeight + LureSwimPrivate::LandingLiftTolerance)
+	if (FloorZ > TakeoffFeetHeight + ClimbMaxHeight + LureSwimPrivate::LandingLiftTolerance)
 	{
 		return false;
 	}
@@ -434,8 +437,9 @@ void ULureCharacterMovementComponent::PhysSurfaceSwimming(float DeltaTime, int32
 		CalcVelocity(DeltaTime, Friction, true, GetMaxBrakingDeceleration());
 
 		// Vertical: the surface float, the one "stay at the surface" rule (row SurfaceFloatDepth).
-		const float TargetZ = SurfaceZ - GetRow(GetMovementState()).SurfaceFloatDepth;
-		Velocity.Z = ComputeSurfaceFloatVelocity(static_cast<float>(OldLocation.Z), VerticalSpeed, TargetZ, SurfaceFloatSettleTime, DeltaTime);
+		const FLureMovementRow& Row = GetRow(GetMovementState());
+		const float TargetZ = SurfaceZ - Row.SurfaceFloatDepth;
+		Velocity.Z = ComputeSurfaceFloatVelocity(static_cast<float>(OldLocation.Z), VerticalSpeed, TargetZ, Row.SurfaceFloatSettleTime, DeltaTime);
 	}
 	ApplyRootMotionToVelocity(DeltaTime);
 

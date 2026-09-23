@@ -10,7 +10,8 @@ bool FLureMovementRow::Validate(FString& OutProblem) const
 {
 	const float Values[] = { MaxSpeed, MaxAcceleration, CapsuleHalfHeight, CapsuleRadius, EyeHeight, TransitionTime, NoiseMultiplier, JumpZVelocity,
 		BobStepRate, BobVertical, BobLateral, BobRoll, BobPitch, BobYaw, BobForward, StanceDipPlayRate,
-		ClimbMaxHeight, ClimbSpeed, SurfaceFloatDepth, ArmsPullBack, ExitTransitionTime };
+		ClimbMaxHeight, ClimbSpeed, SurfaceFloatDepth, ArmsPullBack, ExitTransitionTime,
+		ClimbOutLowestTop, ClimbOutReach, SurfaceFloatSettleTime, SwimBrakingDeceleration };
 	for (const float Value : Values)
 	{
 		if (!FMath::IsFinite(Value))
@@ -76,6 +77,21 @@ bool FLureMovementRow::Validate(FString& OutProblem) const
 	if (ClimbMaxHeight > 0.f && ClimbSpeed <= 0.f)
 	{
 		OutProblem = FString::Printf(TEXT("ClimbSpeed must be > 0 when ClimbMaxHeight (%.1f) is set"), ClimbMaxHeight);
+		return false;
+	}
+	if (ClimbOutLowestTop > 0.f)
+	{
+		OutProblem = FString::Printf(TEXT("ClimbOutLowestTop %.1f must be <= 0 (at or below the water surface)"), ClimbOutLowestTop);
+		return false;
+	}
+	if (ClimbOutReach < 0.f || SwimBrakingDeceleration < 0.f)
+	{
+		OutProblem = TEXT("ClimbOutReach and SwimBrakingDeceleration must be >= 0");
+		return false;
+	}
+	if (SurfaceFloatSettleTime < 0.05f)
+	{
+		OutProblem = FString::Printf(TEXT("SurfaceFloatSettleTime %.2f must be >= 0.05 s"), SurfaceFloatSettleTime);
 		return false;
 	}
 	return true;

@@ -249,13 +249,7 @@ public:
 	 */
 	static float ComputeSurfaceFloatVelocity(float CenterZ, float VerticalSpeed, float TargetZ, float SettleTime, float DeltaTime);
 
-	/** Seconds the body takes to settle at the float depth after falling in (the plunge and rise). */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Lure|Swim", meta=(ClampMin="0.05"))
-	float SurfaceFloatSettleTime = 0.8f;
-
-	/** How far in front of the body (cm) an edge may be for Jump to climb out of the water onto it. */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Lure|Swim", meta=(ClampMin="0"))
-	float ClimbOutReach = 45.f;
+	// The swim feel (settle time, braking, climb-out reach and lowest edge) is data: DT_Movement Swim rows (T-026 D3/D4).
 
 	/** How close (cm) the body must be to a ledge's face for a jump to pull up onto it. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Lure|Movement", meta=(ClampMin="0"))

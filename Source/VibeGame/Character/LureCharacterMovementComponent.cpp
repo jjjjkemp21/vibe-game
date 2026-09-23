@@ -37,9 +37,6 @@ ULureCharacterMovementComponent::ULureCharacterMovementComponent()
 	AirControl = 0.35f;
 	BrakingDecelerationFalling = 1500.f;
 
-	// Swimming (T-026): coast to a stop in the water instead of gliding on (the engine default is 0).
-	BrakingDecelerationSwimming = 600.f;
-
 	// Server replies carry the climb state (see FLureMoveResponseDataContainer).
 	SetMoveResponseDataContainer(LureMoveResponseData);
 
@@ -107,6 +104,8 @@ void ULureCharacterMovementComponent::SyncEngineFieldsFromRows()
 	MaxWalkSpeed = Stand.MaxSpeed;
 	MaxWalkSpeedCrouched = Crouched.MaxSpeed;
 	MaxSwimSpeed = GetRow(ELureMovementState::Swim).MaxSpeed;
+	// Swimming (T-026): coast to a stop in the water instead of gliding on (the engine default is 0).
+	BrakingDecelerationSwimming = GetRow(ELureMovementState::Swim).SwimBrakingDeceleration;
 	MaxAcceleration = Stand.MaxAcceleration;
 	JumpZVelocity = Stand.JumpZVelocity;
 	SetCrouchedHalfHeight(FMath::Max(Crouched.CapsuleHalfHeight, Crouched.CapsuleRadius));

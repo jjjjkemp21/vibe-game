@@ -123,7 +123,8 @@ struct FLureMovementRow : public FTableRowBase
 	// ---- Optional CSV columns (missing = 0): the climb rule, water, arms offset, camera exit time ----
 
 	/**
-	 *  The one climb rule: the highest edge Jump gets you onto, cm (0 = none). On land it is measured from your feet
+	 *  The one climb rule: the highest edge Jump gets you onto, cm (0 = no climb rule: no pull-up or climb out, and
+	 *  landings are the engine's, never refused). On land it is measured from your feet
 	 *  where you jumped: a landing on a higher ledge is refused, and a jump that reaches a ledge within it pulls you up.
 	 *  Swimming, it is measured from the water surface (Jump climbs out). A ladder can allow more in the water.
 	 */
@@ -149,6 +150,28 @@ struct FLureMovementRow : public FTableRowBase
 	/** Seconds the camera takes to reach the next state's eye height when LEAVING this state (0 = the next row's TransitionTime). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Movement", meta=(ClampMin="0", DataTableImportOptional="true"))
 	float ExitTransitionTime = 0.f;
+
+	// ---- Optional swim-feel columns (missing = the built-in default below; used on the Swim rows) ----
+
+	/**
+	 *  Climbing out: the lowest edge top Jump climbs onto, cm relative to the water surface (<= 0). Lower tops count as
+	 *  the seabed (walk out there instead). Keep it at or below the height a floating swimmer can step up to, or a shelf
+	 *  between the two becomes a wall from the water.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Climb", meta=(ClampMax="0", DataTableImportOptional="true"))
+	float ClimbOutLowestTop = -20.f;
+
+	/** Climbing out: how far in front of the body an edge may be for Jump to climb onto it, cm. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Climb", meta=(ClampMin="0", DataTableImportOptional="true"))
+	float ClimbOutReach = 45.f;
+
+	/** Surface swimming: seconds the body takes to settle at the float depth after falling in (the plunge and rise). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Water", meta=(ClampMin="0.05", DataTableImportOptional="true"))
+	float SurfaceFloatSettleTime = 0.8f;
+
+	/** Swimming: how hard you coast to a stop with no input, cm/s^2 (0 = glide on). Read from the Swim row. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Water", meta=(ClampMin="0", DataTableImportOptional="true"))
+	float SwimBrakingDeceleration = 600.f;
 
 	/** Runtime sanity check (finite, positive, HalfHeight >= Radius, eye inside the capsule, ...). Returns false and a reason if the row is unusable. */
 	bool Validate(FString& OutProblem) const;

@@ -13,6 +13,11 @@ Code: `Source/VibeGame/Character/LureSwimMovement.cpp` (movement), `LureWaterVol
   0 on land rows) and the shared climb rule `ClimbMaxHeight` / `ClimbSpeed` (swimming: cm above the water; on land: cm
   above your takeoff, see movement-rules.md). Shipped: swim 170 / sprint-swim 290 cm/s, eyes 18 cm above the water,
   edges up to 60 cm.
+  Swim feel columns (optional; missing = the built-in default; T-026 review D3/D4): `SurfaceFloatSettleTime` (0.8 s,
+  the plunge and rise), `SwimBrakingDeceleration` (600 cm/s2, coasting to a stop; read from the Swim row),
+  `ClimbOutReach` (45 cm, how far in front an edge may be) and `ClimbOutLowestTop` (-20 cm: edge tops lower than this
+  below the surface are seabed, walk out there). Rows validate them (settle >= 0.05 s, reach and braking >= 0,
+  lowest top <= 0).
 - **The one surface rule:** while the row in use has `SurfaceFloatDepth > 0`, a critically damped spring holds the
   capsule center that far below the water surface (a plunge dips, then rises; no bobbing in and out of the water).
   A row with `SurfaceFloatDepth = 0` gets the engine's free 3D swimming, which is where diving will start.

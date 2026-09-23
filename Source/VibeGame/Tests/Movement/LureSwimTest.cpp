@@ -27,6 +27,7 @@
 #include "Tests/AutomationCommon.h"
 #include "UObject/GCObjectScopeGuard.h"
 #include "Tests/Movement/LureSwimTestListener.h"
+#include "Tests/Movement/LureMovementTestAccess.h"
 
 namespace LureSwimTest
 {
@@ -972,6 +973,288 @@ bool FLureSwimArmsTest::RunTest(const FString& Parameters)
 	}
 	Controller->UnPossess();
 	Pool.Tick(2);
+	return true;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Review fixes D0 / D3 / D4: the climb rule's 0, the lowest climb-out edge and the swim feel are data
+// ---------------------------------------------------------------------------------------------------------------------
+
+	/** The CSV text without the named columns (an older table, or a new row that leaves the optional columns out). */
+	FString WithoutColumns(const FString& Csv, const TArray<FString>& Drop)
+	{
+		TArray<FString> Lines;
+		Csv.ParseIntoArrayLines(Lines);
+		TArray<FString> Header;
+		if (Lines.Num() > 0)
+		{
+			Lines[0].ParseIntoArray(Header, TEXT(","), false);
+		}
+		TArray<FString> Out;
+		for (const FString& Line : Lines)
+		{
+			TArray<FString> Cells;
+			Line.ParseIntoArray(Cells, TEXT(","), false);
+			TArray<FString> Kept;
+			for (int32 Index = 0; Index < Cells.Num(); ++Index)
+			{
+				if (!Header.IsValidIndex(Index) || !Drop.Contains(Header[Index].TrimStartAndEnd()))
+				{
+					Kept.Add(Cells[Index]);
+				}
+			}
+			Out.Add(FString::Join(Kept, TEXT(",")));
+		}
+		return FString::Join(Out, TEXT("\n")) + TEXT("\n");
+	}
+
+	/** The shipped CSV minus Drop, as a transient table. */
+	UDataTable* ShippedTableWithout(FAutomationTestBase& Test, const TArray<FString>& Drop)
+	{
+		FString Csv;
+		if (!Test.TestTrue(TEXT("data/tables/DT_Movement.csv loads"), FFileHelper::LoadFileToString(Csv, *CsvPath())))
+		{
+			return nullptr;
+		}
+		UDataTable* Table = NewObject<UDataTable>(GetTransientPackage(), NAME_None, RF_Transient);
+		Table->RowStruct = FLureMovementRow::StaticStruct();
+		const TArray<FString> Problems = Table->CreateTableFromCSVString(WithoutColumns(Csv, Drop));
+		Test.TestEqual(FString::Printf(TEXT("CSV (without %s) import problems (%s)"), *FString::Join(Drop, TEXT("/")), *FString::Join(Problems, TEXT(" | "))), Problems.Num(), 0);
+		return Table;
+	}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLureSwimOptionalColumnsTest, "Project.Movement.Swim.Data.OptionalFeelColumnsDefaultAndValidate", LureSwimTest::Flags)
+
+bool FLureSwimOptionalColumnsTest::RunTest(const FString& Parameters)
+{
+	// The built-in defaults are the values the code used before they became data (T-026 review D3/D4).
+	const FLureMovementRow Defaults;
+	TestNearlyEqual(TEXT("default ClimbOutLowestTop"), Defaults.ClimbOutLowestTop, -20.f);
+	TestNearlyEqual(TEXT("default ClimbOutReach"), Defaults.ClimbOutReach, 45.f);
+	TestNearlyEqual(TEXT("default SurfaceFloatSettleTime"), Defaults.SurfaceFloatSettleTime, 0.8f);
+	TestNearlyEqual(TEXT("default SwimBrakingDeceleration"), Defaults.SwimBrakingDeceleration, 600.f);
+
+	// The shipped table carries them (same values) on every row.
+	UDataTable* Shipped = ShippedTable(*this);
+	FGCObjectScopeGuard KeepShipped(Shipped);
+	if (!Shipped)
+	{
+		return false;
+	}
+	for (const ELureMovementState State : TEnumRange<ELureMovementState>())
+	{
+		const FLureMovementRow* Row = EditRow(Shipped, State);
+		const FString Name = FLureMovementData::GetRowName(State).ToString();
+		if (!TestNotNull(Name + TEXT(" exists"), Row))
+		{
+			continue;
+		}
+		TestNearlyEqual(Name + TEXT(".ClimbOutLowestTop"), Row->ClimbOutLowestTop, -20.f);
+		TestNearlyEqual(Name + TEXT(".ClimbOutReach"), Row->ClimbOutReach, 45.f);
+		TestNearlyEqual(Name + TEXT(".SurfaceFloatSettleTime"), Row->SurfaceFloatSettleTime, 0.8f);
+		TestNearlyEqual(Name + TEXT(".SwimBrakingDeceleration"), Row->SwimBrakingDeceleration, 600.f);
+	}
+
+	// A table without the new columns (or without any optional column) resolves every row, with the defaults.
+	const TArray<FString> NewColumns = { TEXT("ClimbOutLowestTop"), TEXT("ClimbOutReach"), TEXT("SurfaceFloatSettleTime"), TEXT("SwimBrakingDeceleration") };
+	TArray<FString> AllOptional = NewColumns;
+	AllOptional.Append({ TEXT("ClimbMaxHeight"), TEXT("ClimbSpeed"), TEXT("SurfaceFloatDepth"), TEXT("ArmsPullBack"), TEXT("ExitTransitionTime") });
+	const TArray<FString>* Drops[] = { &NewColumns, &AllOptional };
+	for (const TArray<FString>* Drop : Drops)
+	{
+		UDataTable* Older = ShippedTableWithout(*this, *Drop);
+		FGCObjectScopeGuard KeepOlder(Older);
+		TArray<FLureMovementRow> Rows;
+		TArray<FString> Problems;
+		const uint8 Mask = FLureMovementData::ResolveRows(Older, Rows, Problems);
+		const FString Label = FString::Printf(TEXT("without %d optional columns"), Drop->Num());
+		TestEqual(Label + TEXT(": no row falls back (") + FString::Join(Problems, TEXT("; ")) + TEXT(")"), static_cast<int32>(Mask), 0);
+		const FLureMovementRow& Swim = RowOf(Rows, ELureMovementState::Swim);
+		TestNearlyEqual(Label + TEXT(": Swim.ClimbOutLowestTop default"), Swim.ClimbOutLowestTop, -20.f);
+		TestNearlyEqual(Label + TEXT(": Swim.ClimbOutReach default"), Swim.ClimbOutReach, 45.f);
+		TestNearlyEqual(Label + TEXT(": Swim.SurfaceFloatSettleTime default"), Swim.SurfaceFloatSettleTime, 0.8f);
+		TestNearlyEqual(Label + TEXT(": Swim.SwimBrakingDeceleration default"), Swim.SwimBrakingDeceleration, 600.f);
+	}
+
+	// Validation.
+	struct FBad
+	{
+		const TCHAR* Label;
+		TFunction<void(FLureMovementRow&)> Edit;
+	};
+	const FBad BadRows[] = {
+		{ TEXT("ClimbOutLowestTop above the water"), [](FLureMovementRow& R) { R.ClimbOutLowestTop = 5.f; } },
+		{ TEXT("negative ClimbOutReach"), [](FLureMovementRow& R) { R.ClimbOutReach = -1.f; } },
+		{ TEXT("SurfaceFloatSettleTime 0"), [](FLureMovementRow& R) { R.SurfaceFloatSettleTime = 0.f; } },
+		{ TEXT("SurfaceFloatSettleTime 0.01"), [](FLureMovementRow& R) { R.SurfaceFloatSettleTime = 0.01f; } },
+		{ TEXT("negative SwimBrakingDeceleration"), [](FLureMovementRow& R) { R.SwimBrakingDeceleration = -10.f; } },
+		{ TEXT("NaN ClimbOutReach"), [](FLureMovementRow& R) { R.ClimbOutReach = std::numeric_limits<float>::quiet_NaN(); } },
+	};
+	const FLureMovementRow Swim = FLureMovementData::GetFallbackRow(ELureMovementState::Swim);
+	FString Problem;
+	TestTrue(TEXT("the fallback Swim row is valid"), Swim.Validate(Problem));
+	for (const FBad& Bad : BadRows)
+	{
+		FLureMovementRow Row = Swim;
+		Bad.Edit(Row);
+		FString Why;
+		TestFalse(FString::Printf(TEXT("%s is refused"), Bad.Label), Row.Validate(Why));
+	}
+	FLureMovementRow Edge = Swim;
+	Edge.ClimbOutLowestTop = 0.f;
+	Edge.ClimbOutReach = 0.f;
+	Edge.SwimBrakingDeceleration = 0.f;
+	Edge.SurfaceFloatSettleTime = 0.05f;
+	TestTrue(TEXT("the limits themselves are allowed"), Edge.Validate(Problem));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLureSwimFeelFromDataTest, "Project.Movement.Swim.FeelFromData", LureSwimTest::Flags)
+
+bool FLureSwimFeelFromDataTest::RunTest(const FString& Parameters)
+{
+	// Braking: the engine's swimming braking follows the Swim row.
+	for (const float Braking : { 600.f, 150.f })
+	{
+		UDataTable* Table = ShippedTable(*this);
+		FGCObjectScopeGuard KeepTable(Table);
+		FPool Pool;
+		if (!Table || !Pool.Create(*this))
+		{
+			return false;
+		}
+		EditRow(Table, ELureMovementState::Swim)->SwimBrakingDeceleration = Braking;
+		EditRow(Table, ELureMovementState::SwimSprint)->SwimBrakingDeceleration = Braking;
+		ALurePlayerCharacter* Character = Pool.SpawnSwimming(*this, FVector2D::ZeroVector, Table);
+		if (!Character)
+		{
+			return false;
+		}
+		TestNearlyEqual(FString::Printf(TEXT("BrakingDecelerationSwimming = row %.0f"), Braking), Character->GetLureMovement()->BrakingDecelerationSwimming, Braking);
+	}
+
+	// Settle time: half a second after falling in, a quick settle is much closer to the float height than a slow one.
+	float Error[2] = { 0.f, 0.f };
+	const float SettleTimes[2] = { 0.3f, 3.f };
+	for (int32 Index = 0; Index < 2; ++Index)
+	{
+		UDataTable* Table = ShippedTable(*this);
+		FGCObjectScopeGuard KeepTable(Table);
+		FPool Pool;
+		if (!Table || !Pool.Create(*this))
+		{
+			return false;
+		}
+		EditRow(Table, ELureMovementState::Swim)->SurfaceFloatSettleTime = SettleTimes[Index];
+		EditRow(Table, ELureMovementState::SwimSprint)->SurfaceFloatSettleTime = SettleTimes[Index];
+		const float Depth = EditRow(Table, ELureMovementState::Swim)->SurfaceFloatDepth;
+		ALurePlayerCharacter* Character = Pool.Spawn(FVector(0.f, 0.f, 190.f), Table);
+		if (!TestNotNull(TEXT("character spawns"), Character))
+		{
+			return false;
+		}
+		TestTrue(TEXT("falls in"), Pool.TickUntil([&]() { return Character->GetLureMovement()->IsSwimming(); }, 120));
+		Pool.Tick(30);
+		Error[Index] = FMath::Abs(CenterZ(Character) + Depth);
+	}
+	TestTrue(FString::Printf(TEXT("settle 0.3 s is closer to the float height after 0.5 s than 3 s (%.1f vs %.1f cm)"), Error[0], Error[1]), Error[0] + 2.f < Error[1]);
+
+	// Reach: a swimmer 20 cm from the dock face climbs out with the shipped 45 cm (ClimbOutAtEdgeHeightFromData), not with 10 cm.
+	UDataTable* Short = ShippedTable(*this);
+	FGCObjectScopeGuard KeepShort(Short);
+	if (!Short)
+	{
+		return false;
+	}
+	EditRow(Short, ELureMovementState::Swim)->ClimbOutReach = 10.f;
+	EditRow(Short, ELureMovementState::SwimSprint)->ClimbOutReach = 10.f;
+	TryClimbOut(*this, Short, 40.f, false, TEXT("reach 10: 40 cm edge 20 cm away"));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLureSwimLowestTopTest, "Project.Movement.Swim.ClimbOutLowestTopFromData", LureSwimTest::Flags)
+
+bool FLureSwimLowestTopTest::RunTest(const FString& Parameters)
+{
+	// A submerged shelf 40 cm below the water, too high to step onto from the floating feet (-100 cm): the shipped
+	// -20 cm rule calls it seabed; a table with ClimbOutLowestTop -60 lets Jump climb onto it.
+	UDataTable* Shipped = ShippedTable(*this);
+	FGCObjectScopeGuard KeepShipped(Shipped);
+	UDataTable* Deep = ShippedTable(*this);
+	FGCObjectScopeGuard KeepDeep(Deep);
+	if (!Shipped || !Deep)
+	{
+		return false;
+	}
+	EditRow(Deep, ELureMovementState::Swim)->ClimbOutLowestTop = -60.f;
+	EditRow(Deep, ELureMovementState::SwimSprint)->ClimbOutLowestTop = -60.f;
+	TryClimbOut(*this, Shipped, -40.f, false, TEXT("lowest -20: shelf at -40"));
+	TryClimbOut(*this, Deep, -40.f, true, TEXT("lowest -60: shelf at -40"));
+	TryClimbOut(*this, Deep, 30.f, true, TEXT("lowest -60: 30 cm edge still works"));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLureNoClimbRuleLandingTest, "Project.Movement.Climb.NoClimbRuleLandsOnSlopes", LureSwimTest::Flags)
+
+bool FLureNoClimbRuleLandingTest::RunTest(const FString& Parameters)
+{
+	// T-026 review D0: a land row with ClimbMaxHeight 0 (or the column missing) has no climb rule, so a landing that
+	// lifts the feet on a 30 deg slope (walking up out of the water, a jump onto a dune) is the engine's: accepted.
+	// With the shipped 100 cm rule the same contact is refused when it is far above the takeoff, and accepted near it.
+	struct FCase
+	{
+		const TCHAR* Label;
+		bool bNoRule;			// land rows without the climb columns
+		float TakeoffBelowFeet;	// cm
+		bool bExpectValid;
+	};
+	const FCase Cases[] = {
+		{ TEXT("no climb rule, takeoff 50 cm below"), true, 50.f, true },
+		{ TEXT("no climb rule, takeoff 300 cm below"), true, 300.f, true },
+		{ TEXT("rule 100, takeoff 50 cm below"), false, 50.f, true },
+		{ TEXT("rule 100, takeoff 300 cm below"), false, 300.f, false },
+	};
+	for (const FCase& Case : Cases)
+	{
+		UDataTable* Table = Case.bNoRule ? ShippedTableWithout(*this, { TEXT("ClimbMaxHeight"), TEXT("ClimbSpeed") }) : ShippedTable(*this);
+		FGCObjectScopeGuard KeepTable(Table);
+		FPool Pool;
+		if (!Table || !Pool.Create(*this, /*bSeabed*/ false))
+		{
+			return false;
+		}
+		const FLureMovementRow Stand = RowOf(Resolve(Table), ELureMovementState::Stand);
+		TestNearlyEqual(FString(Case.Label) + TEXT(": Stand.ClimbMaxHeight"), Stand.ClimbMaxHeight, Case.bNoRule ? 0.f : 100.f);
+
+		// A 30 deg slope well outside the water.
+		const FVector SlopeCenter(6000.f, 0.f, 0.f);
+		Pool.AddBox(SlopeCenter, FVector(600.f, 400.f, 50.f), FRotator(30.f, 0.f, 0.f));
+		ALurePlayerCharacter* Character = Pool.Spawn(SlopeCenter + FVector(0.f, 0.f, 400.f), Table);
+		if (!TestNotNull(TEXT("character spawns"), Character))
+		{
+			return false;
+		}
+		ULureCharacterMovementComponent* Movement = Character->GetLureMovement();
+		const UCapsuleComponent* Capsule = Character->GetCapsuleComponent();
+
+		// Where the capsule touches the slope coming straight down.
+		FHitResult Hit;
+		FCollisionQueryParams Params(SCENE_QUERY_STAT(LureNoClimbRuleLanding), false, Character);
+		const FVector Start = Capsule->GetComponentLocation();
+		const bool bHit = Pool.World->SweepSingleByChannel(Hit, Start, Start - FVector(0.f, 0.f, 1000.f), FQuat::Identity, ECC_Pawn,
+			FCollisionShape::MakeCapsule(Capsule->GetScaledCapsuleRadius(), Capsule->GetScaledCapsuleHalfHeight()), Params);
+		if (!TestTrue(FString(Case.Label) + TEXT(": the sweep hits the slope"), bHit && Hit.bBlockingHit && !Hit.bStartPenetrating))
+		{
+			return false;
+		}
+		const float Feet = static_cast<float>(Hit.Location.Z) - Capsule->GetScaledCapsuleHalfHeight();
+		const float Lift = static_cast<float>(Hit.ImpactPoint.Z) - Feet;
+		TestTrue(FString::Printf(TEXT("%s: the contact lifts the feet (%.1f cm)"), Case.Label, Lift), Lift > 3.f);
+
+		Movement->SetMovementMode(MOVE_Falling);
+		FLureMovementTestAccess::SetTakeoffFeetHeight(*Movement, Feet - Case.TakeoffBelowFeet);
+		TestEqual(FString::Printf(TEXT("%s: landing accepted"), Case.Label), Movement->IsValidLandingSpot(Hit.Location, Hit), Case.bExpectValid);
+	}
 	return true;
 }
 
