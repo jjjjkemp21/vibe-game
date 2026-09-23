@@ -6,6 +6,7 @@
 #include "Character/LureCharacterMovementComponent.h"
 #include "Character/LureCharacterSettings.h"
 #include "Character/LureInputSubsystem.h"
+#include "Interaction/LureInteractionComponent.h"
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -32,6 +33,8 @@ ALurePlayerCharacter::ALurePlayerCharacter(const FObjectInitializer& ObjectIniti
 {
 	bIsProne = false;
 	PrimaryActorTick.bCanEverTick = true;
+
+	Interaction = CreateDefaultSubobject<ULureInteractionComponent>(TEXT("Interaction")); // Interact key (T-010)
 
 	// Class-default capsule = the built-in Stand row; BeginPlay applies DT_Movement's Stand row.
 	const FLureMovementRow Stand = FLureMovementData::GetFallbackRow(ELureMovementState::Stand);
@@ -748,6 +751,10 @@ void ALurePlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInpu
 	{
 		UE_LOG(LogLureMovement, Warning, TEXT("%s: the input component is not an EnhancedInputComponent; controls are not bound."), *GetName());
 		return;
+	}
+	if (Interaction)
+	{
+		Interaction->BindInput(*Input); // Interact (T-010)
 	}
 
 	UInputAction* MoveAction = ULureInputSubsystem::GetInputActionByName(FLureInputActionNames::Move);

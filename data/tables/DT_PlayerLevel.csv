@@ -1,0 +1,11 @@
+Name,Level,XpToNext,DevComment
+L01,1,40,"PLACEHOLDER curve (T-010). XpToNext = XP from the start of this level to the next. A level-1 Common fish gives about 10 XP, a level-3 fish about 20 (UFishSettings RollTuning)."
+L02,2,70,
+L03,3,110,
+L04,4,160,"About 15-20 minutes of play reaches level 4-5 (slice pacing: boat unlock near the end)."
+L05,5,220,
+L06,6,290,
+L07,7,370,
+L08,8,460,
+L09,9,560,"Level 10 after about 1.5 hours in the beginner zone (GAME_DESIGN open question: 1-2 hours)."
+L10,10,0,"Max level for now: XpToNext must be 0 on the last level. XP keeps counting past the cap, so new rows level players up when they load."

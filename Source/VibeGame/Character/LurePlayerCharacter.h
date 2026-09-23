@@ -272,4 +272,16 @@ private:
 	bool bSprintToggledOn = false;
 
 	TWeakObjectPtr<APlayerController> MappedController;
+
+public:
+
+	/** The Interact key: sell points (T-010), later NPCs. */
+	UFUNCTION(BlueprintPure, Category="Lure|Character")
+	class ULureInteractionComponent* GetInteraction() const { return Interaction; }
+
+private:
+
+	/** Interact (T-010): finds the nearest interactable and asks the server to use it. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<class ULureInteractionComponent> Interaction;
 };

@@ -413,7 +413,8 @@ bool FQAMoveInputAllSixActionsResolveByName::RunTest(const FString& Parameters)
 		TestNotNull(FString::Printf(TEXT("%s resolves"), Name), ULureInputSubsystem::GetInputActionByName(Name));
 	}
 	const TArray<FName> Listed = ULureInputSubsystem::GetInputActionNames();
-	TestEqual(TEXT("GetInputActionNames lists 6 actions"), Listed.Num(), 6);
+	// T-006 (unreal-engineer): fishing adds Cast and Hook, so at least the 6 movement actions.
+	TestTrue(TEXT("GetInputActionNames lists at least the 6 movement actions"), Listed.Num() >= 6);
 	for (const TCHAR* Name : QAMovementInput::Names)
 	{
 		TestTrue(FString::Printf(TEXT("GetInputActionNames lists %s"), Name), Listed.Contains(FName(Name)));
