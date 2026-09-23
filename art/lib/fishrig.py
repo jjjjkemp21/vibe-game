@@ -7,12 +7,21 @@ anim_fish.py SPECIES; nothing here changes.
 
     root            (0,0,0) = the mesh pivot (body center on the spine line); never animated, no deform
     +- Spine_01     chest, pivot at joint J1 (s 0.33). THE ANCHOR: no clip ever yaws or pitches it (roll only)
-       +- Head      pivot J1: head yaw/pitch about the neck (head shakes, recoil)
-       |  +- Mouth           no deform: the species' nose tip (SOCKET_Mouth). Line / hook attach, frame = fish frame
-       |  +- Fin_Pectoral_L  pivot = the fin's root chord; flaps about PEC_HINGE_L (flare +, tuck -)
-       |  +- Fin_Pectoral_R  mirror
+       +- Head      pivot J1: head yaw/pitch about the neck (head shakes, recoil, the curl)
+       |  +- Mouth  no deform: the species' nose tip (was SOCKET_Mouth). Line / hook attach, frame = fish frame
+       +- Fin_Pectoral_L  pivot = the fin's root chord center; flaps about PEC_HINGE_L (flare +, tuck -)
+       +- Fin_Pectoral_R  mirror
        +- Grip      no deform: chest center on the spine line (s 0.42). Hand / display attach (steady in every clip)
        +- Spine_02  J2 (s 0.51) -> Spine_03 J3 (0.69) -> Spine_04 J4 (0.86) -> Tail J5 (1.0, tail root)
+
+WHY THE PECTORALS HANG FROM THE CHEST, NOT THE HEAD (measured 2026-09-23, RESULT_JSON metrics): the fin root sits
+~2 cm in front of the neck pivot J1 but the blade lies ~3 cm behind it, against flank that is 60-90 % chest-weighted.
+Under Head, every head yaw swept the fin's pivot sideways: in a 22 deg curl the concave-side blade cut up to 16 mm into
+the flank and the convex-side blade dropped 9 mm below the dock plane (Landed_Flop). No head-follow share fixes both,
+because a rigid blade can cancel the pivot's sweep at its middle or at its tip, not at both (a share of 0.4-0.6 still
+left 2-4 mm either way). Under Spine_01 the blade tracks the flank it lies on: worst penetration 0.3 mm, dock drop
+0.0 mm, and any head-follow share only made both worse (0.1: 1.0 mm / 2.1 mm). The cost is that the fin's root strip
+(root station to the 40 % station) shears when the head turns hard; RESULT_JSON pec_strip_strain_max reports it.
 
 s = fishkit body station (0 nose tip, 1 tail root; the tail fin tips are at s ~1.29). u = s / S_TIP_CANON is the
 position along the whole fish (0 nose tip, 1 tail tips); the motion model works in u.
@@ -31,17 +40,21 @@ SKIN (skin(): linear blend, max 3 influences, sums 1.0)
 Every vertex of the body, the median fins (dorsal, anal, caudal), the pelvic fins and the eyes is weighted by its X
 position alone (hat functions between the bone centers WEIGHT_CENTERS_S). Parts at the same X therefore move exactly
 like the body there: fins never separate from the body, whatever the bend. Pectoral fins: the root station keeps the
-body weights at the root; the blade ramps to its Fin_Pectoral bone (the root stays glued, the blade flaps).
+body weights at the root; the blade ramps to its Fin_Pectoral bone over PEC_BLADE_RAMP of the fin length (the root stays
+glued, the blade flaps). With fishkit's fin stations (root, 40 %, 75 %, tip) the first blade station already lies past
+the ramp, so the fin hinges on its root strip (max 2 influences); the ramp only matters for fins with denser stations.
 
 MOTION (Pose + clip functions below; everything is a function of the frame, nothing is hand-keyed)
 - wave:  a traveling wave y(u, t) = A E(u) sin(2 pi (c - u / lambda)) of the midline (lateral displacement in fish
          lengths, E = carangiform envelope, narrow at the chest, widest at the tail). Converted to bone yaws from the
-         chords between the joints, then turned so the chest stays still. Same wave as the ambient WPO swim material
-         (SK_Fish.anim.md "Ambient swim"), so a static fish and a skinned fish look alike.
-- curl:  a C-bend of strength k (k = 1: head +22 deg, tail tip about -64 deg; k > 0 = concave to the fish's LEFT).
+         chords between the joints, then turned so the chest stays still. The ambient WPO swim material uses the same
+         wave with the same chest-still correction (wpo_lateral(); SK_Fish.anim.md "Ambient swim"), so a static fish
+         and a skinned fish look alike.
+- curl:  a C-bend of strength k (k = 1: head +30 deg, tail tip -64 deg; k > 0 = concave to the fish's LEFT).
 - head:  direct head yaw / pitch (shakes, dive tilt); body reacts to head shakes with a short lag.
 - roll:  whole-fish roll about the spine line (on Spine_01).
-- pecs:  pectoral flap angles (deg): + flare out, - tuck flat (TUCK_DEG = flat against the flank).
+- pecs:  pectoral flap angles (deg): + flare out, - tuck (TUCK_DEG = the blade touches the flank; never go past it).
+         Every pose adds PEC_TURN_FLARE x the head yaw to the fin on the inside of the turn (clearance).
 Choreographed channels (curl strength, head shake envelope, roll) are Keys: monotone cubic splines, periodic over the
 loop, flat at extremes and holds (like Blender's auto-clamped handles), so a keyed hold never drifts and a curl that
 is keyed >= 0 never dips below 0 (Landed_Flop stays dock-safe).
@@ -76,8 +89,8 @@ BONES = (  # name, parent, deform
     ("Spine_01", "root", True),
     ("Head", "Spine_01", True),
     ("Mouth", "Head", False),
-    ("Fin_Pectoral_L", "Head", True),
-    ("Fin_Pectoral_R", "Head", True),
+    ("Fin_Pectoral_L", "Spine_01", True),
+    ("Fin_Pectoral_R", "Spine_01", True),
     ("Grip", "Spine_01", False),
     ("Spine_02", "Spine_01", True),
     ("Spine_03", "Spine_02", True),
@@ -92,7 +105,7 @@ WEIGHT_CENTERS_S = (("Head", 0.27), ("Spine_01", 0.42), ("Spine_02", 0.60), ("Sp
                     ("Spine_04", 0.93), ("Tail", 1.04))
 # Pectoral hinge (left fin; the right one is mirrored): the root chord direction, measured on both slice species
 # (bonefish (-0.346,-0.340,-0.874), snapper (-0.297,-0.342,-0.892), 2.9 deg apart). A shared clip rotates every
-# species' fin about this one axis; check_pectoral() warns if a species' chord is more than PEC_HINGE_TOL_DEG off.
+# species' fin about this one axis; rig_species() warns if a species' chord is more than PEC_HINGE_TOL_DEG off.
 PEC_HINGE_L = Vector((-0.3218, -0.3411, -0.8832)).normalized()
 PEC_HINGE_TOL_DEG = 10.0
 PEC_BLADE_RAMP = 0.35        # share of the fin length over which the blade blends from body weights to the fin bone
@@ -101,6 +114,23 @@ BONE_DISPLAY_M = 0.02        # bone tails point +Y (identity frame); length is d
 
 def mirror_y(v):
     return Vector((v[0], -v[1], v[2]))
+
+
+# fishkit's part groups (Body, Fin_Pectoral_L, ...) are renamed Part_<name> before skinning: Fin_Pectoral_L/R are also
+# bone names, and the FBX exporter writes every vertex group named like a bone as skin weights (a part group of weight
+# 1.0 would pin the fin root to the fin bone). The Part_ groups stay on the mesh for the checks; the exporter skips
+# them (the re-import check lists exactly the 8 deform groups).
+PART_PREFIX = "Part_"
+
+
+def part(name):
+    return PART_PREFIX + name
+
+
+def rename_part_groups(mesh_obj):
+    for g in mesh_obj.vertex_groups:
+        if not g.name.startswith(PART_PREFIX):
+            g.name = PART_PREFIX + g.name
 
 
 class SpeciesGeo:
@@ -122,7 +152,8 @@ class SpeciesGeo:
             if abs(self.s_of_x(x) - s) > 0.002:
                 raise ValueError("%s: joint at x=%.4f is s=%.4f, expected %.2f (fishkit JOINTS_S changed?)"
                                  % (species, x, self.s_of_x(x), s))
-        sock = next((c for c in mesh_obj.children if c.name == pb.SOCKET_PREFIX + "Mouth"), None)
+        # (a second fish in the scene gets SOCKET_Mouth.001: match the base name)
+        sock = next((c for c in mesh_obj.children if c.name.split(".")[0] == pb.SOCKET_PREFIX + "Mouth"), None)
         if sock is None:
             raise ValueError("%s: no SOCKET_Mouth on the mesh" % species)
         self.mouth = Vector(sock.location)
@@ -149,7 +180,7 @@ def find_pectoral(obj, side):
     stations in order, root ring first and the tip pole last, so the island's lowest 4 vertex indices are the root
     station and the highest is the tip. Checked geometrically (the tip is the farthest vertex from the root; the root
     sits on the body within 6 mm), because a swept-back fin's second station also lies close to the flank."""
-    idx = sorted(group_members(obj, "Fin_Pectoral_" + side))
+    idx = sorted(group_members(obj, part("Fin_Pectoral_" + side)))
     me = obj.data
     root, tip_i = idx[:4], idx[-1]
     pts = [me.vertices[i].co.copy() for i in root]
@@ -270,6 +301,7 @@ def weight_stats(mesh_obj):
 
 def rig_species(mesh_obj, info, species, arm_name):
     """Build + skin one species. Returns (armature, SpeciesGeo, weight stats)."""
+    rename_part_groups(mesh_obj)
     geo = SpeciesGeo(mesh_obj, info, species)
     arm = build_armature(geo, arm_name, "SKEL_Fish_" + species)
     stats = skin(mesh_obj, arm, geo)
@@ -329,15 +361,25 @@ def mirror_keys(keys, offset, sign=-1.0):
 # neck (U_PIVOT), a little head recoil, growing toward the tail.
 ENV_HEAD, ENV_MIN, U_PIVOT, ENV_POW = 0.25, 0.05, 0.28, 1.8
 WAVE_LAMBDA = 0.95           # wavelength in fish lengths (u units)
-# C-bend distribution: local yaw (deg) per bone at curl strength k = 1 (concave to the fish's left)
-CURL_DEG = {"Head": 22.0, "Spine_02": -8.0, "Spine_03": -15.0, "Spine_04": -19.0, "Tail": -22.0}
+# C-bend distribution: local yaw (deg) per bone at curl strength k = 1 (concave to the fish's left). The chest can't
+# bend (it is the anchor), so the head takes a large share: with 22 deg the curl read as a "J" (tail only) in the
+# previews; 30 deg gives a C (dart) and a head-and-tail lift (flop). Tail tip total: -64 deg.
+CURL_DEG = {"Head": 30.0, "Spine_02": -10.0, "Spine_03": -15.0, "Spine_04": -18.0, "Tail": -21.0}
 # tail flick at k = 1 (tail toward the fish's left)
 FLICK_DEG = {"Spine_04": -8.0, "Tail": -26.0}
 # body reaction to a head shake (share of the head yaw, applied HEAD_REACT_LAG frames later, opposite sense)
 HEAD_REACT = {"Spine_02": -0.10, "Spine_03": -0.22, "Spine_04": -0.30, "Tail": -0.40}
 HEAD_REACT_LAG = 2.0
-# pectoral tuck: flap angle (deg) that lays the fin flat on the flank (measured: tuck_scan() in the RESULT_JSON)
-TUCK_DEG = -32.0
+# Pectoral tuck: the flap angle (deg) that lays the fin against the flank. Measured by tuck_scan() on both species
+# (RESULT_JSON tuck_scan): the blade touches the flank at -22 deg (0.0 mm), -24 cuts in 0.6-0.8 mm and the old guess
+# -32 cut in 3.6-4.7 mm. A flat plate hinged on a convex flank can only reach tangency, so the tip still stands 12 mm
+# (Bonefish) / 17 mm (CoralSnapper) off the flank; from 31 / 41 mm as modeled.
+TUCK_DEG = -22.0
+# Inside-of-turn clearance (applied to every pose in Pose.quats()): the pectoral on the concave side of a head yaw
+# opens by PEC_TURN_FLARE x the yaw (deg per deg), as a fish's inside pectoral brakes in a turn. Without it a tucked
+# fin touched the flank by 1.4 mm at a 30 deg head curl (Fight_Dart f22). Only the concave-side fin moves, so the
+# down-side fin of Landed_Flop (convex side, the fish's right) is unchanged and the dock lie stays exact.
+PEC_TURN_FLARE = 0.25
 
 
 def envelope(u):
@@ -354,6 +396,18 @@ SEGMENTS = {"Head": (0, 1), "Spine_01": (1, 2), "Spine_02": (2, 3), "Spine_03": 
 def midline_wave(amp, cycles, lam=WAVE_LAMBDA):
     """Lateral displacement (fish lengths) at WAVE_U for a wave with nose phase `cycles` (in cycles)."""
     return [amp * envelope(u) * math.sin(2.0 * math.pi * (cycles - u / lam)) for u in WAVE_U]
+
+
+def wpo_lateral(u, cycles, amp, lam=WAVE_LAMBDA):
+    """The ambient swim of the static SM_ fish (material MF_FishSwim, SK_Fish.anim.md "Ambient swim"): lateral offset
+    in fish lengths at u for the nose phase `cycles`. It is the swim wave minus the straight line through its values at
+    the chest joints J1 and J2, so the chest stays still (in place and in heading) exactly as in the skinned clips,
+    whose bone chain is turned so the chest chord is straight. Without that line the static fish swept its tail about
+    35% less than Swim_Idle at the same amplitude (strobe preview)."""
+    def w(x):
+        return amp * envelope(x) * math.sin(2.0 * math.pi * (cycles - x / lam))
+    u1, u2 = U_JOINTS[0], U_JOINTS[1]
+    return w(u) - (w(u1) + (w(u2) - w(u1)) * (u - u1) / (u2 - u1))
 
 
 def chain_yaws_from_midline(ys):
@@ -419,8 +473,11 @@ class Pose:
         for b in CHAIN:
             q[b] = (Quaternion((0.0, 0.0, 1.0), self.yaw[b]) @ Quaternion((0.0, 1.0, 0.0), self.pitch[b]))
         q["Spine_01"] = q["Spine_01"] @ Quaternion((1.0, 0.0, 0.0), self.roll)
-        q["Fin_Pectoral_L"] = Quaternion(PEC_HINGE_L, self.pec["L"] * DEG)
-        q["Fin_Pectoral_R"] = Quaternion(mirror_y(PEC_HINGE_L), -self.pec["R"] * DEG)
+        yaw_h = math.degrees(self.yaw["Head"])            # + = nose left: the fish's left side is the concave one
+        pec_l = self.pec["L"] + PEC_TURN_FLARE * max(0.0, yaw_h)
+        pec_r = self.pec["R"] + PEC_TURN_FLARE * max(0.0, -yaw_h)
+        q["Fin_Pectoral_L"] = Quaternion(PEC_HINGE_L, pec_l * DEG)
+        q["Fin_Pectoral_R"] = Quaternion(mirror_y(PEC_HINGE_L), -pec_r * DEG)
         return q
 
 
@@ -451,7 +508,8 @@ def _burst(f, start, length):
     return math.sin(math.pi * t) ** 2 if 0.0 <= t <= 1.0 else 0.0
 
 
-# --- Swim_Idle: slow cruise / hover. 2 tail cycles in 2 s (1 Hz); pectorals scull 2 Hz, alternating.
+# --- Swim_Idle: slow cruise / hover (T-007 move Rest, the tired fish). 2 tail cycles in 2 s (1 Hz); pectorals scull
+# 2 Hz, alternating.
 IDLE_N, IDLE_CYC, IDLE_AMP = 60, 2, 0.080
 
 
@@ -505,17 +563,20 @@ def fight_dive(f):
 DART_N = 36
 _DART_KEYS = [(0, 0.0), (4, 1.0), (8, -0.55), (11, 0.28), (14, -0.10), (18, 0.0)]
 DART_CURL = Keys(_DART_KEYS[:-1] + mirror_keys(_DART_KEYS[:-1], 18), DART_N)
+# pectorals (both fins): flared as a brake while it coils, slapped flat for the power stroke (2 frames), held flat
+# through the beats, eased back out in the glide. Keyed (periodic, monotone) so there is no one-frame pop.
+_DART_PEC = [(0, 12.0), (2, 18.0), (4, TUCK_DEG), (10, TUCK_DEG), (15, 10.0)]
+DART_PEC = Keys(_DART_PEC + [(f + 18, v) for f, v in _DART_PEC], DART_N)
 
 
 def fight_dart(f):
     k = DART_CURL(f)
     p = Pose().curl(k)
-    ph = f % 18.0
-    pec = TUCK_DEG if 3.0 <= ph <= 11.0 else (18.0 if ph < 3.0 else 10.0)
+    pec = DART_PEC(f)
     return p.pecs(pec, pec)
 
 
-# --- Hooked_Thrash (T-007 moves Rest / Sulk, the hook set, the last metres): head shakes (5 Hz bursts) with the body
+# --- Hooked_Thrash (the hook set, T-007 move Sulk, the last metres): head shakes (5 Hz bursts) with the body
 # answering, then coil - snap - rebound; mirrored second phrase. Pectorals flared and fluttering, body twisting.
 THRASH_N = 90
 _THRASH_CURL = [(0, 0.0), (16, 0.0), (22, 0.85), (26, -0.65), (30, 0.30), (34, -0.10), (40, 0.0)]
@@ -562,11 +623,11 @@ def rest_pose_fn(_f):
 
 CLIPS = [
     ClipDef("A_Fish_Swim_Idle", IDLE_N, swim_idle, "SwimIdle", cycle_hz=IDLE_CYC * FPS / IDLE_N,
-            notes="slow cruise / hover; also the tired fish (slow play rate + roll)"),
+            notes="slow cruise / hover; fight move Rest (calm = reel now); the tired fish (slow rate + actor roll)"),
     ClipDef("A_Fish_Swim_Fast", FAST_N, swim_fast, "SwimFast", cycle_hz=FAST_CYC * FPS / FAST_N,
             notes="fast swim; fight moves Swim and Charge"),
     ClipDef("A_Fish_Hooked_Thrash", THRASH_N, hooked_thrash, "Thrash",
-            notes="head shakes + coil/snap; hook set, fight moves Rest and Sulk, the last metres"),
+            notes="head shakes + coil/snap; the hook set, fight move Sulk, the last metres"),
     ClipDef("A_Fish_Fight_Run", RUN_N, fight_run, "Run", cycle_hz=RUN_CYC * FPS / RUN_N, notes="fight move Run"),
     ClipDef("A_Fish_Fight_Dive", DIVE_N, fight_dive, "Dive", cycle_hz=DIVE_CYC * FPS / DIVE_N,
             notes="fight move Dive"),
@@ -577,7 +638,9 @@ REST_CLIP = ClipDef("A_Fish_Rest", 1, rest_pose_fn, "Rest", notes="1-frame strai
 
 
 def personality(quats, amplitude):
-    """What Unreal's Apply Additive does with alpha = amplitude: every local rotation scaled from the identity."""
+    """What Unreal's Apply Additive does with alpha = amplitude: every local rotation scaled from the identity (Unreal
+    blends from the identity with a normalized lerp; this slerp differs by < 0.2 deg for these angles).
+    Previews only."""
     if amplitude >= 0.9999:
         return quats
     return {n: Quaternion().slerp(q, amplitude) for n, q in quats.items()}
@@ -656,12 +719,13 @@ class DeformProbe:
     - fold_min: smallest (deformed / rest) length, along the local body axis, of any longitudinal body edge between
       two neighbouring rings (the concave side of a bend compresses; <= 0 = the surface folds over itself)
     - pec_in_mm: deepest pectoral blade vertex inside the body surface
+    - pec_tip_mm: the pectoral tips' largest distance outside the body surface (how far a fin stands off the flank)
     - min_y: lowest Y of the whole mesh (fish-local; Landed_Flop dock check with the fish lying on its right side)"""
 
     def __init__(self, mesh_obj):
         self.obj = mesh_obj
         me = mesh_obj.data
-        body = set(group_members(mesh_obj, "Body"))
+        body = set(group_members(mesh_obj, part("Body")))
         by_x = {}
         for i in body:
             by_x.setdefault(round(me.vertices[i].co.x, 4), []).append(i)
@@ -680,7 +744,13 @@ class DeformProbe:
         bm.from_mesh(me)
         self.body_polys = [[v.index for v in f.verts] for f in bm.faces if all(v.index in body for v in f.verts)]
         bm.free()
-        self.pec_blade = group_members(mesh_obj, "Fin_Pectoral_L")[4:] + group_members(mesh_obj, "Fin_Pectoral_R")[4:]
+        # blade = every pectoral vertex but the root station (the 4 lowest indices, see find_pectoral); tip = the last
+        pl, pr = (sorted(group_members(mesh_obj, part("Fin_Pectoral_" + s))) for s in ("L", "R"))
+        self.pec_blade = pl[4:] + pr[4:]
+        self.pec_tips = {pl[-1], pr[-1]}
+        # the root strip: fin_loft joins station 0 (root) vertex k to station 1 vertex k
+        self.pec_strip = [(p[k], p[4 + k]) for p in (pl, pr) for k in range(4)]
+        self.pec_strip_len0 = [(self.rest[a] - self.rest[b]).length for a, b in self.pec_strip]
 
     @staticmethod
     def _area(pts):
@@ -697,6 +767,21 @@ class DeformProbe:
         ev.to_mesh_clear()
         return co
 
+    def pec_clearance(self, co):
+        """(deepest pectoral blade vertex inside the body, largest pectoral tip distance outside it), mm. Signed by the
+        nearest body face's outward normal (fishkit recalculates normals outward)."""
+        bvh = BVHTree.FromPolygons(co, self.body_polys)
+        pen, tip = 0.0, -1e9
+        for i in self.pec_blade:
+            loc, nrm, _fi, _d = bvh.find_nearest(co[i])
+            if loc is None:
+                continue
+            d = (co[i] - loc).dot(nrm)
+            pen = max(pen, -d)
+            if i in self.pec_tips:
+                tip = max(tip, d)
+        return pen * 1000.0, tip * 1000.0
+
     def measure(self, co=None):
         co = co or self.coords()
         area = min(self._area([co[i] for i in r]) / a0 for r, a0 in zip(self.rings, self.rest_area))
@@ -709,25 +794,21 @@ class DeformProbe:
             axis.normalize()
             for (a, b), dx0 in zip(zip(r0, r1), self.rest_dx[k]):
                 fold = min(fold, (co[a] - co[b]).dot(axis) / dx0)
-        bvh = BVHTree.FromPolygons(co, self.body_polys)
-        pen = 0.0
-        for i in self.pec_blade:
-            hit = bvh.find_nearest(co[i])
-            if hit[0] is not None:
-                pen = max(pen, -(co[i] - hit[0]).dot(hit[1]))
-        return {"ring_area_min": area, "fold_min": fold, "pec_in_mm": pen * 1000.0,
-                "min_y": min(c.y for c in co)}
+        pen, tip = self.pec_clearance(co)
+        strain = max(abs((co[a] - co[b]).length / l0 - 1.0) for (a, b), l0 in zip(self.pec_strip, self.pec_strip_len0))
+        return {"ring_area_min": area, "fold_min": fold, "pec_in_mm": pen, "pec_tip_mm": tip,
+                "pec_strip_strain": strain, "min_y": min(c.y for c in co)}
 
 
-def tuck_scan(arm, probe, angles=range(0, -61, -4)):
-    """Pectoral flap sweep in the rest body: the deepest blade penetration and the widest |y| of the fish per angle."""
+def tuck_scan(arm, probe, angles=range(0, -61, -2)):
+    """Pectoral flap sweep on the straight body (both fins at the same angle): [(angle, blade penetration mm, tip
+    standoff mm)]. The tuck is the most-tucked angle whose penetration stays under the fin's half-thickness."""
     out = []
     for a in angles:
-        p = Pose().pecs(a, a)
-        apply_quats(arm, p.quats())
+        apply_quats(arm, Pose().pecs(a, a).quats())
         bpy.context.view_layer.update()
-        m = probe.measure()
-        co = probe.coords()
-        out.append((a, round(m["pec_in_mm"], 2), round(max(abs(c.y) for c in co), 4)))
+        pen, tip = probe.pec_clearance(probe.coords())
+        out.append((a, round(pen, 2), round(tip, 2)))
     rest(arm)
+    bpy.context.view_layer.update()
     return out
