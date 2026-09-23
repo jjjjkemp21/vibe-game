@@ -16,6 +16,7 @@
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
 #include "EnhancedInputComponent.h"
+#include "Fish/FishRoll.h"
 #include "Fish/FishSettings.h"
 #include "Fishing/FishingSpots.h"
 #include "Fishing/LureFishingLineComponent.h"
@@ -550,7 +551,8 @@ bool ULureFishingComponent::AuthorityCast(float Charge01, float AimYawDegrees)
 	const ULureFishingSettings* Settings = GetDefault<ULureFishingSettings>();
 	const FLureFishingRow& Row = GetProfile();
 	const float CastCharge = FMath::IsFinite(Charge01) ? FMath::Clamp(Charge01, 0.f, 1.f) : 0.f;
-	const float Yaw = FMath::IsFinite(AimYawDegrees) ? AimYawDegrees : static_cast<float>(Owner->GetActorRotation().Yaw);
+	// A client sends any float: non-finite falls back to the actor's facing; huge finite values are wrapped to (-180, 180].
+	const float Yaw = FRotator::NormalizeAxis(FMath::IsFinite(AimYawDegrees) ? AimYawDegrees : static_cast<float>(Owner->GetActorRotation().Yaw));
 	const FRotator Aim(0.f, Yaw, 0.f);
 
 	// The line leaves about at the rod tip (kept out of walls right in front of the player).
@@ -633,8 +635,8 @@ void ULureFishingComponent::AuthorityHook()
 		case ELureEarlyHookRule::Spook:
 		{
 			const double Delay = FMath::Max(0.f, Row.SpookDelay);
-			NextBiteTime = FMath::Max(NextBiteTime, Now + Delay);
-			// Nibbles still to come move with the bite.
+			// The scheduled bite moves back by SpookDelay from when it was due; nibbles still to come move with it.
+			NextBiteTime += Delay;
 			for (int32 Index = NextNibbleIndex; Index < NibbleSchedule.Num(); ++Index)
 			{
 				NibbleSchedule[Index] += Delay;
@@ -737,12 +739,31 @@ void ULureFishingComponent::LandBobber(double Now)
 	FLureFishingNetState New = NetState;
 	New.State = ELureFishingState::Waiting;
 	New.StateStartTime = Now;
-	const bool bCanBite = New.bOnWater && FLureFishingRules::CanHaveBites(bHasSpot ? &CurrentSpot : nullptr, MakeEnvironment());
-	New.bNoFishHere = New.bOnWater && !bCanBite;
+	const FLureFishingEnvironment Environment = MakeEnvironment();
+	const bool bCanBite = New.bOnWater && FLureFishingRules::CanHaveBites(bHasSpot ? &CurrentSpot : nullptr, Environment);
+	// A spot where no species fits right now (spot, time, weather, bait) acts like no spot: no nibbles (they are the tells of a
+	// coming bite), and the nothing-here flag is set now so the hint shows at NoBiteHintDelay. The species check is seed-independent.
+	bool bFits = false;
+	if (bCanBite && EnsureFishTables())
+	{
+		const FFishRollContext Check = FLureFishingRules::MakeRollContext(bHasSpot ? &CurrentSpot : nullptr, Environment, 0);
+		FName SpeciesId;
+		bFits = FFishRoll::PickSpecies(Tables, Check, SpeciesId);
+		if (!bFits)
+		{
+			LastRollContext = Check; // what was checked, for debugging and tests (a fitting spot records the real roll at the bite)
+		}
+	}
+	New.bNoFishHere = New.bOnWater && !bFits;
 	SetNetState(New);
-	if (bCanBite)
+	if (bFits)
 	{
 		ScheduleBite(Now, /*bAfterMiss*/ false);
+	}
+	else if (bCanBite)
+	{
+		// Look again every BiteWaitMax seconds (the time of day moves on); TryBite bites then if something fits.
+		NextBiteTime = Now + FMath::Max(1.f, GetProfile().BiteWaitMax);
 	}
 }
 
