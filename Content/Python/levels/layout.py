@@ -38,6 +38,7 @@ MARKER_TYPES = (
     "player_start", "fishing_spot", "patrol", "sight_cone", "zone", "npc", "teleport", "boat_mooring",
     "cover_test", "clearance_test", "landmark", "label",
 )
+LIGHT_TYPES = ("directional", "sky_atmosphere", "sky_light", "height_fog", "point", "post_process")
 ZONE_TYPES = ("threat", "hazard", "crawl_gap", "quiet", "trigger", "area")
 STANCES = ("stand", "crouch", "prone")
 
@@ -134,6 +135,113 @@ def metrics(layout):
 
 def eye_height(layout, stance):
     return metrics(layout)["eye_" + stance]
+
+
+# ---------------------------------------------------------------------------------------------------------------------
+# Time of day, exposure and the engine's tonemapper (so palette hex values can be on-screen targets, ART_STYLE)
+# ---------------------------------------------------------------------------------------------------------------------
+def time_of_day(layout, preset_id=None):
+    """The active time-of-day preset (layout["time_of_day"] names one of layout["time_of_day_presets"]), or {}.
+    A preset holds: exposure_ev100 (fixed manual exposure: scene luminance 2^EV100 cd/m2 maps to 1.0 before the
+    tonemapper, i.e. exposure scale = 2^-EV100), fog {density, height_falloff, color, start_distance, max_opacity,
+    sky_ambient}, sky {luminance_factor, mie_scattering_scale, multi_scattering}, sky_light {intensity}."""
+    presets = layout.get("time_of_day_presets") or {}
+    pid = preset_id or layout.get("time_of_day")
+    return dict(presets.get(pid) or {}, id=pid) if pid in presets else {}
+
+
+def exposure_scale(preset):
+    """Multiplier from scene luminance to the tonemapper input under a fixed exposure (1.0 when none is set)."""
+    if not preset or preset.get("exposure_ev100") is None:
+        return 1.0
+    return 2.0 ** (-float(preset["exposure_ev100"]) + float(preset.get("exposure_bias", 0.0)))
+
+
+def srgb_to_linear(c):
+    return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+
+
+def linear_to_srgb(c):
+    c = min(1.0, max(0.0, c))
+    return c * 12.92 if c <= 0.0031308 else 1.055 * c ** (1.0 / 2.4) - 0.055
+
+
+def hex_to_linear(hex_str):
+    h = hex_str.lstrip("#")
+    return tuple(srgb_to_linear(int(h[i:i + 2], 16) / 255.0) for i in (0, 2, 4))
+
+
+# Unreal's default filmic tonemapper (Engine/Shaders/Private/TonemapCommon.ush FilmToneMap, default post-process
+# values slope 0.88, toe 0.55, shoulder 0.26, black clip 0, white clip 0.04). Applied per channel; the engine also
+# converts to ACEScg and desaturates slightly, which this ignores (a few % off on saturated colors).
+FILM = {"slope": 0.88, "toe": 0.55, "shoulder": 0.26, "black_clip": 0.0, "white_clip": 0.04}
+
+
+def _film_constants(f=FILM):
+    s, t, sh, b, w = f["slope"], f["toe"], f["shoulder"], f["black_clip"], f["white_clip"]
+    toe_scale = 1.0 + b - t
+    shoulder_scale = 1.0 + w - sh
+    bt = (0.18 + b) / toe_scale - 1.0
+    toe_match = math.log10(0.18) - 0.5 * math.log((1.0 + bt) / (1.0 - bt)) * (toe_scale / s)
+    straight_match = (1.0 - t) / s - toe_match
+    shoulder_match = sh / s - straight_match
+    return s, b, w, toe_scale, shoulder_scale, toe_match, straight_match, shoulder_match
+
+
+def ue_filmic(x, f=FILM):
+    """Tonemapper input (exposed scene-linear) -> display-linear output, one channel."""
+    s, b, w, ts, ss, tm, stm, shm = _film_constants(f)
+    lg = math.log10(max(float(x), 1e-7))
+    straight = s * (lg + stm)
+    toe = -b + (2.0 * ts) / (1.0 + math.exp((-2.0 * s / ts) * (lg - tm))) if lg < tm else straight
+    shoulder = (1.0 + w) - (2.0 * ss) / (1.0 + math.exp((2.0 * s / ss) * (lg - shm))) if lg > shm else straight
+    t = min(1.0, max(0.0, (lg - tm) / (shm - tm)))
+    if shm < tm:
+        t = 1.0 - t
+    t = (3.0 - 2.0 * t) * t * t
+    return max(0.0, toe + (shoulder - toe) * t)
+
+
+def ue_filmic_inverse(y, f=FILM):
+    """Display-linear -> the exposed scene-linear value the tonemapper maps to it (bisection; y clamped below 1)."""
+    y = min(max(float(y), 0.0), 0.995)
+    if y <= 0.0:
+        return 0.0
+    lo, hi = 1e-6, 1e3
+    for _ in range(100):
+        mid = math.sqrt(lo * hi)
+        if ue_filmic(mid, f) < y:
+            lo = mid
+        else:
+            hi = mid
+    return math.sqrt(lo * hi)
+
+
+def fog_transmittance(fog, cam_z, ray_length, ray_dz, fog_height=0.0):
+    """Unreal ExponentialHeightFog transmittance along one ray (HeightFogCommon.ush): density and height falloff are
+    the component values (the renderer divides both by 1000, per cm, base-2 exponent); the first start_distance cm
+    are fog-free. ray_length = distance to the surface (cm), ray_dz = its height change (cm). 1 = no fog."""
+    dens = float(fog.get("density", 0.0)) / 1000.0
+    fall = float(fog.get("height_falloff", 0.2)) / 1000.0
+    start = float(fog.get("start_distance", 0.0))
+    if dens <= 0.0 or ray_length <= start:
+        return 1.0
+    t0 = start / ray_length
+    origin_z = cam_z + t0 * ray_dz
+    length = (1.0 - t0) * ray_length
+    dz = (1.0 - t0) * ray_dz
+    origin = dens * 2.0 ** (-fall * (origin_z - fog_height))
+    eff = fall * dz
+    eff = eff if abs(eff) > 1e-7 else 0.001
+    integral = origin * (1.0 - 2.0 ** (-eff)) / eff * length
+    return max(1.0 - float(fog.get("max_opacity", 1.0)), min(1.0, 2.0 ** (-integral)))
+
+
+def on_screen_to_scene(hex_str, preset):
+    """Scene luminance (linear RGB) that shows as `hex_str` on screen under the preset's fixed exposure: used for
+    emissive-like colors such as the height fog's inscattering, whose palette hex is an on-screen target."""
+    k = exposure_scale(preset)
+    return tuple(ue_filmic_inverse(c) / k for c in hex_to_linear(hex_str))
 
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -463,6 +571,36 @@ def resolve_rel(layout):
     return blocks, markers
 
 
+LABELLED_TYPES = ("fishing_spot", "npc", "landmark", "zone", "sight_cone", "boat_mooring", "player_start", "teleport")
+
+
+def labels(layout, markers, size=None, yaw=180.0):
+    """Every in-level text label the builder spawns (TextRenderActors), in one place so the preview draws the same:
+    "label" markers, plus the name of each named marker of LABELLED_TYPES unless it says "label": false (placed at
+    its "label_at" or "at", lifted by the layout's "label_lift"; facing its "label_yaw" or `yaw`).
+    Returns [{"id", "text", "at", "size", "yaw"}]; `size` defaults to the layout's "label_size"."""
+    size = float(size or layout.get("label_size", 120.0))
+    lift = float(layout.get("label_lift", 300.0))
+    out = []
+    for mk in markers:
+        t = mk["type"]
+        if t == "label":
+            out.append({"id": mk["id"], "text": mk["text"], "at": v3(mk["at"]), "size": float(mk.get("size", size)),
+                        "yaw": float(mk.get("yaw", yaw))})
+            continue
+        name = mk.get("name")
+        if not name or not mk.get("label", True) or t not in LABELLED_TYPES:
+            continue
+        text = name
+        if t == "fishing_spot":
+            text = "%s\n%s  L%s  %s" % (name, mk["habitat"], "-".join(str(x) for x in mk.get("level_band", [])),
+                                        mk.get("time_label", ""))
+        at = v3(mk.get("label_at", mk["at"]))
+        out.append({"id": mk["id"] + "/label", "text": text, "at": (at[0], at[1], at[2] + lift), "size": size,
+                    "yaw": float(mk.get("label_yaw", yaw))})
+    return out
+
+
 def expand(layout):
     """Everything the builder spawns, flattened:
     {"prims": [...], "lights": [...], "markers": [...], "labels": [...]}
@@ -622,6 +760,16 @@ def validate(layout, expanded=None):
     for v in layout.get("views", []):
         if v.get("stance") and v["stance"] not in STANCES:
             problems.append("ERROR view %s: stance must be one of %s" % (v["id"], STANCES))
+    if layout.get("time_of_day") and not time_of_day(layout):
+        problems.append("ERROR time_of_day %r is not in time_of_day_presets" % layout["time_of_day"])
+    for light in expanded["lights"]:
+        if light.get("type") not in LIGHT_TYPES:
+            problems.append("ERROR light %s: type must be one of %s" % (light.get("id"), LIGHT_TYPES))
+        if light.get("type") == "height_fog" and light.get("preset") \
+                and light["preset"] not in (layout.get("fog_presets") or {}):
+            problems.append("ERROR light %s: fog preset %r is not in fog_presets" % (light["id"], light["preset"]))
+        if light.get("type") == "point" and light.get("falloff", "inverse_square") not in ("inverse_square", "soft"):
+            problems.append("ERROR light %s: falloff must be inverse_square or soft" % light["id"])
     try:
         for leg in route_table(layout):
             pass
@@ -640,6 +788,11 @@ def summary(layout):
     probs = validate(layout, ex)
     lines.append("validation: %s" % ("OK" if not probs else "%d problem(s)" % len(probs)))
     lines.extend("  " + p for p in probs)
+    tod = time_of_day(layout)
+    if tod:
+        fog = tod.get("fog") or {}
+        lines.append("time of day: %s, exposure EV100 %s (scale %.3f), fog density %s from %s cm" % (
+            tod["id"], tod.get("exposure_ev100"), exposure_scale(tod), fog.get("density"), fog.get("start_distance")))
     spots = [mk for mk in ex["markers"] if mk["type"] == "fishing_spot"]
     if spots:
         lines.append("fishing spots:")

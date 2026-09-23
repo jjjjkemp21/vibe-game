@@ -16,7 +16,11 @@ What gets spawned (all tagged "LureLayout", "LureLayout=<id>", "LureId=<element 
 - primitives -> StaticMeshActor with /Engine/BasicShapes/* scaled from the mesh's real bounds, MI_Lvl_<mat id>
 - props      -> StaticMeshActor with our mesh (pivot bottom center); a basic-shape stand-in if the asset is missing
 - lights     -> DirectionalLight (atmosphere sun), SkyAtmosphere, SkyLight (real-time capture), ExponentialHeightFog,
-                PointLights (movable, no shadows); fog values from the layout's fog_presets
+                PointLights (movable, no shadows; "falloff": "soft" = no inverse-square hotspot) and an unbound
+                PostProcessVolume ("post_process") with the fixed exposure. Exposure, fog, sky and sky-light values come
+                from the layout's active time-of-day preset ("time_of_day" -> "time_of_day_presets"; see
+                levels.layout.time_of_day). Fog colors are on-screen targets: converted through the fixed exposure and
+                the engine's filmic tonemapper (levels.layout.on_screen_to_scene).
 - markers    -> PlayerStart (player_start, PlayerStartTag), TriggerBox (zone, extent = size / 2) or TargetPoint
                 (everything else). Marker data is written as actor tags "Key=Value" (see marker_tags()). A layout may
                 map a marker type to a gameplay class later: "marker_classes": {"fishing_spot": "/Script/VibeGame.X"}.
@@ -233,10 +237,56 @@ def spawn_prim(prim, layout_id, mats, cache):
                          "%s/%s" % (layout_id, prim.get("group") or prim.get("kind") or "blocks"), prim["tags"])
 
 
+def _color3(v, default=(1.0, 1.0, 1.0)):
+    """A LinearColor from a number (grey), an [r, g, b] list (linear) or a '#hex' (sRGB)."""
+    if v is None:
+        v = default
+    if isinstance(v, str):
+        return hex_to_linear_color(v)
+    if isinstance(v, (int, float)):
+        v = (v, v, v)
+    return unreal.LinearColor(float(v[0]), float(v[1]), float(v[2]), 1.0)
+
+
+def _fog_spec(light, layout, tod):
+    """Fog values: a named fog_presets entry (light "preset"), else the time-of-day preset's "fog"; per-light overrides."""
+    if light.get("preset"):
+        spec = dict((layout.get("fog_presets") or {}).get(light["preset"], {}))
+    else:
+        spec = dict(tod.get("fog") or {})
+    spec.update({k: v for k, v in light.items() if k in ("density", "height_falloff", "color", "start_distance",
+                                                         "max_opacity", "sky_ambient")})
+    return spec
+
+
+def _apply_fixed_exposure(ppv, tod):
+    """Manual exposure without the physical camera: exposure scale = 2^bias with bias = -EV100 (+ exposure_bias),
+    see PostProcessEyeAdaptation.cpp CalculateManualAutoExposure (LensAttenuation 0.78 -> 1.0 cd/m2 = 1.0 at EV 0)."""
+    s = ppv.get_editor_property("settings")
+    s.set_editor_property("override_auto_exposure_method", True)
+    s.set_editor_property("auto_exposure_method", unreal.AutoExposureMethod.AEM_MANUAL)
+    s.set_editor_property("override_auto_exposure_apply_physical_camera_exposure", True)
+    s.set_editor_property("auto_exposure_apply_physical_camera_exposure", False)
+    s.set_editor_property("override_auto_exposure_bias", True)
+    s.set_editor_property("auto_exposure_bias", -float(tod["exposure_ev100"]) + float(tod.get("exposure_bias", 0.0)))
+    ppv.set_editor_property("settings", s)
+
+
 def spawn_light(light, layout, layout_id):
     t = light["type"]
     lid = light["id"]
-    if t == "directional":
+    tod = L.time_of_day(layout)
+    if t == "post_process":
+        # One unbound PostProcessVolume carrying the time-of-day preset's fixed exposure (ART_STYLE: exposure is fixed
+        # per preset, not auto). Without an exposure in the preset, the volume is spawned but changes nothing.
+        actor = _eas().spawn_actor_from_class(unreal.PostProcessVolume, unreal.Vector(0, 0, 0))
+        actor.set_editor_property("unbound", True)
+        actor.set_editor_property("priority", float(light.get("priority", 0.0)))
+        if tod.get("exposure_ev100") is not None:
+            _apply_fixed_exposure(actor, tod)
+        else:
+            _warn("post_process %s: time-of-day preset has no exposure_ev100; auto exposure stays on" % lid)
+    elif t == "directional":
         r = light.get("rot", {})
         actor = _eas().spawn_actor_from_class(unreal.DirectionalLight, unreal.Vector(0, 0, 1000),
                                               _rot(r.get("yaw", 0), r.get("pitch", -50), r.get("roll", 0)))
@@ -247,30 +297,53 @@ def spawn_light(light, layout, layout_id):
         comp.set_atmosphere_sun_light(True)
     elif t == "sky_atmosphere":
         actor = _eas().spawn_actor_from_class(unreal.SkyAtmosphere, unreal.Vector(0, 0, 0))
+        comp = actor.get_component_by_class(unreal.SkyAtmosphereComponent)
+        sky = dict(tod.get("sky") or {}, **(light.get("sky") or {}))
+        if "luminance_factor" in sky:  # also scales what the real-time sky light captures (see sky_light intensity)
+            comp.set_sky_luminance_factor(_color3(sky["luminance_factor"]))
+        if "mie_scattering_scale" in sky:
+            comp.set_mie_scattering_scale(float(sky["mie_scattering_scale"]))
+        if "multi_scattering" in sky:
+            comp.set_multi_scattering_factor(float(sky["multi_scattering"]))
     elif t == "sky_light":
         actor = _eas().spawn_actor_from_class(unreal.SkyLight, unreal.Vector(0, 0, 800))
         comp = actor.get_component_by_class(unreal.SkyLightComponent)
         comp.set_mobility(unreal.ComponentMobility.MOVABLE)
         comp.set_real_time_capture(bool(light.get("real_time_capture", True)))
+        sl = dict(tod.get("sky_light") or {}, **(light.get("sky_light") or {}))
+        if "intensity" in sl:
+            comp.set_intensity(float(sl["intensity"]))
     elif t == "height_fog":
         actor = _eas().spawn_actor_from_class(unreal.ExponentialHeightFog, unreal.Vector(0, 0, 0))
         comp = actor.get_component_by_class(unreal.ExponentialHeightFogComponent)
-        preset = (layout.get("fog_presets") or {}).get(light.get("preset", ""), {})
-        preset = dict(preset, **{k: v for k, v in light.items() if k in ("density", "height_falloff", "color",
-                                                                        "start_distance")})
-        if "density" in preset:
-            comp.set_fog_density(float(preset["density"]))
-        if "height_falloff" in preset:
-            comp.set_fog_height_falloff(float(preset["height_falloff"]))
-        if "color" in preset:
-            comp.set_fog_inscattering_color(hex_to_linear_color(preset["color"]))
-        if "start_distance" in preset:
-            comp.set_start_distance(float(preset["start_distance"]))
+        spec = _fog_spec(light, layout, tod)
+        if "density" in spec:
+            comp.set_fog_density(float(spec["density"]))
+        if "height_falloff" in spec:
+            comp.set_fog_height_falloff(float(spec["height_falloff"]))
+        if "color" in spec:
+            if tod.get("exposure_ev100") is not None:
+                # The hex is the on-screen target: undo the tonemapper and the fixed exposure (fog is emissive-like).
+                rgb = L.on_screen_to_scene(spec["color"], tod)
+                comp.set_fog_inscattering_color(unreal.LinearColor(rgb[0], rgb[1], rgb[2], 1.0))
+            else:
+                comp.set_fog_inscattering_color(hex_to_linear_color(spec["color"]))
+        if "start_distance" in spec:
+            comp.set_start_distance(float(spec["start_distance"]))
+        if "max_opacity" in spec:
+            comp.set_fog_max_opacity(float(spec["max_opacity"]))
+        if "sky_ambient" in spec:  # SkyAtmosphere light added on top of the fog color; 0 = the fog color alone
+            comp.set_sky_atmosphere_ambient_contribution_color_scale(_color3(spec["sky_ambient"]))
     elif t == "point":
         actor = _eas().spawn_actor_from_class(unreal.PointLight, _vec(light["at"]))
         comp = actor.get_component_by_class(unreal.PointLightComponent)
         comp.set_mobility(unreal.ComponentMobility.MOVABLE)
-        if light.get("units", "candelas") == "candelas":
+        if light.get("falloff", "inverse_square") == "soft":
+            # Fill light without a hotspot: brightness ~ lux at the light, fading as (1 - (d/R)^2)^exponent to 0 at
+            # the radius (DynamicLightingCommon.ush RadialAttenuation); intensity units don't apply in this mode.
+            comp.set_use_inverse_squared_falloff(False)
+            comp.set_light_falloff_exponent(float(light.get("falloff_exponent", 2.0)))
+        elif light.get("units", "candelas") == "candelas":
             comp.set_intensity_units(unreal.LightUnits.CANDELAS)
         comp.set_intensity(float(light.get("intensity", 8.0)))
         comp.set_attenuation_radius(float(light.get("radius", 1500.0)))
@@ -357,14 +430,13 @@ def spawn_label(text, at, layout_id, elem_id, size, yaw, in_game):
                          ["Lure.EditorLabel"])
 
 
-def spawn_marker(mk, layout, layout_id, label_opts):
+def spawn_marker(mk, layout, layout_id):
+    """The marker actor(s); text labels are spawned separately from levels.layout.labels() (see build)."""
     t = mk["type"]
     folder = "%s/markers/%s" % (layout_id, t)
     spawned = []
     if t == "label":
-        a = spawn_label(mk["text"], mk["at"], layout_id, mk["id"], mk.get("size", label_opts["size"]),
-                        mk.get("yaw", label_opts["yaw"]), label_opts["in_game"])
-        return [a]
+        return spawned
     if t == "patrol":
         n = len(mk["points"])
         for i, p in enumerate(mk["points"]):
@@ -400,16 +472,6 @@ def spawn_marker(mk, layout, layout_id, label_opts):
         a = _eas().spawn_actor_from_class(cls, _vec(at), _rot(yaw))
         tags = marker_tags(mk)
     spawned.append(_finish_actor(a, layout_id, mk["id"], mk["id"].replace("/", "."), folder, tags))
-    name = mk.get("name")
-    if name and mk.get("label", True) and t in ("fishing_spot", "npc", "landmark", "zone", "sight_cone", "boat_mooring",
-                                                "player_start", "teleport"):
-        text = name
-        if t == "fishing_spot":
-            text = "%s\n%s  L%s  %s" % (name, mk["habitat"], "-".join(str(x) for x in mk.get("level_band", [])),
-                                        mk.get("time_label", ""))
-        lab_at = L.v3(mk.get("label_at", at))
-        spawned.append(spawn_label(text, (lab_at[0], lab_at[1], lab_at[2] + label_opts["lift"]), layout_id,
-                                   mk["id"] + "/label", label_opts["size"], label_opts["yaw"], label_opts["in_game"]))
     return spawned
 
 
@@ -437,16 +499,13 @@ def build(layout_path, level_path=None, save=True, frame=True, labels=True, labe
     for light in ex["lights"]:
         if spawn_light(light, lay, layout_id) is not None:
             counts["lights"] += 1
-    label_opts = {"size": label_size or float(lay.get("label_size", 120.0)), "yaw": float(label_yaw),
-                  "in_game": bool(lay.get("labels_in_game", False)), "lift": float(lay.get("label_lift", 300.0))}
     for mk in ex["markers"]:
-        if not labels and mk["type"] == "label":
-            continue
-        for a in spawn_marker(mk if labels else dict(mk, label=False), lay, layout_id, label_opts):
-            if a.actor_has_tag(unreal.Name("Lure.EditorLabel")):
-                counts["labels"] += 1
-            else:
-                counts["markers"] += 1
+        counts["markers"] += len(spawn_marker(mk, lay, layout_id))
+    if labels:
+        in_game = bool(lay.get("labels_in_game", False))
+        for lab in L.labels(lay, ex["markers"], size=label_size, yaw=float(label_yaw)):
+            spawn_label(lab["text"], lab["at"], layout_id, lab["id"], lab["size"], lab["yaw"], in_game)
+            counts["labels"] += 1
     ws = _world_settings()
     world_cfg = lay.get("world") or {}
     if "game_mode_override" in world_cfg and world_cfg["game_mode_override"] is None:
@@ -463,7 +522,8 @@ def build(layout_path, level_path=None, save=True, frame=True, labels=True, labe
             _warn("frame_view skipped: %s" % exc)
     result = {"layout": layout_id, "level": level_path, "level_state": state, "removed_actors": removed,
               "spawned": counts, "missing_meshes": sorted(cache.missing), "warnings": [p for p in problems if p.startswith("WARN")],
-              "materials": sorted("MI_Lvl_" + m for m in mats), "saved": saved, "view": view}
+              "materials": sorted("MI_Lvl_" + m for m in mats), "saved": saved, "view": view,
+              "time_of_day": L.time_of_day(lay).get("id"), "exposure_ev100": L.time_of_day(lay).get("exposure_ev100")}
     _log(result)
     return result
 

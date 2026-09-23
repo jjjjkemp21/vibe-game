@@ -12,7 +12,12 @@ It builds the scene from Content/Python/levels/layout.py expand() (the same prim
                   Water is drawn SEE-THROUGH on the map (so shelves, reef and channels read); in the game greybox and in the
                   eye-height shots it is opaque, like the builder's palette water.
 - eye_<id>.png:   perspective shots at eye height (stand 165 cm, crouch 95, prone 35 from data metrics), 90 deg FOV,
-                  with red player proxies (true capsule sizes per stance) where a view asks for them.
+                  with red player proxies (true capsule sizes per stance) where a view asks for them. When the layout's
+                  time-of-day preset has a fixed exposure (exposure_ev100), they use the "engine look": Cycles (GPU if
+                  present) lit in Unreal units x exposure, the layout's point lights (soft falloff exact), Unreal's height
+                  fog formula and filmic tonemapper, so palette hex values read as on-screen targets. Not simulated: the
+                  SkyAtmosphere (the sky is the palette gradient preview.sky), Lumen specifics, local exposure. Layouts
+                  with in-game labels (dev maps) also show the builder's TextRender labels.
 - checks:         cover tests (a ray from a creature's eye to the player's eye point per stance, against colliding
                   geometry only; water never blocks) and clearance tests (ray up from a floor point). Results go to
                   RESULT_JSON and onto the map.
@@ -751,8 +756,308 @@ def add_proxy(scene, floor_cm, stance, m, mat):
     return objs
 
 
+# ---------------------------------------------------------------------------------------------------------------------
+# Engine look for eye shots: the time-of-day preset's fixed exposure, Unreal's filmic tonemapper, its height fog and the
+# layout's point lights (soft falloff exact, via a Cycles light node), rendered with Cycles so the sky light is occluded
+# indoors and light bounces (a stand-in for Lumen). Approximations: no SkyAtmosphere (the sky is the palette gradient
+# preview.sky; water mixes toward it by Fresnel), the sky light is a uniform ambient (preview.ambient_fraction of the sun's
+# horizontal light), inverse-square lights ignore their attenuation radius.
+# ---------------------------------------------------------------------------------------------------------------------
+ATM_TAU = (0.061, 0.141, 0.272)  # Unreal default Earth atmosphere, vertical optical depth at sea level (R, G, B, + ozone)
+
+
+def _film_np(x):
+    s, b, w, ts, ss, tm, stm, shm = L._film_constants()
+    lg = np.log10(np.maximum(x, 1e-7))
+    straight = s * (lg + stm)
+    toe = np.where(lg < tm, -b + (2.0 * ts) / (1.0 + np.exp((-2.0 * s / ts) * (lg - tm))), straight)
+    shoulder = np.where(lg > shm, (1.0 + w) - (2.0 * ss) / (1.0 + np.exp(np.clip((2.0 * s / ss) * (lg - shm), -60, 60))),
+                        straight)
+    t = np.clip((lg - tm) / (shm - tm), 0.0, 1.0)
+    if shm < tm:
+        t = 1.0 - t
+    t = (3.0 - 2.0 * t) * t * t
+    return np.maximum(0.0, toe + (shoulder - toe) * t)
+
+
+def _film_inverse_np(y):
+    xs = np.logspace(-6, 3, 6000)
+    ys = _film_np(xs)
+    return np.interp(np.clip(y, 0.0, float(ys[-1])), ys, xs)
+
+
+def _to_srgb_np(lin):
+    lin = np.clip(lin, 0.0, 1.0)
+    return np.where(lin <= 0.0031308, lin * 12.92, 1.055 * np.power(lin, 1.0 / 2.4) - 0.055)
+
+
+def _fog_np(fog, cam_z, length, dz):
+    """Vectorized levels.layout.fog_transmittance (same formula, arrays of ray lengths / height changes in cm)."""
+    dens = float(fog.get("density", 0.0)) / 1000.0
+    fall = float(fog.get("height_falloff", 0.2)) / 1000.0
+    start = float(fog.get("start_distance", 0.0))
+    if dens <= 0.0:
+        return np.ones_like(length)
+    t0 = np.clip(start / np.maximum(length, 1e-3), 0.0, 1.0)
+    origin = dens * np.power(2.0, -fall * (cam_z + t0 * dz))
+    eff = fall * (1.0 - t0) * dz
+    eff = np.where(np.abs(eff) > 1e-7, eff, 0.001)
+    integral = origin * (1.0 - np.power(2.0, -np.clip(eff, -120, 120))) / eff * (1.0 - t0) * length
+    trans = np.power(2.0, -np.clip(integral, 0.0, 120.0))
+    return np.clip(trans, 1.0 - float(fog.get("max_opacity", 1.0)), 1.0)
+
+
+_CYCLES_DEVICE = []
+
+
+def _use_cycles(scene, samples):
+    """Cycles on the GPU when there is one (OptiX / CUDA / HIP / oneAPI / Metal), else the CPU."""
+    scene.render.engine = "CYCLES"
+    if not _CYCLES_DEVICE:
+        dev = "CPU"
+        try:
+            prefs = bpy.context.preferences.addons["cycles"].preferences
+            for t in ("OPTIX", "CUDA", "HIP", "ONEAPI", "METAL"):
+                try:
+                    prefs.compute_device_type = t
+                    prefs.get_devices()
+                except Exception:
+                    continue
+                if any(d.type == t for d in prefs.devices):
+                    for d in prefs.devices:
+                        d.use = d.type == t
+                    dev = t
+                    break
+        except Exception:
+            pass
+        _CYCLES_DEVICE.append(dev)
+    scene.cycles.device = "CPU" if _CYCLES_DEVICE[0] == "CPU" else "GPU"
+    scene.cycles.samples = samples
+    scene.cycles.use_denoising = samples > 4
+    scene.cycles.max_bounces = 4
+    scene.cycles.diffuse_bounces = 3
+    scene.cycles.glossy_bounces = 2
+    scene.cycles.transparent_max_bounces = 4
+
+
+def _soft_falloff_nodes(ld, strength, radius_m, exponent):
+    """Cycles light node tree: irradiance = strength x (1 - (d/R)^2)^exponent x cos, independent of 1/d^2 (Unreal's
+    non-inverse-squared falloff). With lamp power 4 pi W and Light Falloff 'Constant', E = Strength (calibrated)."""
+    ld.energy = 4.0 * math.pi
+    ld.use_nodes = True
+    nt = ld.node_tree
+    em = nt.nodes.get("Emission")
+    lf = nt.nodes.new("ShaderNodeLightFalloff")
+    nt.links.new(lf.outputs["Constant"], em.inputs["Strength"])
+    lp = nt.nodes.new("ShaderNodeLightPath")
+    div = nt.nodes.new("ShaderNodeMath")
+    div.operation = "DIVIDE"
+    div.inputs[1].default_value = radius_m
+    nt.links.new(lp.outputs["Ray Length"], div.inputs[0])
+    sq = nt.nodes.new("ShaderNodeMath")
+    sq.operation = "POWER"
+    sq.inputs[1].default_value = 2.0
+    nt.links.new(div.outputs[0], sq.inputs[0])
+    one = nt.nodes.new("ShaderNodeMath")
+    one.operation = "SUBTRACT"
+    one.use_clamp = True
+    one.inputs[0].default_value = 1.0
+    nt.links.new(sq.outputs[0], one.inputs[1])
+    pw = nt.nodes.new("ShaderNodeMath")
+    pw.operation = "POWER"
+    pw.inputs[1].default_value = exponent
+    nt.links.new(one.outputs[0], pw.inputs[0])
+    mul = nt.nodes.new("ShaderNodeMath")
+    mul.operation = "MULTIPLY"
+    mul.inputs[1].default_value = strength
+    nt.links.new(pw.outputs[0], mul.inputs[0])
+    nt.links.new(mul.outputs[0], lf.inputs["Strength"])
+
+
+def _water_reflection(mats, layout):
+    """Water in the engine look: diffuse palette color plus a Fresnel (IOR 1.33) mix toward the target sky color
+    (preview.sky, in exposed scene units), a stand-in for the engine's sky reflection. Done once per scene."""
+    sky_hex = layout.get("preview", {}).get("sky", ["#CFEFF8", "#8FD3F0"])[-1]
+    refl = [L.ue_filmic_inverse(c) for c in L.hex_to_linear(sky_hex)]
+    for m in mats.values():
+        nt = m.node_tree
+        if not m.get("lure_water") or nt.nodes.get("LureRefl"):
+            continue
+        bsdf = nt.nodes.get("Principled BSDF")
+        out = nt.nodes.get("Material Output")
+        bsdf.inputs["Alpha"].default_value = 1.0
+        bsdf.inputs["Specular IOR Level"].default_value = 0.0
+        em = nt.nodes.new("ShaderNodeEmission")
+        em.name = "LureRefl"
+        em.inputs["Color"].default_value = (refl[0], refl[1], refl[2], 1.0)
+        fr = nt.nodes.new("ShaderNodeFresnel")
+        fr.inputs["IOR"].default_value = 1.33
+        mix = nt.nodes.new("ShaderNodeMixShader")
+        nt.links.new(fr.outputs["Fac"], mix.inputs["Fac"])
+        nt.links.new(bsdf.outputs["BSDF"], mix.inputs[1])
+        nt.links.new(em.outputs["Emission"], mix.inputs[2])
+        nt.links.new(mix.outputs["Shader"], out.inputs["Surface"])
+
+
+def _engine_lights(layout, scene, view, tod):
+    """Sun (with atmosphere transmittance), uniform sky ambient and the layout's point lights, all in exposed units
+    (Blender W/m2 = Unreal lux x exposure scale). Returns the objects to delete afterwards."""
+    k = L.exposure_scale(tod)
+    made = []
+    ex_lights = L.expand(layout)["lights"]
+    sun_l = next((x for x in ex_lights if x.get("type") == "directional"), None)
+    e_sun_h = 0.0
+    if sun_l:
+        r = sun_l.get("rot", {})
+        elev = max(1.0, -float(r.get("pitch", -50.0)))
+        az = float(r.get("yaw", 0.0)) + 180.0
+        trans = [math.exp(-t / math.sin(math.radians(elev))) for t in ATM_TAU]
+        col = [c * t for c, t in zip(L.hex_to_linear(sun_l.get("color", "#FFFFFF")), trans)]
+        peak = max(col)
+        o = _sun(scene, az, elev, float(sun_l.get("intensity", 10.0)) * k * peak)
+        o.data.color = [c / peak for c in col]
+        made.append(o)
+        lum = 0.2126 * col[0] + 0.7152 * col[1] + 0.0722 * col[2]
+        e_sun_h = float(sun_l.get("intensity", 10.0)) * lum * math.sin(math.radians(elev))
+    frac = float(view.get("ambient", layout.get("preview", {}).get("ambient_fraction", 0.15)))
+    sky_hex = layout.get("preview", {}).get("sky", ["#CFEFF8", "#8FD3F0"])[-1]
+    sky_lin = L.hex_to_linear(sky_hex)
+    sky_lum = 0.2126 * sky_lin[0] + 0.7152 * sky_lin[1] + 0.0722 * sky_lin[2]
+    amb = frac * e_sun_h * k / math.pi / sky_lum
+    world = bpy.data.worlds.new("Ambient")
+    world.use_nodes = True
+    bg = world.node_tree.nodes.get("Background")
+    bg.inputs["Color"].default_value = (sky_lin[0] * amb, sky_lin[1] * amb, sky_lin[2] * amb, 1.0)
+    bg.inputs["Strength"].default_value = 1.0
+    scene.world = world
+    for pl in ex_lights:
+        if pl.get("type") != "point":
+            continue
+        ld = bpy.data.lights.new("P_" + pl["id"], "POINT")
+        radius_m = float(pl.get("radius", 1500.0)) / 100.0
+        if pl.get("falloff", "inverse_square") == "soft":
+            _soft_falloff_nodes(ld, float(pl.get("intensity", 8.0)) * k, radius_m,
+                                float(pl.get("falloff_exponent", 2.0)))
+            ld.shadow_soft_size = 0.1
+        else:
+            ld.energy = 4.0 * math.pi * float(pl.get("intensity", 8.0)) * k
+            ld.shadow_soft_size = 0.05
+        ld.color = L.hex_to_linear(pl.get("color", "#E8C46A"))
+        ld.use_shadow = bool(pl.get("shadows", False))
+        o = bpy.data.objects.new("P_" + pl["id"], ld)
+        o.location = to_b(L.v3(pl["at"]))
+        scene.collection.objects.link(o)
+        made.append(o)
+    return made
+
+
+def _render_exr(scene, path, res):
+    r = scene.render
+    r.resolution_x, r.resolution_y = res
+    r.resolution_percentage = 100
+    r.image_settings.file_format = "OPEN_EXR"
+    r.image_settings.color_depth = "32"
+    r.image_settings.color_mode = "RGBA"
+    r.filepath = str(path)
+    bpy.ops.render.render(write_still=True)
+    return load_rgba(path)
+
+
+def _engine_render(layout, scene, cam, eye_cm, tod, res, out_dir, tag, samples):
+    """Render scene-linear (exposed) color and view distance, then sky, height fog and the filmic tonemapper."""
+    engine = scene.render.engine
+    scene.render.film_transparent = True
+    _use_cycles(scene, samples)
+    col = _render_exr(scene, out_dir / ("_raw_eye_%s.exr" % tag), res)
+    _use_cycles(scene, 2)  # the distance pass: emission only, no denoising
+    dmat = bpy.data.materials.new("ViewDistance")
+    dmat.use_nodes = True
+    nt = dmat.node_tree
+    for n in list(nt.nodes):
+        nt.nodes.remove(n)
+    out = nt.nodes.new("ShaderNodeOutputMaterial")
+    em = nt.nodes.new("ShaderNodeEmission")
+    cd = nt.nodes.new("ShaderNodeCameraData")
+    nt.links.new(cd.outputs["View Distance"], em.inputs["Color"])
+    nt.links.new(em.outputs["Emission"], out.inputs["Surface"])
+    vl = scene.view_layers[0]
+    vl.material_override = dmat
+    dep = _render_exr(scene, out_dir / ("_raw_dist_%s.exr" % tag), res)
+    vl.material_override = None
+    bpy.data.materials.remove(dmat)
+    scene.render.film_transparent = False
+    scene.render.engine = engine
+    for p in (out_dir / ("_raw_eye_%s.exr" % tag), out_dir / ("_raw_dist_%s.exr" % tag)):
+        try:
+            os.remove(p)
+        except OSError:
+            pass
+    h, w = col.shape[:2]
+    a = col[..., 3:4]
+    safe_a = np.maximum(a, 1e-4)
+    geo = col[..., :3] / safe_a
+    dist_cm = dep[..., 0:1] / safe_a * 100.0
+    # Per-pixel view direction (world, Blender axes; Z is up in both).
+    f_px = cam.data.lens / cam.data.sensor_width * w
+    uu, vv = np.meshgrid(np.arange(w, dtype=np.float32) + 0.5, np.arange(h, dtype=np.float32) + 0.5)
+    d_cam = np.stack([(uu - w / 2.0) / f_px, (h / 2.0 - vv) / f_px, -np.ones_like(uu)], axis=-1)
+    d_cam /= np.linalg.norm(d_cam, axis=-1, keepdims=True)
+    rot = np.array(cam.matrix_world.to_3x3(), dtype=np.float32)
+    d_world = d_cam @ rot.T
+    dir_z = d_world[..., 2:3]
+    fog = dict(tod.get("fog") or {})
+    fog_col = _film_inverse_np(np.array(L.hex_to_linear(fog.get("color", "#8FD3F0")), np.float32))
+    t_geo = _fog_np(fog, eye_cm[2], dist_cm, dist_cm * dir_z) if fog else np.ones_like(dist_cm)
+    far = np.full_like(dist_cm, 1e9)
+    t_sky = _fog_np(fog, eye_cm[2], far, far * dir_z) if fog else np.ones_like(dist_cm)
+    sky = layout.get("preview", {}).get("sky", ["#CFEFF8", "#8FD3F0"])
+    elev = np.degrees(np.arcsin(np.clip(dir_z, -1.0, 1.0)))
+    fsky = np.clip(elev / 60.0, 0.0, 1.0)
+    fsky = fsky * fsky * (3.0 - 2.0 * fsky)
+    lo = np.array(L.hex_to_linear(sky[0]), np.float32)
+    hi = np.array(L.hex_to_linear(sky[-1]), np.float32)
+    sky_exposed = _film_inverse_np(lo * (1.0 - fsky) + hi * fsky)
+    geo_f = geo * t_geo + fog_col * (1.0 - t_geo)
+    sky_f = sky_exposed * t_sky + fog_col * (1.0 - t_sky)
+    final = geo_f * a + sky_f * (1.0 - a)
+    img = np.ones((h, w, 4), np.float32)
+    img[..., :3] = _to_srgb_np(_film_np(final))
+    return img
+
+
+def _label_objects(layout, scene):
+    """The builder's in-game TextRender labels (levels.layout.labels) as upright ink text, for layouts whose labels
+    show in game (dev maps), so eye shots show where labels sit relative to the player. Returns the objects."""
+    mat = bpy.data.materials.new("LabelInk")
+    mat.use_nodes = True
+    nt = mat.node_tree
+    for n in list(nt.nodes):
+        nt.nodes.remove(n)
+    out = nt.nodes.new("ShaderNodeOutputMaterial")
+    em = nt.nodes.new("ShaderNodeEmission")
+    em.inputs["Color"].default_value = style.hex_to_linear_rgba(INK)
+    nt.links.new(em.outputs["Emission"], out.inputs["Surface"])
+    made = []
+    for lab in L.labels(layout, L.expand(layout)["markers"]):
+        cu = bpy.data.curves.new("lbl3d", "FONT")
+        cu.body = lab["text"]
+        cu.align_x = "CENTER"
+        cu.align_y = "CENTER"
+        cu.size = lab["size"] / 100.0
+        o = bpy.data.objects.new("lbl3d_" + lab["id"], cu)
+        o.data.materials.append(mat)
+        o.location = to_b(lab["at"])
+        # Unreal TextRender faces its +X; Blender text faces +Z: stand it up (X +90 deg), then turn to the yaw.
+        o.rotation_euler = (math.pi / 2.0, 0.0, math.radians(90.0 - lab["yaw"]))
+        scene.collection.objects.link(o)
+        made.append(o)
+    return made
+
+
 def render_eye(layout, scene, mats, view, out_dir, quick):
     m = L.metrics(layout)
+    tod = L.time_of_day(layout)
+    engine_look = tod.get("exposure_ev100") is not None and not view.get("classic_look")
     if "eye_abs" in view:
         eye = L.v3(view["eye_abs"])
     else:
@@ -760,10 +1065,16 @@ def render_eye(layout, scene, mats, view, out_dir, quick):
         eye = (floor[0], floor[1], floor[2] + m["eye_" + view.get("stance", "stand")])
     target = L.v3(view["look_at"]) if "look_at" in view else None
     set_water_alpha(mats, 1.0)
-    atmo = layout.get("preview", {}).get("sky", ["#CFEFF8", "#8FD3F0"])
-    scene.world = _gradient_world([(0.5, atmo[0]), (1.0, atmo[1])])
-    sun_spec = layout.get("preview", {}).get("sun", {"azimuth": 135.0, "elevation": 50.0, "strength": 4.0})
-    sun = _sun(scene, sun_spec["azimuth"], sun_spec["elevation"], sun_spec["strength"])
+    if engine_look:
+        _water_reflection(mats, layout)
+        lights = _engine_lights(layout, scene, view, tod)
+    else:
+        atmo = layout.get("preview", {}).get("sky", ["#CFEFF8", "#8FD3F0"])
+        scene.world = _gradient_world([(0.5, atmo[0]), (1.0, atmo[1])])
+        sun_spec = layout.get("preview", {}).get("sun", {"azimuth": 135.0, "elevation": 50.0, "strength": 4.0})
+        lights = [_sun(scene, sun_spec["azimuth"], sun_spec["elevation"], sun_spec["strength"])]
+    if layout.get("labels_in_game"):
+        lights += _label_objects(layout, scene)
     pmat = bpy.data.materials.new("proxy")
     pmat.use_nodes = True
     pb_ = pmat.node_tree.nodes.get("Principled BSDF")
@@ -789,10 +1100,13 @@ def render_eye(layout, scene, mats, view, out_dir, quick):
         cam.rotation_euler = d.to_track_quat("-Z", "Y").to_euler()
     scene.camera = cam
     res = (960, 540) if quick else (1600, 900)
-    raw = out_dir / ("_raw_eye_%s.png" % view["id"])
-    _render(scene, raw, res)
-    img = load_rgba(raw)
-    os.remove(raw)
+    if engine_look:
+        img = _engine_render(layout, scene, cam, eye, tod, res, out_dir, view["id"], 16 if quick else 64)
+    else:
+        raw = out_dir / ("_raw_eye_%s.png" % view["id"])
+        _render(scene, raw, res)
+        img = load_rgba(raw)
+        os.remove(raw)
     # Caption strip.
     canvas = Canvas(img, (0, 0, 0), 100.0 * img.shape[1], 100.0 * img.shape[0])
     cap = view.get("caption", view["id"])
@@ -802,7 +1116,7 @@ def render_eye(layout, scene, mats, view, out_dir, quick):
     img[..., :3] = img[..., :3] * (1 - a) + lab[..., :3] * a
     out = out_dir / ("eye_%s.png" % view["id"])
     save_rgba(img, out)
-    for o in proxies + [cam, sun]:
+    for o in proxies + [cam] + lights:
         bpy.data.objects.remove(o, do_unlink=True)
     set_water_alpha(mats, float(layout.get("preview", {}).get("map_water_alpha", 0.55)))
     return str(out)
