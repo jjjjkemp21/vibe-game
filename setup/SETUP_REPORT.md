@@ -3,7 +3,7 @@
 Updated by Claude Code after every phase of setup/CLAUDE_CODE_SETUP.md. Cowork reads this file to follow progress.
 
 ## Pending handoff
->>> COWORK: Open a new PowerShell window and run: & "C:\Program Files\GitHub CLI\gh.exe" auth login --hostname github.com --git-protocol https --web  (press Enter to open the browser, have Jimmy sign in to GitHub and enter the one-time code shown, approve). When the window says "Logged in as <name>", type: done
+(none)
 
 ## Phase log
 | Phase | Status | What was done | Evidence |
@@ -35,6 +35,9 @@ Updated by Claude Code after every phase of setup/CLAUDE_CODE_SETUP.md. Cowork r
 - K3: the Blender MCP clone at C:/GameDev/_tools/blender_mcp carries a local Windows patch (setup/patches/blender_mcp_stdin_devnull.patch); re-apply after updating the clone.
 - K2: Epic's ProgrammaticToolset.execute_tool_script cannot use the `unreal` module; all editor Python goes through the project toolset vibegame_tools.VibeGamePipelineTools (documented in the unreal-pipeline skill and the editor-operator agent). Editor background CPU throttling is turned off so screenshots render when the editor is not in front.
 - A Blender window opened for the K4 live check may still be open; it can be closed without saving.
+
+## After setup
+- 2026-09-22: GitHub CLI 2.101.0 installed (winget); signed in as jjjjkemp21. Private repo https://github.com/jjjjkemp21/vibe-game created; `main` = da32afe (Setup complete). Later commits are pushed only after the release gate (CLAUDE.md rule 10).
 
 ## Notes for Jimmy
 Everything is set up and tested: Claude can now build 3D models in Blender, bring them into Unreal, place them in a level, take a screenshot to check the result, and run automatic tests, all without you touching any code. As a first proof, it made a simple 1-metre crate, put it in a small test level, and confirmed it has the right size and looks right on screen. Blender's live link stays off because you chose to keep Online Access disabled; that is fine, since all the real work runs in the background. The next step is a short design interview with you (task T-001 in docs/TASKS.md) about what kind of game you want, so Claude can start building your first playable version.

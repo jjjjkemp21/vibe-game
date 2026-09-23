@@ -15,7 +15,7 @@ You are building a game for Jimmy. Jimmy does not read or write code: he plays b
 - Blender 5.2 LTS (5.1+ is required by the Blender MCP server).
 - MCP servers in `.mcp.json`: `unreal-mcp` = Epic's Unreal MCP running inside the editor (tool-search mode); `blender` = Blender Lab's official MCP server.
 - Epic's Claude Code plugin `unreal-engine-skills-for-claude-code` (skill `unreal-mcp`): read it before your first editor task in a session.
-- Git + Git LFS (binary assets tracked in LFS). Remote: private GitHub repo `vibe-game` (being set up); push only after the release gate (rule 10).
+- Git + Git LFS (binary assets tracked in LFS). Remote `origin` = private GitHub repo https://github.com/jjjjkemp21/vibe-game (`gh` at `C:\Program Files\GitHub CLI\gh.exe`); push `main` only after the release gate (rule 10).
 
 ## Repository map
 - `Source/` C++ gameplay code; C++ automation tests in `Source/VibeGame/Tests/`.
