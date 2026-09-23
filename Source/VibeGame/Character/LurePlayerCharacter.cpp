@@ -905,12 +905,28 @@ void ALurePlayerCharacter::DoLook(float YawDegrees, float PitchDegrees)
 
 void ALurePlayerCharacter::DoJumpStart()
 {
+	bJumpInputHeld = true;
 	Jump(); // CanJump (stance rules) is checked when the jump is processed; a press while prone does nothing
 }
 
 void ALurePlayerCharacter::DoJumpEnd()
 {
+	bJumpInputHeld = false;
 	StopJumping();
+}
+
+void ALurePlayerCharacter::CheckJumpInput(float DeltaTime)
+{
+	// The engine keeps bPressedJump for one move only (JumpMaxHoldTime 0), so a Jump held since before reaching a ladder
+	// never asked again. In the water, re-press it before each move: DoJump queues the climb only when there is an edge
+	// (or a ladder) to climb, and the move's Jump flag carries it to the server. Not in replays (bClientUpdating): there
+	// the saved move's flag decides. Only while MOVE_Swimming, so a held Jump never re-jumps or ledge-climbs on land.
+	const ULureCharacterMovementComponent* Movement = GetLureMovement();
+	if (bJumpInputHeld && !bClientUpdating && Movement && Movement->IsSwimming())
+	{
+		bPressedJump = true;
+	}
+	Super::CheckJumpInput(DeltaTime);
 }
 
 void ALurePlayerCharacter::HandleJumpPressed()
