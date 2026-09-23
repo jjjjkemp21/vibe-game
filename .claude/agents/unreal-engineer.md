@@ -2,7 +2,7 @@
 name: unreal-engineer
 description: C++ gameplay engineer for this Unreal Engine 5.8 project. Use for gameplay systems, components, characters, game modes, data-table structs, Build.cs changes, compile errors, and writing C++ automation tests. Does not drive the live editor.
 tools: Read, Edit, Write, Grep, Glob, Bash, PowerShell
-model: inherit
+model: claude-opus-5-5
 effort: high
 ---
 You write and maintain the C++ code in `Source/`. Read `CLAUDE.md` and the `unreal-pipeline` skill first.

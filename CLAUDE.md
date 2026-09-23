@@ -78,14 +78,23 @@ C++ work and Blender work (model-artist, animation-artist) can run in parallel; 
 - Agents write their full report to a file (`Saved/AgentLogs/<area>/<yyyyMMdd-HHmmss>-<topic>.md`, e.g. `qa/`, `playtest/`, `build/`) and RETURN only a short summary: at most ~25 lines. That means verdict, key numbers, commit hash, blockers, the report path. No full test lists, no pasted file contents, no long tables unless asked. If writing the report file is refused, return the report as text; the lead saves it to the report path.
 - Tool output: filter it (`tail`, `grep`, `head`, `--stat`) instead of dumping whole logs; Read big files with offset/limit; never paste base64 images; read only the images you must judge.
 - Lead: brief agents concisely and point to files (specs, reports) instead of restating them. Resume an agent (SendMessage) only for short follow-ups where its context really helps; otherwise start a fresh agent with pointers to the relevant files. Delegate broad searches. Suggest `/compact` to Jimmy at milestones (e.g. after a push).
-- Effort per agent (Jimmy, 2026-09-23: spend effort where it pays). It's set in each agent's frontmatter (`model`, `effort`):
-  - unreal-engineer: top model, high
-  - qa-engineer: top model, medium
-  - model-artist, animation-artist: sonnet, high
-  - level-designer, editor-operator: sonnet, medium
-  - playtester, designer: sonnet, low
-  - janitor: haiku, low
-  Escalate one task with the Agent tool's `model` override only when that agent failed on it or the task is unusually hard, and say why in the brief.
+- Model and effort per agent (Jimmy, 2026-09-23: spend effort where it pays). They are pinned in each agent's frontmatter (`model` = exact model ID, `effort`):
+  | Agent | Model | Effort |
+  |---|---|---|
+  | unreal-engineer | claude-opus-5-5 (Opus 5.5) | high |
+  | qa-engineer | claude-opus-5-5 (Opus 5.5) | medium |
+  | model-artist, animation-artist | claude-sonnet-5 (Sonnet 5) | high |
+  | level-designer, editor-operator | claude-sonnet-5 (Sonnet 5) | medium |
+  | playtester, designer | claude-sonnet-5 (Sonnet 5) | low |
+  | janitor | claude-haiku-4-5-20251001 (Haiku 4.5) | low |
+  How to pick for a NEW agent (whenever Jimmy asks for one, or the lead adds one):
+  - Opus for work where mistakes are costly or subtle (gameplay/network code, test design).
+  - Sonnet for skilled but well-documented work (art recipes, level data, running editor scripts, playing, reviewing).
+  - Haiku for simple rule-following chores.
+  - Effort high for math, geometry or tricky logic; medium for known procedures; low for checklists and reviews.
+  Add the new agent to this table and tell Jimmy its model and effort.
+  Built-in helpers (Explore, general-purpose, Plan): pass the Agent tool's `model` (haiku for searches, sonnet otherwise).
+  Escalate one task to a stronger model only when an agent failed on it or the task is unusually hard, and say why in the brief. Models are pinned like the rest of the stack: changing them, or upgrading to newer models, needs Jimmy's OK.
 - Subagent conversations end with their task; nothing to compact there. Keeping reports short is what saves tokens.
 
 ## Working with Jimmy
