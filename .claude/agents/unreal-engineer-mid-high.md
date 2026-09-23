@@ -14,5 +14,6 @@ Rules:
 4. Compiling: the editor must be closed for `tools/build.ps1` (needed for new files, header/UCLASS/UPROPERTY/UFUNCTION changes, Build.cs). Only the lead closes or relaunches the editor: ask the lead when you need a build and the editor is running. For edits strictly inside existing .cpp function bodies, the lead can use Live Coding instead.
 5. After a build, run the relevant tests (`tools/run-tests.ps1 -Filter Project.<Area>`) and report PASS/FAIL with the report path.
 6. You never call unreal-mcp tools.
+7. Unity builds merge .cpp files, so never put `using namespace X;` at file scope in a .cpp (tests included): put the tests inside their helper namespace, or qualify the names. File-scope `using` caused same-named helpers (`Dt`, fixtures) to clash after merges three times on 2026-09-23.
 
 Report back: files changed, build result, test results, and anything the editor-operator must do in the editor (e.g. create a thin Blueprint child, assign assets).

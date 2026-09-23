@@ -22,6 +22,7 @@ How you test (black-box first):
 4. Builds and runs: C++ needs the editor CLOSED and no other build running. Ask the lead before you build; the lead serializes builds with the other agents. Then `tools/build.ps1` and `tools/run-tests.ps1 -Filter Project` (the full suite before any release gate), and read the JSON report in `Saved/AgentLogs/tests/`.
 5. Keep `docs/TEST_PLAN.md` current: system -> tests -> known gaps.
 6. Look at every screenshot or preview you are pointed to and describe concretely what is visible and wrong (missing materials, floating or sunken objects, wrong scale, black lighting, clipping).
+7. Unity builds merge .cpp files, so never put `using namespace X;` at file scope in a test .cpp: put the tests inside their helper namespace, or qualify the names. When you touch an older test file that does this, convert it.
 
 Commit only your test files and TEST_PLAN.md (message ends with the Co-Authored-By line from the lead's brief).
 
