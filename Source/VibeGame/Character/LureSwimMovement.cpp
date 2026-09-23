@@ -1,5 +1,6 @@
-// Lure: surface swimming and climbing out of the water (T-026). Members of ULureCharacterMovementComponent.
-// Spec: docs/specs/swimming.md. Tuning: DT_Movement rows Swim / SwimSprint (SurfaceFloatDepth, ClimbOutMaxHeight, ClimbOutSpeed).
+// Lure: surface swimming (T-026) and climbing onto edges: out of the water, or up a ledge a jump reached (T-004 B1).
+// Members of ULureCharacterMovementComponent. Spec: docs/specs/swimming.md.
+// Tuning: DT_Movement rows Swim / SwimSprint (SurfaceFloatDepth) and the climb rule ClimbMaxHeight / ClimbSpeed on every row.
 
 #include "Character/LureCharacterMovementComponent.h"
 #include "Character/LureLadder.h"
@@ -41,6 +42,17 @@ namespace LureSwimPrivate
 
 	/** Critically damped spring: after SettleTime about 2% of the offset is left ((1 + x) e^-x = 0.02 at x = 5.8). */
 	constexpr float SettleOmegaTimesTime = 5.8f;
+
+	/** A landing may lift the feet this much without counting as climbing a ledge (the walking floor distance), cm. */
+	constexpr float LandingLiftTolerance = 2.5f;
+
+	/** Contact normal vs surface normal: below this dot product the capsule is touching an edge, not a surface. */
+	constexpr float EdgeContactDot = 0.995f;
+
+	bool IsClimbMode(uint8 CustomMode)
+	{
+		return CustomMode == static_cast<uint8>(ELureCustomMovementMode::ClimbOut) || CustomMode == static_cast<uint8>(ELureCustomMovementMode::LedgeClimb);
+	}
 }
 
 // ---- Queries ----
@@ -48,6 +60,11 @@ namespace LureSwimPrivate
 bool ULureCharacterMovementComponent::IsClimbingOut() const
 {
 	return MovementMode == MOVE_Custom && CustomMovementMode == static_cast<uint8>(ELureCustomMovementMode::ClimbOut) && UpdatedComponent;
+}
+
+bool ULureCharacterMovementComponent::IsLedgeClimbing() const
+{
+	return MovementMode == MOVE_Custom && CustomMovementMode == static_cast<uint8>(ELureCustomMovementMode::LedgeClimb) && UpdatedComponent;
 }
 
 bool ULureCharacterMovementComponent::ShouldFloatAtSurface() const
@@ -96,7 +113,7 @@ const ALureLadder* ULureCharacterMovementComponent::FindLadderAt(const FVector& 
 
 float ULureCharacterMovementComponent::GetClimbOutMaxHeight() const
 {
-	float MaxHeight = GetRow(IsSwimming() ? GetMovementState() : ELureMovementState::Swim).ClimbOutMaxHeight;
+	float MaxHeight = GetRow(IsSwimming() ? GetMovementState() : ELureMovementState::Swim).ClimbMaxHeight;
 	if (UpdatedComponent)
 	{
 		if (const ALureLadder* Ladder = FindLadderAt(UpdatedComponent->GetComponentLocation()))
@@ -119,12 +136,104 @@ float ULureCharacterMovementComponent::ComputeSurfaceFloatVelocity(float CenterZ
 	return (VerticalSpeed + DeltaTime * Omega * Omega * (TargetZ - CenterZ)) / Denominator;
 }
 
-// ---- Climbing out ----
+// ---- Finding an edge to climb ----
 
-bool ULureCharacterMovementComponent::FindClimbOutPlan(FLureClimbOutPlan& OutPlan) const
+bool ULureCharacterMovementComponent::FindLedgePlan(const FLedgeQuery& Query, FLureClimbPlan& OutPlan) const
 {
 	using namespace LureSwimPrivate;
 
+	if (!HasValidData() || !(Query.MaxHeight > 0.f) || !(Query.Speed > 0.f) || Query.Forward.IsNearlyZero())
+	{
+		return false;
+	}
+
+	const FVector Location = UpdatedComponent->GetComponentLocation();
+	const UCapsuleComponent* Capsule = CharacterOwner->GetCapsuleComponent();
+	const float Radius = Capsule->GetScaledCapsuleRadius();
+	const float HalfHeight = Capsule->GetScaledCapsuleHalfHeight();
+	const FVector Forward = Query.Forward;
+
+	UWorld* World = GetWorld();
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(LureLedgeClimb), false, CharacterOwner);
+	FCollisionResponseParams Response;
+	InitCollisionParams(Params, Response);
+	const ECollisionChannel Channel = UpdatedComponent->GetCollisionObjectType();
+	const FCollisionShape PathShape = FCollisionShape::MakeCapsule(FMath::Max(Radius - PathShrink, 1.f), FMath::Max(HalfHeight - PathShrink, 1.f));
+
+	// 1. The edge's face: within reach in front of the body (at a ladder: the ladder itself).
+	FVector FacePoint = FVector::ZeroVector;
+	if (Query.Ladder)
+	{
+		FacePoint = Query.Ladder->GetActorLocation();
+	}
+	else
+	{
+		FHitResult FaceHit;
+		if (!World->SweepSingleByChannel(FaceHit, Location, Location + Forward * Query.FaceReach, FQuat::Identity, Channel, PathShape, Params, Response)
+			|| FaceHit.bStartPenetrating)
+		{
+			return false;
+		}
+		FacePoint = FaceHit.ImpactPoint;
+	}
+
+	// 2. The edge's top: a small probe comes down just past the face from the highest allowed height. If it starts inside
+	//    something, the edge is too high; if it finds nothing above the lowest allowed top, there is no edge.
+	const float TopLimitZ = FMath::Min(Query.ReferenceZ + Query.MaxHeight, Query.HighestTopZ) + LedgeHeightTolerance;
+	if (TopLimitZ <= Query.LowestTopZ)
+	{
+		return false;
+	}
+	const FVector ProbeXY = FacePoint + Forward * LedgeProbeInset;
+	const FVector ProbeStart(ProbeXY.X, ProbeXY.Y, TopLimitZ + LedgeProbeRadius);
+	const FVector ProbeEnd(ProbeXY.X, ProbeXY.Y, Query.LowestTopZ);
+	FHitResult TopHit;
+	if (!World->SweepSingleByChannel(TopHit, ProbeStart, ProbeEnd, FQuat::Identity, Channel, FCollisionShape::MakeSphere(LedgeProbeRadius), Params, Response)
+		|| TopHit.bStartPenetrating || !IsWalkable(TopHit))
+	{
+		return false;
+	}
+	const float LedgeZ = static_cast<float>(TopHit.ImpactPoint.Z);
+	if (LedgeZ > TopLimitZ || LedgeZ < Query.LowestTopZ)
+	{
+		return false;
+	}
+
+	// 3. Room to stand on it, with a floor under the feet.
+	FVector Target = FacePoint + Forward * (Query.TargetRadius + TargetInset);
+	Target.Z = LedgeZ + Query.TargetHalfHeight + StandGap;
+	FHitResult FloorHit;
+	const FVector FloorEnd = Target - FVector(0.f, 0.f, Query.TargetHalfHeight + StandGap + 20.f);
+	if (!World->LineTraceSingleByChannel(FloorHit, Target, FloorEnd, Channel, Params, Response) || FloorHit.bStartPenetrating || !IsWalkable(FloorHit)
+		|| FloorHit.ImpactPoint.Z > LedgeZ + LedgeHeightTolerance + 1.f)
+	{
+		return false;
+	}
+	Target.Z = FloorHit.ImpactPoint.Z + Query.TargetHalfHeight + StandGap;
+	if (IsCapsuleEncroachedAt(Target, Query.TargetRadius, Query.TargetHalfHeight))
+	{
+		return false;
+	}
+
+	// 4. A clear path: straight up along the face, then across onto the edge.
+	const FVector RiseTo(Location.X, Location.Y, FMath::Max(Target.Z, Location.Z));
+	if (World->SweepTestByChannel(Location, RiseTo, FQuat::Identity, Channel, PathShape, Params, Response)
+		|| World->SweepTestByChannel(RiseTo, Target, FQuat::Identity, Channel, PathShape, Params, Response))
+	{
+		return false;
+	}
+
+	OutPlan.Start = Location;
+	OutPlan.RiseTo = RiseTo;
+	OutPlan.Target = Target;
+	OutPlan.LedgeHeight = LedgeZ - Query.ReferenceZ;
+	OutPlan.Speed = Query.Speed;
+	OutPlan.bUsesLadder = false;
+	return true;
+}
+
+bool ULureCharacterMovementComponent::FindClimbOutPlan(FLureClimbPlan& OutPlan) const
+{
 	if (!HasValidData() || !IsSwimming())
 	{
 		return false;
@@ -136,135 +245,145 @@ bool ULureCharacterMovementComponent::FindClimbOutPlan(FLureClimbOutPlan& OutPla
 	}
 
 	const FLureMovementRow& Row = GetRow(GetMovementState());
-	const FVector Location = UpdatedComponent->GetComponentLocation();
-	const UCapsuleComponent* Capsule = CharacterOwner->GetCapsuleComponent();
-	const float Radius = Capsule->GetScaledCapsuleRadius();
-	const float HalfHeight = Capsule->GetScaledCapsuleHalfHeight();
-	const float Scale = Capsule->GetShapeScale();
+	const float Scale = CharacterOwner->GetCapsuleComponent()->GetShapeScale();
 	const FLureMovementRow& Stand = GetStanceRow(ELureStance::Stand);
-	const float StandRadius = FMath::Max(Stand.CapsuleRadius, 1.f) * Scale;
-	const float StandHalfHeight = FMath::Max(Stand.CapsuleHalfHeight, Stand.CapsuleRadius) * Scale;
 
-	// Where to look: in front of the body, or into the dock at a ladder.
-	float MaxHeight = Row.ClimbOutMaxHeight;
-	float Speed = Row.ClimbOutSpeed;
-	FVector Forward = FVector(CharacterOwner->GetActorForwardVector().X, CharacterOwner->GetActorForwardVector().Y, 0.0).GetSafeNormal();
-	const ALureLadder* Ladder = FindLadderAt(Location);
+	FLedgeQuery Query;
+	Query.Forward = FVector(CharacterOwner->GetActorForwardVector().X, CharacterOwner->GetActorForwardVector().Y, 0.0).GetSafeNormal();
+	Query.ReferenceZ = SurfaceZ;
+	Query.MaxHeight = Row.ClimbMaxHeight;
+	Query.LowestTopZ = SurfaceZ + LureSwimPrivate::LowestLedgeHeight;
+	Query.FaceReach = ClimbOutReach;
+	Query.TargetRadius = FMath::Max(Stand.CapsuleRadius, 1.f) * Scale; // you get out standing
+	Query.TargetHalfHeight = FMath::Max(Stand.CapsuleHalfHeight, Stand.CapsuleRadius) * Scale;
+	Query.Speed = Row.ClimbSpeed;
+
+	// At a ladder: climb into the dock whichever way you face, as high as the ladder goes.
 	bool bUsesLadder = false;
-	if (Ladder)
+	if (const ALureLadder* Ladder = FindLadderAt(UpdatedComponent->GetComponentLocation()))
 	{
-		Forward = Ladder->GetClimbDirection();
+		Query.Ladder = Ladder;
+		Query.Forward = Ladder->GetClimbDirection();
 		if (Ladder->ClimbSpeed > 0.f)
 		{
-			Speed = Ladder->ClimbSpeed;
+			Query.Speed = Ladder->ClimbSpeed;
 		}
-		if (Ladder->MaxClimbHeight > MaxHeight)
+		if (Ladder->MaxClimbHeight > Query.MaxHeight)
 		{
-			MaxHeight = Ladder->MaxClimbHeight;
+			Query.MaxHeight = Ladder->MaxClimbHeight;
 			bUsesLadder = true;
 		}
 	}
-	if (!(MaxHeight > 0.f) || !(Speed > 0.f) || Forward.IsNearlyZero())
+
+	if (!FindLedgePlan(Query, OutPlan))
 	{
 		return false;
 	}
-
-	UWorld* World = GetWorld();
-	FCollisionQueryParams Params(SCENE_QUERY_STAT(LureClimbOut), false, CharacterOwner);
-	FCollisionResponseParams Response;
-	InitCollisionParams(Params, Response);
-	const ECollisionChannel Channel = UpdatedComponent->GetCollisionObjectType();
-	const FCollisionShape PathShape = FCollisionShape::MakeCapsule(FMath::Max(Radius - PathShrink, 1.f), FMath::Max(HalfHeight - PathShrink, 1.f));
-
-	// 1. The edge's face: within reach in front of the body (at a ladder: the ladder itself).
-	FVector FacePoint = FVector::ZeroVector;
-	if (Ladder)
-	{
-		FacePoint = Ladder->GetActorLocation();
-	}
-	else
-	{
-		FHitResult FaceHit;
-		if (!World->SweepSingleByChannel(FaceHit, Location, Location + Forward * ClimbOutReach, FQuat::Identity, Channel, PathShape, Params, Response)
-			|| FaceHit.bStartPenetrating)
-		{
-			return false;
-		}
-		FacePoint = FaceHit.ImpactPoint;
-	}
-
-	// 2. The edge's top: a small probe comes down just past the face from the highest allowed edge height. If it starts
-	//    inside something, the edge is too high; if it finds nothing above the seabed line, there is no edge.
-	const FVector ProbeXY = FacePoint + Forward * LedgeProbeInset;
-	const float TopLimitZ = SurfaceZ + MaxHeight + LedgeHeightTolerance;
-	const FVector ProbeStart(ProbeXY.X, ProbeXY.Y, TopLimitZ + LedgeProbeRadius);
-	const FVector ProbeEnd(ProbeXY.X, ProbeXY.Y, SurfaceZ + LowestLedgeHeight);
-	FHitResult TopHit;
-	if (!World->SweepSingleByChannel(TopHit, ProbeStart, ProbeEnd, FQuat::Identity, Channel, FCollisionShape::MakeSphere(LedgeProbeRadius), Params, Response)
-		|| TopHit.bStartPenetrating || !IsWalkable(TopHit))
-	{
-		return false;
-	}
-	const float LedgeZ = static_cast<float>(TopHit.ImpactPoint.Z);
-	if (LedgeZ - SurfaceZ > MaxHeight + LedgeHeightTolerance)
-	{
-		return false;
-	}
-
-	// 3. Room to stand on it, with a floor under the feet.
-	FVector Target = FacePoint + Forward * (StandRadius + TargetInset);
-	Target.Z = LedgeZ + StandHalfHeight + StandGap;
-	FHitResult FloorHit;
-	const FVector FloorEnd = Target - FVector(0.f, 0.f, StandHalfHeight + StandGap + 20.f);
-	if (!World->LineTraceSingleByChannel(FloorHit, Target, FloorEnd, Channel, Params, Response) || FloorHit.bStartPenetrating || !IsWalkable(FloorHit)
-		|| FloorHit.ImpactPoint.Z > LedgeZ + LedgeHeightTolerance + 1.f)
-	{
-		return false;
-	}
-	Target.Z = FloorHit.ImpactPoint.Z + StandHalfHeight + StandGap;
-	if (IsCapsuleEncroachedAt(Target, StandRadius, StandHalfHeight))
-	{
-		return false;
-	}
-
-	// 4. A clear path: straight up along the face, then across onto the edge.
-	const FVector RiseTo(Location.X, Location.Y, Target.Z);
-	if (World->SweepTestByChannel(Location, RiseTo, FQuat::Identity, Channel, PathShape, Params, Response)
-		|| World->SweepTestByChannel(RiseTo, Target, FQuat::Identity, Channel, PathShape, Params, Response))
-	{
-		return false;
-	}
-
-	OutPlan.Start = Location;
-	OutPlan.RiseTo = RiseTo;
-	OutPlan.Target = Target;
-	OutPlan.LedgeHeight = LedgeZ - SurfaceZ;
-	OutPlan.Speed = Speed;
 	OutPlan.bUsesLadder = bUsesLadder;
 	return true;
 }
 
+bool ULureCharacterMovementComponent::FindJumpClimbPlan(FLureClimbPlan& OutPlan) const
+{
+	// Only after a jump, on the way down, while moving: a rising jump clears what it can by itself.
+	if (!HasValidData() || !IsFalling() || CharacterOwner->JumpCurrentCount <= 0 || Velocity.Z > 0.f)
+	{
+		return false;
+	}
+	const FVector InputDirection = Acceleration.GetSafeNormal2D();
+	if (InputDirection.IsNearlyZero())
+	{
+		return false;
+	}
+
+	const FLureMovementRow& Row = GetRow(GetMovementState());
+	const UCapsuleComponent* Capsule = CharacterOwner->GetCapsuleComponent();
+	const float Feet = GetFeetHeight();
+
+	FLedgeQuery Query;
+	Query.Forward = InputDirection;
+	Query.ReferenceZ = TakeoffFeetHeight;
+	Query.MaxHeight = Row.ClimbMaxHeight;
+	Query.LowestTopZ = Feet + 1.f;											// a ledge the feet are below (else you just land on it)
+	Query.HighestTopZ = Feet + Capsule->GetScaledCapsuleRadius();			// that the jump actually reached
+	Query.FaceReach = JumpClimbReach;
+	Query.TargetRadius = Capsule->GetScaledCapsuleRadius();					// same posture on top
+	Query.TargetHalfHeight = Capsule->GetScaledCapsuleHalfHeight();
+	Query.Speed = Row.ClimbSpeed;
+	return FindLedgePlan(Query, OutPlan);
+}
+
+// ---- Starting a climb ----
+
+void ULureCharacterMovementComponent::StartClimb(const FLureClimbPlan& Plan, ELureCustomMovementMode Mode)
+{
+	ClimbPlan = Plan;
+	bHasClimbPlan = true;
+	Velocity = FVector::ZeroVector;
+	SetMovementMode(MOVE_Custom, static_cast<uint8>(Mode));
+}
+
 bool ULureCharacterMovementComponent::TryStartClimbOut()
 {
-	FLureClimbOutPlan Plan;
+	FLureClimbPlan Plan;
 	if (!FindClimbOutPlan(Plan))
 	{
 		return false;
 	}
-	ClimbOutPlan = Plan;
-	bHasClimbOutPlan = true;
-	Velocity = FVector::ZeroVector;
-	SetMovementMode(MOVE_Custom, static_cast<uint8>(ELureCustomMovementMode::ClimbOut));
+	StartClimb(Plan, ELureCustomMovementMode::ClimbOut);
 	return true;
+}
+
+bool ULureCharacterMovementComponent::TryStartJumpClimb()
+{
+	FLureClimbPlan Plan;
+	if (!FindJumpClimbPlan(Plan))
+	{
+		return false;
+	}
+	StartClimb(Plan, ELureCustomMovementMode::LedgeClimb);
+	return true;
+}
+
+bool ULureCharacterMovementComponent::IsValidLandingSpot(const FVector& CapsuleLocation, const FHitResult& Hit) const
+{
+	if (!Super::IsValidLandingSpot(CapsuleLocation, Hit))
+	{
+		return false;
+	}
+	if (!IsFalling() || !CharacterOwner)
+	{
+		return true;
+	}
+	// The climb rule (T-004 B1). Landings from above are never refused. A landing that LIFTS the feet (the rounded
+	// capsule bottom catching something above them) is refused when it is higher than ClimbMaxHeight above the takeoff,
+	// and whenever it is a ledge's edge rather than a slope: the jump climb then pulls you up onto ledges within the
+	// rule (PhysFalling), so you never hang perched below a ledge top and every edge shape behaves the same.
+	const float Feet = static_cast<float>(CapsuleLocation.Z) - CharacterOwner->GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+	const float FloorZ = static_cast<float>(Hit.ImpactPoint.Z);
+	if (FloorZ <= Feet + LureSwimPrivate::LandingLiftTolerance)
+	{
+		return true;
+	}
+	if (FloorZ > TakeoffFeetHeight + GetRow(GetMovementState()).ClimbMaxHeight + LureSwimPrivate::LandingLiftTolerance)
+	{
+		return false;
+	}
+	const bool bEdgeContact = FVector::DotProduct(Hit.Normal, Hit.ImpactNormal) < LureSwimPrivate::EdgeContactDot;
+	return !bEdgeContact;
 }
 
 // ---- Physics ----
 
 void ULureCharacterMovementComponent::OnMovementModeChanged(EMovementMode PreviousMovementMode, uint8 PreviousCustomMode)
 {
-	if (!IsClimbingOut())
+	if (MovementMode != MOVE_Custom || !LureSwimPrivate::IsClimbMode(CustomMovementMode))
 	{
-		bHasClimbOutPlan = false;
+		bHasClimbPlan = false;
+	}
+	if (MovementMode == MOVE_Falling && PreviousMovementMode != MOVE_Falling)
+	{
+		TakeoffFeetHeight = GetFeetHeight(); // where the jump or fall started: the climb rule's zero
 	}
 	Super::OnMovementModeChanged(PreviousMovementMode, PreviousCustomMode);
 }
@@ -351,17 +470,28 @@ void ULureCharacterMovementComponent::PhysSurfaceSwimming(float DeltaTime, int32
 	}
 }
 
+void ULureCharacterMovementComponent::PhysFalling(float DeltaTime, int32 Iterations)
+{
+	// A jump that reached a ledge within the climb rule pulls you up onto it (consistent for any edge shape).
+	if (DeltaTime >= MIN_TICK_TIME && TryStartJumpClimb())
+	{
+		StartNewPhysics(DeltaTime, Iterations);
+		return;
+	}
+	Super::PhysFalling(DeltaTime, Iterations);
+}
+
 void ULureCharacterMovementComponent::PhysCustom(float DeltaTime, int32 Iterations)
 {
-	if (CustomMovementMode == static_cast<uint8>(ELureCustomMovementMode::ClimbOut))
+	if (LureSwimPrivate::IsClimbMode(CustomMovementMode))
 	{
-		PhysClimbOut(DeltaTime, Iterations);
+		PhysClimb(DeltaTime, Iterations);
 		return;
 	}
 	Super::PhysCustom(DeltaTime, Iterations);
 }
 
-void ULureCharacterMovementComponent::PhysClimbOut(float DeltaTime, int32 Iterations)
+void ULureCharacterMovementComponent::PhysClimb(float DeltaTime, int32 Iterations)
 {
 	using namespace LureSwimPrivate;
 
@@ -369,7 +499,7 @@ void ULureCharacterMovementComponent::PhysClimbOut(float DeltaTime, int32 Iterat
 	{
 		return;
 	}
-	if (!bHasClimbOutPlan)
+	if (!bHasClimbPlan)
 	{
 		// Only a server correction can put an owning client here without a plan: hold still, the server finishes the climb.
 		if (CharacterOwner && CharacterOwner->GetLocalRole() == ROLE_AutonomousProxy)
@@ -385,7 +515,7 @@ void ULureCharacterMovementComponent::PhysClimbOut(float DeltaTime, int32 Iterat
 	Iterations++;
 	const FVector OldLocation = UpdatedComponent->GetComponentLocation();
 	const FQuat Rotation = UpdatedComponent->GetComponentQuat();
-	float Budget = ClimbOutPlan.Speed * DeltaTime;
+	float Budget = ClimbPlan.Speed * DeltaTime;
 	bool bBlocked = false;
 
 	// Moves Delta with a slide along whatever it touches; false if it made (almost) no progress along Delta.
@@ -404,7 +534,7 @@ void ULureCharacterMovementComponent::PhysClimbOut(float DeltaTime, int32 Iterat
 	};
 
 	// 1. Straight up along the edge.
-	const float Rise = static_cast<float>(ClimbOutPlan.RiseTo.Z - OldLocation.Z);
+	const float Rise = static_cast<float>(ClimbPlan.RiseTo.Z - OldLocation.Z);
 	if (Rise > ArriveTolerance)
 	{
 		const float Step = FMath::Min(Budget, Rise);
@@ -414,9 +544,9 @@ void ULureCharacterMovementComponent::PhysClimbOut(float DeltaTime, int32 Iterat
 
 	// 2. Across onto the edge.
 	FVector Location = UpdatedComponent->GetComponentLocation();
-	if (!bBlocked && Budget > 0.f && ClimbOutPlan.RiseTo.Z - Location.Z <= ArriveTolerance)
+	if (!bBlocked && Budget > 0.f && ClimbPlan.RiseTo.Z - Location.Z <= ArriveTolerance)
 	{
-		const FVector Across = ClimbOutPlan.Target - Location;
+		const FVector Across = ClimbPlan.Target - Location;
 		const float Distance = static_cast<float>(Across.Size());
 		if (Distance > ArriveTolerance)
 		{
@@ -429,14 +559,14 @@ void ULureCharacterMovementComponent::PhysClimbOut(float DeltaTime, int32 Iterat
 
 	if (bBlocked)
 	{
-		// Something got in the way: let go (you drop back into the water and can try again).
-		bHasClimbOutPlan = false;
+		// Something got in the way: let go (you drop back and can try again).
+		bHasClimbPlan = false;
 		SetMovementMode(MOVE_Falling);
 		return;
 	}
-	if ((ClimbOutPlan.Target - Location).Size() <= ArriveTolerance)
+	if ((ClimbPlan.Target - Location).Size() <= ArriveTolerance)
 	{
-		bHasClimbOutPlan = false;
+		bHasClimbPlan = false;
 		Velocity = FVector::ZeroVector;
 		SetMovementMode(MOVE_Walking);
 	}

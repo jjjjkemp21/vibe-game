@@ -36,6 +36,10 @@ struct FLureArmsMotionSettings
 	/** Play rate of A_FPArms_StanceDip when landing from a jump or fall (0 = no dip). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Arms Motion", meta=(ClampMin="0"))
 	float LandingDipPlayRate = 1.f;
+
+	/** How fast the arms move to a new state's ArmsPullBack (DT_Movement), FInterpTo speed 1/s (0 = at once). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Arms Motion", meta=(ClampMin="0"))
+	float StanceOffsetBlendSpeed = 10.f;
 };
 
 /** Running state of one character's arms motion (client-side cosmetic, never replicated). */

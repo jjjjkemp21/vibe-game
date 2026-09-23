@@ -255,7 +255,16 @@ bool FLureMovementCsvParsesTest::RunTest(const FString& Parameters)
 
 	// Arms bob columns (SK_FPArms.anim.md defaults; step rate derived from MaxSpeed).
 	TestNearlyEqual(TEXT("Stand.BobStepRate (0 = derive)"), Row(Rows, ELureMovementState::Stand).BobStepRate, 0.f);
-	TestNearlyEqual(TEXT("Stand.BobVertical"), Row(Rows, ELureMovementState::Stand).BobVertical, 0.8f);
+	TestNearlyEqual(TEXT("Stand.BobVertical (playtest feel 2026-09-23)"), Row(Rows, ELureMovementState::Stand).BobVertical, 1.5f);
+	TestNearlyEqual(TEXT("Stand.BobLateral"), Row(Rows, ELureMovementState::Stand).BobLateral, 1.0f);
+	TestNearlyEqual(TEXT("Sprint.BobVertical"), Row(Rows, ELureMovementState::Sprint).BobVertical, 3.0f);
+	TestNearlyEqual(TEXT("Sprint.BobLateral"), Row(Rows, ELureMovementState::Sprint).BobLateral, 1.8f);
+	TestNearlyEqual(TEXT("Sprint.BobPitch"), Row(Rows, ELureMovementState::Sprint).BobPitch, 1.5f);
+
+	// T-004 playtest fixes: the climb rule, the prone arms pull-back and the slower camera when getting up from prone.
+	TestNearlyEqual(TEXT("Stand.ClimbMaxHeight (1 m crates climbable, 1.2 m not)"), Row(Rows, ELureMovementState::Stand).ClimbMaxHeight, 100.f);
+	TestNearlyEqual(TEXT("Prone.ArmsPullBack"), Row(Rows, ELureMovementState::Prone).ArmsPullBack, 12.f);
+	TestNearlyEqual(TEXT("Prone.ExitTransitionTime"), Row(Rows, ELureMovementState::Prone).ExitTransitionTime, 0.42f);
 	TestNearlyEqual(TEXT("Sprint.BobForward"), Row(Rows, ELureMovementState::Sprint).BobForward, 0.3f);
 	TestNearlyEqual(TEXT("Crouch.BobLateral"), Row(Rows, ELureMovementState::Crouch).BobLateral, 0.9f);
 	TestNearlyEqual(TEXT("Prone.BobRoll"), Row(Rows, ELureMovementState::Prone).BobRoll, 2.0f);

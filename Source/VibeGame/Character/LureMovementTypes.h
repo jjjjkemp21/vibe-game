@@ -43,7 +43,7 @@ ENUM_RANGE_BY_COUNT(ELureMovementState, ELureMovementState::Count)
  *  The column names in the CSV are the property names below.
  *  Sprint uses the Stand capsule; keep its capsule and EyeHeight equal to Stand (a data test checks this).
  *  Swim and SwimSprint also use the Stand capsule (keep their capsule columns equal to Stand); their EyeHeight is the
- *  swimming camera height above the feet, and the Water columns tune floating and climbing out (docs/specs/swimming.md).
+ *  swimming camera height above the feet; SurfaceFloatDepth and ClimbMaxHeight tune floating and climbing out (docs/specs/swimming.md).
  */
 USTRUCT(BlueprintType)
 struct FLureMovementRow : public FTableRowBase
@@ -120,23 +120,35 @@ struct FLureMovementRow : public FTableRowBase
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Arms Bob", meta=(ClampMin="0"))
 	float StanceDipPlayRate = 1.f;
 
-	// ---- Water (T-026). Used by the Swim rows; 0 on land rows. Optional CSV columns (missing = 0). ----
+	// ---- Optional CSV columns (missing = 0): the climb rule, water, arms offset, camera exit time ----
 
 	/**
-	 *  Surface swimming: the capsule center floats this far below the water surface, cm, so the eyes are
-	 *  EyeHeight - CapsuleHalfHeight - SurfaceFloatDepth above the water. 0 = no surface float (free 3D swimming,
-	 *  e.g. diving later). This is the only "stay at the surface" rule in the code.
+	 *  The one climb rule: the highest edge Jump gets you onto, cm (0 = none). On land it is measured from your feet
+	 *  where you jumped: a landing on a higher ledge is refused, and a jump that reaches a ledge within it pulls you up.
+	 *  Swimming, it is measured from the water surface (Jump climbs out). A ladder can allow more in the water.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Climb", meta=(ClampMin="0", DataTableImportOptional="true"))
+	float ClimbMaxHeight = 0.f;
+
+	/** Speed of that climb (up the edge, then onto it), cm/s. Needed when ClimbMaxHeight is set. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Climb", meta=(ClampMin="0", DataTableImportOptional="true"))
+	float ClimbSpeed = 0.f;
+
+	/**
+	 *  Surface swimming (Swim rows): the capsule center floats this far below the water surface, cm, so the eyes are
+	 *  EyeHeight - CapsuleHalfHeight - SurfaceFloatDepth above the water. 0 = no surface float (land rows; free 3D
+	 *  swimming such as diving later). This is the only "stay at the surface" rule in the code.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Water", meta=(ClampMin="0", DataTableImportOptional="true"))
 	float SurfaceFloatDepth = 0.f;
 
-	/** Highest edge above the water surface that Jump climbs out onto, cm (0 = no climbing out). A ladder can allow more. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Water", meta=(ClampMin="0", DataTableImportOptional="true"))
-	float ClimbOutMaxHeight = 0.f;
+	/** The first-person arms sit this much closer to the eye in this state, cm (e.g. prone, so the hands stay out of a wall the capsule touches). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Arms Bob", meta=(ClampMin="0", DataTableImportOptional="true"))
+	float ArmsPullBack = 0.f;
 
-	/** Climb-out speed (up the edge, then onto it), cm/s. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Water", meta=(ClampMin="0", DataTableImportOptional="true"))
-	float ClimbOutSpeed = 0.f;
+	/** Seconds the camera takes to reach the next state's eye height when LEAVING this state (0 = the next row's TransitionTime). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Movement", meta=(ClampMin="0", DataTableImportOptional="true"))
+	float ExitTransitionTime = 0.f;
 
 	/** Runtime sanity check (finite, positive, HalfHeight >= Radius, eye inside the capsule, ...). Returns false and a reason if the row is unusable. */
 	bool Validate(FString& OutProblem) const;

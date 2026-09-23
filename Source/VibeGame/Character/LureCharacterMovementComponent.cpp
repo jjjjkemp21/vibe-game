@@ -691,7 +691,7 @@ bool ULureCharacterMovementComponent::FindCapsuleLocation(float Radius, float Ha
 		}
 
 		// Getting up next to a wall with a wider capsule: a small sideways push.
-		if (NewScaledRadius > OldScaledRadius + UE_KINDA_SMALL_NUMBER && MaxStanceNudge > 0.f)
+		if (NewScaledRadius > OldScaledRadius + UE_KINDA_SMALL_NUMBER)
 		{
 			return FindNudgedCapsuleLocation(FeetKept, NewScaledRadius, NewScaledHalfHeight, OutLocation);
 		}
@@ -704,7 +704,11 @@ bool ULureCharacterMovementComponent::FindCapsuleLocation(float Radius, float Ha
 		OutLocation = PawnLocation;
 		return true;
 	}
-	const FVector Candidates[] = { PawnLocation, FeetKept, PawnLocation - HeightDelta * Up };
+	// Crawled off a ledge (prone again on landing): grow upward from the feet first, so the camera, held at the prone
+	// eye height during the fall, doesn't move (T-004 playtest: it rose 90 cm, then dropped 130 cm).
+	const FVector CenterFirst[] = { PawnLocation, FeetKept, PawnLocation - HeightDelta * Up };
+	const FVector FeetFirst[] = { FeetKept, PawnLocation, PawnLocation - HeightDelta * Up };
+	const FVector (&Candidates)[3] = bWantsToProne ? FeetFirst : CenterFirst;
 	for (const FVector& Candidate : Candidates)
 	{
 		if (!IsCapsuleEncroachedAt(Candidate, NewScaledRadius, NewScaledHalfHeight))
@@ -723,6 +727,13 @@ bool ULureCharacterMovementComponent::IsCapsuleEncroachedAt(const FVector& Locat
 	InitCollisionParams(Params, ResponseParam);
 	const FCollisionShape Shape = FCollisionShape::MakeCapsule(ScaledRadius, ScaledHalfHeight + LureMovementPrivate::SweepInflation);
 	return GetWorld()->OverlapBlockingTestByChannel(Location, GetWorldToGravityTransform(), UpdatedComponent->GetCollisionObjectType(), Shape, Params, ResponseParam);
+}
+
+float ULureCharacterMovementComponent::GetStanceNudgeLimit(float NewRadius, float OldRadius) const
+{
+	// Flush against walls on two sides (a corner), each wall needs the radius difference: sqrt(2) times it, plus 1 cm.
+	const float CornerNeed = UE_SQRT_2 * FMath::Max(NewRadius - OldRadius, 0.f) + 1.f;
+	return FMath::Max(MaxStanceNudge, CornerNeed);
 }
 
 bool ULureCharacterMovementComponent::FindNudgedCapsuleLocation(const FVector& Location, float ScaledRadius, float ScaledHalfHeight, FVector& OutLocation) const
@@ -767,7 +778,7 @@ bool ULureCharacterMovementComponent::FindNudgedCapsuleLocation(const FVector& L
 
 	Push = FVector::VectorPlaneProject(Push, Up);
 	const float Distance = Push.Size();
-	if (Distance <= UE_KINDA_SMALL_NUMBER || Distance > MaxStanceNudge)
+	if (Distance <= UE_KINDA_SMALL_NUMBER || Distance > GetStanceNudgeLimit(ScaledRadius, CharacterOwner->GetCapsuleComponent()->GetScaledCapsuleRadius()))
 	{
 		return false;
 	}

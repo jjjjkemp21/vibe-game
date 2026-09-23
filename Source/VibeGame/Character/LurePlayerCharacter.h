@@ -307,6 +307,15 @@ private:
 	void ApplyBodyMeshOffset();
 	void UpdateSprintToggle();
 
+	/** The DT_Movement row whose eye height the camera follows: the movement state, but Prone while falling with a prone wish. */
+	ELureMovementState GetEyeState() const;
+
+	/** The row the current eye blend targets (its ExitTransitionTime times the next blend). */
+	ELureMovementState EyeBlendState = ELureMovementState::Stand;
+
+	/** The arms' current pull-back toward the eye (eases to the row's ArmsPullBack), cm. */
+	float ArmsPullBackNow = 0.f;
+
 	float CurrentEyeHeight = 0.f;
 	float EyeBlendFrom = 0.f;
 	float EyeBlendTo = 0.f;

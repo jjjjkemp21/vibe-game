@@ -257,8 +257,15 @@ void ALurePlayerCharacter::UpdateArmsMotion(float DeltaSeconds)
 
 	// Walk bob + look sway as an offset on the arms (the camera stays steady).
 	const FLureMovementRow& Row = Movement->GetRow(Movement->GetMovementState());
-	const FTransform Offset = FLureArmsBob::Step(ArmsBobState, Row, GetDefault<ULureCharacterSettings>()->ArmsMotion,
+	const FLureArmsMotionSettings& ArmsSettings = GetDefault<ULureCharacterSettings>()->ArmsMotion;
+	FTransform Offset = FLureArmsBob::Step(ArmsBobState, Row, ArmsSettings,
 		static_cast<float>(Movement->Velocity.Size2D()), Movement->IsMovingOnGround(), bHoldingRod, LookRate, DeltaSeconds);
+
+	// Per-state pull-back toward the eye (DT_Movement ArmsPullBack): prone, the hands stay out of a wall the capsule touches.
+	ArmsPullBackNow = (DeltaSeconds > 0.f && ArmsSettings.StanceOffsetBlendSpeed > 0.f)
+		? FMath::FInterpTo(ArmsPullBackNow, Row.ArmsPullBack, DeltaSeconds, ArmsSettings.StanceOffsetBlendSpeed)
+		: Row.ArmsPullBack;
+	Offset.AddToTranslation(FVector(-ArmsPullBackNow, 0.f, 0.f));
 	const FTransform ArmsOffset = ApplySwimArms(Offset, DeltaSeconds);
 	FirstPersonArms->SetRelativeLocationAndRotation(ArmsOffset.GetLocation(), ArmsOffset.Rotator());
 
@@ -348,10 +355,25 @@ float ALurePlayerCharacter::EvaluateEyeBlend(float From, float To, float Elapsed
 	return From + (To - From) * Smooth;
 }
 
+ELureMovementState ALurePlayerCharacter::GetEyeState() const
+{
+	const ULureCharacterMovementComponent* Movement = GetLureMovement();
+	if (!Movement)
+	{
+		return ELureMovementState::Stand;
+	}
+	// Crawled off a ledge: you go prone again on landing, so the camera stays at the prone height through the fall.
+	if (Movement->IsFalling() && Movement->IsProneRequested())
+	{
+		return ELureMovementState::Prone;
+	}
+	return Movement->GetMovementState();
+}
+
 float ALurePlayerCharacter::GetTargetEyeHeight() const
 {
 	const ULureCharacterMovementComponent* Movement = GetLureMovement();
-	return Movement ? Movement->GetRow(Movement->GetMovementState()).EyeHeight : CurrentEyeHeight;
+	return Movement ? Movement->GetRow(GetEyeState()).EyeHeight : CurrentEyeHeight;
 }
 
 void ALurePlayerCharacter::BeginEyeBlend(float TargetEyeHeight, float Duration)
@@ -374,12 +396,16 @@ void ALurePlayerCharacter::UpdateEyeHeight(float DeltaSeconds)
 		return;
 	}
 
-	// The target row's TransitionTime is the time to reach its eye height (lead decision A8).
-	const FLureMovementRow& Row = Movement->GetRow(Movement->GetMovementState());
+	// The target row's TransitionTime is the time to reach its eye height (lead decision A8), unless the row we leave
+	// sets an ExitTransitionTime (getting up from prone takes longer than going down to crouch; T-004 playtest).
+	const ELureMovementState State = GetEyeState();
+	const FLureMovementRow& Row = Movement->GetRow(State);
 	if (!FMath::IsNearlyEqual(Row.EyeHeight, EyeBlendTo, 0.01f))
 	{
-		BeginEyeBlend(Row.EyeHeight, Row.TransitionTime);
+		const float ExitTime = Movement->GetRow(EyeBlendState).ExitTransitionTime;
+		BeginEyeBlend(Row.EyeHeight, ExitTime > 0.f ? ExitTime : Row.TransitionTime);
 	}
+	EyeBlendState = State;
 
 	if (EyeBlendElapsed < EyeBlendDuration && FMath::IsFinite(DeltaSeconds) && DeltaSeconds > 0.f)
 	{
@@ -449,6 +475,7 @@ void ALurePlayerCharacter::ApplyEyeHeight()
 void ALurePlayerCharacter::SnapEyeHeightToStance()
 {
 	const float Target = GetTargetEyeHeight();
+	EyeBlendState = GetEyeState();
 	CurrentEyeHeight = Target;
 	EyeBlendFrom = Target;
 	EyeBlendTo = Target;

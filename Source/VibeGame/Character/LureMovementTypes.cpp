@@ -10,7 +10,7 @@ bool FLureMovementRow::Validate(FString& OutProblem) const
 {
 	const float Values[] = { MaxSpeed, MaxAcceleration, CapsuleHalfHeight, CapsuleRadius, EyeHeight, TransitionTime, NoiseMultiplier, JumpZVelocity,
 		BobStepRate, BobVertical, BobLateral, BobRoll, BobPitch, BobYaw, BobForward, StanceDipPlayRate,
-		SurfaceFloatDepth, ClimbOutMaxHeight, ClimbOutSpeed };
+		ClimbMaxHeight, ClimbSpeed, SurfaceFloatDepth, ArmsPullBack, ExitTransitionTime };
 	for (const float Value : Values)
 	{
 		if (!FMath::IsFinite(Value))
@@ -68,14 +68,14 @@ bool FLureMovementRow::Validate(FString& OutProblem) const
 		OutProblem = FString::Printf(TEXT("JumpZVelocity %.1f must be >= 0 (and > 0 when CanJump)"), JumpZVelocity);
 		return false;
 	}
-	if (SurfaceFloatDepth < 0.f || ClimbOutMaxHeight < 0.f || ClimbOutSpeed < 0.f)
+	if (ClimbMaxHeight < 0.f || ClimbSpeed < 0.f || SurfaceFloatDepth < 0.f || ArmsPullBack < 0.f || ExitTransitionTime < 0.f)
 	{
-		OutProblem = TEXT("SurfaceFloatDepth, ClimbOutMaxHeight and ClimbOutSpeed must be >= 0");
+		OutProblem = TEXT("ClimbMaxHeight, ClimbSpeed, SurfaceFloatDepth, ArmsPullBack and ExitTransitionTime must be >= 0");
 		return false;
 	}
-	if (ClimbOutMaxHeight > 0.f && ClimbOutSpeed <= 0.f)
+	if (ClimbMaxHeight > 0.f && ClimbSpeed <= 0.f)
 	{
-		OutProblem = FString::Printf(TEXT("ClimbOutSpeed must be > 0 when ClimbOutMaxHeight (%.1f) is set"), ClimbOutMaxHeight);
+		OutProblem = FString::Printf(TEXT("ClimbSpeed must be > 0 when ClimbMaxHeight (%.1f) is set"), ClimbMaxHeight);
 		return false;
 	}
 	return true;
@@ -120,30 +120,34 @@ FLureMovementRow FLureMovementData::GetFallbackRow(ELureMovementState State)
 		return Row;
 	};
 
-	// Swimming (T-026): the Stand capsule, eyes 18 cm above the water, no arms bob; Jump climbs out onto edges up to 60 cm.
-	auto WithWater = [](FLureMovementRow Row, float FloatDepth, float ClimbMaxHeight, float ClimbSpeed)
+	// The optional columns: the climb rule (land: above the takeoff; swimming: above the water), the surface float,
+	// the arms pull-back and the camera's exit time.
+	auto WithExtras = [](FLureMovementRow Row, float ClimbMax, float ClimbRate, float FloatDepth, float PullBack, float ExitTime)
 	{
+		Row.ClimbMaxHeight = ClimbMax;
+		Row.ClimbSpeed = ClimbRate;
 		Row.SurfaceFloatDepth = FloatDepth;
-		Row.ClimbOutMaxHeight = ClimbMaxHeight;
-		Row.ClimbOutSpeed = ClimbSpeed;
+		Row.ArmsPullBack = PullBack;
+		Row.ExitTransitionTime = ExitTime;
 		return Row;
 	};
 
 	switch (State)
 	{
 	case ELureMovementState::Swim:
-		return WithWater(WithBob(MakeRow(170.f, 700.f, 90.f, 34.f, 118.f, 0.3f, 1.6f, 0.f, false), 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f), 10.f, 60.f, 300.f);
+		// T-026: the Stand capsule, eyes 18 cm above the water, no arms bob; Jump climbs out onto edges up to 60 cm.
+		return WithExtras(WithBob(MakeRow(170.f, 700.f, 90.f, 34.f, 118.f, 0.3f, 1.6f, 0.f, false), 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f), 60.f, 300.f, 10.f, 0.f, 0.f);
 	case ELureMovementState::SwimSprint:
-		return WithWater(WithBob(MakeRow(290.f, 900.f, 90.f, 34.f, 118.f, 0.3f, 3.0f, 0.f, false), 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f), 10.f, 60.f, 300.f);
+		return WithExtras(WithBob(MakeRow(290.f, 900.f, 90.f, 34.f, 118.f, 0.3f, 3.0f, 0.f, false), 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f), 60.f, 300.f, 10.f, 0.f, 0.f);
 	case ELureMovementState::Sprint:
-		return WithBob(MakeRow(600.f, 2048.f, 90.f, 34.f, 165.f, 0.25f, 2.5f, 440.f, true), 1.6f, 1.0f, 1.2f, 0.9f, 0.f, 0.3f, 1.0f);
+		return WithExtras(WithBob(MakeRow(600.f, 2048.f, 90.f, 34.f, 165.f, 0.25f, 2.5f, 440.f, true), 3.0f, 1.8f, 1.2f, 1.5f, 0.f, 0.3f, 1.0f), 100.f, 400.f, 0.f, 0.f, 0.f);
 	case ELureMovementState::Crouch:
-		return WithBob(MakeRow(180.f, 1600.f, 55.f, 34.f, 95.f, 0.20f, 0.5f, 380.f, true), 0.5f, 0.9f, 0.9f, 0.3f, 0.f, 0.f, 1.0f);
+		return WithExtras(WithBob(MakeRow(180.f, 1600.f, 55.f, 34.f, 95.f, 0.20f, 0.5f, 380.f, true), 0.5f, 0.9f, 0.9f, 0.3f, 0.f, 0.f, 1.0f), 100.f, 400.f, 0.f, 0.f, 0.f);
 	case ELureMovementState::Prone:
-		return WithBob(MakeRow(90.f, 1200.f, 26.f, 25.f, 35.f, 0.45f, 0.2f, 0.f, false), 0.4f, 1.6f, 2.0f, 0.3f, 1.5f, 1.2f, 0.85f);
+		return WithExtras(WithBob(MakeRow(90.f, 1200.f, 26.f, 25.f, 35.f, 0.45f, 0.2f, 0.f, false), 0.4f, 1.6f, 2.0f, 0.3f, 1.5f, 1.2f, 0.85f), 0.f, 0.f, 0.f, 12.f, 0.42f);
 	case ELureMovementState::Stand:
 	default:
-		return WithBob(MakeRow(350.f, 2048.f, 90.f, 34.f, 165.f, 0.25f, 1.0f, 420.f, true), 0.8f, 0.6f, 0.6f, 0.4f, 0.f, 0.f, 1.0f);
+		return WithExtras(WithBob(MakeRow(350.f, 2048.f, 90.f, 34.f, 165.f, 0.25f, 1.0f, 420.f, true), 1.5f, 1.0f, 0.6f, 0.4f, 0.f, 0.f, 1.0f), 100.f, 400.f, 0.f, 0.f, 0.f);
 	}
 }
 

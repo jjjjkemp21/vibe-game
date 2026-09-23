@@ -25,6 +25,7 @@
 #include "Misc/Paths.h"
 #include "Net/UnrealNetwork.h"
 #include "Tests/AutomationCommon.h"
+#include "UObject/GCObjectScopeGuard.h"
 #include "Tests/Movement/LureSwimTestListener.h"
 
 namespace LureSwimTest
@@ -95,21 +96,20 @@ namespace LureSwimTest
 			Check(R.SurfaceFloatDepth < R.CapsuleHalfHeight, Name + TEXT(": SurfaceFloatDepth < CapsuleHalfHeight"));
 			const float EyeAboveWater = R.EyeHeight - R.CapsuleHalfHeight - R.SurfaceFloatDepth;
 			Check(EyeAboveWater >= 5.f && EyeAboveWater <= 40.f, FString::Printf(TEXT("%s: eyes %.1f cm above the water, want [5, 40]"), *Name, EyeAboveWater));
-			Check(R.ClimbOutMaxHeight >= 30.f && R.ClimbOutMaxHeight <= 100.f, Name + TEXT(": ClimbOutMaxHeight in [30, 100] cm"));
-			Check(R.ClimbOutSpeed >= 50.f && R.ClimbOutSpeed <= 1000.f, Name + TEXT(": ClimbOutSpeed in [50, 1000] cm/s"));
+			Check(R.ClimbMaxHeight >= 30.f && R.ClimbMaxHeight <= 100.f, Name + TEXT(": ClimbMaxHeight in [30, 100] cm"));
+			Check(R.ClimbSpeed >= 50.f && R.ClimbSpeed <= 1000.f, Name + TEXT(": ClimbSpeed in [50, 1000] cm/s"));
 			Check(!R.CanJump, Name + TEXT(": CanJump is false (Jump climbs out instead)"));
 			Check(R.NoiseMultiplier >= Stand.NoiseMultiplier, Name + TEXT(": swimming is at least as loud as walking (splashy)"));
 		}
 		Check(Swim.MaxSpeed < Stand.MaxSpeed, TEXT("swimming is slower than walking"));
 		Check(SwimSprint.MaxSpeed > Swim.MaxSpeed && SwimSprint.MaxSpeed < Sprint.MaxSpeed, TEXT("Swim < SwimSprint < Sprint speeds"));
 		Check(SwimSprint.NoiseMultiplier > Swim.NoiseMultiplier, TEXT("sprint-swimming is louder than swimming"));
-		Check(FMath::IsNearlyEqual(Swim.ClimbOutMaxHeight, SwimSprint.ClimbOutMaxHeight), TEXT("same climb-out height while sprint-swimming"));
+		Check(FMath::IsNearlyEqual(Swim.ClimbMaxHeight, SwimSprint.ClimbMaxHeight), TEXT("same climb-out height while sprint-swimming"));
 
 		for (const ELureMovementState State : { ELureMovementState::Stand, ELureMovementState::Sprint, ELureMovementState::Crouch, ELureMovementState::Prone })
 		{
 			const FLureMovementRow& R = RowOf(Rows, State);
-			Check(R.SurfaceFloatDepth == 0.f && R.ClimbOutMaxHeight == 0.f && R.ClimbOutSpeed == 0.f,
-				FLureMovementData::GetRowName(State).ToString() + TEXT(": land rows keep the Water columns at 0"));
+			Check(R.SurfaceFloatDepth == 0.f, FLureMovementData::GetRowName(State).ToString() + TEXT(": land rows don't float (SurfaceFloatDepth 0)"));
 		}
 		return Broken;
 	}
@@ -299,6 +299,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLureSwimDataRulesTest, "Project.Movement.Swim.
 bool FLureSwimDataRulesTest::RunTest(const FString& Parameters)
 {
 	UDataTable* Table = ShippedTable(*this);
+	FGCObjectScopeGuard KeepTable(Table); // test worlds come and go (and collect garbage) while it is in use
 	if (!Table)
 	{
 		return false;
@@ -326,10 +327,10 @@ bool FLureSwimDataRulesTest::RunTest(const FString& Parameters)
 	TestNearlyEqual(TEXT("Swim.MaxSpeed"), Swim.MaxSpeed, 170.f);
 	TestNearlyEqual(TEXT("SwimSprint.MaxSpeed"), RowOf(Rows, ELureMovementState::SwimSprint).MaxSpeed, 290.f);
 	TestNearlyEqual(TEXT("Swim.SurfaceFloatDepth"), Swim.SurfaceFloatDepth, 10.f);
-	TestNearlyEqual(TEXT("Swim.ClimbOutMaxHeight (the 60 cm edge rule)"), Swim.ClimbOutMaxHeight, 60.f);
-	TestNearlyEqual(TEXT("Swim.ClimbOutSpeed"), Swim.ClimbOutSpeed, 300.f);
+	TestNearlyEqual(TEXT("Swim.ClimbMaxHeight (the 60 cm edge rule)"), Swim.ClimbMaxHeight, 60.f);
+	TestNearlyEqual(TEXT("Swim.ClimbSpeed"), Swim.ClimbSpeed, 300.f);
 	AddInfo(FString::Printf(TEXT("Swimming: eyes %.0f cm above the water; edges up to %.0f cm climbable; wading until the water is %.0f cm deep."),
-		Swim.EyeHeight - Swim.CapsuleHalfHeight - Swim.SurfaceFloatDepth, Swim.ClimbOutMaxHeight, Swim.CapsuleHalfHeight));
+		Swim.EyeHeight - Swim.CapsuleHalfHeight - Swim.SurfaceFloatDepth, Swim.ClimbMaxHeight, Swim.CapsuleHalfHeight));
 	return true;
 }
 
@@ -425,6 +426,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLureSwimEnterTest, "Project.Movement.Swim.Ente
 bool FLureSwimEnterTest::RunTest(const FString& Parameters)
 {
 	UDataTable* Table = ShippedTable(*this);
+	FGCObjectScopeGuard KeepTable(Table); // test worlds come and go (and collect garbage) while it is in use
 	FPool Pool;
 	if (!Table || !Pool.Create(*this))
 	{
@@ -440,6 +442,7 @@ bool FLureSwimEnterTest::RunTest(const FString& Parameters)
 		return false;
 	}
 	ULureSwimTestListener* Listener = NewObject<ULureSwimTestListener>();
+	FGCObjectScopeGuard KeepListener(Listener);
 	Character->OnSwimStateChanged.AddDynamic(Listener, &ULureSwimTestListener::OnSwimStateChanged);
 	ULureCharacterMovementComponent* Movement = Character->GetLureMovement();
 	Pool.Tick(2);
@@ -484,6 +487,7 @@ bool FLureSwimFloatTest::RunTest(const FString& Parameters)
 	for (const float Depth : { 10.f, 30.f })
 	{
 		UDataTable* Table = ShippedTable(*this);
+		FGCObjectScopeGuard KeepTable(Table); // test worlds come and go (and collect garbage) while it is in use
 		FPool Pool;
 		if (!Table || !Pool.Create(*this))
 		{
@@ -539,6 +543,7 @@ bool FLureSwimSpeedTest::RunTest(const FString& Parameters)
 	for (const FCase& Case : Cases)
 	{
 		UDataTable* Table = ShippedTable(*this);
+		FGCObjectScopeGuard KeepTable(Table); // test worlds come and go (and collect garbage) while it is in use
 		FPool Pool;
 		if (!Table || !Pool.Create(*this))
 		{
@@ -593,6 +598,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLureSwimNoStancesTest, "Project.Movement.Swim.
 bool FLureSwimNoStancesTest::RunTest(const FString& Parameters)
 {
 	UDataTable* Table = ShippedTable(*this);
+	FGCObjectScopeGuard KeepTable(Table); // test worlds come and go (and collect garbage) while it is in use
 	FPool Pool;
 	if (!Table || !Pool.Create(*this))
 	{
@@ -669,10 +675,11 @@ namespace LureSwimTest
 			return false;
 		}
 		ULureSwimTestListener* Listener = NewObject<ULureSwimTestListener>();
+		FGCObjectScopeGuard KeepListener(Listener);
 		Character->OnSwimStateChanged.AddDynamic(Listener, &ULureSwimTestListener::OnSwimStateChanged);
 		ULureCharacterMovementComponent* Movement = Character->GetLureMovement();
 
-		FLureClimbOutPlan Plan;
+		FLureClimbPlan Plan;
 		const bool bPlan = Movement->FindClimbOutPlan(Plan);
 		Test.TestEqual(Label + TEXT(": a climb is possible"), bPlan, bExpectOut);
 		if (bPlan)
@@ -721,11 +728,12 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLureSwimClimbOutTest, "Project.Movement.Swim.C
 bool FLureSwimClimbOutTest::RunTest(const FString& Parameters)
 {
 	UDataTable* Shipped = ShippedTable(*this);
+	FGCObjectScopeGuard KeepShipped(Shipped); // test worlds come and go (and collect garbage) while it is in use
 	if (!Shipped)
 	{
 		return false;
 	}
-	const float MaxHeight = RowOf(Resolve(Shipped), ELureMovementState::Swim).ClimbOutMaxHeight;
+	const float MaxHeight = RowOf(Resolve(Shipped), ELureMovementState::Swim).ClimbMaxHeight;
 	TestNearlyEqual(TEXT("shipped rule: 60 cm"), MaxHeight, 60.f);
 	TryClimbOut(*this, Shipped, MaxHeight, true, TEXT("60 cm edge"));
 	TryClimbOut(*this, Shipped, MaxHeight + 1.f, false, TEXT("61 cm edge"));
@@ -733,9 +741,10 @@ bool FLureSwimClimbOutTest::RunTest(const FString& Parameters)
 
 	// Another number in the table moves the limit.
 	UDataTable* Fixture = ShippedTable(*this);
+	FGCObjectScopeGuard KeepFixture(Fixture); // test worlds come and go (and collect garbage) while it is in use
 	for (const ELureMovementState State : { ELureMovementState::Swim, ELureMovementState::SwimSprint })
 	{
-		EditRow(Fixture, State)->ClimbOutMaxHeight = 40.f;
+		EditRow(Fixture, State)->ClimbMaxHeight = 40.f;
 	}
 	TryClimbOut(*this, Fixture, 40.f, true, TEXT("fixture 40: 40 cm edge"));
 	TryClimbOut(*this, Fixture, 41.f, false, TEXT("fixture 40: 41 cm edge"));
@@ -747,6 +756,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLureSwimLadderTest, "Project.Movement.Swim.Lad
 bool FLureSwimLadderTest::RunTest(const FString& Parameters)
 {
 	UDataTable* Table = ShippedTable(*this);
+	FGCObjectScopeGuard KeepTable(Table); // test worlds come and go (and collect garbage) while it is in use
 	FPool Pool;
 	if (!Table || !Pool.Create(*this))
 	{
@@ -762,7 +772,7 @@ bool FLureSwimLadderTest::RunTest(const FString& Parameters)
 		return false;
 	}
 	ULureCharacterMovementComponent* Movement = Character->GetLureMovement();
-	FLureClimbOutPlan Plan;
+	FLureClimbPlan Plan;
 	TestFalse(TEXT("no ladder: a 150 cm dock can't be climbed"), Movement->FindClimbOutPlan(Plan));
 
 	// The ladder sits on the dock face at the water line, +X pointing out over the water (yaw 180 here).
@@ -791,6 +801,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLureSwimBeachTest, "Project.Movement.Swim.Walk
 bool FLureSwimBeachTest::RunTest(const FString& Parameters)
 {
 	UDataTable* Table = ShippedTable(*this);
+	FGCObjectScopeGuard KeepTable(Table); // test worlds come and go (and collect garbage) while it is in use
 	FPool Pool;
 	if (!Table || !Pool.Create(*this))
 	{
@@ -810,6 +821,7 @@ bool FLureSwimBeachTest::RunTest(const FString& Parameters)
 		return false;
 	}
 	ULureSwimTestListener* Listener = NewObject<ULureSwimTestListener>();
+	FGCObjectScopeGuard KeepListener(Listener);
 	Character->OnSwimStateChanged.AddDynamic(Listener, &ULureSwimTestListener::OnSwimStateChanged);
 	ULureCharacterMovementComponent* Movement = Character->GetLureMovement();
 	Pool.Tick(30);
@@ -860,6 +872,7 @@ bool FLureSwimReplicationTest::RunTest(const FString& Parameters)
 	}
 
 	UDataTable* Table = ShippedTable(*this);
+	FGCObjectScopeGuard KeepTable(Table); // test worlds come and go (and collect garbage) while it is in use
 	FPool Pool;
 	if (!Table || !Pool.Create(*this))
 	{
@@ -885,6 +898,7 @@ bool FLureSwimReplicationTest::RunTest(const FString& Parameters)
 
 	// What another player's copy does with it.
 	ULureSwimTestListener* Listener = NewObject<ULureSwimTestListener>();
+	FGCObjectScopeGuard KeepListener(Listener);
 	Proxy->OnSwimStateChanged.AddDynamic(Listener, &ULureSwimTestListener::OnSwimStateChanged);
 	Proxy->SetRole(ROLE_SimulatedProxy);
 	ProxyMovement->ApplyNetworkMovementMode(Packed);
@@ -926,6 +940,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLureSwimArmsTest, "Project.Movement.Swim.ArmsL
 bool FLureSwimArmsTest::RunTest(const FString& Parameters)
 {
 	UDataTable* Table = ShippedTable(*this);
+	FGCObjectScopeGuard KeepTable(Table); // test worlds come and go (and collect garbage) while it is in use
 	FPool Pool;
 	if (!Table || !Pool.Create(*this))
 	{

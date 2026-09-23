@@ -1,4 +1,4 @@
-// Lure: swimming types (T-026). Spec: docs/specs/swimming.md.
+// Lure: swimming and climbing types (T-026; the jump climb from the T-004 playtest). Spec: docs/specs/swimming.md.
 
 #pragma once
 
@@ -10,16 +10,18 @@ UENUM(BlueprintType)
 enum class ELureCustomMovementMode : uint8
 {
 	None = 0 UMETA(Hidden),
-	/** Pulling yourself out of the water onto an edge or up a ladder (a short predicted move along a planned path). */
-	ClimbOut = 1
+	/** Pulling yourself out of the water onto an edge or up a ladder (a short predicted move along a planned path). Counts as in the water. */
+	ClimbOut = 1,
+	/** Pulling yourself up onto a ledge a jump reached (DT_Movement ClimbMaxHeight, measured from the takeoff). */
+	LedgeClimb = 2
 };
 
 /**
- *  A planned climb out of the water. Worked out from the same state on the owning client and the server when Jump is
- *  pressed in the water, so the climb is predicted like a jump. World space, cm.
+ *  A planned climb onto an edge (out of the water, or up a ledge a jump reached). Worked out from the same state on the
+ *  owning client and the server in the same move, so the climb is predicted like a jump. World space, cm.
  */
 USTRUCT(BlueprintType)
-struct FLureClimbOutPlan
+struct FLureClimbPlan
 {
 	GENERATED_BODY()
 
@@ -35,7 +37,7 @@ struct FLureClimbOutPlan
 	UPROPERTY(BlueprintReadOnly, Category="Lure|Swim")
 	FVector Target = FVector::ZeroVector;
 
-	/** Height of the edge's top above the water surface, cm. */
+	/** Height of the edge's top above the water surface (swimming) or above the takeoff (a jump), cm. */
 	UPROPERTY(BlueprintReadOnly, Category="Lure|Swim")
 	float LedgeHeight = 0.f;
 
@@ -43,7 +45,7 @@ struct FLureClimbOutPlan
 	UPROPERTY(BlueprintReadOnly, Category="Lure|Swim")
 	float Speed = 0.f;
 
-	/** True if a ladder allowed this climb (the edge is higher than the row's ClimbOutMaxHeight). */
+	/** True if a ladder allowed this climb (the edge is higher than the row's ClimbMaxHeight). */
 	UPROPERTY(BlueprintReadOnly, Category="Lure|Swim")
 	bool bUsesLadder = false;
 };

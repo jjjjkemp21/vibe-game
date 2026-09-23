@@ -139,9 +139,15 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Lure|Movement")
 	bool bCanEverProne = true;
 
-	/** Largest sideways push (cm) used to make room for a wider capsule when getting up next to a wall. 0 = never push. */
+	/**
+	 *  Largest sideways push (cm) used to make room for a wider capsule when getting up next to walls. Never less than
+	 *  GetStanceNudgeLimit's automatic minimum (enough for walls on two sides, so a data change can't strand you prone).
+	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Lure|Movement", meta=(ClampMin="0"))
-	float MaxStanceNudge = 8.f;
+	float MaxStanceNudge = 14.f;
+
+	/** The push allowed when a capsule of OldRadius grows to NewRadius: max(MaxStanceNudge, sqrt(2) x (NewRadius - OldRadius) + 1 cm). */
+	float GetStanceNudgeLimit(float NewRadius, float OldRadius) const;
 
 	// ---- Swimming (T-026; defined in LureSwimMovement.cpp, spec docs/specs/swimming.md) ----
 	//  Water = a physics volume with bWaterVolume (ALureWaterVolume); the engine switches to MOVE_Swimming when the capsule
@@ -151,6 +157,10 @@ public:
 	/** Climbing out of the water right now (MOVE_Custom, ELureCustomMovementMode::ClimbOut). */
 	UFUNCTION(BlueprintPure, Category="Lure|Swim")
 	bool IsClimbingOut() const;
+
+	/** Pulling up onto a ledge a jump reached (MOVE_Custom, ELureCustomMovementMode::LedgeClimb). */
+	UFUNCTION(BlueprintPure, Category="Lure|Movement")
+	bool IsLedgeClimbing() const;
 
 	/** In the water for gameplay: swimming or climbing out. No stances, no fishing. */
 	UFUNCTION(BlueprintPure, Category="Lure|Swim")
@@ -164,19 +174,33 @@ public:
 	UFUNCTION(BlueprintPure, Category="Lure|Swim")
 	bool GetWaterSurfaceHeight(float& OutSurfaceZ) const;
 
-	/** Highest edge (cm above the water) Jump would climb onto from here: the row's ClimbOutMaxHeight, or a ladder's. */
+	/** Highest edge (cm above the water) Jump would climb onto from here: the swim row's ClimbMaxHeight, or a ladder's. */
 	UFUNCTION(BlueprintPure, Category="Lure|Swim")
 	float GetClimbOutMaxHeight() const;
 
-	/** Pure query: is there an edge in front (or a ladder here) to climb out onto right now, and how? Changes nothing. */
+	/** Pure query: is there an edge in front (or a ladder here) to climb out of the water onto right now, and how? Changes nothing. */
 	UFUNCTION(BlueprintPure, Category="Lure|Swim")
-	bool FindClimbOutPlan(FLureClimbOutPlan& OutPlan) const;
+	bool FindClimbOutPlan(FLureClimbPlan& OutPlan) const;
+
+	/**
+	 *  Pure query for the jump climb: airborne from a jump, on the way down, moving toward a ledge whose top is above the
+	 *  feet (within the capsule radius) and at most ClimbMaxHeight above the takeoff, with room to stand. Changes nothing.
+	 */
+	UFUNCTION(BlueprintPure, Category="Lure|Movement")
+	bool FindJumpClimbPlan(FLureClimbPlan& OutPlan) const;
+
+	/** Feet height where the current fall or jump started (the climb rule's reference), cm. */
+	UFUNCTION(BlueprintPure, Category="Lure|Movement")
+	float GetTakeoffFeetHeight() const { return TakeoffFeetHeight; }
 
 	/** The ladder whose grab zone holds Location (null if none). */
 	const ALureLadder* FindLadderAt(const FVector& Location) const;
 
 	/** Starts a climb out if FindClimbOutPlan finds one (what Jump does in the water). */
 	bool TryStartClimbOut();
+
+	/** Starts a jump climb if FindJumpClimbPlan finds one (checked every falling update). */
+	bool TryStartJumpClimb();
 
 	/**
 	 *  Vertical speed of the surface float after DeltaTime: a critically damped spring pulling the capsule center to
@@ -188,9 +212,16 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Lure|Swim", meta=(ClampMin="0.05"))
 	float SurfaceFloatSettleTime = 0.8f;
 
-	/** How far in front of the body (cm) an edge may be for Jump to climb out onto it. */
+	/** How far in front of the body (cm) an edge may be for Jump to climb out of the water onto it. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Lure|Swim", meta=(ClampMin="0"))
 	float ClimbOutReach = 45.f;
+
+	/** How close (cm) the body must be to a ledge's face for a jump to pull up onto it. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Lure|Movement", meta=(ClampMin="0"))
+	float JumpClimbReach = 10.f;
+
+	/** CharacterMovement: refuses a landing that would lift the feet onto a ledge higher than the climb rule allows (T-004 B1). */
+	virtual bool IsValidLandingSpot(const FVector& CapsuleLocation, const FHitResult& Hit) const override;
 
 	// ---- UCharacterMovementComponent ----
 
@@ -212,18 +243,43 @@ protected:
 
 	// ---- Swimming (LureSwimMovement.cpp) ----
 	virtual void PhysSwimming(float DeltaTime, int32 Iterations) override;
+	virtual void PhysFalling(float DeltaTime, int32 Iterations) override;
 	virtual void PhysCustom(float DeltaTime, int32 Iterations) override;
 	virtual void OnMovementModeChanged(EMovementMode PreviousMovementMode, uint8 PreviousCustomMode) override;
+
+	/** What FindLedgePlan looks for. Heights are world Z, cm. */
+	struct FLedgeQuery
+	{
+		FVector Forward = FVector::ForwardVector;	// horizontal, normalized: where to look
+		float ReferenceZ = 0.f;						// the rule's zero (water surface or takeoff feet)
+		float MaxHeight = 0.f;						// highest allowed top above ReferenceZ
+		float LowestTopZ = 0.f;						// tops below this don't count
+		float HighestTopZ = TNumericLimits<float>::Max(); // extra cap on the top (a jump reaches only so far above the feet)
+		float FaceReach = 0.f;						// how far ahead the edge's face may be
+		const ALureLadder* Ladder = nullptr;		// at a ladder: the face is the ladder itself
+		float TargetRadius = 0.f;					// scaled capsule after the climb
+		float TargetHalfHeight = 0.f;
+		float Speed = 0.f;
+	};
+
+	/** The shared edge finder: face, top, room to stand, clear path. */
+	bool FindLedgePlan(const FLedgeQuery& Query, FLureClimbPlan& OutPlan) const;
+
+	/** Enters the climb mode on a plan. */
+	void StartClimb(const FLureClimbPlan& Plan, ELureCustomMovementMode Mode);
 
 	/** Surface swimming: horizontal swim input, vertical float spring to the row's SurfaceFloatDepth. */
 	void PhysSurfaceSwimming(float DeltaTime, int32 Iterations, float SurfaceZ);
 
-	/** Follows ClimbOutPlan: straight up along the edge, then onto it; walking at the end. */
-	void PhysClimbOut(float DeltaTime, int32 Iterations);
+	/** Follows ClimbPlan: straight up along the edge, then onto it; walking at the end. */
+	void PhysClimb(float DeltaTime, int32 Iterations);
 
 	/** The plan of the climb in progress (not replicated: client and server plan the same climb from the same move). */
-	FLureClimbOutPlan ClimbOutPlan;
-	bool bHasClimbOutPlan = false;
+	FLureClimbPlan ClimbPlan;
+	bool bHasClimbPlan = false;
+
+	/** Feet height when the character last left the ground or the water (set on entering MOVE_Falling). */
+	float TakeoffFeetHeight = 0.f;
 
 	/** Resizes the capsule to Stance's row, keeping the feet in place on the ground. Checks for room when growing (not for client simulation or bForce). Returns false if blocked. */
 	bool ResizeCapsuleForStance(ELureStance Stance, bool bClientSimulation, bool bForce = false);
