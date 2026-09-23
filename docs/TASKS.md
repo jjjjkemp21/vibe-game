@@ -4,6 +4,27 @@ Format: `- [ ] T-### Title (owner) - acceptance: ... In progress: <agent>, start
 Done tasks move to "Done" with their commit hash. Read the "In progress" markers before starting work.
 Last processed playtest folder: (none)
 
+## Paused 2026-09-23 ~02:30 (Jimmy's night). Resume here
+No agents are running. Each open task has a handoff note in `Saved/AgentLogs/handoff/`. Where a task line says "In progress", the state below overrides it.
+- main: T-025 merged (c021d08, 2ae0c5a). Build green; full suite 401/401 (Saved/AgentLogs/tests/20260923-020238). The editor is closed.
+- T-026 + T-004 fixes (lane eng2, 1ab1dc6), in 3 steps:
+  1. unreal-engineer-senior-max implements the netfix (N0-N3 confirmed, handoff/T-026-netfix.md).
+  2. unreal-engineer-junior-medium does D0, D3 and D4 (Saved/AgentLogs/review/20260923-T026-ultracode-review-partial.md).
+  3. qa-engineer-mid-medium does QA: the test gaps T0 and T2-T5, a correctness pass, and the fixture edits.
+- T-006 (lane eng1): implemented. QA WIP 3235cc2: 90 Project.Fishing.QA tests, 43 run so far (handoff/T-006-qa.md). Next: build the lane, rerun QA, then the full suite, TEST_PLAN, the report. Bugs for the implementer (unreal-engineer-mid-high) after QA: T006-B1 (medium): at a no-bite spot (the reef at noon) the bobber still nibbles, and the hint comes late (up to 10 s, not 8 s). T006-B2 (low): Spook doesn't push back a bite due within 5 s, and its nibbles are lost. Its QA tests expecting a 1.5 s AutoLandDelay must follow T-007 (AutoLandDelay 0). At merge, D1: no cast during ClimbOut or LedgeClimb.
+- T-007 (lane eng3): WIP cd75a1f, and Project.Fishing passes 30/30.
+  - Left: the full suite, docs/specs/reel-fight-rules.md, the report, the final commit (handoff/T-007.md).
+  - Then a qa-engineer-senior-max review.
+- T-010 (lane eng5): done at 1b3a8d1 (416/417; its only failure, AssetMatchesSource, is fixed in main).
+  - Next: qa-engineer-mid-medium, then the merge; the `All()` conflict resolves to `{ Move, Look, Jump, Sprint, Crouch, Prone, Interact, Cast, Hook }`.
+  - Then the editor imports DT_PlayerLevel, DT_Cooler and DT_FishMarket, and places the sell point at the dock (MarketId PalmKeyDock).
+- T-008 fish rig: WIP 8f49aee (art/lib/fishrig.py, never run). Next: write art/recipes/anim_fish.py, the first run, exports, previews and the spec (handoff/T-008-fish-rig.md).
+- T-005 cave tuning: 082aa2d (fills 9/7/9, #C8D2D6, lowered). Next: editor-operator-junior-low rebuilds L_PalmKey and re-samples, waiting ~5 s for Lumen. The sky #5C95C4 is accepted.
+- T-025: merged. Left: one playtester-low smoke check with playtest_driver after the editor relaunch.
+- Tooling bug (unreal-engineer-junior-medium): `tools/run-tests.ps1` reported success after the test process crashed (7 of 30 tests ran, found in T-007). It must fail when the process crashes or runs fewer tests than it found.
+- QA flake: Project.Movement.QA.Eye.FrameRateIndependent crashed once in eng5 (the test table probably GC'd). Owner: qa-engineer-junior-low.
+- Merge order: eng2 → eng1 → eng5 → eng3. Then the editor imports, the ABP_FPArms 4-pose graph, water volumes and ladders, the fish import, then playtest, designer, push, janitor.
+
 ## Now: foundation (after setup)
 
 ## Next: vertical slice "Palm Key" (Lure, tropical beginner zone, solo, multiplayer-ready code)
