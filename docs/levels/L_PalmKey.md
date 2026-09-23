@@ -227,7 +227,7 @@ pass. Performance budget capture: T-023.
 - Grass hill height (+4 m): it hides the lagoon from spawn on purpose. Is the reveal good or confusing?
 - Exposure EV (1.0), fog density (0.03), sky luminance factor and sky light intensity: sample the zenith, sand and
   Gull Key in the rebuild screenshots
-- Cave fill intensity (12 / 10 / 12) and color: if the walls read too teal, move the color toward #B8D8E6
+- Cave fill intensity (18 / 14 / 18, radius 750/550/750) and color #B8D8E6 (tuned after rebuild b974f4d)
 
 ## 14. Build and preview
 - Preview (Blender, headless): `powershell -NoProfile -ExecutionPolicy Bypass -File tools/blender-run.ps1 -Recipe

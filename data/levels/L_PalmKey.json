@@ -60,19 +60,19 @@
     {"id": "sky_light", "type": "sky_light", "real_time_capture": true},
     {"id": "fog", "type": "height_fog", "notes": "fog values from the time-of-day preset"},
     {"id": "post", "type": "post_process", "notes": "unbound PostProcessVolume: fixed exposure from the time-of-day preset (no auto exposure)"},
-    {"id": "cave/fill_in", "type": "point", "at": [3050, -1500, 275], "falloff": "soft", "falloff_exponent": 2, "intensity": 12, "radius": 400, "color": "#8FD3F0", "shadows": false, "notes": "Designer M1: daylight spill in the crouch-in section, 40 cm under its ceiling. Soft falloff (no hotspot): about 12 lux-equivalent at the light, 0.83 of that on the walls 1.2 m away -> rock_dark walls ~#1C4860 in the preview (target luminance #2E3A40-#3E4A4F, bluer hue from the sky-blue light), rock ceiling a lighter band ~#4A89A0"},
-    {"id": "cave/fill_mid", "type": "point", "at": [3500, -1500, 225], "falloff": "soft", "falloff_exponent": 2, "intensity": 10, "radius": 450, "color": "#8FD3F0", "shadows": false, "notes": "Designer M1: middle of the 60 cm crawl, 15 cm under its ceiling; walls 0.8 m away get 0.94 of it"},
-    {"id": "cave/fill_out", "type": "point", "at": [3950, -1500, 275], "falloff": "soft", "falloff_exponent": 2, "intensity": 12, "radius": 400, "color": "#8FD3F0", "shadows": false, "notes": "Designer M1: crouch-out section, mirror of fill_in"}
+    {"id": "cave/fill_in", "type": "point", "at": [3050, -1500, 275], "falloff": "soft", "falloff_exponent": 2, "intensity": 18, "radius": 750, "color": "#B8D8E6", "shadows": false, "notes": "Designer M1: daylight spill in the crouch-in section, 40 cm under its ceiling. Soft falloff (no hotspot): about 12 lux-equivalent at the light, 0.83 of that on the walls 1.2 m away -> rock_dark walls ~#1C4860 in the preview (target luminance #2E3A40-#3E4A4F, bluer hue from the sky-blue light), rock ceiling a lighter band ~#4A89A0"},
+    {"id": "cave/fill_mid", "type": "point", "at": [3500, -1500, 225], "falloff": "soft", "falloff_exponent": 2, "intensity": 14, "radius": 550, "color": "#B8D8E6", "shadows": false, "notes": "Designer M1: middle of the 60 cm crawl, 15 cm under its ceiling; walls 0.8 m away get 0.94 of it"},
+    {"id": "cave/fill_out", "type": "point", "at": [3950, -1500, 275], "falloff": "soft", "falloff_exponent": 2, "intensity": 18, "radius": 750, "color": "#B8D8E6", "shadows": false, "notes": "Designer M1: crouch-out section, mirror of fill_in"}
   ],
   "time_of_day": "tropical_day",
   "time_of_day_presets": {
     "tropical_day": {
       "exposure_ev100": 1.0,
       "fog": {"density": 0.03, "height_falloff": 0.2, "color": "#8FD3F0", "start_distance": 3000, "max_opacity": 1.0, "sky_ambient": 0.0},
-      "sky": {"luminance_factor": [1.8, 2.1, 2.4]},
-      "sky_light": {"intensity": 0.45},
+      "sky": {"luminance_factor": [2.35, 2.75, 3.1]},
+      "sky_light": {"intensity": 0.35},
       "notes": [
-        "Designer S1 + ART_STYLE: fixed exposure, palette hex = on-screen target. EV100 1.0 = exposure scale 0.5: the 10 lux sun (x0.84 atmosphere, 50 deg) plus sky fill puts sunlit horizontal surfaces at ~1.05x their albedo before the filmic tonemapper (which keeps mid tones, compresses highlights). Tune in steps of 0.25: +0.25 = darker.",
+        "Rebuild b974f4d tuning: sky x1.3 (zenith #528CBE -> ~#6FA0C8), sky light 0.45->0.35 to keep shadow fill; cave fills #B8D8E6 (neutral), +50% intensity, radius 750/550/750 so the mouth outer walls (#020A14) and crawl walls (#15465C) reach #2E3A40-#3E4A4F. Designer S1 + ART_STYLE: fixed exposure, palette hex = on-screen target. EV100 1.0 = exposure scale 0.5: the 10 lux sun (x0.84 atmosphere, 50 deg) plus sky fill puts sunlit horizontal surfaces at ~1.05x their albedo before the filmic tonemapper (which keeps mid tones, compresses highlights). Tune in steps of 0.25: +0.25 = darker.",
         "Fog: density 0.03 from 30 m (was 0.006 from 40 m). levels.layout.fog_transmittance: Gull Key at 210 m 22% fog (readable), sea edge 400 m 41%, sky 6 deg up 60%, 10 deg 42%, 20 deg 22%, Beacon from spawn 4%. Color = on-screen target (builder undoes exposure + tonemapper); sky_ambient 0 keeps the SkyAtmosphere from adding to it.",
         "Sky: luminance x1.8/2.1/2.4 lifts the steel-blue zenith (~#3E607C in the T-005 PIE shot) toward #8FD3F0 (estimate ~#6095B9); the real-time sky light captures that too, so its intensity 0.45 keeps the shadow fill about where it was. First guesses: check the zenith in the rebuild screenshot."
       ]
