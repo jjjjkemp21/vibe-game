@@ -161,6 +161,13 @@ struct FLureMovementRow : public FTableRowBase
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Climb", meta=(ClampMax="0", DataTableImportOptional="true"))
 	float ClimbOutLowestTop = -20.f;
 
+	/**
+	 *  Climbing out needs you at the surface: the head (capsule top) may be at most this far below the water surface, cm
+	 *  (T-026 D2, for diving rows with SurfaceFloatDepth 0; a floating swimmer's head is always above the water).
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Climb", meta=(ClampMin="0", DataTableImportOptional="true"))
+	float ClimbOutSurfaceTolerance = 30.f;
+
 	/** Climbing out: how far in front of the body an edge may be for Jump to climb onto it, cm. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Climb", meta=(ClampMin="0", DataTableImportOptional="true"))
 	float ClimbOutReach = 45.f;

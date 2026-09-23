@@ -46,6 +46,15 @@ namespace LureSwimPrivate
 	/** Contact normal vs surface normal: below this dot product the capsule is touching an edge, not a surface. */
 	constexpr float EdgeContactDot = 0.995f;
 
+	/**
+	 *  Climbing out also takes edge tops this much below the highest top a swimmer steps onto (feet + MaxStepHeight), so
+	 *  the step range and the climb range overlap: every submerged top is either stepped onto or climbed (T-026 B3/D3).
+	 */
+	constexpr float StepClimbOverlap = 10.f;
+
+	/** How close (cm) a submerged edge's face must be for swimming into it to step out onto it (touching it, in practice). */
+	constexpr float StepOutReach = 10.f;
+
 	bool IsClimbMode(uint8 CustomMode)
 	{
 		return CustomMode == static_cast<uint8>(ELureCustomMovementMode::ClimbOut) || CustomMode == static_cast<uint8>(ELureCustomMovementMode::LedgeClimb);
@@ -67,6 +76,43 @@ bool ULureCharacterMovementComponent::IsLedgeClimbing() const
 bool ULureCharacterMovementComponent::ShouldFloatAtSurface() const
 {
 	return GetRow(GetMovementState()).SurfaceFloatDepth > 0.f;
+}
+
+bool ULureCharacterMovementComponent::IsPointInWater(const FVector& Point) const
+{
+	// The engine's choice of physics volume (USceneComponent::UpdatePhysicsVolume): the highest priority one holding the
+	// point, else the world's default one.
+	const UWorld* World = GetWorld();
+	if (!World)
+	{
+		return false;
+	}
+	const APhysicsVolume* Chosen = World->GetDefaultPhysicsVolume();
+	for (auto It = World->GetNonDefaultPhysicsVolumeIterator(); It; ++It)
+	{
+		const APhysicsVolume* Volume = It->Get();
+		if (Volume && (!Chosen || Volume->Priority > Chosen->Priority) && Volume->EncompassesPoint(Point))
+		{
+			Chosen = Volume;
+		}
+	}
+	return Chosen && Chosen->bWaterVolume;
+}
+
+bool ULureCharacterMovementComponent::IsStanceTooDeepForWater(ELureStance Stance) const
+{
+	// On the ground a stance change keeps the feet where they are (FindCapsuleLocation), so the new capsule center is
+	// feet + the stance's half height. In the air the center stays put: nothing to check there.
+	if (!HasValidData() || !IsMovingOnGround())
+	{
+		return false;
+	}
+	const UCapsuleComponent* Capsule = CharacterOwner->GetCapsuleComponent();
+	const FLureMovementRow& Row = GetStanceRow(Stance);
+	const float Radius = FMath::Max(Row.CapsuleRadius, 1.f);
+	const float HalfHeight = FMath::Max(Row.CapsuleHalfHeight, Radius) * Capsule->GetShapeScale();
+	const FVector Center = UpdatedComponent->GetComponentLocation() + (HalfHeight - Capsule->GetScaledCapsuleHalfHeight()) * -GetGravityDirection();
+	return IsPointInWater(Center);
 }
 
 bool ULureCharacterMovementComponent::GetWaterSurfaceHeight(float& OutSurfaceZ) const
@@ -245,11 +291,22 @@ bool ULureCharacterMovementComponent::FindClimbOutPlan(FLureClimbPlan& OutPlan) 
 	const float Scale = CharacterOwner->GetCapsuleComponent()->GetShapeScale();
 	const FLureMovementRow& Stand = GetStanceRow(ELureStance::Stand);
 
+	// Only from the surface (T-026 D2): the head at most ClimbOutSurfaceTolerance below the water. A floating swimmer's
+	// head is always above it; this matters for rows without the surface float (diving, later).
+	const float HeadZ = static_cast<float>(UpdatedComponent->GetComponentLocation().Z) + CharacterOwner->GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+	if (HeadZ < SurfaceZ - Row.ClimbOutSurfaceTolerance)
+	{
+		return false;
+	}
+
 	FLedgeQuery Query;
 	Query.Forward = FVector(CharacterOwner->GetActorForwardVector().X, CharacterOwner->GetActorForwardVector().Y, 0.0).GetSafeNormal();
 	Query.ReferenceZ = SurfaceZ;
 	Query.MaxHeight = Row.ClimbMaxHeight;
-	Query.LowestTopZ = SurfaceZ + FMath::Min(Row.ClimbOutLowestTop, 0.f);	// lower tops are the seabed: walk out there
+	// Lower tops are the seabed (walk out there): below ClimbOutLowestTop, and within a step of the feet. Tops too high to
+	// step onto are always climbable, whatever the column says, so no shelf is a wall from the water (T-026 B3/D3).
+	const float StepReachZ = GetFeetHeight() + MaxStepHeight - LureSwimPrivate::StepClimbOverlap;
+	Query.LowestTopZ = FMath::Min(SurfaceZ + FMath::Min(Row.ClimbOutLowestTop, 0.f), StepReachZ);
 	Query.FaceReach = Row.ClimbOutReach;
 	Query.TargetRadius = FMath::Max(Stand.CapsuleRadius, 1.f) * Scale; // you get out standing
 	Query.TargetHalfHeight = FMath::Max(Stand.CapsuleHalfHeight, Stand.CapsuleRadius) * Scale;
@@ -331,6 +388,43 @@ bool ULureCharacterMovementComponent::TryStartClimbOut()
 	return true;
 }
 
+bool ULureCharacterMovementComponent::FindStepOutPlan(float SurfaceZ, FLureClimbPlan& OutPlan) const
+{
+	// Only while pushing toward it, like the jump climb.
+	const FVector InputDirection = Acceleration.GetSafeNormal2D();
+	if (!HasValidData() || !IsSwimming() || InputDirection.IsNearlyZero() || !(MaxStepHeight > 0.f))
+	{
+		return false;
+	}
+	const FLureMovementRow& Row = GetRow(GetMovementState());
+	const FLureMovementRow& Stand = GetStanceRow(ELureStance::Stand);
+	const float Scale = CharacterOwner->GetCapsuleComponent()->GetShapeScale();
+	const float Feet = GetFeetHeight();
+
+	FLedgeQuery Query;
+	Query.Forward = InputDirection;
+	Query.ReferenceZ = Feet;
+	Query.MaxHeight = MaxStepHeight;
+	Query.FaceReach = LureSwimPrivate::StepOutReach;
+	Query.TargetRadius = FMath::Max(Stand.CapsuleRadius, 1.f) * Scale; // you get out standing
+	Query.TargetHalfHeight = FMath::Max(Stand.CapsuleHalfHeight, Stand.CapsuleRadius) * Scale;
+	// Tops above the feet where you stand with the capsule center out of the water (wading). Lower ones are swum over.
+	Query.LowestTopZ = FMath::Max(Feet + 1.f, SurfaceZ - Query.TargetHalfHeight - LureSwimPrivate::StandGap + 1.f);
+	Query.Speed = Row.ClimbSpeed;
+	return FindLedgePlan(Query, OutPlan);
+}
+
+bool ULureCharacterMovementComponent::TryStartStepOut(float SurfaceZ)
+{
+	FLureClimbPlan Plan;
+	if (!FindStepOutPlan(SurfaceZ, Plan))
+	{
+		return false;
+	}
+	StartClimb(Plan, ELureCustomMovementMode::ClimbOut);
+	return true;
+}
+
 bool ULureCharacterMovementComponent::TryStartJumpClimb()
 {
 	FLureClimbPlan Plan;
@@ -377,6 +471,22 @@ bool ULureCharacterMovementComponent::IsValidLandingSpot(const FVector& CapsuleL
 }
 
 // ---- Physics ----
+
+void ULureCharacterMovementComponent::OnTeleported()
+{
+	// A teleport during a climb ends it (T-026 B1): without this the climb kept its plan and dragged the character back
+	// toward the old edge, because the engine leaves a custom mode alone. Pick the mode for the new place here: in water
+	// straight to swimming (the climb counts as in the water, so no in/out blip), else falling, which the engine turns
+	// into walking when there is ground right below. Other players' copies never climb on a plan: their mode is replicated.
+	if (HasValidData() && IsClimbing() && CharacterOwner->GetLocalRole() != ROLE_SimulatedProxy)
+	{
+		bHasClimbPlan = false;
+		ClimbPlan = FLureClimbPlan();
+		Velocity = FVector::ZeroVector;
+		SetMovementMode((CanEverSwim() && IsInWater()) ? DefaultWaterMovementMode.GetValue() : MOVE_Falling);
+	}
+	Super::OnTeleported();
+}
 
 void ULureCharacterMovementComponent::OnMovementModeChanged(EMovementMode PreviousMovementMode, uint8 PreviousCustomMode)
 {
@@ -426,6 +536,7 @@ void ULureCharacterMovementComponent::PhysSurfaceSwimming(float DeltaTime, int32
 	Iterations++;
 	const FVector OldLocation = UpdatedComponent->GetComponentLocation();
 	bJustTeleported = false;
+	bool bSteppedUp = false;
 
 	if (!HasAnimRootMotion() && !CurrentRootMotion.HasOverrideVelocity())
 	{
@@ -442,6 +553,7 @@ void ULureCharacterMovementComponent::PhysSurfaceSwimming(float DeltaTime, int32
 		Velocity.Z = ComputeSurfaceFloatVelocity(static_cast<float>(OldLocation.Z), VerticalSpeed, TargetZ, Row.SurfaceFloatSettleTime, DeltaTime);
 	}
 	ApplyRootMotionToVelocity(DeltaTime);
+	const float PlannedVerticalSpeed = static_cast<float>(Velocity.Z);
 
 	const FVector Delta = Velocity * DeltaTime;
 	FHitResult Hit(1.f);
@@ -456,11 +568,22 @@ void ULureCharacterMovementComponent::PhysSurfaceSwimming(float DeltaTime, int32
 
 	if (Hit.Time < 1.f)
 	{
-		// Low steps (rocks under the surface) are stepped over, like the engine's swimming; everything else is slid along.
 		const FVector GravityDir(0.f, 0.f, -1.f);
 		const float UpDown = static_cast<float>(GravityDir | Velocity.GetSafeNormal());
-		bool bSteppedUp = false;
-		if (FMath::Abs(Hit.ImpactNormal.Z) < 0.2f && UpDown < 0.5f && UpDown > -0.2f && CanStepUp(Hit))
+		const bool bLevelMove = UpDown < 0.5f && UpDown > -0.2f;
+
+		// Swimming into a submerged edge within a step of the feet, with room to stand on it head out of the water: step
+		// out onto it (T-026 QA B3). The contact is a wall, or the edge caught by the capsule's rounded bottom (the engine
+		// reports a floor-like normal there). Slopes (beaches) are not edges: you walk out there as before.
+		const bool bWallOrEdge = FMath::Abs(Hit.ImpactNormal.Z) < 0.2f || FVector::DotProduct(Hit.Normal, Hit.ImpactNormal) < LureSwimPrivate::EdgeContactDot;
+		if (bWallOrEdge && bLevelMove && TryStartStepOut(SurfaceZ))
+		{
+			StartNewPhysics(DeltaTime * (1.f - Hit.Time), Iterations);
+			return;
+		}
+
+		// Other low steps (rocks deeper under the surface) are stepped over like the engine's swimming; the rest is slid along.
+		if (FMath::Abs(Hit.ImpactNormal.Z) < 0.2f && bLevelMove && CanStepUp(Hit))
 		{
 			const FVector RealVelocity = Velocity;
 			Velocity.Z = 1.f; // the engine's trick: moving up, in case the step takes us out of the water
@@ -483,6 +606,12 @@ void ULureCharacterMovementComponent::PhysSurfaceSwimming(float DeltaTime, int32
 	{
 		// What really happened (walls, the seabed and steps).
 		Velocity = (UpdatedComponent->GetComponentLocation() - OldLocation) / DeltaTime;
+		if (bSteppedUp)
+		{
+			// A step moves the capsule; it never becomes upward speed. A 17 cm step in one frame was 1000 cm/s, and the
+			// float spring then threw the swimmer metres out of the water (T-026 B3).
+			Velocity.Z = FMath::Min(static_cast<float>(Velocity.Z), PlannedVerticalSpeed);
+		}
 	}
 }
 
@@ -593,7 +722,8 @@ void ULureCharacterMovementComponent::PhysClimb(float DeltaTime, int32 Iteration
 		Location = UpdatedComponent->GetComponentLocation();
 	}
 
-	Velocity = (Location - OldLocation) / DeltaTime;
+	// Never faster than the climb (a slide along the edge can add a hair; a step out of the water must not read as a launch).
+	Velocity = ((Location - OldLocation) / DeltaTime).GetClampedToMaxSize(ClimbPlan.Speed);
 
 	if (bBlocked)
 	{

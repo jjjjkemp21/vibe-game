@@ -161,8 +161,19 @@ public:
 	virtual void Prone(bool bClientSimulation = false);
 	virtual void UnProne(bool bClientSimulation = false);
 
-	/** Prone is possible only on the ground (it is refused in the air, and ends if you walk off a ledge). */
+	/** Prone is possible only on the ground (it is refused in the air, and ends if you walk off a ledge), and not where the water is too deep for it. */
 	virtual bool CanProneInCurrentState() const;
+
+	/**
+	 *  Wading (T-026 B2): would going into Stance here put the capsule center in water? Then the stance is refused before
+	 *  anything changes (the engine would switch to swimming, stand you up and drop you out again: an in/out blip that
+	 *  cancels fishing). Only on the ground, where a stance change keeps the feet in place (e.g. crouch in 60 cm of water, prone in 30 cm).
+	 */
+	UFUNCTION(BlueprintPure, Category="Lure|Swim")
+	bool IsStanceTooDeepForWater(ELureStance Stance) const;
+
+	/** True if Point is inside the water volume the engine would pick there (the highest-priority physics volume holding it). */
+	bool IsPointInWater(const FVector& Point) const;
 
 	/** Master switch for prone (like the engine's CanEverCrouch). */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Lure|Movement")
@@ -244,6 +255,16 @@ public:
 	bool TryStartJumpClimb();
 
 	/**
+	 *  Pure query for stepping out of the water (T-026 QA B3): surface swimming, pushing toward a submerged edge whose top
+	 *  is above the feet and at most MaxStepHeight up, where you stand with the capsule center out of the water (wading).
+	 *  The step out is a ClimbOut climb, so it is predicted and corrected like one. Changes nothing.
+	 */
+	bool FindStepOutPlan(float SurfaceZ, FLureClimbPlan& OutPlan) const;
+
+	/** Starts a step out if FindStepOutPlan finds one (PhysSurfaceSwimming, when the swimmer runs into an edge). */
+	bool TryStartStepOut(float SurfaceZ);
+
+	/**
 	 *  Vertical speed of the surface float after DeltaTime: a critically damped spring pulling the capsule center to
 	 *  TargetZ (implicit, so any frame time is stable). SettleTime = seconds to settle within about 2%. Pure, for tests.
 	 */
@@ -271,6 +292,13 @@ public:
 	virtual void UpdateCharacterStateBeforeMovement(float DeltaSeconds) override;
 	virtual void UpdateCharacterStateAfterMovement(float DeltaSeconds) override;
 	virtual FNetworkPredictionData_Client* GetPredictionData_Client() const override;
+
+	/**
+	 *  A teleport (respawn, Lure.Teleport) ends a climb: the plan is dropped and the engine picks the mode at the new place
+	 *  (swimming in water, else falling/landing). T-026 B1. Runs where TeleportTo runs (the server; the owning client too
+	 *  when it teleports locally); the owning client of a server teleport gets the server's mode and no plan in the correction.
+	 */
+	virtual void OnTeleported() override;
 
 	/** Owning client: applies the server's reply, then restores the climb state a correction carries (FLureMoveResponseDataContainer). */
 	virtual void ClientHandleMoveResponse(const FCharacterMoveResponseDataContainer& MoveResponse) override;

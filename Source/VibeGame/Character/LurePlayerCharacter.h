@@ -106,6 +106,17 @@ public:
 	UFUNCTION(BlueprintCallable, Category="Lure|Movement")
 	void ToggleSprint();
 
+	/**
+	 *  Plain-text hint after a stance request the water refused (placeholder UI, e.g. "Too deep to crouch here."), for
+	 *  StanceHintDuration seconds; empty otherwise. Local player only (the request comes from its input). T-026 B2.
+	 */
+	UFUNCTION(BlueprintPure, Category="Lure|Movement")
+	FString GetStanceHintText() const;
+
+	/** How long a refused-stance hint stays up, seconds. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Lure|Movement", meta=(ClampMin="0"))
+	float StanceHintDuration = 2.5f;
+
 	/** Movement input (X = right, Y = forward, -1..1). */
 	UFUNCTION(BlueprintCallable, Category="Lure|Input")
 	void DoMove(float Right, float Forward);
@@ -330,6 +341,13 @@ private:
 
 	double LastMoveInputTime = 0.0;
 	bool bSprintToggledOn = false;
+
+	/** The last refused-stance hint and when it was shown (world seconds). */
+	FString StanceHint;
+	double StanceHintTime = 0.0;
+
+	/** Shows Hint (GetStanceHintText) from now on. */
+	void ShowStanceHint(const FString& Hint);
 
 	TWeakObjectPtr<APlayerController> MappedController;
 };

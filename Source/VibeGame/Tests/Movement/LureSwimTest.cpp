@@ -1033,6 +1033,7 @@ bool FLureSwimOptionalColumnsTest::RunTest(const FString& Parameters)
 	TestNearlyEqual(TEXT("default ClimbOutReach"), Defaults.ClimbOutReach, 45.f);
 	TestNearlyEqual(TEXT("default SurfaceFloatSettleTime"), Defaults.SurfaceFloatSettleTime, 0.8f);
 	TestNearlyEqual(TEXT("default SwimBrakingDeceleration"), Defaults.SwimBrakingDeceleration, 600.f);
+	TestNearlyEqual(TEXT("default ClimbOutSurfaceTolerance"), Defaults.ClimbOutSurfaceTolerance, 30.f);
 
 	// The shipped table carries them (same values) on every row.
 	UDataTable* Shipped = ShippedTable(*this);
@@ -1053,10 +1054,12 @@ bool FLureSwimOptionalColumnsTest::RunTest(const FString& Parameters)
 		TestNearlyEqual(Name + TEXT(".ClimbOutReach"), Row->ClimbOutReach, 45.f);
 		TestNearlyEqual(Name + TEXT(".SurfaceFloatSettleTime"), Row->SurfaceFloatSettleTime, 0.8f);
 		TestNearlyEqual(Name + TEXT(".SwimBrakingDeceleration"), Row->SwimBrakingDeceleration, 600.f);
+		TestNearlyEqual(Name + TEXT(".ClimbOutSurfaceTolerance"), Row->ClimbOutSurfaceTolerance, 30.f);
 	}
 
 	// A table without the new columns (or without any optional column) resolves every row, with the defaults.
-	const TArray<FString> NewColumns = { TEXT("ClimbOutLowestTop"), TEXT("ClimbOutReach"), TEXT("SurfaceFloatSettleTime"), TEXT("SwimBrakingDeceleration") };
+	const TArray<FString> NewColumns = { TEXT("ClimbOutLowestTop"), TEXT("ClimbOutReach"), TEXT("SurfaceFloatSettleTime"), TEXT("SwimBrakingDeceleration"),
+		TEXT("ClimbOutSurfaceTolerance") };
 	TArray<FString> AllOptional = NewColumns;
 	AllOptional.Append({ TEXT("ClimbMaxHeight"), TEXT("ClimbSpeed"), TEXT("SurfaceFloatDepth"), TEXT("ArmsPullBack"), TEXT("ExitTransitionTime") });
 	const TArray<FString>* Drops[] = { &NewColumns, &AllOptional };
@@ -1074,6 +1077,7 @@ bool FLureSwimOptionalColumnsTest::RunTest(const FString& Parameters)
 		TestNearlyEqual(Label + TEXT(": Swim.ClimbOutReach default"), Swim.ClimbOutReach, 45.f);
 		TestNearlyEqual(Label + TEXT(": Swim.SurfaceFloatSettleTime default"), Swim.SurfaceFloatSettleTime, 0.8f);
 		TestNearlyEqual(Label + TEXT(": Swim.SwimBrakingDeceleration default"), Swim.SwimBrakingDeceleration, 600.f);
+		TestNearlyEqual(Label + TEXT(": Swim.ClimbOutSurfaceTolerance default"), Swim.ClimbOutSurfaceTolerance, 30.f);
 	}
 
 	// Validation.
@@ -1089,6 +1093,8 @@ bool FLureSwimOptionalColumnsTest::RunTest(const FString& Parameters)
 		{ TEXT("SurfaceFloatSettleTime 0.01"), [](FLureMovementRow& R) { R.SurfaceFloatSettleTime = 0.01f; } },
 		{ TEXT("negative SwimBrakingDeceleration"), [](FLureMovementRow& R) { R.SwimBrakingDeceleration = -10.f; } },
 		{ TEXT("NaN ClimbOutReach"), [](FLureMovementRow& R) { R.ClimbOutReach = std::numeric_limits<float>::quiet_NaN(); } },
+		{ TEXT("negative ClimbOutSurfaceTolerance"), [](FLureMovementRow& R) { R.ClimbOutSurfaceTolerance = -1.f; } },
+		{ TEXT("NaN ClimbOutSurfaceTolerance"), [](FLureMovementRow& R) { R.ClimbOutSurfaceTolerance = std::numeric_limits<float>::quiet_NaN(); } },
 	};
 	const FLureMovementRow Swim = FLureMovementData::GetFallbackRow(ELureMovementState::Swim);
 	FString Problem;
@@ -1105,6 +1111,7 @@ bool FLureSwimOptionalColumnsTest::RunTest(const FString& Parameters)
 	Edge.ClimbOutReach = 0.f;
 	Edge.SwimBrakingDeceleration = 0.f;
 	Edge.SurfaceFloatSettleTime = 0.05f;
+	Edge.ClimbOutSurfaceTolerance = 0.f;
 	TestTrue(TEXT("the limits themselves are allowed"), Edge.Validate(Problem));
 	return true;
 }
@@ -1176,8 +1183,10 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLureSwimLowestTopTest, "Project.Movement.Swim.
 
 bool FLureSwimLowestTopTest::RunTest(const FString& Parameters)
 {
-	// A submerged shelf 40 cm below the water, too high to step onto from the floating feet (-100 cm): the shipped
-	// -20 cm rule calls it seabed; a table with ClimbOutLowestTop -60 lets Jump climb onto it.
+	// A floating swimmer's feet are at -100 cm; it steps onto tops up to MaxStepHeight (45) above them. Jump climbs onto
+	// every top above that (less a 10 cm overlap, so there is no dead band), whatever ClimbOutLowestTop says (T-026 QA
+	// B3/D3): a shelf at -40 is climbable with the shipped -20. Tops within a step are seabed for the shipped data (walk
+	// onto them); ClimbOutLowestTop -80 lets Jump climb onto a -70 shelf too.
 	UDataTable* Shipped = ShippedTable(*this);
 	FGCObjectScopeGuard KeepShipped(Shipped);
 	UDataTable* Deep = ShippedTable(*this);
@@ -1186,11 +1195,13 @@ bool FLureSwimLowestTopTest::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
-	EditRow(Deep, ELureMovementState::Swim)->ClimbOutLowestTop = -60.f;
-	EditRow(Deep, ELureMovementState::SwimSprint)->ClimbOutLowestTop = -60.f;
-	TryClimbOut(*this, Shipped, -40.f, false, TEXT("lowest -20: shelf at -40"));
-	TryClimbOut(*this, Deep, -40.f, true, TEXT("lowest -60: shelf at -40"));
-	TryClimbOut(*this, Deep, 30.f, true, TEXT("lowest -60: 30 cm edge still works"));
+	EditRow(Deep, ELureMovementState::Swim)->ClimbOutLowestTop = -80.f;
+	EditRow(Deep, ELureMovementState::SwimSprint)->ClimbOutLowestTop = -80.f;
+	TryClimbOut(*this, Shipped, -40.f, true, TEXT("lowest -20: shelf at -40 (too high to step onto: climbable)"));
+	TryClimbOut(*this, Shipped, -52.f, true, TEXT("lowest -20: shelf at -52 (just above a step)"));
+	TryClimbOut(*this, Shipped, -70.f, false, TEXT("lowest -20: shelf at -70 (a step: seabed)"));
+	TryClimbOut(*this, Deep, -70.f, true, TEXT("lowest -80: shelf at -70"));
+	TryClimbOut(*this, Deep, 30.f, true, TEXT("lowest -80: 30 cm edge still works"));
 	return true;
 }
 
@@ -1254,6 +1265,208 @@ bool FLureNoClimbRuleLandingTest::RunTest(const FString& Parameters)
 		Movement->SetMovementMode(MOVE_Falling);
 		FLureMovementTestAccess::SetTakeoffFeetHeight(*Movement, Feet - Case.TakeoffBelowFeet);
 		TestEqual(FString::Printf(TEXT("%s: landing accepted"), Case.Label), Movement->IsValidLandingSpot(Hit.Location, Hit), Case.bExpectValid);
+	}
+	return true;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// T-026 QA fixes: B2 (stances too deep for the water), B3 (submerged shelves), D2 (climb out only at the surface)
+// ---------------------------------------------------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLureSwimStanceTooDeepTest, "Project.Movement.Swim.Depth.StanceTooDeepRefusedWithHint", LureSwimTest::Flags)
+
+bool FLureSwimStanceTooDeepTest::RunTest(const FString& Parameters)
+{
+	// Lead rule (T-026 B2): a stance whose capsule center would be under the water is refused before anything changes
+	// (no swim events, no wish kept) and the player gets a plain-text hint. The server refuses the same flags.
+	// Shipped capsules: crouch center 57 cm above the feet, prone 28 cm (with the floor gap).
+	struct FCase
+	{
+		float Depth;
+		ELureStance Stance;
+		bool bRefused;
+	};
+	const FCase Cases[] = {
+		{ 60.f, ELureStance::Crouch, true }, { 30.f, ELureStance::Prone, true },
+		{ 40.f, ELureStance::Crouch, false }, { 30.f, ELureStance::Crouch, false }, { 10.f, ELureStance::Prone, false } };
+	for (const FCase& Case : Cases)
+	{
+		const FString Label = FString::Printf(TEXT("%s in %.0f cm water"), Case.Stance == ELureStance::Crouch ? TEXT("crouch") : TEXT("prone"), Case.Depth);
+		UDataTable* Table = ShippedTable(*this);
+		FGCObjectScopeGuard KeepTable(Table);
+		FPool Pool;
+		if (!Table || !Pool.Create(*this))
+		{
+			return false;
+		}
+		Pool.AddBox(FVector(0.f, 0.f, -Case.Depth - 50.f), FVector(1500.f, 1500.f, 50.f)); // the shallows' floor
+		const float StandHalfHeight = RowOf(Resolve(Table), ELureMovementState::Stand).CapsuleHalfHeight;
+		ALurePlayerCharacter* Character = Pool.Spawn(FVector(0.f, 0.f, -Case.Depth + StandHalfHeight + 2.15f), Table);
+		if (!TestNotNull(Label + TEXT(": spawns"), Character))
+		{
+			return false;
+		}
+		ULureCharacterMovementComponent* Movement = Character->GetLureMovement();
+		Pool.Tick(30);
+		TestTrue(Label + TEXT(": setup: wading (walking, not swimming)"), Movement->IsMovingOnGround() && !Character->IsSwimming());
+		ULureSwimTestListener* Listener = NewObject<ULureSwimTestListener>();
+		FGCObjectScopeGuard KeepListener(Listener);
+		Character->OnSwimStateChanged.AddDynamic(Listener, &ULureSwimTestListener::OnSwimStateChanged);
+
+		TestEqual(Label + TEXT(": the movement rule"), Movement->IsStanceTooDeepForWater(Case.Stance), Case.bRefused);
+		TestEqual(Label + TEXT(": no hint before"), Character->GetStanceHintText(), FString());
+		Character->RequestStance(Case.Stance);
+		const ELureStance Expected = Case.bRefused ? ELureStance::Stand : Case.Stance;
+		TestEqual(Label + TEXT(": request (refused = not even queued)"), static_cast<int32>(Character->GetRequestedStance()), static_cast<int32>(Expected));
+		TestEqual(Label + TEXT(": hint shown only when refused"), !Character->GetStanceHintText().IsEmpty(), Case.bRefused);
+		Pool.Tick(60);
+		TestEqual(Label + TEXT(": stance"), static_cast<int32>(Character->GetStance()), static_cast<int32>(Expected));
+		TestTrue(Label + TEXT(": still wading"), Movement->IsMovingOnGround() && !Character->IsSwimming());
+		TestEqual(Label + TEXT(": no swim events"), EventsText(Listener->Events), FString());
+		if (!Case.bRefused)
+		{
+			continue;
+		}
+		const FString Hint = Character->GetStanceHintText();
+		TestTrue(FString::Printf(TEXT("%s: the hint says why (\"%s\")"), *Label, *Hint), Hint.Contains(TEXT("deep")));
+		Pool.Tick(180);
+		TestEqual(Label + TEXT(": the hint goes away after StanceHintDuration"), Character->GetStanceHintText(), FString());
+
+		// The server gets the wish in a client's move flags anyway: refused the same way, nothing changes.
+		Movement->UpdateFromCompressedFlags(Case.Stance == ELureStance::Crouch ? FSavedMove_Character::FLAG_WantsToCrouch : FSavedMove_Lure::FLAG_Prone);
+		Pool.Tick(60);
+		TestEqual(Label + TEXT(": server: still standing"), static_cast<int32>(Character->GetStance()), static_cast<int32>(ELureStance::Stand));
+		TestTrue(Label + TEXT(": server: still wading"), Movement->IsMovingOnGround() && !Character->IsSwimming());
+		TestEqual(Label + TEXT(": server: no swim events"), EventsText(Listener->Events), FString());
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLureSwimShelfWayOutTest, "Project.Movement.Swim.Leave.EverySubmergedShelfHasAWayOut", LureSwimTest::Flags)
+
+bool FLureSwimShelfWayOutTest::RunTest(const FString& Parameters)
+{
+	// T-026 QA B3/D3: a vertical submerged shelf with any top from -90 to -20 cm has a way out: swim onto it (a step) or
+	// Jump onto it (a climb). No dead band, no wall, and a step never throws the swimmer up (feet never more than 20 cm
+	// above the top; no upward speed above 300 cm/s while swimming onto it).
+	// (Deeper tops are swum over: standing on them the capsule center would still be under water.)
+	for (float Top = -90.f; Top <= -20.f; Top += 5.f)
+	{
+		const FString Label = FString::Printf(TEXT("shelf top %.0f cm"), Top);
+		UDataTable* Table = ShippedTable(*this);
+		FGCObjectScopeGuard KeepTable(Table);
+		FPool Pool;
+		if (!Table || !Pool.Create(*this))
+		{
+			return false;
+		}
+		const float FaceX = 100.f;
+		Pool.AddDock(FaceX, Top);
+		ALurePlayerCharacter* Character = Pool.SpawnSwimming(*this, FVector2D(FaceX - 200.0, 0.0), Table);
+		if (!Character)
+		{
+			return false;
+		}
+		ULureCharacterMovementComponent* Movement = Character->GetLureMovement();
+		float HighestFeet = -1000.f;
+		float FastestUp = 0.f;
+		auto OnShelf = [&]() { return Movement->IsMovingOnGround() && Character->GetActorLocation().X > FaceX + 40.f; };
+		TArray<FString> Trace; // mode changes, for the log
+		for (int32 Frame = 0; Frame < 240 && !OnShelf(); ++Frame)
+		{
+			Character->AddMovementInput(FVector::ForwardVector, 1.f, true);
+			Pool.Tick(1);
+			HighestFeet = FMath::Max(HighestFeet, FeetZ(Character));
+			FastestUp = FMath::Max(FastestUp, static_cast<float>(Character->GetVelocity().Z));
+			const FString Mode = FString::Printf(TEXT("%d/%d"), static_cast<int32>(Movement->MovementMode.GetValue()), static_cast<int32>(Movement->CustomMovementMode));
+			if (Trace.Num() == 0 || !Trace.Last().Contains(TEXT(" m") + Mode + TEXT(" ")) || Frame % 30 == 0)
+			{
+				Trace.Add(FString::Printf(TEXT("f%d m%s feet %.1f x %.1f vz %.0f"), Frame, *Mode, FeetZ(Character), Character->GetActorLocation().X, Character->GetVelocity().Z));
+			}
+		}
+		const bool bWalked = OnShelf();
+		bool bClimbed = false;
+		if (!bWalked)
+		{
+			Character->Jump();
+			for (int32 Frame = 0; Frame < 240 && !bClimbed; ++Frame)
+			{
+				Pool.Tick(1);
+				HighestFeet = FMath::Max(HighestFeet, FeetZ(Character));
+				bClimbed = Movement->IsMovingOnGround() && !Character->IsSwimming();
+			}
+			Character->StopJumping();
+		}
+		Pool.Tick(30);
+		AddInfo(FString::Printf(TEXT("%s: %s (%s)"), *Label, bWalked ? TEXT("swam onto it") : (bClimbed ? TEXT("climbed with Jump") : TEXT("STUCK")), *FString::Join(Trace, TEXT(" -> "))));
+		TestTrue(Label + TEXT(": a way out (a step or Jump)"), bWalked || bClimbed);
+		TestTrue(FString::Printf(TEXT("%s: never thrown up (highest feet %.1f)"), *Label, HighestFeet), HighestFeet <= Top + 20.f);
+		TestTrue(FString::Printf(TEXT("%s: no launch (fastest upward speed %.0f cm/s)"), *Label, FastestUp), FastestUp <= 300.f);
+		TestTrue(FString::Printf(TEXT("%s: walking on the shelf (feet %.1f, x %.1f)"), *Label, FeetZ(Character), Character->GetActorLocation().X),
+			Movement->IsMovingOnGround() && FMath::Abs(FeetZ(Character) - Top) <= 3.f && Character->GetActorLocation().X > FaceX);
+		TestFalse(Label + TEXT(": out of the water"), Character->IsSwimming());
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLureSwimClimbOutAtSurfaceTest, "Project.Movement.Swim.ClimbOutOnlyAtTheSurface", LureSwimTest::Flags)
+
+bool FLureSwimClimbOutAtSurfaceTest::RunTest(const FString& Parameters)
+{
+	// Lead rule (T-026 D2, for diving later): climbing out needs the head within ClimbOutSurfaceTolerance (30 cm) of the
+	// surface. Swim rows without the surface float (SurfaceFloatDepth 0), a 40 cm dock 20 cm in front: head 20 cm under
+	// climbs, 35 cm under doesn't (with 50 it does), and a swimmer 3 m down presses Jump without climbing.
+	struct FCase
+	{
+		float HeadDepth;
+		float Tolerance;
+		bool bClimbs;
+	};
+	const FCase Cases[] = { { 20.f, 30.f, true }, { 35.f, 30.f, false }, { 35.f, 50.f, true }, { 210.f, 30.f, false } };
+	for (const FCase& Case : Cases)
+	{
+		const FString Label = FString::Printf(TEXT("head %.0f cm under, tolerance %.0f"), Case.HeadDepth, Case.Tolerance);
+		UDataTable* Table = ShippedTable(*this);
+		FGCObjectScopeGuard KeepTable(Table);
+		FPool Pool;
+		if (!Table || !Pool.Create(*this))
+		{
+			return false;
+		}
+		for (const ELureMovementState State : { ELureMovementState::Swim, ELureMovementState::SwimSprint })
+		{
+			EditRow(Table, State)->SurfaceFloatDepth = 0.f;
+			EditRow(Table, State)->ClimbOutSurfaceTolerance = Case.Tolerance;
+		}
+		const float FaceX = 100.f;
+		Pool.AddDock(FaceX, 40.f);
+		const float HalfHeight = RowOf(Resolve(Table), ELureMovementState::Stand).CapsuleHalfHeight;
+		ALurePlayerCharacter* Character = Pool.Spawn(FVector(FaceX - 34.f - 20.f, 0.f, -Case.HeadDepth - HalfHeight), Table);
+		if (!TestNotNull(Label + TEXT(": spawns"), Character))
+		{
+			return false;
+		}
+		ULureCharacterMovementComponent* Movement = Character->GetLureMovement();
+		Pool.Tick(2);
+		TestTrue(Label + TEXT(": setup: swimming, free (no surface float)"), Movement->IsSwimming() && !Movement->ShouldFloatAtSurface());
+		const float Head = CenterZ(Character) + HalfHeight;
+		TestNearlyEqual(Label + TEXT(": setup: head depth"), -Head, Case.HeadDepth, 2.f);
+		FLureClimbPlan Plan;
+		TestEqual(Label + TEXT(": a climb out is possible"), Movement->FindClimbOutPlan(Plan), Case.bClimbs);
+		if (Case.bClimbs)
+		{
+			continue;
+		}
+		Character->Jump();
+		bool bClimbSeen = false;
+		for (int32 Frame = 0; Frame < 60; ++Frame)
+		{
+			Pool.Tick(1);
+			bClimbSeen |= Movement->IsClimbingOut();
+		}
+		Character->StopJumping();
+		TestFalse(Label + TEXT(": Jump doesn't climb"), bClimbSeen);
+		TestTrue(Label + TEXT(": still swimming"), Movement->IsSwimming());
 	}
 	return true;
 }

@@ -372,17 +372,18 @@ bool ULureCharacterMovementComponent::DoJump(bool bReplayingMoves, float DeltaTi
 bool ULureCharacterMovementComponent::CanCrouchInCurrentState() const
 {
 	// While prone, prone owns the capsule; Prone -> Crouch goes through UnProne.
-	return !IsProne() && Super::CanCrouchInCurrentState();
+	return !IsProne() && CanCrouchIgnoringProne();
 }
 
 bool ULureCharacterMovementComponent::CanCrouchIgnoringProne() const
 {
-	return Super::CanCrouchInCurrentState();
+	// Wading too deep for it (T-026 B2): refused here, on the owning client and the server alike, before anything changes.
+	return Super::CanCrouchInCurrentState() && !IsStanceTooDeepForWater(ELureStance::Crouch);
 }
 
 bool ULureCharacterMovementComponent::CanProneInCurrentState() const
 {
-	return bCanEverProne && IsMovingOnGround() && UpdatedComponent && !UpdatedComponent->IsSimulatingPhysics();
+	return bCanEverProne && IsMovingOnGround() && UpdatedComponent && !UpdatedComponent->IsSimulatingPhysics() && !IsStanceTooDeepForWater(ELureStance::Prone);
 }
 
 void ULureCharacterMovementComponent::Crouch(bool bClientSimulation)

@@ -15,9 +15,9 @@ Code: `Source/VibeGame/Character/LureSwimMovement.cpp` (movement), `LureWaterVol
   edges up to 60 cm.
   Swim feel columns (optional; missing = the built-in default; T-026 review D3/D4): `SurfaceFloatSettleTime` (0.8 s,
   the plunge and rise), `SwimBrakingDeceleration` (600 cm/s2, coasting to a stop; read from the Swim row),
-  `ClimbOutReach` (45 cm, how far in front an edge may be) and `ClimbOutLowestTop` (-20 cm: edge tops lower than this
-  below the surface are seabed, walk out there). Rows validate them (settle >= 0.05 s, reach and braking >= 0,
-  lowest top <= 0).
+  `ClimbOutReach` (45 cm, how far in front an edge may be), `ClimbOutLowestTop` (-20 cm: edge tops lower than this
+  below the surface are seabed, walk out there; but see "no dead band" below) and `ClimbOutSurfaceTolerance` (30 cm,
+  see "only from the surface"). Rows validate them (settle >= 0.05 s, reach, braking and tolerance >= 0, lowest top <= 0).
 - **The one surface rule:** while the row in use has `SurfaceFloatDepth > 0`, a critically damped spring holds the
   capsule center that far below the water surface (a plunge dips, then rises; no bobbing in and out of the water).
   A row with `SurfaceFloatDepth = 0` gets the engine's free 3D swimming, which is where diving will start.
@@ -25,9 +25,30 @@ Code: `Source/VibeGame/Character/LureSwimMovement.cpp` (movement), `LureWaterVol
   (walk) in water up to 90 cm deep and swim deeper than that.
 - **Stances:** no crouch or prone in the water. Requests are refused, and the crouch/prone wishes are cleared in the
   predicted move (client and server), so you are standing when you get out. Sprint = sprint-swimming.
+- **Wading (T-026 QA B2, lead rule):** a crouch or prone whose capsule center would be in the water (feet kept, so
+  crouch in water deeper than about 57 cm, prone deeper than about 28 cm with the shipped capsules) is refused BEFORE
+  anything changes: no swim event, no wish kept (`IsStanceTooDeepForWater`, checked by the request and by
+  `CanCrouchInCurrentState` / `CanProneInCurrentState`, so the server refuses the same flags). The player sees the
+  plain-text hint `ALurePlayerCharacter::GetStanceHintText()` ("Too deep to crouch here.", `StanceHintDuration` 2.5 s),
+  also for crouch/prone requests while swimming. Known gap: walking crouched or prone from shallower into deeper water
+  still enters swimming (stand up, in/out) once the current capsule center goes under.
 - **Getting out:** walk out where the seabed rises (beaches, ramps, shelves). Or press **Jump** facing an edge within
   45 cm: if its top is at most `ClimbMaxHeight` above the water (60 cm; 61 cm is refused) and there is room to stand,
   you climb up and onto it (`MOVE_Custom`, `ELureCustomMovementMode::ClimbOut`). Jump in open water does nothing.
+- **Stepping out, no dead band (T-026 QA B3/D3):** swimming (with input) into a submerged edge whose top is above the
+  feet, at most `MaxStepHeight` (45 cm) up, and high enough that you stand there with the capsule center out of the
+  water, steps you out onto it: a short `ClimbOut` climb at the row's `ClimbSpeed` (`FindStepOutPlan`; started inside the
+  move, so it is predicted and corrected like any climb; nothing new travels). Lower tops are swum over. Jump climbs
+  onto every top higher than feet + `MaxStepHeight` - 10 cm, whatever `ClimbOutLowestTop` says (it can only lower the
+  climb range further). So every vertical shelf has a way out; with the shipped data (floating feet at -100) tops from
+  -91 to -55 are steps, from -65 up Jump. A climb never reports more upward speed than `ClimbSpeed`, and the engine's
+  small step over a deeper rock no longer turns its rise into speed (it used to throw swimmers up to 6 m out of the water).
+- **Only from the surface (T-026 D2, lead rule for diving):** climbing out needs the head (capsule top) at most
+  `ClimbOutSurfaceTolerance` (30 cm) below the water surface. A floating swimmer's head is always above it, so this only
+  matters for rows with `SurfaceFloatDepth = 0`.
+- **Teleports (T-026 QA B1):** a teleport (respawn, `Lure.Teleport`) during a climb ends it: `OnTeleported` drops the
+  plan and picks the mode for the new place (swimming in water, else falling, which lands at once on ground). On the
+  owning client of a server teleport, the correction brings the server's mode and no plan; no further corrections.
 - **Ladders** (`ALureLadder`) allow higher edges: a swimmer in the ladder's grab zone who presses Jump climbs to the
   edge above it (up to the ladder's `MaxClimbHeight`, default 300 cm), whichever way they face.
 - **Fishing (T-006):** `ALurePlayerCharacter::IsSwimming()` is true from falling in until standing on land again (the
@@ -53,6 +74,8 @@ Code: `Source/VibeGame/Character/LureSwimMovement.cpp` (movement), `LureWaterVol
   client's old, wrong path.
 - **`OnSwimStateChanged` on the owning client** fires once the correction and its replay have settled, not for the
   modes in between (no in/out pair when a correction replays a climb the client had already finished).
+- **Teleports** end a climb where `TeleportTo` runs (`OnTeleported`); the owning client follows through the normal
+  correction (test `Project.Movement.Swim.Net.TeleportMidClimbEndsItOnServerAndOwner`). Nothing new travels.
 
 Patterns for new movement features:
 1. Anything triggered by an input flag (Jump, a future dive or ladder key) changes the movement mode inside the move

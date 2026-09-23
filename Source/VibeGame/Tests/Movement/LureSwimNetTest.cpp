@@ -826,4 +826,102 @@ bool FLureSwimNetProxyClimbTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------------------------------------------------
+// T-026 QA B1: a teleport during a climb ends it on the server, and the owning client follows without a ping-pong
+// ---------------------------------------------------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLureSwimNetTeleportMidClimbTest, "Project.Movement.Swim.Net.TeleportMidClimbEndsItOnServerAndOwner", LureSwimNet::Flags)
+
+bool FLureSwimNetTeleportMidClimbTest::RunTest(const FString& Parameters)
+{
+	// The server teleports a player who is climbing out (a respawn, Lure.Teleport). The server's copy must drop the climb
+	// at once; the owning client, still climbing in its prediction, is corrected to the server's mode with no plan, stays
+	// where the server put it, and needs no further corrections (client and server agree move after move). One "out".
+	UDataTable* Table = LureSwimNet::ShippedTable(*this);
+	FGCObjectScopeGuard KeepTable(Table);
+	LureSwimNet::FMachine ClientMachine;
+	LureSwimNet::FMachine ServerMachine;
+	if (!Table || !ClientMachine.Create(*this, 60.f) || !ServerMachine.Create(*this, 60.f))
+	{
+		return false;
+	}
+	// Dry land far from the dock (top 30 cm above the water), on both machines.
+	constexpr float LandTop = 30.f;
+	const FVector LandCenter(2000.f, 1500.f, 0.f);
+	for (LureSwimNet::FMachine* Machine : { &ClientMachine, &ServerMachine })
+	{
+		Machine->AddBox(FVector(LandCenter.X, LandCenter.Y, 0.5f * (LandTop + LureSwimNet::SeabedZ)), FVector(400.f, 400.f, 0.5f * (LandTop - LureSwimNet::SeabedZ)));
+	}
+	ALurePlayerCharacter* Client = ClientMachine.SpawnSwimmer(*this, Table);
+	ALurePlayerCharacter* Server = ServerMachine.SpawnSwimmer(*this, Table);
+	if (!Client || !Server)
+	{
+		return false;
+	}
+	ClientMachine.Tick(LureSwimNet::SettleFrames);
+	ServerMachine.Tick(LureSwimNet::SettleFrames);
+	Client->SetRole(ROLE_AutonomousProxy);
+	ULureCharacterMovementComponent* ClientMovement = Client->GetLureMovement();
+	ULureCharacterMovementComponent* ServerMovement = Server->GetLureMovement();
+	ULureSwimTestListener* Listener = LureSwimNet::Listen(Client);
+	FGCObjectScopeGuard KeepListener(Listener);
+
+	// Both climb out from the same Jump move and are 8 moves into the climb.
+	TArray<FSavedMovePtr> Moves;
+	Moves.Add(LureSwimNet::ClientMove(Client, /*bPressJump*/ true));
+	LureSwimNet::ServerMove(Server, *Moves.Last());
+	for (int32 Index = 0; Index < 8; ++Index)
+	{
+		Moves.Add(LureSwimNet::ClientMove(Client));
+		LureSwimNet::ServerMove(Server, *Moves.Last());
+	}
+	if (!TestTrue(TEXT("setup: both copies mid-climb"), ClientMovement->IsClimbingOut() && ServerMovement->IsClimbingOut()))
+	{
+		return false;
+	}
+
+	// The server teleports its copy onto the land.
+	const float HalfHeight = Server->GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+	const FVector Destination(LandCenter.X, LandCenter.Y, LandTop + HalfHeight + 5.f);
+	TestTrue(TEXT("server: teleport accepted"), Server->TeleportTo(Destination, FRotator::ZeroRotator));
+	TestFalse(TEXT("server: the climb ended at once"), ServerMovement->IsClimbing());
+	TestFalse(TEXT("server: the plan is gone"), LureSwimNet::FAccess::HasClimbPlan(*ServerMovement));
+	TestFalse(TEXT("server: out of the water"), Server->IsSwimming());
+
+	// The client didn't know yet: 10 more predicted climb moves. The server runs them where it is now (it drops 5 cm onto
+	// the land), then corrects.
+	for (int32 Index = 0; Index < 10; ++Index)
+	{
+		Moves.Add(LureSwimNet::ClientMove(Client));
+		LureSwimNet::ServerMove(Server, *Moves.Last());
+	}
+	TestTrue(TEXT("client: still climbing in its prediction"), ClientMovement->IsClimbingOut());
+	TestTrue(TEXT("server: on the land"), ServerMovement->IsMovingOnGround());
+	if (!LureSwimNet::SendReply(*this, Server, Client, Moves.Last()->TimeStamp))
+	{
+		return false;
+	}
+	LureSwimNet::FAccess::ReplayUnacknowledgedMoves(*ClientMovement);
+	TestFalse(TEXT("client corrected: not climbing"), ClientMovement->IsClimbing());
+	TestFalse(TEXT("client corrected: no plan"), LureSwimNet::FAccess::HasClimbPlan(*ClientMovement));
+	TestEqual(TEXT("client corrected: the server's mode"), static_cast<int32>(ClientMovement->PackNetworkMovementMode()), static_cast<int32>(ServerMovement->PackNetworkMovementMode()));
+	TestTrue(FString::Printf(TEXT("client corrected: where the server is (%.4f cm)"), LureSwimNet::Distance(Client, Server)), LureSwimNet::Distance(Client, Server) < LureSwimNet::SamePlace);
+
+	// No ping-pong: from here client and server agree on every move (no correction needed), and nobody drifts back.
+	float WorstError = 0.f;
+	for (int32 Index = 0; Index < 60; ++Index)
+	{
+		const FSavedMovePtr Move = LureSwimNet::ClientMove(Client);
+		LureSwimNet::ServerMove(Server, *Move);
+		WorstError = FMath::Max(WorstError, LureSwimNet::Distance(Client, Server));
+	}
+	TestTrue(FString::Printf(TEXT("client and server agree after the correction (worst %.4f cm)"), WorstError), WorstError < LureSwimNet::SamePlace);
+	const float Drift = static_cast<float>(FVector::Dist2D(Client->GetActorLocation(), Destination));
+	TestTrue(FString::Printf(TEXT("client stays where it was sent (moved %.2f cm)"), Drift), Drift < 1.f);
+	TestTrue(TEXT("client: walking on the land"), ClientMovement->IsMovingOnGround());
+	TestTrue(TEXT("server: walking on the land"), ServerMovement->IsMovingOnGround());
+	TestEqual(TEXT("client: one swim event, out"), LureSwimNet::EventsText(Listener), FString(TEXT("out")));
+	return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS

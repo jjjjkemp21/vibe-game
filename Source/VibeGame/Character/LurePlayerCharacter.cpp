@@ -544,9 +544,12 @@ void ALurePlayerCharacter::RequestStance(ELureStance Stance)
 	{
 		return;
 	}
-	if (Stance != ELureStance::Stand && IsSwimming())
+	// No crouch or prone in the water (T-026), nor where the water is too deep for that stance (B2: the capsule center
+	// would go under). Refused before anything changes, not queued; the movement component refuses the same on the server.
+	if (Stance != ELureStance::Stand && (IsSwimming() || Movement->IsStanceTooDeepForWater(Stance)))
 	{
-		return; // no crouch or prone in the water (T-026): refused, not queued
+		ShowStanceHint(Stance == ELureStance::Crouch ? TEXT("Too deep to crouch here.") : TEXT("Too deep to go prone here."));
+		return;
 	}
 
 	switch (Stance)
@@ -573,6 +576,22 @@ void ALurePlayerCharacter::RequestStance(ELureStance Stance)
 		}
 		break;
 	}
+}
+
+void ALurePlayerCharacter::ShowStanceHint(const FString& Hint)
+{
+	StanceHint = Hint;
+	StanceHintTime = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0;
+}
+
+FString ALurePlayerCharacter::GetStanceHintText() const
+{
+	const UWorld* World = GetWorld();
+	if (StanceHint.IsEmpty() || !World || World->GetTimeSeconds() - StanceHintTime > StanceHintDuration)
+	{
+		return FString();
+	}
+	return StanceHint;
 }
 
 void ALurePlayerCharacter::ToggleCrouch()
