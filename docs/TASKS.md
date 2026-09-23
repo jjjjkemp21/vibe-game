@@ -13,7 +13,7 @@ Last processed playtest folder: (none)
   2. losing a fish costs only the fish, or bait and line too?
   3. is one hold-to-reel button enough?
   4. are 8-15 s fights right?
-- qa-engineer-mid-medium: T-010 QA (eng5)
+- T-010 QA PASS 48ffec2 (eng5; 458/459, only AssetMatchesSource, fixed in main; 42 new tests; report Saved/AgentLogs/qa/20260923-105500-T010.md). In progress: unreal-engineer-junior-medium, fixes O1-O3 (IsValid guard; an unknown CoolerId falls back to the default DT_Cooler row). Then the lead merges eng5, the editor imports the 3 tables and places the sell point, and playtester 2-player covers the gaps (owner-only fish list, a real client Interact, the HUD text).
 - animation-artist-senior-max: fish rig and clips (main)
 - DONE 5137a5c: run-tests.ps1 now fails on a crash or an incomplete run (unreal-engineer-junior-medium)
 - DONE 3e7e3a5: the L_PalmKey cave rebuild (crawl walls #35434A, in target; outer mouth faces slightly dark and blue; left for the designer at the gate). Evidence Saved/AgentLogs/editor/20260923-104106-palmkey-cave/
