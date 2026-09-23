@@ -146,7 +146,12 @@ def import_datatable(src_path, dest_path, row_struct):
     settings = unreal.CSVImportSettings()
     settings.set_editor_property("import_row_struct", struct)
     settings.set_editor_property("import_type", unreal.CSVImportType.ECSV_DATA_TABLE)
-    factory = unreal.CSVImportFactory()
+    # UCSVImportFactory::FactoryCanImport only accepts .csv ("Unknown extension 'json'" otherwise); the engine's
+    # ReimportDataTableFactory (a UCSVImportFactory subclass registered for .json) parses JSON sources the same way.
+    if src_path.lower().endswith(".json"):
+        factory = unreal.ReimportDataTableFactory()
+    else:
+        factory = unreal.CSVImportFactory()
     factory.set_editor_property("automated_import_settings", settings)
     imported = _run_import(src_path, folder, name, factory=factory)
     table = _first_of(imported, unreal.DataTable, dest_path)

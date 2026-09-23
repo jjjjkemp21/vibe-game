@@ -473,7 +473,8 @@ def frame_view(layout_path, view_id="overview"):
     or at "overview": high above the south of the island looking north-down over the preview's overview map."""
     lay = L.load(layout_path)
     ues = unreal.get_editor_subsystem(unreal.UnrealEditorSubsystem)
-    if view_id == "overview":
+    # A layout view named "overview" (rendered as eye_overview.png) wins over the map-based fallback.
+    if view_id == "overview" and not any(x.get("id") == "overview" for x in lay.get("views", [])):
         maps = (lay.get("preview") or {}).get("maps") or [{"center": [0, 0, 0], "width": 10000}]
         c = L.v3(maps[0]["center"])
         span = float(maps[0]["width"])
