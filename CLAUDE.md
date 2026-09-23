@@ -110,6 +110,14 @@ C++ work and Blender work (model-artist, animation-artist) can run in parallel; 
     2. Implementation: one senior in a lane.
     3. Adversarial review: reviewers with different lenses try to break it, and a majority vote decides each finding.
     4. Fix and verify, then the normal QA, playtest and designer gate.
+  **Ultracode names (Jimmy, 2026-09-23).** Every ultracode run and agent has a set name, so the lead and Jimmy can tell who did what:
+    - The workflow's `meta.name` is `ultracode-<task>-<phase>`, e.g. `ultracode-T026-review` or `ultracode-T016-design`.
+    - Every agent() call gets `agentType` = a named team agent (e.g. `unreal-engineer-senior-max`) and `label` = `ultracode:<phase>:<agentType>:<job>`. Phases are design, judge, build, review, verify and fix; the job is the lens, approach or finding number. Examples:
+      - `ultracode:design:unreal-engineer-senior-max:risk-first`
+      - `ultracode:judge:qa-engineer-senior-max:1`
+      - `ultracode:review:unreal-engineer-senior-max:networking`
+      - `ultracode:verify:qa-engineer-senior-max:networking-3`
+    - Never use unnamed default workflow agents. Report findings and results under these labels.
   Never fan out editor work: unreal-mcp stays one agent at a time (rule 4). The workflow size guideline is set in /config ("Dynamic workflow size"; Jimmy can raise it).
   New agents (whenever Jimmy asks for one, or the lead adds one) get `model: claude-opus-5-5` and an effort chosen like this: high for math, geometry, code or tricky logic; medium for known procedures; low for checklists, reviews and chores. Add junior/senior levels where the role's work varies in difficulty, then name each level `<role>-<level>-<effort>`, add it to this table and tell Jimmy.
   Changing a model, or upgrading to a newer one, needs Jimmy's OK.
