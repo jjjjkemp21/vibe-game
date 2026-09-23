@@ -8,7 +8,7 @@ Updated by Claude Code after every phase of setup/CLAUDE_CODE_SETUP.md. Cowork r
 ## Phase log
 | Phase | Status | What was done | Evidence |
 |---|---|---|---|
-| K1 Environment + first commit | TODO | | |
+| K1 Environment + first commit | PASS | doctor exit 0 (UE 5.8, Blender 5.2.2 LTS, VS 18.5, git 2.51 + LFS 3.7, uv 0.12.18, Claude Code 2.1.280, MCP port 8000). git init + lfs install; added `*.slnx` to .gitignore (generated solution files); first commit 8858e7c. 753 LFS files incl. 4 .umap; status clean; Saved/ ignored. | Saved/AgentLogs/status/doctor.json, tools/local.settings.json |
 | K2 Unreal MCP acceptance | TODO | | |
 | K3 Blender MCP install | TODO | | |
 | K4 Blender MCP acceptance | TODO | | |
