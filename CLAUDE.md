@@ -98,12 +98,17 @@ C++ work and Blender work (model-artist, animation-artist) can run in parallel; 
   | janitor | - | low | - |
   Junior and senior agents are thin wrappers: they read and follow `.claude/agents/<role>.md`, so each role's rules live in one file.
   A junior that finds the task bigger than briefed stops and reports back, and the lead re-assigns it to a senior.
-  **Ultracode for the hardest tasks (Jimmy, 2026-09-23, standing opt-in).** When a task is very complex (senior-level: a new system or architecture, network/replication design, a hard bug with an unknown cause, new hero assets, new hard animations such as fish fights, creature motion or cast/reel), the lead runs it as a Workflow (load the `workflow-authoring` skill first) instead of one agent. Default shape, one workflow per phase so the lead reviews between them:
+  **Mixed-difficulty tasks (Jimmy, 2026-09-23).** Split a task into parts by difficulty and give each part its own agent at the right level. Example: a senior designs and builds the core system; a mid adds the standard feature plumbing; a junior adds data rows, the placeholder text UI and routine tests. Give each part its own files or lane, brief the order and hand-offs (a junior starts from the senior's committed API), and list the parts on the task line in docs/TASKS.md.
+  **Ultracode, used sparingly (Jimmy, 2026-09-23).** Only for the very toughest work, and only where a single senior (effort max) isn't enough. That means:
+    (a) a foundational design that is expensive to undo later, such as the multiplayer sync model, the creature AI and senses foundation, or the noise/mic pipeline; or
+    (b) a senior agent already failed or got stuck on it; or
+    (c) a bug with an unknown cause that survived one senior investigation.
+  Everything else, including most senior work, is one senior agent plus the normal QA gate. Before running a workflow, the lead writes on the task line which of (a)-(c) applies. The workflow is run as a Workflow (load the `workflow-authoring` skill first), one phase per workflow so the lead reviews between them:
     1. Design, as a judge panel: 3 senior agents (`agentType: '<role>-senior'`) propose independent approaches; judges score them against the vision and the specs; the winner is synthesized into docs/specs/.
-    2. Implementation: one senior in a lane (parallel only when they touch different files).
-    3. Adversarial review: reviewers with different lenses (correctness, networking, data-driven/extensibility, performance) try to break it, and a majority vote decides each finding.
+    2. Implementation: one senior in a lane.
+    3. Adversarial review: reviewers with different lenses try to break it, and a majority vote decides each finding.
     4. Fix and verify, then the normal QA, playtest and designer gate.
-  Never fan out editor work: unreal-mcp stays one agent at a time (rule 4). Normal tasks stay single agents. The workflow size guideline is set in /config ("Dynamic workflow size"; Jimmy can raise it).
+  Never fan out editor work: unreal-mcp stays one agent at a time (rule 4). The workflow size guideline is set in /config ("Dynamic workflow size"; Jimmy can raise it).
   New agents (whenever Jimmy asks for one, or the lead adds one) get `model: claude-opus-5-5` and an effort chosen like this: high for math, geometry, code or tricky logic; medium for known procedures; low for checklists, reviews and chores. Add junior/senior levels where the role's work varies in difficulty, then add the agent to this table and tell Jimmy.
   Changing a model, or upgrading to a newer one, needs Jimmy's OK.
 - Subagent conversations end with their task; nothing to compact there. Keeping reports short is what saves tokens.
