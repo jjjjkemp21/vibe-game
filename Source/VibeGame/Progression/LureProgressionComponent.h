@@ -16,6 +16,7 @@ struct FFishLevelScaling;
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FLureLevelChangedSignature, ULureProgressionComponent*, Progression, int32, OldLevel, int32, NewLevel);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FLureMoneyChangedSignature, ULureProgressionComponent*, Progression, int32, NewMoney, int32, Delta);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FLureXpChangedSignature, ULureProgressionComponent*, Progression, int32, NewTotalXp, int32, Delta);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FLureFishSoldSignature, ULureProgressionComponent*, Progression, int32, FishSold, int32, MoneyEarned);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FLureFishLandedSignature, ULureProgressionComponent*, Progression, const FFishInstance&, Fish, const FLureFishLandedResult&, Result);
 
 /**
@@ -28,6 +29,9 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FLureFishLandedSignature, ULurePr
  *  Events: OnLevelUp fires once per XP gain that crosses levels (a multi-level jump is ONE event, OldLevel -> NewLevel)
  *  on the server, and on clients when the replicated Level rises after BeginPlay. OnLevelChanged fires on every change
  *  (including loading a save, which never fires OnLevelUp on the server).
+ *  Placeholder notices (playtest 2026-09-23): "Level up! Level 2" and "Sold 2 fish for 48 coins" are kept for
+ *  ULureProgressionSettings::NoticeSeconds on the owning player's machine only (ALureHUD draws them): a level-up where the
+ *  owner is a local player controller, a sale through the ClientFishSold RPC, which reaches only the seller.
  */
 UCLASS(ClassGroup=(Lure), meta=(BlueprintSpawnableComponent))
 class ULureProgressionComponent : public UActorComponent
@@ -117,6 +121,25 @@ public:
 	UFUNCTION(BlueprintPure, Category="Lure|Progression")
 	FString GetStatusText() const;
 
+	// ---- Placeholder notices (local player only) ----
+
+	/** The notice lines still showing (oldest first); empty on other players' copies */
+	UFUNCTION(BlueprintPure, Category="Lure|Progression")
+	TArray<FString> GetNoticeLines() const;
+
+	/** Adds a notice for ULureProgressionSettings::NoticeSeconds (at most MaxNotices, the oldest drop off) */
+	void AddNotice(const FString& Text);
+
+	void ClearNotices() { Notices.Reset(); }
+
+	/** True when this progression belongs to a local player (its player state's owner is a local player controller) */
+	bool IsLocalPlayerProgression() const;
+
+	static FString FormatLevelUpNotice(int32 NewLevel);
+	static FString FormatSaleNotice(int32 FishSold, int32 MoneyEarned);
+
+	static constexpr int32 MaxNotices = 4;
+
 	// ---- Data ----
 
 	/** Uses Table instead of the settings' DT_PlayerLevel (tests, tools). Call before BeginPlay or re-check the level. */
@@ -138,6 +161,14 @@ public:
 
 	UPROPERTY(BlueprintAssignable, Category="Lure|Progression")
 	FLureXpChangedSignature OnXpChanged;
+
+	/** On the seller's machine only (through ClientFishSold) after a sale that sold at least one fish */
+	UPROPERTY(BlueprintAssignable, Category="Lure|Progression")
+	FLureFishSoldSignature OnFishSold;
+
+	/** Server -> the owning client: a sale happened (fires OnFishSold and the "Sold N fish" notice there) */
+	UFUNCTION(Client, Reliable)
+	void ClientFishSold(int32 FishSold, int32 MoneyEarned);
 
 	/** Server only: after HandleFishLanded accepted a fish (T-011 journal can listen here) */
 	UPROPERTY(BlueprintAssignable, Category="Lure|Progression")
@@ -178,6 +209,17 @@ private:
 	bool bSaveApplied = false;
 	mutable bool bCurveBuilt = false;
 	mutable FLureLevelCurve Curve;
+
+	struct FNotice
+	{
+		FString Text;
+		double ExpireTime = 0.0;
+	};
+	TArray<FNotice> Notices;
+
+	double GetNoticeClock() const;
+	void NotifyLevelUpLocally();
+	void NotifySale(const FLureSaleResult& Result);
 
 	bool CheckServer(const TCHAR* What) const;
 	void SetMoneyInternal(int32 NewMoney);

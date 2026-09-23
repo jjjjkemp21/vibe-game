@@ -1,4 +1,4 @@
-// Lure: placeholder HUD (T-006; stance hint T-026).
+// Lure: placeholder HUD (T-006; stance hint T-026; notices and lower-left layout after the fishing-loop playtest).
 
 #include "Game/LureHUD.h"
 #include "Engine/Canvas.h"
@@ -8,6 +8,7 @@
 #include "Fishing/LureFishingComponent.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
+#include "Progression/LureProgressionComponent.h"
 #include "Progression/LureProgressionLibrary.h"
 #include "Progression/LureProgressionSettings.h"
 
@@ -35,6 +36,12 @@ FString ALureHUD::GetStatusText(const APawn* Pawn)
 	return FString::Join(Lines, TEXT("\n"));
 }
 
+TArray<FString> ALureHUD::GetNoticeLines(const APlayerController* PlayerController)
+{
+	const ULureProgressionComponent* Progression = PlayerController ? ULureProgressionLibrary::GetProgression(PlayerController) : nullptr;
+	return Progression ? Progression->GetNoticeLines() : TArray<FString>();
+}
+
 void ALureHUD::DrawHUD()
 {
 	Super::DrawHUD();
@@ -45,21 +52,34 @@ void ALureHUD::DrawHUD()
 	}
 	UFont* Font = GEngine->GetMediumFont();
 
-	// Progression (T-010): money, level, XP, cooler and the interact prompt, top-left.
+	// Progression (T-010): money, level, XP, cooler and the interact prompt, top-left; the notices right under them.
+	float TopY = Margin;
+	auto DrawTopLeft = [this, Font, &TopY](const FString& Line)
+	{
+		float Width = 0.f;
+		float Height = 0.f;
+		GetTextSize(Line, Width, Height, Font);
+		DrawText(Line, FLinearColor::White, Margin, TopY, Font);
+		TopY += Height + 4.f;
+	};
 	if (GetDefault<ULureProgressionSettings>()->bShowPlaceholderText)
 	{
-		float TopY = 24.f;
 		for (const FString& Line : ULureProgressionLibrary::GetPlaceholderStatusLines(GetOwningPlayerController()))
 		{
-			float Width = 0.f;
-			float Height = 0.f;
-			GetTextSize(Line, Width, Height, Font);
-			DrawText(Line, FLinearColor::White, 24.f, TopY, Font);
-			TopY += Height + 4.f;
+			DrawTopLeft(Line);
+		}
+	}
+	const TArray<FString> Notices = GetNoticeLines(GetOwningPlayerController());
+	if (Notices.Num() > 0)
+	{
+		TopY += 8.f; // a gap under the status block
+		for (const FString& Line : Notices)
+		{
+			DrawTopLeft(Line);
 		}
 	}
 
-	// Fishing (T-006/T-007): centered in the lower part of the screen.
+	// Fishing (T-006/T-007) and the stance hint: lower-left, bottom-anchored, clear of the centre of the view.
 	const FString Text = GetStatusText(GetOwningPawn());
 	if (Text.IsEmpty())
 	{
@@ -67,13 +87,21 @@ void ALureHUD::DrawHUD()
 	}
 	TArray<FString> Lines;
 	Text.ParseIntoArrayLines(Lines, /*CullEmpty*/ true);
-	float Y = Canvas->ClipY * 0.68f;
+	TArray<float> Heights;
+	float BlockHeight = 0.f;
 	for (const FString& Line : Lines)
 	{
 		float Width = 0.f;
 		float Height = 0.f;
 		GetTextSize(Line, Width, Height, Font);
-		DrawText(Line, FLinearColor::White, (Canvas->ClipX - Width) * 0.5f, Y, Font);
-		Y += Height + 4.f;
+		Heights.Add(Height);
+		BlockHeight += Height + 4.f;
+	}
+	// Never above the top-left block, even on a very short screen.
+	float Y = FMath::Max(TopY + 8.f, Canvas->ClipY - BottomMargin - BlockHeight);
+	for (int32 Index = 0; Index < Lines.Num(); ++Index)
+	{
+		DrawText(Lines[Index], FLinearColor::White, Margin, Y, Font);
+		Y += Heights[Index] + 4.f;
 	}
 }

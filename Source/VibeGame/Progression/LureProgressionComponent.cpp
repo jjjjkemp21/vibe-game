@@ -7,7 +7,10 @@
 #include "Fish/FishRoll.h"
 #include "Fish/FishSettings.h"
 #include "Engine/DataTable.h"
+#include "Engine/World.h"
 #include "GameFramework/Actor.h"
+#include "GameFramework/PlayerController.h"
+#include "GameFramework/PlayerState.h"
 #include "Net/UnrealNetwork.h"
 
 ULureProgressionComponent::ULureProgressionComponent()
@@ -142,6 +145,7 @@ int32 ULureProgressionComponent::AddXp(int32 Amount)
 		UE_LOG(LogLureProgression, Log, TEXT("%s: level up %d -> %d (XP %d)"), *GetNameSafe(GetOwner()), OldLevel, Level, TotalXp);
 		OnLevelChanged.Broadcast(this, OldLevel, Level);
 		OnLevelUp.Broadcast(this, OldLevel, Level);
+		NotifyLevelUpLocally();
 	}
 	return Level - OldLevel;
 }
@@ -224,6 +228,7 @@ FLureSaleResult ULureProgressionComponent::SellAllFish(float SellMultiplier)
 	Result.FishSold = Sold.Num();
 	Result.MoneyEarned = FLureProgressionRules::GetSellTotal(Sold, SellMultiplier);
 	AddMoney(Result.MoneyEarned);
+	NotifySale(Result);
 	return Result;
 }
 
@@ -243,6 +248,7 @@ FLureSaleResult ULureProgressionComponent::SellOneFish(int32 SlotIndex, float Se
 	Result.FishSold = 1;
 	Result.MoneyEarned = FLureProgressionRules::GetSellPrice(Fish, SellMultiplier);
 	AddMoney(Result.MoneyEarned);
+	NotifySale(Result);
 	return Result;
 }
 
@@ -319,6 +325,89 @@ void ULureProgressionComponent::OnRep_Level(int32 OldLevel)
 	if (Level > OldLevel && HasBegunPlay())
 	{
 		OnLevelUp.Broadcast(this, OldLevel, Level);
+		NotifyLevelUpLocally();
+	}
+}
+
+// ---- Placeholder notices ----
+
+bool ULureProgressionComponent::IsLocalPlayerProgression() const
+{
+	const APlayerState* State = Cast<APlayerState>(GetOwner());
+	const APlayerController* Controller = State ? State->GetPlayerController() : nullptr;
+	return Controller && Controller->IsLocalController();
+}
+
+double ULureProgressionComponent::GetNoticeClock() const
+{
+	const UWorld* World = GetWorld();
+	return World ? World->GetTimeSeconds() : 0.0;
+}
+
+void ULureProgressionComponent::AddNotice(const FString& Text)
+{
+	if (Text.IsEmpty())
+	{
+		return;
+	}
+	const double Now = GetNoticeClock();
+	Notices.RemoveAll([Now](const FNotice& Notice) { return Notice.ExpireTime <= Now; });
+	while (Notices.Num() >= MaxNotices)
+	{
+		Notices.RemoveAt(0);
+	}
+	const float Seconds = FMath::Max(0.5f, GetDefault<ULureProgressionSettings>()->NoticeSeconds);
+	Notices.Add({ Text, Now + Seconds });
+}
+
+TArray<FString> ULureProgressionComponent::GetNoticeLines() const
+{
+	TArray<FString> Lines;
+	const double Now = GetNoticeClock();
+	for (const FNotice& Notice : Notices)
+	{
+		if (Notice.ExpireTime > Now)
+		{
+			Lines.Add(Notice.Text);
+		}
+	}
+	return Lines;
+}
+
+FString ULureProgressionComponent::FormatLevelUpNotice(int32 NewLevel)
+{
+	return FString::Printf(TEXT("Level up! Level %d"), NewLevel);
+}
+
+FString ULureProgressionComponent::FormatSaleNotice(int32 FishSold, int32 MoneyEarned)
+{
+	return FString::Printf(TEXT("Sold %d fish for %d coins"), FishSold, MoneyEarned);
+}
+
+void ULureProgressionComponent::NotifyLevelUpLocally()
+{
+	// The server fires OnLevelUp for every player and each client for every replicated player state: only the owner's
+	// own machine shows the notice (a listen-server host on the server path, a client through OnRep_Level).
+	if (IsLocalPlayerProgression())
+	{
+		AddNotice(FormatLevelUpNotice(Level));
+	}
+}
+
+void ULureProgressionComponent::NotifySale(const FLureSaleResult& Result)
+{
+	if (Result.FishSold > 0)
+	{
+		ClientFishSold(Result.FishSold, Result.MoneyEarned); // runs locally for a listen-server host or standalone
+	}
+}
+
+void ULureProgressionComponent::ClientFishSold_Implementation(int32 FishSold, int32 MoneyEarned)
+{
+	OnFishSold.Broadcast(this, FishSold, MoneyEarned);
+	if (IsLocalPlayerProgression())
+	{
+		AddNotice(FormatSaleNotice(FishSold, MoneyEarned));
 	}
 }
 
