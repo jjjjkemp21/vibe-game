@@ -84,7 +84,7 @@ Independent tests: `Tests/Movement/QASwimTest.cpp` (qa-engineer, 21 tests), from
 | Teleport / respawn | Swim.Teleport.{BetweenWaterAndLand, MidClimbEndsTheClimb}, Climb.TeleportMidPullUpEndsIt | I | Water->land "out", land->water "in", water->water nothing. A teleport mid ClimbOut / LedgeClimb ends the climb at the destination (FAIL, T026-B1) |
 | Swim events | Swim.Events.OncePerRealChangeOverATrip | I | Fall in, sprint, Jump in open water, stance requests, a 150 cm wall, climb out, walk off, beach walk-out: exactly "in,out,in,out", "out" only once standing |
 | Diving path | Swim.DiveRow.SurfaceFloatDepthZeroIsFreeSwimming | I | Review T2: depth 0 is accepted (no fallback), no surface rule, sinks and is not pulled back up, row speed, no prone |
-| Level-design gap | Swim.Gap.SubmergedShelfDeadBandDocumented | I | DOCUMENTS current behavior: vertical shelf tops in (-55, -20) cm (computed from the data) can be neither stepped onto nor climbed; -15 climbs with Jump |
+| No shelf dead band | Swim.Leave.NoShelfDeadBand | I | Regression for a60e4a5 (was Gap.SubmergedShelfDeadBandDocumented): vertical shelf tops -91..-15 cm are all stepped onto or climbed with Jump; none stuck; steps not launched (feet < top+20, vz <= 300), climbs peak < top+60 |
 | Arms | Swim.Arms.StrokeClipPlaysInDefaultSlot | I | Review T4: with a stroke clip (A_FPArms_Idle stands in) the montage plays, ABP_FPArms blends DefaultSlot > 0.9, lowering off, stops on land |
 | Climb rule B1 | Climb.{EdgeLandingRefusedWhereTheEngineAccepts, NeverPerchedBelowALedgeTop} | I | Review T0: 40 edge contacts the engine's IsValidLandingSpot accepts are all refused; flat tops accepted. Frame by frame never walking perched on a 100 cm block's edge (fall without jump, jump released at apex, stand/crouch/sprint jumps; stand and crouch reach the top through the pull-up) |
 | Arms pull-back | Camera.ArmsPullBackFollowsData | I | Review T5: Stand 4 / Prone 9 in the data put the arms at X -4 / -9 |
@@ -103,6 +103,8 @@ Implementer-test fixes by QA: `Project.Movement.Camera.ProneArmsPulledBackFromWa
 - Overlapping volumes with different surface heights or priorities; ladders on pitched docks.
 
 ### T-026 x T-006 merge (lane eng2, implementer tests in `Tests/Movement/LureSwimFishingTest.cpp`)
+- `Project.Fishing.ArmsPose.GraphPinOrderMatchesEnum` (I, qa): locks ABP_FPArms Blend Poses pin order. For Idle/HoldRod/ProneHold/ProneTuck (rod off/on, prone still, prone crawling), after 1.5 s hand_r_rod (component space) is closest to that pose's own clip (clips sampled on a reference mesh). Skips with a log line if the ABP or clips are not loadable.
+- Lead decision (2026-09-23): DT_Movement Swim rows keep CanFish=True. Swimming blocks fishing in code (IsSwimming); CanFish describes the land stances only. No change to MovementRodRules.
 - `Project.Fishing.Rules.ClimbingIsBusy` (U): MOVE_Custom climbs block a cast and reel a line in (reason Climbing); the climb out reports Swimming; a plain jump keeps the line.
 - `Project.Fishing.Swim.ClimbOutBlocksFishingAndACastRightAfterStays` (I): swimming = no rod, Idle arms, cast refused; the whole climb out refuses casts; on the dock a cast goes out at once and survives a late OnSwimStateChanged pair; rod and HoldRod back.
 - `Project.Fishing.Climb.LedgePullUpReelsTheLineIn` (I): a line out survives the jump, the LedgeClimb pull-up reels it in (Climbing) and refuses a new cast.

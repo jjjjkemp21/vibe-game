@@ -1311,18 +1311,16 @@ bool FQASwimFreeSwimRow::RunTest(const FString& Parameters)
 }
 
 // =====================================================================================================================
-// Design gap (junior's note): a vertical submerged shelf can be too high to step onto and too low to climb
+// Regression (a60e4a5): no dead band between stepping onto a submerged shelf and climbing out onto it
 // =====================================================================================================================
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FQASwimShelfDeadBand, "Project.Movement.QA.Swim.Gap.SubmergedShelfDeadBandDocumented", QASwim::Flags)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FQASwimShelfNoDeadBand, "Project.Movement.QA.Swim.Leave.NoShelfDeadBand", QASwim::Flags)
 
-bool FQASwimShelfDeadBand::RunTest(const FString& Parameters)
+bool FQASwimShelfNoDeadBand::RunTest(const FString& Parameters)
 {
-	// DOCUMENTS CURRENT BEHAVIOR (not a rule from the spec). A floating swimmer's feet are at
-	// -(SurfaceFloatDepth + Stand half height) = -100 cm; it steps up at most MaxStepHeight (45) = tops up to -55; Jump
-	// climbs tops down to ClimbOutLowestTop (-20). A vertical shelf with its top in between (-55, -20) is an invisible
-	// wall from the water. Level rule (level-designer): no vertical-faced exits with tops in that band. If the band is
-	// closed in code (review D3: derive the lowest top from the data), change the "stuck" cases below to "gets out".
+	// Before a60e4a5 a vertical shelf with its top in (-55, -20) cm was too high to step onto and too low to climb: an
+	// invisible wall. Every shelf top from -91 cm (below the floating feet) up to the climb range must now be either
+	// stepped onto (swim into it) or climbed (Jump), and never leave the swimmer stuck or launched out of the water.
 	UDataTable* Shipped = ShippedTable(*this);
 	FGCObjectScopeGuard KeepShipped(Shipped);
 	if (!Shipped)
@@ -1333,22 +1331,12 @@ bool FQASwimShelfDeadBand::RunTest(const FString& Parameters)
 	const FLureMovementRow Stand = RowOf(Shipped, ELureMovementState::Stand);
 	const float StepHeight = GetDefault<ULureCharacterMovementComponent>()->MaxStepHeight;
 	const float FloatingFeet = -(Swim.SurfaceFloatDepth + Stand.CapsuleHalfHeight);
-	const float HighestStep = FloatingFeet + StepHeight;
-	const float LowestClimb = FMath::Min(Swim.ClimbOutLowestTop, 0.f);
-	AddInfo(FString::Printf(TEXT("dead band with this data: shelf tops in (%.0f, %.0f) cm (floating feet %.0f, MaxStepHeight %.0f, ClimbOutLowestTop %.0f)"),
-		HighestStep, LowestClimb, FloatingFeet, StepHeight, LowestClimb));
-	TestTrue(TEXT("the band exists with the shipped data (update this test when it is closed)"), HighestStep < LowestClimb);
+	AddInfo(FString::Printf(TEXT("floating feet %.0f, MaxStepHeight %.0f, ClimbOutLowestTop %.0f"), FloatingFeet, StepHeight, Swim.ClimbOutLowestTop));
 
-	struct FCase
+	const float Tops[] = { -91.f, -85.f, -75.f, -65.f, -58.f, -55.f, -52.f, -48.f, -44.f, -40.f, -35.f, -30.f, -25.f, -20.f, -15.f };
+	for (const float Top : Tops)
 	{
-		float Top;
-		const TCHAR* Expect; // "walk" = swims onto it and walks out; "jump" = Jump climbs out; "stuck" = neither
-	};
-	// Tops below the band (walk out onto them) are Project.Movement.QA.Swim.Leave.StepOntoSubmergedShelfNoLaunch.
-	const FCase Cases[] = { { -52.f, TEXT("stuck") }, { -40.f, TEXT("stuck") }, { -25.f, TEXT("stuck") }, { -15.f, TEXT("jump") } };
-	for (const FCase& Case : Cases)
-	{
-		const FString Label = FString::Printf(TEXT("shelf top %.0f cm"), Case.Top);
+		const FString Label = FString::Printf(TEXT("shelf top %.0f cm"), Top);
 		UDataTable* Table = ShippedTable(*this);
 		FGCObjectScopeGuard KeepTable(Table);
 		FSea Sea;
@@ -1357,46 +1345,66 @@ bool FQASwimShelfDeadBand::RunTest(const FString& Parameters)
 			return false;
 		}
 		const float FaceX = 100.f;
-		Sea.AddDock(FaceX, Case.Top);
+		Sea.AddDock(FaceX, Top);
 		ALurePlayerCharacter* Character = Sea.SpawnSwimmer(*this, FaceX - 200.f, 0.f, Table);
 		if (!Character)
 		{
 			return false;
 		}
 		ULureCharacterMovementComponent* Movement = Character->GetLureMovement();
-		// Swim into it for 3 s (the mode changes are logged).
-		TArray<FString> Trace;
+		float PeakFeet = -TNumericLimits<float>::Max();
+		float PeakVz = 0.f;
+		auto Track = [&]()
+		{
+			PeakFeet = FMath::Max(PeakFeet, FeetZ(Character));
+			PeakVz = FMath::Max(PeakVz, static_cast<float>(Character->GetVelocity().Z));
+		};
 		for (int32 Frame = 0; Frame < 180; ++Frame)
 		{
 			Character->AddMovementInput(FVector::ForwardVector, 1.f, true);
 			Sea.Tick(1);
-			const FString State = ModeText(Movement);
-			if (Trace.Num() == 0 || !Trace.Last().Contains(State + TEXT(" ")) || (Frame % 20 == 0 && State != TEXT("Swimming")))
+			Track();
+			if (Movement->IsMovingOnGround() && !Character->IsSwimming() && X(Character) > FaceX + 30.f)
 			{
-				Trace.Add(FString::Printf(TEXT("f%d %s feet %.1f x %.1f vz %.0f"), Frame, *State, FeetZ(Character), X(Character), Character->GetVelocity().Z));
+				break; // stepped onto the shelf: stop before walking off its far side
 			}
 		}
 		const bool bWalkedOut = Movement->IsMovingOnGround() && !Character->IsSwimming();
+		const float WalkPeakFeet = PeakFeet;
+		const float WalkPeakVz = PeakVz;
 		bool bJumpedOut = false;
 		if (!bWalkedOut)
 		{
 			Sea.Tick(20);
 			Character->Jump();
-			bJumpedOut = Sea.TickUntil([&]() { return Movement->IsMovingOnGround(); }, 240);
+			for (int32 Frame = 0; Frame < 240 && !bJumpedOut; ++Frame)
+			{
+				Sea.Tick(1);
+				Track();
+				bJumpedOut = Movement->IsMovingOnGround();
+			}
 			Character->StopJumping();
 			Sea.Tick(20);
 		}
 		const FString Got = bWalkedOut ? TEXT("walk") : (bJumpedOut ? TEXT("jump") : TEXT("stuck"));
-		AddInfo(FString::Printf(TEXT("%s: %s; end %s feet %.1f x %.1f"), *Label, *FString::Join(Trace, TEXT(" -> ")), *ModeText(Movement), FeetZ(Character), X(Character)));
-		TestEqual(Label + TEXT(": way out"), Got, FString(Case.Expect));
-		if (Got != TEXT("stuck"))
+		AddInfo(FString::Printf(TEXT("%s: %s; end %s feet %.1f x %.1f, peak feet %.1f, peak vz %.0f"), *Label, *Got, *ModeText(Movement), FeetZ(Character), X(Character), PeakFeet, PeakVz));
+		TestTrue(Label + TEXT(": not stuck (steps onto it or climbs it)"), Got != TEXT("stuck"));
+		if (Got == TEXT("stuck"))
 		{
-			TestNearlyEqual(Label + TEXT(": feet on the shelf"), FeetZ(Character), Case.Top, 3.f);
-			TestTrue(Label + TEXT(": past its edge"), X(Character) > FaceX);
+			continue;
+		}
+		TestNearlyEqual(Label + TEXT(": feet on the shelf"), FeetZ(Character), Top, 3.f);
+		TestTrue(Label + TEXT(": past its edge"), X(Character) > FaceX);
+		if (bWalkedOut)
+		{
+			// Same no-launch bounds as Leave.StepOntoSubmergedShelfNoLaunch.
+			TestTrue(FString::Printf(TEXT("%s: not launched on the step (feet peak %.1f)"), *Label, WalkPeakFeet), WalkPeakFeet < Top + 20.f);
+			TestTrue(FString::Printf(TEXT("%s: no upward burst on the step (vz %.0f)"), *Label, WalkPeakVz), WalkPeakVz <= 300.f);
 		}
 		else
 		{
-			TestTrue(Label + TEXT(": still swimming in front of it"), Movement->IsSwimming() && X(Character) < FaceX);
+			// A climb rises at most ClimbSpeed and ends on the top, never thrown clear above it.
+			TestTrue(FString::Printf(TEXT("%s: climb not launched (feet peak %.1f)"), *Label, PeakFeet), PeakFeet < Top + 60.f);
 		}
 	}
 	return true;
