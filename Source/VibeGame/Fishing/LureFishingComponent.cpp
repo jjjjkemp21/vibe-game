@@ -349,6 +349,7 @@ FLureGearStats ULureFishingComponent::GetGearStats() const
 		const_cast<ULureFishingComponent*>(this)->ResolveFightTables();
 		TArray<FString> Problems;
 		GearStats = FLureGear::Resolve(GearTableRef, GetEffectiveLoadout(), &Problems);
+		FLureGear::ApplyDragLineCap(GearStats, FightTuning.DragLineCap);
 		bGearResolved = true;
 		if (GearTableRef && Problems.Num() > 0)
 		{

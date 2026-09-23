@@ -194,6 +194,12 @@ struct FLureGear
 	 */
 	static FLureGearStats Resolve(const UDataTable* Table, const FLureGearLoadout& Loadout, TArray<FString>* OutProblems = nullptr);
 
+	/**
+	 *  Caps the reel's drag at what the line holds: Stats.Drag = min(rod drag, LineStrength x DragLineCap) (DT_FishFight
+	 *  DragLineCap; a non-finite or non-positive cap is ignored). The fishing component applies it to the resolved loadout.
+	 */
+	static void ApplyDragLineCap(FLureGearStats& Stats, float DragLineCap);
+
 	/** Can Id be equipped in Slot (exists, valid, same slot)? OutProblem says why not. */
 	static bool CanEquip(const UDataTable* Table, ELureGearSlot Slot, FName Id, FString* OutProblem = nullptr);
 };
@@ -359,6 +365,13 @@ struct FLureFishFightRow : public FTableRowBase
 	/** Not reeling: the drag starts giving line when the pull passes DragHold x Drag, and gives it freely at Drag. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Tension", meta=(ClampMin="0", ClampMax="0.99"))
 	float DragHold = 0.5f;
+
+	/**
+	 *  The reel's effective drag never exceeds what the line holds: Drag = min(rod Drag, LineStrength x DragLineCap), so a
+	 *  stronger rod on a weak line never makes a fish harder. Optional column (default 0.9), in (0, 1].
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Tension", meta=(ClampMin="0.01", ClampMax="1", DataTableImportOptional))
+	float DragLineCap = 0.9f;
 
 	/** Seconds (time constant) the tension takes to rise / fall toward its target. 0 = instant. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Tension", meta=(ClampMin="0"))

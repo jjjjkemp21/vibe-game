@@ -158,6 +158,15 @@ void FLureGear::ApplyItem(FLureGearStats& Stats, const FLureGearRow& Row, FName 
 	}
 }
 
+void FLureGear::ApplyDragLineCap(FLureGearStats& Stats, float DragLineCap)
+{
+	if (!FMath::IsFinite(DragLineCap) || DragLineCap <= 0.f || !FMath::IsFinite(Stats.LineStrength) || Stats.LineStrength <= 0.f)
+	{
+		return;
+	}
+	Stats.Drag = FMath::Min(Stats.Drag, Stats.LineStrength * FMath::Min(DragLineCap, 1.f));
+}
+
 bool FLureGear::CanEquip(const UDataTable* Table, ELureGearSlot Slot, FName Id, FString* OutProblem)
 {
 	auto Fail = [OutProblem](const FString& Problem)
@@ -254,11 +263,12 @@ bool FLureFightPatternRow::Validate(FString& OutProblem) const
 				return false;
 			}
 		}
-		bAnyWeight |= (Move.Weight + Move.AggressionWeight) > 0.f;
+		// A calm fish (aggression 0, the default of any species without an Aggression stat) picks by Weight alone.
+		bAnyWeight |= Move.Weight > 0.f;
 	}
 	if (!bAnyWeight)
 	{
-		OutProblem = TEXT("no move can be picked (every Weight and AggressionWeight is 0)");
+		OutProblem = TEXT("no move can be picked by a calm fish (every move's Weight is 0; AggressionWeight alone is not enough)");
 		return false;
 	}
 	if (!OpeningMove.IsNone() && FindMove(OpeningMove) == INDEX_NONE)
@@ -294,7 +304,12 @@ bool FLureFishFightRow::Validate(FString& OutProblem) const
 		OutProblem = TEXT("every value must be a finite number >= 0");
 		return false;
 	}
-	if (!StrengthStat.IsValid() || !StaminaStat.IsValid() || !SpeedStat.IsValid() || !AggressionStat.IsValid())
+	const FGameplayTag FishStatRoot = FGameplayTag::RequestGameplayTag(TEXT("Fish.Stat"), /*ErrorIfNotFound*/ false);
+	auto IsFishStat = [&FishStatRoot](const FGameplayTag& Tag)
+	{
+		return Tag.IsValid() && FishStatRoot.IsValid() && Tag != FishStatRoot && Tag.MatchesTag(FishStatRoot);
+	};
+	if (!IsFishStat(StrengthStat) || !IsFishStat(StaminaStat) || !IsFishStat(SpeedStat) || !IsFishStat(AggressionStat))
 	{
 		OutProblem = TEXT("StrengthStat, StaminaStat, SpeedStat and AggressionStat must be registered Fish.Stat tags");
 		return false;
@@ -307,6 +322,11 @@ bool FLureFishFightRow::Validate(FString& OutProblem) const
 	if (TiredPull > 1.f || ExhaustedStamina >= 1.f || DragHold >= 1.f || DiveBobberShare > 1.f)
 	{
 		OutProblem = TEXT("TiredPull and DiveBobberShare in [0, 1], ExhaustedStamina and DragHold in [0, 1)");
+		return false;
+	}
+	if (!FMath::IsFinite(DragLineCap) || DragLineCap <= 0.f || DragLineCap > 1.f)
+	{
+		OutProblem = TEXT("DragLineCap must be in (0, 1]");
 		return false;
 	}
 	if (SlackGraceTime <= 0.f || LandDistance <= 0.f || TautTension <= 0.f)

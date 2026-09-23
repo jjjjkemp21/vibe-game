@@ -11,6 +11,18 @@ namespace LureFishFightPrivate
 		return FMath::IsFinite(Value) ? Value : Fallback;
 	}
 
+	/**
+	 *  "Longer than Grace": the timers grow by whole fixed steps, so count those steps (float sums drift: 36 x 1/60 is
+	 *  0.600000083 > 0.6) and compare with the grace in steps (a tiny tolerance absorbs the grace's own float rounding).
+	 *  Over for exactly the grace holds; one step more ends it.
+	 */
+	bool IsLongerThanGrace(float Time, float Grace, const FLureFishFightRow& Tuning)
+	{
+		const double Rate = static_cast<double>(FMath::Clamp(Tuning.SimRate, 10, 240));
+		const double StepsOver = FMath::RoundToDouble(static_cast<double>(Time) * Rate);
+		return StepsOver > static_cast<double>(FMath::Max(0.f, Grace)) * Rate + 1.0e-4;
+	}
+
 	void StartMove(FLureFightState& State, int32 Index)
 	{
 		State.MoveIndex = State.Pattern.Moves.IsValidIndex(Index) ? Index : INDEX_NONE;
@@ -263,7 +275,7 @@ ELureFightOutcome FLureFight::Step(FLureFightState& State, const FLureFightInput
 	if (State.Tension > Gear.LineStrength)
 	{
 		State.OverTime += Dt;
-		if (State.OverTime > Tuning.SnapGraceTime)
+		if (LureFishFightPrivate::IsLongerThanGrace(State.OverTime, Tuning.SnapGraceTime, Tuning))
 		{
 			State.Outcome = ELureFightOutcome::Snapped;
 			return State.Outcome;
@@ -276,7 +288,7 @@ ELureFightOutcome FLureFight::Step(FLureFightState& State, const FLureFightInput
 	if (State.Tension < Slack)
 	{
 		State.SlackTime += Dt;
-		if (State.SlackTime > SlackGrace(Gear, Tuning))
+		if (LureFishFightPrivate::IsLongerThanGrace(State.SlackTime, SlackGrace(Gear, Tuning), Tuning))
 		{
 			State.Outcome = ELureFightOutcome::ThrewHook;
 			return State.Outcome;

@@ -28,8 +28,8 @@ class ULureFishingComponent;
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FLureFishingEventSignature, ELureFishingResult, Result, const FFishInstance&, Fish);
 
 /** Server only: a fish was landed (the cooler, T-010, stores the instance). */
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FLureFishLandedSignature, ULureFishingComponent*, Fishing, const FFishInstance&, Fish);
-DECLARE_MULTICAST_DELEGATE_TwoParams(FLureFishLandedNative, ULureFishingComponent* /*Fishing*/, const FFishInstance& /*Fish*/);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FLureFishingLandedSignature, ULureFishingComponent*, Fishing, const FFishInstance&, Fish);
+DECLARE_MULTICAST_DELEGATE_TwoParams(FLureFishingLandedNative, ULureFishingComponent* /*Fishing*/, const FFishInstance& /*Fish*/);
 
 /**
  *  One player's fishing: rod, cast, bobber, bite and hook.
@@ -264,10 +264,10 @@ public:
 
 	/** Server only: a fish was landed (after the reel fight, or the AutoLandDelay debug placeholder). Hand-off to the cooler (T-010). */
 	UPROPERTY(BlueprintAssignable, Category="Lure|Fishing")
-	FLureFishLandedSignature OnFishLanded;
+	FLureFishingLandedSignature OnFishLanded;
 
 	/** Native OnFishLanded (C++ listeners and tests). */
-	FLureFishLandedNative OnFishLandedNative;
+	FLureFishingLandedNative OnFishLandedNative;
 
 	UPROPERTY(BlueprintAssignable, Category="Lure|Fishing")
 	FLureFishingEventSignature OnFishingEvent;

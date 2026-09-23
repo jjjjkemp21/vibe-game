@@ -23,10 +23,14 @@ All numbers are PLACEHOLDER until Jimmy's playtest A.
 - **Four outcomes** (first that applies each step): Landed (fish within `LandDistance`), Spooled (fish took more line than
   `SpoolLength`: line breaks), Snapped (tension above `LineStrength` longer than `SnapGraceTime`), ThrewHook (tension below
   `SlackShare` x base pull longer than `SlackGraceTime` x `HookSecurity`). Timers reset when the condition stops.
+  "Longer than" is counted in whole fixed steps: over for exactly the grace holds, one step more ends it (T007-B1).
   Landed fires `OnFishLanded` (+ native delegate; the cooler hook for T-010) and logs `Catch:` on LogLureFish. Snapped,
   Spooled and ThrewHook lose the fish; the line comes in (state back to Idle) with a plain-text HUD message.
 - **Gear** (DT_Gear, one row per item, three slots: Rod, Line, Hook-with-bait). Rod: RodPower, ReelSpeed, Drag,
   CastDistanceMultiplier. Line: LineStrength, SpoolLength. Hook: HookSecurity, BaitTag (which species bite), Luck.
+  **Balance rule (lead, 2026-09-23):** the reel's effective drag never exceeds what the line holds:
+  `Drag = min(rod Drag, LineStrength x DragLineCap)` (DT_FishFight `DragLineCap`, optional column, default 0.9), applied
+  to the resolved loadout. So upgrading the rod before the line never makes a fish harder (Rod_Reef on Line_Mono: drag 9).
   The equipped `Loadout` (row names per slot) is replicated and server-written; `ULureFishingSettings::DefaultLoadout`
   is the starter kit (Rod_Starter, Line_Mono, Hook_Shrimp). The shop (T-012) and saves will change it. Missing table or
   row = built-in starter item for that slot (a test keeps the built-ins equal to DT_Gear.csv).
@@ -58,7 +62,8 @@ All numbers are PLACEHOLDER until Jimmy's playtest A.
   RestDifficultyExponent 1.0, TiredPull 0.3, ExhaustedStamina 0.02, StaminaRecovery 0.04, ReelStrain 1.3, ReelLoad 0.15,
   DragHold 0.5, TensionRiseTime 0.12, TensionFallTime 0.25, SnapGraceTime 0.6, SlackShare 0.35, SlackGraceTime 2.5,
   LandDistance 150, SimRate 60, MaxDepth 300, DepthRecovery 80, MaxSideDeg 50, DiveBobberShare 0.1,
-  RodTensionPitchDeg 25, RodShakeDeg 2.5, TautTension 0.3.
+  RodTensionPitchDeg 25, RodShakeDeg 2.5, TautTension 0.3, DragLineCap 0.9 (optional, in (0, 1]).
+  The four stat columns must be tags under `Fish.Stat.*`.
 - **DT_Gear** (`data/tables/DT_Gear.csv`, struct `LureGearRow`): Rod_Starter (power 8, reel 120, drag 5),
   Rod_Reef (16, 150, 12, cast x1.15, 250 coins), Line_Mono (strength 10, spool 40 m), Line_Braid (22, 60 m, 180 coins),
   Hook_Shrimp (security 1.0, shrimp), Hook_Squid (1.6, squid, luck 0.5, 60 coins).

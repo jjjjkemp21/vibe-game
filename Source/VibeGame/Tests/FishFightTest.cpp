@@ -556,7 +556,7 @@ bool FLureFightSnapAfterGrace::RunTest(const FString& Parameters)
 		TestTrue(FString::Printf(TEXT("%s: snapped after the tension stayed above the line's strength for the grace time (%.3f s)"), *Label, Above),
 			Above >= Grace - 1.0e-3f && Above <= Grace + 2.f * Dt);
 		TestTrue(FString::Printf(TEXT("%s: at the snap the time over strength (%.4f s) is past the grace"), *Label, State.OverTime), State.OverTime > Grace);
-		TestTrue(FString::Printf(TEXT("%s: one step earlier (%.4f s) it was not (no snap before the grace)"), *Label, OverBeforeSnap), OverBeforeSnap <= Grace);
+		TestTrue(FString::Printf(TEXT("%s: one step earlier (%.4f s) it was not (no snap before the grace)"), *Label, OverBeforeSnap), OverBeforeSnap <= Grace + 0.5f * FLureFight::StepSeconds(Tuning)); // half a step: float step sums drift (T007-B1)
 		TestTrue(Label + TEXT(": the tension crossed the line's strength first"), OverSince >= 0.f);
 	}
 
@@ -1287,6 +1287,15 @@ bool FLureFightLoadout::RunTest(const FString& Parameters)
 	const float StarterDistance = static_cast<float>(Fishing->GetNetState().BobberRest.X) - Eye;
 	Fishing->AuthorityReelIn();
 
+	// The reef rod on the starter line: the component caps the drag at the line (DragLineCap, T-007 balance rule).
+	FLureGearLoadout ReefRodOnly = Defaults;
+	ReefRodOnly.Rod = TEXT("Rod_Reef");
+	TestTrue(TEXT("equip the reef rod on the starter line"), Fishing->AuthoritySetLoadout(ReefRodOnly));
+	const float CappedDrag = Fishing->GetGearStats().Drag;
+	TestNearlyEqual(FString::Printf(TEXT("drag = min(rod drag %.1f, line %.1f x DragLineCap %.2f)"), Data.Gear3(TEXT("Rod_Reef"), Defaults.Line, Defaults.Hook).Drag,
+		Start.LineStrength, Data.Tuning()->DragLineCap), CappedDrag, FMath::Min(Data.Gear3(TEXT("Rod_Reef"), Defaults.Line, Defaults.Hook).Drag, Start.LineStrength * Data.Tuning()->DragLineCap), 1.0e-4f);
+	TestTrue(TEXT("... below the line's strength"), CappedDrag < Start.LineStrength);
+
 	FLureGearLoadout Reef;
 	Reef.Rod = TEXT("Rod_Reef");
 	Reef.Line = TEXT("Line_Braid");
@@ -1594,6 +1603,128 @@ bool FLureFightHoldToReel::RunTest(const FString& Parameters)
 	TestFalse(TEXT("after the fight: no reel request"), Fishing->WantsToReel());
 	Fire(CastAction, ETriggerEvent::Completed);
 	Controller->UnPossess();
+	return true;
+}
+
+// =====================================================================================================================
+// Balance rule: the reel's drag never exceeds what the line holds
+// =====================================================================================================================
+
+/**
+ *  Effective drag = min(rod Drag, LineStrength x DragLineCap) (DT_FishFight, optional column, default 0.9): buying the rod
+ *  before the line never makes a fish harder. Letting a strong fish run on the reef rod + starter line never snaps it.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLureFightDragNeverExceedsLine, "Project.Fishing.Fight.DragNeverExceedsTheLine", LureFishFightTest::TestFlags)
+bool FLureFightDragNeverExceedsLine::RunTest(const FString& Parameters)
+{
+	FFightData Data;
+	if (!Data.Load(*this))
+	{
+		return false;
+	}
+	const FLureFishFightRow& Tuning = *Data.Tuning();
+	TestNearlyEqual(TEXT("shipped DragLineCap"), Tuning.DragLineCap, 0.9f, 1.0e-6f);
+	TestNearlyEqual(TEXT("the struct default (optional column) is 0.9"), FLureFishFightRow().DragLineCap, 0.9f, 1.0e-6f);
+
+	// The rule, on every rod x line pair in DT_Gear.
+	TArray<FName> Rods, Lines;
+	Data.Gear->ForeachRow<FLureGearRow>(TEXT("test"), [&Rods, &Lines](const FName& Id, const FLureGearRow& Row)
+	{
+		if (Row.Slot == ELureGearSlot::Rod)
+		{
+			Rods.Add(Id);
+		}
+		else if (Row.Slot == ELureGearSlot::Line)
+		{
+			Lines.Add(Id);
+		}
+	});
+	TestTrue(TEXT("DT_Gear has rods and lines"), Rods.Num() > 0 && Lines.Num() > 0);
+	for (const FName Rod : Rods)
+	{
+		for (const FName Line : Lines)
+		{
+			FLureGearStats Stats = Data.Gear3(Rod, Line, TEXT("Hook_Shrimp"));
+			const float RodDrag = Stats.Drag;
+			FLureGear::ApplyDragLineCap(Stats, Tuning.DragLineCap);
+			const FString Label = FString::Printf(TEXT("%s + %s"), *Rod.ToString(), *Line.ToString());
+			TestNearlyEqual(Label + TEXT(": drag = min(rod drag, line x cap)"), Stats.Drag, FMath::Min(RodDrag, Stats.LineStrength * Tuning.DragLineCap), 1.0e-5f);
+			TestTrue(Label + TEXT(": drag below the line's strength"), Stats.Drag < Stats.LineStrength);
+		}
+	}
+
+	// Edge values: a bad cap is ignored, a cap of 1 allows drag up to the strength, never raises a weak rod's drag.
+	FLureGearStats Edge;
+	Edge.Drag = 12.f;
+	Edge.LineStrength = 10.f;
+	for (const float Bad : { 0.f, -1.f, std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::infinity() })
+	{
+		FLureGearStats Copy = Edge;
+		FLureGear::ApplyDragLineCap(Copy, Bad);
+		TestEqual(FString::Printf(TEXT("cap %f is ignored"), Bad), Copy.Drag, 12.f);
+	}
+	{
+		FLureGearStats Copy = Edge;
+		FLureGear::ApplyDragLineCap(Copy, 1.f);
+		TestEqual(TEXT("cap 1: drag = the line's strength"), Copy.Drag, 10.f);
+		Copy.Drag = 3.f;
+		FLureGear::ApplyDragLineCap(Copy, 0.9f);
+		TestEqual(TEXT("a weak rod's drag is unchanged"), Copy.Drag, 3.f);
+	}
+
+	// Validation: DragLineCap must be in (0, 1].
+	for (const float Bad : { 0.f, -0.5f, 1.01f, std::numeric_limits<float>::quiet_NaN() })
+	{
+		FLureFishFightRow Row = Tuning;
+		Row.DragLineCap = Bad;
+		FString Problem;
+		TestFalse(FString::Printf(TEXT("DragLineCap %f is invalid"), Bad), Row.Validate(Problem));
+	}
+	{
+		FLureFishFightRow Row = Tuning;
+		Row.DragLineCap = 1.f;
+		FString Problem;
+		TestTrue(TEXT("DragLineCap 1 is valid: ") + Problem, Row.Validate(Problem));
+	}
+	// The optional column may be left out of the CSV (default 0.9).
+	{
+		TArray<FString> Lines2;
+		Data.FightCsv.ParseIntoArrayLines(Lines2);
+		TArray<FString> Header, Values;
+		Lines2[0].ParseIntoArray(Header, TEXT(","), false);
+		Lines2[1].ParseIntoArray(Values, TEXT(","), false);
+		const int32 Column = Header.IndexOfByPredicate([](const FString& H) { return H.TrimStartAndEnd() == TEXT("DragLineCap"); });
+		if (TestTrue(TEXT("DT_FishFight.csv has a DragLineCap column"), Column != INDEX_NONE))
+		{
+			Header.RemoveAt(Column);
+			Values.RemoveAt(Column);
+			TStrongObjectPtr<UDataTable> Table(NewObject<UDataTable>(GetTransientPackage(), NAME_None, RF_Transient));
+			Table->RowStruct = FLureFishFightRow::StaticStruct();
+			const TArray<FString> Problems = Table->CreateTableFromCSVString(FString::Join(Header, TEXT(",")) + TEXT("\n") + FString::Join(Values, TEXT(",")) + TEXT("\n"));
+			TestEqual(TEXT("imports without the column: ") + FString::Join(Problems, TEXT(" | ")), Problems.Num(), 0);
+			const FLureFishFightRow* Row = Table->FindRow<FLureFishFightRow>(TEXT("Default"), TEXT("test"), false);
+			TestTrue(TEXT("... and uses the default 0.9"), Row && FMath::IsNearlyEqual(Row->DragLineCap, 0.9f));
+		}
+	}
+
+	// The balance: a never-tiring fish pulling twice the starter line, left to run on the reef rod + starter line.
+	// Capped (9 < 10) the line holds; the raw rod drag (12) would snap it.
+	FLureFishFightRow Instant = Tuning;
+	Instant.TiredPull = 1.f;
+	FLureGearStats Capped = Data.Gear3(TEXT("Rod_Reef"), TEXT("Line_Mono"), TEXT("Hook_Shrimp"));
+	FLureGearStats Raw = Capped;
+	FLureGear::ApplyDragLineCap(Capped, Tuning.DragLineCap);
+	TestTrue(TEXT("fixture: the reef rod's own drag is above the starter line"), Raw.Drag > Raw.LineStrength);
+	FLureFightState Held = SteadyFight(Instant, 2.f * Raw.LineStrength, 0.f, Move(TEXT("Hold"), 1.f, 0.f, 0.f), Capped);
+	FLureFightState Snapped = SteadyFight(Instant, 2.f * Raw.LineStrength, 0.f, Move(TEXT("Hold"), 1.f, 0.f, 0.f), Raw);
+	const FLureFightInput Let;
+	for (int32 i = 0; i < 600; ++i)
+	{
+		FLureFight::Step(Held, Let);
+		FLureFight::Step(Snapped, Let);
+	}
+	TestEqual(TEXT("capped drag: letting it run never snaps the line (10 s)"), OutcomeName(Held.Outcome), OutcomeName(ELureFightOutcome::None));
+	TestEqual(TEXT("uncapped rod drag would snap it"), OutcomeName(Snapped.Outcome), OutcomeName(ELureFightOutcome::Snapped));
 	return true;
 }
 
