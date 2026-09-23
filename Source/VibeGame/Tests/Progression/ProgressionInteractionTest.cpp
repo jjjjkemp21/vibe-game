@@ -234,6 +234,8 @@ bool FProgressionNetReplicationSetup::RunTest(const FString& Parameters)
 			return;
 		}
 		TestTrue(FString::Printf(TEXT("%s.%s is replicated"), *Class->GetName(), *Property.ToString()), Found->HasAnyPropertyFlags(CPF_Net));
+		// RepIndex is only valid once the class's replication data exists (the net driver does this before replicating).
+		Class->SetUpRuntimeReplicationData();
 		TArray<FLifetimeProperty> Lifetime;
 		Default->GetLifetimeReplicatedProps(Lifetime);
 		const FLifetimeProperty* Entry = Lifetime.FindByPredicate([Found](const FLifetimeProperty& P) { return P.RepIndex == Found->RepIndex; });
