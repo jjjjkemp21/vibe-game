@@ -98,6 +98,12 @@ C++ work and Blender work (model-artist, animation-artist) can run in parallel; 
   | janitor | - | low | - |
   Junior and senior agents are thin wrappers: they read and follow `.claude/agents/<role>.md`, so each role's rules live in one file.
   A junior that finds the task bigger than briefed stops and reports back, and the lead re-assigns it to a senior.
+  **Ultracode for the hardest tasks (Jimmy, 2026-09-23, standing opt-in).** When a task is very complex (senior-level: a new system or architecture, network/replication design, a hard bug with an unknown cause, new hero assets, new hard animations such as fish fights, creature motion or cast/reel), the lead runs it as a Workflow (load the `workflow-authoring` skill first) instead of one agent. Default shape, one workflow per phase so the lead reviews between them:
+    1. Design, as a judge panel: 3 senior agents (`agentType: '<role>-senior'`) propose independent approaches; judges score them against the vision and the specs; the winner is synthesized into docs/specs/.
+    2. Implementation: one senior in a lane (parallel only when they touch different files).
+    3. Adversarial review: reviewers with different lenses (correctness, networking, data-driven/extensibility, performance) try to break it, and a majority vote decides each finding.
+    4. Fix and verify, then the normal QA, playtest and designer gate.
+  Never fan out editor work: unreal-mcp stays one agent at a time (rule 4). Normal tasks stay single agents. The workflow size guideline is set in /config ("Dynamic workflow size"; Jimmy can raise it).
   New agents (whenever Jimmy asks for one, or the lead adds one) get `model: claude-opus-5-5` and an effort chosen like this: high for math, geometry, code or tricky logic; medium for known procedures; low for checklists, reviews and chores. Add junior/senior levels where the role's work varies in difficulty, then add the agent to this table and tell Jimmy.
   Changing a model, or upgrading to a newer one, needs Jimmy's OK.
 - Subagent conversations end with their task; nothing to compact there. Keeping reports short is what saves tokens.
