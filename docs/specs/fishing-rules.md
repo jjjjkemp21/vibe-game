@@ -75,3 +75,10 @@ The lead may overrule any of these; a change is a data edit unless marked (code)
 - Cast motion: placeholder rod swing (CastSwing* columns). Setting `CastMontage`/`HookMontage` (arms montages from the
   animation-artist) replaces it without code.
 - HUD: plain white text lines (ALureHUD): cast power, "BITE! Click/RT to hook!", hooked/caught/missed, "Can't cast: ...".
+
+## Lead decisions on the T-006 open questions (2026-09-23)
+1. No fishing spot in range = no bite, plus a plain-text hint ("Nothing biting here"). The off-spot fish pool stays a setting, empty by default.
+2. Bait: every hook uses Bait.Shrimp until gear exists (T-010/T-012); the default bait is a setting, not code.
+3. Crawling prone, sprinting or swimming while the line is out reels it in automatically (no blocked movement). Jimmy can change this after his playtest.
+4. A hooked fish is landed after 1.5 s (placeholder) until the reel fight (T-007) replaces it.
+5. Other players see the line start from an estimated rod tip until a third-person rod exists (after the slice).
