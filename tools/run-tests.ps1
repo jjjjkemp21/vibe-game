@@ -1,8 +1,13 @@
 # tools/run-tests.ps1 - runs Unreal automation tests headless (UnrealEditor-Cmd, -nullrhi) and parses the report.
 # Example: tools/run-tests.ps1 -Filter Project.GoldenPath
+# Filters are PREFIX matches on dotted test paths by default (Unreal "StartsWith:"): -Filter Project runs Project.* only.
+# A plain substring match would also run engine tests that merely contain the word (e.g. "Project Promotion Pass",
+# ConfigSettings "Project" tests), which create projects/maps and rewrite Config/DefaultGame.ini.
+# To run one exact test, pass its full path with -Substring.
 # Exit 0 = at least one test ran and none failed.
 param(
     [string]$Filter = 'Project',
+    [switch]$Substring,
     [int]$TimeoutMinutes = 45,
     [switch]$AllowWhileEditorOpen
 )
@@ -19,7 +24,8 @@ $stamp = Get-Timestamp
 $reportDir = Join-Path (Get-LogDir 'tests') $stamp
 New-Item -ItemType Directory -Force -Path $reportDir | Out-Null
 $logBase = Join-Path $reportDir 'run'
-$argList = '"' + $uproject + '" -ExecCmds="Automation RunTests ' + $Filter + ';Quit" -TestExit="Automation Test Queue Empty" -ReportExportPath="' + $reportDir + '" -unattended -nopause -nosplash -nullrhi -NoSound -stdout -FullStdOutLogOutput'
+$runArg = if ($Substring -or $Filter.Contains(':')) { $Filter } else { 'StartsWith:' + $Filter }
+$argList = '"' + $uproject + '" -ExecCmds="Automation RunTests ' + $runArg + ';Quit" -TestExit="Automation Test Queue Empty" -ReportExportPath="' + $reportDir + '" -unattended -nopause -nosplash -nullrhi -NoSound -stdout -FullStdOutLogOutput'
 Write-Status -Name $name -State 'running' -Message ('Running tests matching ' + $Filter) -LogPath ($logBase + '.out.log')
 $r = Invoke-Logged -FilePath $cmdExe -ArgumentList $argList -LogBase $logBase -TimeoutMinutes $TimeoutMinutes
 
