@@ -4,7 +4,6 @@ Format: `- [ ] T-### Title (owner) - acceptance: ...`  Owners: lead, unreal-engi
 Last processed playtest folder: (none)
 
 ## Now: foundation (after setup)
-- [ ] T-001 Fill docs/GAME_DESIGN.md with Jimmy (lead) - acceptance: every section has an answer Jimmy confirmed; vertical slice defined. Status: draft v1 written from the interview, waiting for Jimmy's OK.
 - [ ] T-002 Fill docs/ART_STYLE.md with Jimmy (lead + blender-artist) - acceptance: palette, budgets, 3+ reference images, art/lib/style.py created. Status: direction, palette and budgets drafted; still to do: our own mood-board renders in art/reference/ (no copied Dredge art) and art/lib/style.py (palette + material presets for recipes).
 
 ## Next: vertical slice "Palm Key" (Lure, tropical beginner zone, solo, multiplayer-ready code)
@@ -47,3 +46,4 @@ All tuning (movement speeds, gear stats, fish, XP curve, noise radii, shark beha
 - Third-person bodies for other players (was T-006: Game Animation Sample import; needs runbook phase C10).
 
 ## Done
+- [x] T-001 Fill docs/GAME_DESIGN.md with Jimmy (lead) - acceptance: every section has an answer Jimmy confirmed; vertical slice defined. Done 2026-09-22: Jimmy approved v1 and added the scalable fish requirement (many species, rarity, modifiers).

@@ -1,6 +1,6 @@
 # Art style
 
-Status: DRAFT v1, from the interview with Jimmy on 2026-09-22. Waiting for Jimmy's OK.
+Status: v1 approved by Jimmy on 2026-09-22 (direction). Still to do in T-002: mood-board renders in art/reference/ and art/lib/style.py.
 
 ## Direction (a few words + reference images in art/reference/)
 Stylized low-poly, atmosphere-first. Inspired by Dredge (moody water, strong silhouettes, fog as a storytelling tool, a readable UI), but our own look: brighter and chunkier in the tropics, with a first-person view.

@@ -1,6 +1,6 @@
 # Game design (source of truth)
 
-Status: DRAFT v1, from the interview with Jimmy on 2026-09-22 (14 questions). Waiting for Jimmy's OK.
+Status: v1 APPROVED by Jimmy on 2026-09-22 (interview, 14 questions). Keep it current as playtests change things.
 Working title: **Lure**
 
 ## One-sentence pitch
