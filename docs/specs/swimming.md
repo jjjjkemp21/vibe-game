@@ -56,3 +56,9 @@ Ladder:
   the dock or rock.** Rotate so +X (the arrow) points away from the dock, out over the water.
 - `max_climb_height` (default 300 cm) must be at least the edge height above the water. The grab zone reaches 80 cm out
   from the face, 120 cm wide (`grab_zone_half_size`). The greybox board has no collision.
+
+## Lead decisions on the T-026 open questions (2026-09-23)
+1. The QA fixture edits (6 DT_Movement rows, "Swimm" for the unknown-row test) are reviewed by the independent qa-engineer before merge.
+2. Swimming keeps the 180 cm standing capsule for the slice: wading up to about 90 cm, and no swimming under docks lower than about 80 cm. Revisit when diving is added.
+3. The ledge pull-up needs forward held on the way down (standard mantle feel). This is on Jimmy's playtest list.
+4. The overlap with T-006 (LurePlayerCharacter.*, LureMovementTypes.*, DT_Movement.csv, the arms code) is resolved by the lead at merge.
