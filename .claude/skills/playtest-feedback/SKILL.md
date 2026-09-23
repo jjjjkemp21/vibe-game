@@ -6,8 +6,8 @@ description: How Jimmy's playtest feedback is captured and turned into work - th
 
 ## Feedback key specification (task T-003; build it early in the vertical slice)
 - Development builds and Play-In-Editor only (compile out of Shipping).
-- Press F8 during play: capture a screenshot first, then pause and show a one-line text box.
-- Enter saves a folder `Saved/Playtest/<yyyyMMdd-HHmmss>/` with `screenshot.png` and `note.json`: text, level name, player location and rotation, game time, average FPS over the last 5 seconds, build/commit id if available. Escape cancels. The game resumes either way.
+- Press F8 during play (always: even if the game viewport isn't focused, and it must never reach the editor's own F8 eject): capture a screenshot first, then pause and show a note box in the lower third (a 3-line wrapping field; Enter saves, Shift+Enter = newline). Empty text + Enter = a screenshot-only bookmark. After saving, show a palette toast for ~7 s ("Note saved. Thanks!").
+- Enter saves a folder `Saved/Playtest/<yyyyMMdd-HHmmss>/` with `screenshot.png` and `note.json`: text, level name, player location and rotation, camera location and rotation, game time, average FPS over the last 5 seconds, build/commit id if available. Escape cancels. The game resumes either way.
 - Implementation: C++ (a small subsystem or player-controller component plus a minimal UMG widget created in C++ or a thin WBP child). Cover the file writing with an automation test.
 
 ## Triage loop (run when Jimmy says he played, or when new folders exist)
