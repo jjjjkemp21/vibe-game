@@ -1,6 +1,9 @@
 # tools/build.ps1 - compiles the project's editor target with Unreal Build Tool. The editor must be CLOSED.
 # Exit 0 = build succeeded (writes Saved\AgentState\last-successful-build.txt, used by the Stop hook).
 # Can take several minutes: agents should run it in the background or with a long timeout.
+# -NoHotReloadFromIDE: UBT otherwise refuses to build while ANY editor on this engine install has Live Coding
+# active (e.g. the main checkout's editor while a worktree lane builds). Safe because this script already
+# refuses when an editor has THIS checkout's .uproject open (Get-EditorProcesses).
 param(
     [ValidateSet('Development', 'DebugGame')][string]$Configuration = 'Development',
     [int]$TimeoutMinutes = 90
@@ -24,7 +27,7 @@ if ((Get-EditorProcesses).Count -gt 0) {
 }
 
 $logBase = Join-Path (Get-LogDir 'build') ('build-' + (Get-Timestamp))
-$inner = '"' + $bat + '" ' + $target + ' Win64 ' + $Configuration + ' "-Project=' + $uproject + '" -WaitMutex'
+$inner = '"' + $bat + '" ' + $target + ' Win64 ' + $Configuration + ' "-Project=' + $uproject + '" -WaitMutex -NoHotReloadFromIDE'
 $argList = '/d /s /c "' + $inner + '"'
 Write-Status -Name $name -State 'running' -Message ('Building ' + $target + ' Win64 ' + $Configuration) -LogPath ($logBase + '.out.log')
 

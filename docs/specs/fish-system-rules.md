@@ -40,3 +40,14 @@ Each stage uses its own RNG sub-stream: `FRandomStream(HashCombine(Seed, StageId
 ## Other
 - **Instance:** GetStat is an exact tag match (Q34). Replicated size target: <= 256 bytes per typical instance (Q26); the test reports the actual size.
 - **Test-only tags (Q33):** approved: `Test.Fish.*` and `Fish.Stat.QA_TestOnly`, defined only under WITH_DEV_AUTOMATION_TESTS.
+
+## Confirmed implementation choices (lead, after lane eng2 3cbd3b6)
+- "RollWeight doesn't increase with Rank" counts only ENABLED tiers (RollWeight > 0); disabled tiers are ignored by this check.
+- Empty tag lists mean "any" for species habitat and region too (not only weather and bait).
+- The modifier stream draws one number per modifier row in lexical order, eligible or not, so conditions don't shift other rows. Adding a modifier row can shift modifier results; weight and rarity stay stable.
+- Lexical order = `FName::LexicalLess` (natural numeric suffixes: Mod_2 < Mod_10).
+- The bite picker walks species in table row order (deterministic for the same data; fast at 1,000 species).
+- ForcedWeightFraction is linear in [Min, Max] (no skew).
+- Data problems met during a roll (Multiply <= 0, non-finite values, a stat with no DT_FishStat row) are skipped with a Warning.
+- The validator's category checks skip tags under `Test.*` (they must still be registered).
+- API names: see the `FishRoll.h` header comment (FFishRoll::Roll/PickSpecies, FFishTables, FFishRollContext, FFishInstance, FFishDataValidator, UFishSettings, UFishLibrary; log LogLureFish).
