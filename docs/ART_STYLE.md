@@ -7,7 +7,7 @@ Stylized low-poly, atmosphere-first. Inspired by Dredge (moody water, strong sil
 - Clean, chunky shapes with a slight bevel; no fine detail that would read as noise at a distance.
 - Flat or gradient colors with simple materials; texture only where it helps readability (wood grain strips, fish markings).
 - Mood comes from lighting, fog, sky and water color, which change by region and time of day.
-- Readability first: fish silhouettes, bobber, line and danger must read instantly.
+- Readability first: fish silhouettes, bobber, line and danger must read instantly. Measured: a real-size bobber (5 cm) is ~3 px wide at 15 m at 1080p/90 deg FOV (invisible); at 3x it's ~12 px and reads at 10-20 m. Gameplay objects that must be tracked at distance get a readability scale (bobber: ~3x, or scaled with distance).
 - Reference images: we don't copy Dredge art. Our own mood boards (renders from our recipes plus color studies) go in `art/reference/` as part of T-002.
 
 ## Palette (hex values)
@@ -23,6 +23,7 @@ Frozen / cold: snow `#E6F2F5`, ice `#9CC7D8`, deep ice `#2F4A5E`, accent `#FFB34
 Murky / gloomy: water `#3B3A24`, mud `#4E4330`, moss `#5E6B3A`, accent `#C7A43B`
 
 UI: parchment `#F3E9D2`, ink `#2B2A26`, danger `#C0392B`, safe `#3FA34D`
+Character (placeholder first-person arms, 7cd2157): sleeve `#7C8A63` (faded olive: palm green washed toward sand, so it doesn't fight the red accent or the turquoise water), skin `#B98563`. Rod: cork `#C9A66B`, blank `#3A2A20`, fittings `#3E4A4F`, trim/line `#F5F1E6`.
 
 ## Shapes and proportions (bevel sizes, silhouette rules)
 - Bevel: about 2-3% of the object's smallest dimension (a 1 m crate gets about 2-3 cm), 1-2 segments.
@@ -43,7 +44,7 @@ UI: parchment `#F3E9D2`, ink `#2B2A26`, danger `#C0392B`, safe `#3FA34D`
 - Textures: 512 px default, 1024 px for hero items.
 
 ## Orientation rule
-(Record here which Blender axis faces Unreal +X forward once verified in a screenshot. This happens with the first directional asset, which is the first fish or the boat.)
+Expected (from the exporter settings, not yet verified in an editor screenshot): Blender +X = Unreal +X (forward), Blender +Y = Unreal -Y, Z up; Unreal location = (100x, -100y, 100z) cm. The editor-operator confirms this when importing SM_Rod_Basic / SK_FPArms (the first directional assets), then this note becomes the rule.
 
 ## Characters and animation
 - First person: the player sees their own arms and the rod. Placeholder arms first, taken from Epic's first-person content or a simple blockout; stylized custom arms later.
