@@ -29,7 +29,7 @@ You are building a game for Jimmy. Jimmy does not read or write code: he plays b
 1. Gameplay logic is C++. Blueprints only as thin child classes holding asset references and default values; no logic in Blueprint graphs.
 2. Tuning lives in data (DataTables with CSV/JSON sources in the repo, or DataAssets), so "feel" changes are data edits.
 3. Never edit `.uasset`, `.umap` or `.blend` as text (a hook blocks it). Change Unreal assets through the editor (unreal-mcp) or Unreal Python; Blender assets through recipes.
-4. One editor user at a time: only `editor-operator` (building/changing things) or `playtester` (playing in PIE, read-only), or you when not delegating, may call `unreal-mcp`, and only after the lead hands them the editor. One call at a time; never two editor agents in parallel.
+4. One editor user at a time: only an `editor-operator` of any level (building/changing things) or `playtester` (playing in PIE, read-only), or you when not delegating, may call `unreal-mcp`, and only after the lead hands them the editor. One call at a time; never two editor agents in parallel.
 5. Batch editor work: one Python script doing many operations beats many small tool calls. Put reusable code in `Content/Python/pipeline_unreal.py`.
 6. Evidence before "done": build result, test report, and for anything visible a screenshot or preview you actually looked at. Follow the `verification` skill.
 7. Commit after every verified step with a clear message. Commit before any long or risky editor session.
@@ -80,16 +80,25 @@ C++ work and Blender work (model-artist, animation-artist) can run in parallel; 
 - Lead: brief agents concisely and point to files (specs, reports) instead of restating them. Resume an agent (SendMessage) only for short follow-ups where its context really helps; otherwise start a fresh agent with pointers to the relevant files. Delegate broad searches. Suggest `/compact` to Jimmy at milestones (e.g. after a push).
 - Model and effort per agent. They are pinned in each agent's frontmatter (`model`, `effort`).
   - Model: **every agent uses Opus 5.5 (`claude-opus-5-5`)**. Jimmy, 2026-09-23: quality first, token use is not a concern. The built-in helpers (Explore, general-purpose, Plan) also get `model: opus` in the Agent call.
-  - Effort: set per agent (Jimmy, 2026-09-23: spend effort where it pays):
-  | Agent | Effort |
-  |---|---|
-  | unreal-engineer | high |
-  | qa-engineer | medium |
-  | model-artist, animation-artist | high |
-  | level-designer, editor-operator | medium |
-  | playtester, designer | low |
-  | janitor | low |
-  New agents (whenever Jimmy asks for one, or the lead adds one) get `model: claude-opus-5-5` plus an effort chosen like this: high for math, geometry, code or tricky logic; medium for known procedures; low for checklists, reviews and chores. Add the agent to this table and tell Jimmy its effort.
+  - Effort: set per agent and experience level (Jimmy, 2026-09-23). The lead picks the level from the task, not the role:
+    - junior: small, well-specified work that follows an existing pattern
+    - mid: standard features
+    - senior: very complex work, i.e. new systems or architecture, networking, hard bugs, new hero assets or new hard animations
+    Each level's own agent `description` says exactly when to use it. "Hypercode", as Jimmy called it, = senior = effort `max`.
+  | Role | junior (`<role>-junior`) | mid (`<role>`) | senior (`<role>-senior`) |
+  |---|---|---|---|
+  | unreal-engineer | medium | high | max |
+  | qa-engineer | low | medium | max |
+  | model-artist | medium | high | max |
+  | animation-artist | medium | high | max |
+  | level-designer | low | medium | max |
+  | editor-operator | low | medium | max |
+  | playtester | - | low | - |
+  | designer | - | low | - |
+  | janitor | - | low | - |
+  Junior and senior agents are thin wrappers: they read and follow `.claude/agents/<role>.md`, so each role's rules live in one file.
+  A junior that finds the task bigger than briefed stops and reports back, and the lead re-assigns it to a senior.
+  New agents (whenever Jimmy asks for one, or the lead adds one) get `model: claude-opus-5-5` and an effort chosen like this: high for math, geometry, code or tricky logic; medium for known procedures; low for checklists, reviews and chores. Add junior/senior levels where the role's work varies in difficulty, then add the agent to this table and tell Jimmy.
   Changing a model, or upgrading to a newer one, needs Jimmy's OK.
 - Subagent conversations end with their task; nothing to compact there. Keeping reports short is what saves tokens.
 
