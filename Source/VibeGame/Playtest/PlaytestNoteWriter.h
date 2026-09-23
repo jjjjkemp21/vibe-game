@@ -63,18 +63,27 @@ public:
 	/** Folder name for a timestamp: yyyyMMdd-HHmmss */
 	static FString MakeFolderName(const FDateTime& Timestamp);
 
-	/** Serializes the note to the note.json text */
+	/** Serializes the note to the note.json text (strict JSON: NaN/Inf numbers are written as null) */
 	static FString ToJsonString(const FPlaytestNoteData& Note, bool bHasScreenshot);
 
 	/**
 	 *  Writes <RootDir>/<yyyyMMdd-HHmmss>/note.json and, if pixels are given, screenshot.png.
 	 *  If the folder already exists a numeric suffix is added (-2, -3, ...).
+	 *  The note text matters more than the image: an invalid screenshot, or one that cannot be written, is dropped
+	 *  (note.json then says "screenshot": "") and the call still succeeds with a warning.
+	 *  On failure nothing is left behind: inputs are checked before anything is created, and folders this call
+	 *  created are removed again.
+	 *  @param RootDir must not be empty or blank (rejected); relative paths are resolved to absolute ones
 	 *  @param Pixels may be empty (no screenshot written); otherwise must hold Width * Height colors
-	 *  @return true on success; OutFolder receives the absolute folder path
+	 *  @param OutWarning if given, receives non-fatal problems on success (screenshot dropped, NaN/Inf written as null), empty if none
+	 *  @return true if note.json was written; OutFolder receives the absolute folder path. false: OutError says why.
 	 */
-	static bool WriteNote(const FString& RootDir, const FPlaytestNoteData& Note, int32 Width, int32 Height, const TArray<FColor>& Pixels, FString& OutFolder, FString& OutError);
+	static bool WriteNote(const FString& RootDir, const FPlaytestNoteData& Note, int32 Width, int32 Height, const TArray<FColor>& Pixels, FString& OutFolder, FString& OutError, FString* OutWarning = nullptr);
 
-	/** Reads the current commit id from <RepoRoot>/.git without running git. Returns "unknown" on failure. */
+	/** True for a full git object id: exactly 40 (SHA-1) or 64 (SHA-256) hex characters */
+	static bool IsCommitHash(const FString& Value);
+
+	/** Reads the current commit id from <RepoRoot>/.git without running git. Returns a full commit id or "unknown", never other text. */
 	static FString ReadGitCommit(const FString& RepoRoot);
 };
 

@@ -395,25 +395,46 @@ void UPlaytestFeedbackSubsystem::OpenNoteBox()
 
 void UPlaytestFeedbackSubsystem::SubmitNote()
 {
-	if (PendingNote.IsValid() && NoteWidget.IsValid())
+	if (NoteWidget.IsValid())
 	{
-		PendingNote->Text = NoteWidget->GetNoteText().TrimStartAndEnd();
+		const FString Text = NoteWidget->GetNoteText().TrimStartAndEnd();
 
-		FString Folder, Error;
-		if (FPlaytestNoteWriter::WriteNote(FPlaytestNoteWriter::GetDefaultRootDir(), *PendingNote, PendingWidth, PendingHeight, PendingPixels, Folder, Error))
+		if (!PendingNote.IsValid())
 		{
-			UE_LOG(LogVibeGame, Log, TEXT("Playtest note saved: %s"), *Folder);
-			if (GEngine)
-			{
-				GEngine->AddOnScreenDebugMessage(-1, 4.0f, FColor::Green, FString::Printf(TEXT("Playtest note saved: %s"), *FPaths::GetCleanFilename(Folder)));
-			}
+			// never silently lose what the player typed: keep it in the log
+			UE_LOG(LogVibeGame, Warning, TEXT("Playtest note NOT saved (no captured context). Note text: %s"), *Text);
 		}
 		else
 		{
-			UE_LOG(LogVibeGame, Error, TEXT("Playtest note failed: %s"), *Error);
-			if (GEngine)
+			PendingNote->Text = Text;
+
+			FString Folder, Error, WriteWarning;
+			if (FPlaytestNoteWriter::WriteNote(FPlaytestNoteWriter::GetDefaultRootDir(), *PendingNote, PendingWidth, PendingHeight, PendingPixels, Folder, Error, &WriteWarning))
 			{
-				GEngine->AddOnScreenDebugMessage(-1, 6.0f, FColor::Red, FString::Printf(TEXT("Playtest note failed: %s"), *Error));
+				if (WriteWarning.IsEmpty())
+				{
+					UE_LOG(LogVibeGame, Log, TEXT("Playtest note saved: %s"), *Folder);
+				}
+				else
+				{
+					UE_LOG(LogVibeGame, Warning, TEXT("Playtest note saved with problems: %s (%s)"), *Folder, *WriteWarning);
+				}
+				if (GEngine)
+				{
+					GEngine->AddOnScreenDebugMessage(-1, 4.0f, WriteWarning.IsEmpty() ? FColor::Green : FColor::Yellow,
+						FString::Printf(TEXT("Playtest note saved: %s%s"), *FPaths::GetCleanFilename(Folder), WriteWarning.IsEmpty() ? TEXT("") : TEXT(" (with warnings, see log)")));
+				}
+			}
+			else
+			{
+				// never silently lose what the player typed: the full note survives in the log
+				UE_LOG(LogVibeGame, Error, TEXT("Playtest note failed: %s"), *Error);
+				UE_LOG(LogVibeGame, Warning, TEXT("Playtest note NOT saved. Note text: %s"), *PendingNote->Text);
+				UE_LOG(LogVibeGame, Warning, TEXT("Playtest note NOT saved. Full note.json:\n%s"), *FPlaytestNoteWriter::ToJsonString(*PendingNote, /*bHasScreenshot*/ false));
+				if (GEngine)
+				{
+					GEngine->AddOnScreenDebugMessage(-1, 8.0f, FColor::Red, FString::Printf(TEXT("Playtest note failed: %s (your text is kept in the log)"), *Error));
+				}
 			}
 		}
 	}
