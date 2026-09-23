@@ -57,6 +57,7 @@ In progress: unreal-engineer-junior-medium in eng3 (after the T-007 test update 
     4. designer
     5. push
     6. janitor
+- 15:40 status: main 552dcf3 714/714. Levels rebuilt with water and ladders, f7fce44; swim smoke PASS (Saved/AgentLogs/editor/20260923-160000-water/report.md). In progress: playtester-low, the FINAL FULL-gate playtest (movement, fishing, fight, sell, swim, cave, 2P). Then designer-low, push, janitor-low.
 - DONE: the T-025 smoke check PASS (Saved/AgentLogs/playtest/20260923-104259-T025-smoke/report.md; about 17 calls for the whole scenario including 2 players). Driver follow-ups (junior, later):
   - clear pd.results() per session
   - a default filter for pd.markers()
