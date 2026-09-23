@@ -307,7 +307,8 @@ def finish(args, objects, extra=None, views=None):
 
     views: optional list of dicts with render_view() keyword arguments plus "name". Each view is rendered to
     <preview stem>_<name>.png and the main preview becomes a contact sheet: the default 3/4 view first, then the
-    views in order (left to right, top to bottom, 2 columns)."""
+    views in order (left to right, top to bottom, 2 columns). A view {"name": ..., "image": path} adds an image the
+    recipe rendered itself (e.g. fp_preview.render_fp EEVEE frames) to the sheet as is."""
     export_fbx(objects, args.out)
     render_preview(objects, args.preview)
     if views:
@@ -317,6 +318,9 @@ def finish(args, objects, extra=None, views=None):
         for v in views:
             v = dict(v)
             name = v.pop("name")
+            if "image" in v:
+                paths.append(str(v["image"]))
+                continue
             setup = v.pop("setup", None)  # optional callable staging preview-only helpers; returns a cleanup callable
             cleanup = setup() if setup else None
             paths.append(render_view(base.with_name(base.stem + "_" + name + base.suffix), **v))

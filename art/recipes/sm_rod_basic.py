@@ -1,9 +1,17 @@
 """SM_Rod_Basic: beginner spinning rod (placeholder, T-004/T-006): cork grips, reel seat, spinning reel with a
-crank, 5 line guides + tip top, thin tapered blank. Total length 1.98 m.
+crank, 4 line guides + tip top, tapered blank. Total length 1.98 m.
+
+Readability over realism (designer B-M1, 2026-09-22): a real-thickness blank (6.8 -> 2.4 mm radius) and hairline
+guides were 1-3 px wide at 1080p in the first-person hold frame and vanished over water. The blank is now 10 -> 4.5 mm
+(tip about 5 px wide at 1080p / 90 deg hFOV, ~1.9 m from the eye), the guide rings are ~2x thicker (tube 2.6-3.4 mm),
+their rings 1.25x wider, and there are 4 guides instead of 5.
 
 Run: powershell -NoProfile -ExecutionPolicy Bypass -File tools/blender-run.ps1 -Recipe art/recipes/sm_rod_basic.py
 Export: art/export/Props/SM_Rod_Basic.fbx     Preview: Saved/AgentLogs/previews/SM_Rod_Basic.png (contact sheet:
-3/4, side, handle close-up, reel from the crank side, tip, first-person framing over water)
+3/4, side, handle close-up, reel from the crank side, tip, then the first-person readability frames). The FP frames
+are also saved full size (1920x1080): SM_Rod_Basic_fp_day.png, SM_Rod_Basic_fp_dusk.png, plus SM_Rod_Basic_fp_zoom.png
+(5x pixel crops of the tip and of the blank over the water on both backdrops). RESULT_JSON "fp_readability" has the
+measured widths (see fp_readability()).
 
 Axes and pivot (Blender 1 unit = 1 m, Z up; Unreal = Blender * 100 cm with Y negated, default FBX import):
 - Origin (0, 0, 0) = the GRIP POINT: center of the rear cork grip on the rod axis, where the right hand's fist
@@ -33,8 +41,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 
+import bmesh  # noqa: E402
 import bpy  # noqa: E402
-from mathutils import Vector  # noqa: E402
+from mathutils import Matrix, Vector  # noqa: E402
 
 import meshkit as mk  # noqa: E402
 import pipeline_blender as pb  # noqa: E402
@@ -49,14 +58,17 @@ W_HANDLE, W_BLANK, W_CRANK = {"rod_handle": 1.0}, {"rod_blank": 1.0}, {"rod_cran
 BUTT_X = -0.3235
 BLANK_START = 0.238       # inside the winding check
 TIP_X = 1.655
-BLANK_R0, BLANK_R1 = 0.0068, 0.0024
+BLANK_R0, BLANK_R1 = 0.0100, 0.0045   # butt / tip radius (readability size, see the docstring)
 BLANK_RINGS = 21          # 20 segments
 REEL_Z = -0.066           # reel (spool) axis height
 CRANK_AXIS_X = 0.080
-# guides: (x, ring major radius, ring minor radius, leg height between blank and ring)
-GUIDES = [(0.60, 0.0150, 0.0019, 0.018), (0.86, 0.0105, 0.0017, 0.012), (1.10, 0.0080, 0.0015, 0.009),
-          (1.31, 0.0065, 0.0014, 0.007), (1.50, 0.0055, 0.0013, 0.006)]
-TIPTOP = (1.648, 0.0042, 0.0013)
+# guides: (x, ring major radius, ring minor radius, leg height between blank and ring). Spacing shrinks towards the
+# tip (0.31, 0.27, 0.24, 0.21 m) like a real spinning rod; the butt guide is the largest.
+GUIDES = [(0.62, 0.0185, 0.0034, 0.0180), (0.93, 0.0122, 0.0031, 0.0115), (1.20, 0.0091, 0.0028, 0.0085),
+          (1.44, 0.0073, 0.0026, 0.0065)]
+GUIDE_RING_SIDES = 4      # tube cross-section of the guide rings and the tip top
+GUIDE_FOOT = (0.0020, 0.0030)   # half sizes of a guide foot (across the rod, along the rod)
+TIPTOP = (1.648, 0.0052, 0.0025)
 
 
 def blank_radius(x):
@@ -88,7 +100,7 @@ def build_handle(mb):
         (0.0500, 0.0166, D), (0.0620, 0.0166, D), (0.0640, 0.0142, D),       # rear hood, seat
         (0.1160, 0.0142, D), (0.1180, 0.0166, D), (0.1300, 0.0166, D),       # front hood
         (0.1300, 0.0155, C), (0.1800, 0.0150, C), (0.2320, 0.0132, C),       # fore grip
-        (0.2320, 0.0110, D), (0.2440, 0.0098, D),                             # winding check
+        (0.2320, 0.0122, D), (0.2440, 0.0112, D),                             # winding check (> blank radius)
         (0.2450, 0.0, D),
     ]
     mb.lathe(profile, origin=(0, 0, 0), axis=(1, 0, 0), ref_up=(0, 0, 1), n=12, w=W_HANDLE)
@@ -111,15 +123,16 @@ def build_guides(mb):
         rb = blank_radius(x)
         zc = -(rb + leg + major)
         c = Vector((x, 0.0, zc))
-        mb.torus(c, (1, 0, 0), major, minor, n_major=10 if major > 0.01 else 8, n_minor=3, mat=TRIM, w=W_BLANK)
+        mb.torus(c, (1, 0, 0), major, minor, n_major=10 if major > 0.01 else 8, n_minor=GUIDE_RING_SIDES, mat=TRIM,
+                 w=W_BLANK)
         foot_top = Vector((x - leg * 0.9, 0.0, -rb * 0.5))
-        strut(mb, foot_top, c + Vector((0, 0, major + minor * 0.5)), 0.0014, 0.0022, DARK, W_BLANK,
+        strut(mb, foot_top, c + Vector((0, 0, major + minor * 0.5)), GUIDE_FOOT[0], GUIDE_FOOT[1], DARK, W_BLANK,
               up_hint=(1, 0, 0), n=4, exponent=2.0)
         centers.append(c)
     x, major, minor = TIPTOP
     rb = blank_radius(x)
     c = Vector((x, 0.0, -(rb + major + minor * 0.5)))
-    mb.torus(c, (1, 0, 0), major, minor, n_major=8, n_minor=3, mat=TRIM, w=W_BLANK)
+    mb.torus(c, (1, 0, 0), major, minor, n_major=8, n_minor=GUIDE_RING_SIDES, mat=TRIM, w=W_BLANK)
     # tip-top tube over the blank end
     strut(mb, (x - 0.007, 0, 0), (TIP_X + 0.0015, 0, 0), rb * 1.3, rb * 1.3, DARK, W_BLANK,
           up_hint=(0, 0, 1), n=8, exponent=2.0)
@@ -204,24 +217,141 @@ def build():
 # ---------------------------------------------------------------------------------------------------
 # Preview-only staging (never exported)
 # ---------------------------------------------------------------------------------------------------
-def stage_first_person(obj):
-    """The rod as the player might hold it: grip at the right hand (0.45, -0.17, -0.24) m from the eye, tip raised
-    35 deg and turned 10 deg left, over turquoise water 2.3 m below the eye (dock)."""
-    water_mat = style.make_material("PV_Water", style.TROPICAL.SHALLOW_WATER, "water")
-    bpy.ops.mesh.primitive_plane_add(size=400.0, location=(0.0, 0.0, -2.3))
-    water = bpy.context.active_object
-    water.data.materials.append(water_mat)
-    inst = bpy.data.objects.new("PV_Rod", obj.data)
-    bpy.context.scene.collection.objects.link(inst)
-    inst.location = (0.45, -0.17, -0.24)
-    inst.rotation_euler = (0.0, math.radians(-35.0), math.radians(10.0))
+# The rod in A_FPArms_HoldRod_Idle frame 0, camera space (anim_fp_arms.py at 720cdd5): hand_r_rod = this mesh's
+# pivot, Unreal (42.91, 16.00, -20.34) cm, pitch 35.06, yaw -0.31 deg. Used only if the arms can't be staged.
+HOLD_F0_GRIP_M = (0.4291, -0.1600, -0.2034)
+HOLD_F0_PITCH_DEG, HOLD_F0_YAW_DEG = 35.06, 0.31
+# Sample points on the blank for the width measurement: distance from the tip (m).
+FP_SAMPLES = [("tip (2 cm)", 0.02), ("15 cm", 0.15), ("40 cm", 0.40), ("80 cm", 0.80), ("110 cm", 1.10)]
+FP_WATER_BELOW_HORIZON_PX = 30   # the extra "over water" sample: where the blank crosses this far below the horizon
+
+
+def _snapshot():
+    return {c: set(getattr(bpy.data, c).keys()) for c in ("objects", "meshes", "armatures", "materials", "actions")}
+
+
+def _remove_since(snap):
+    for coll_name in ("objects", "meshes", "armatures", "materials", "actions"):
+        coll = getattr(bpy.data, coll_name)
+        for name in list(coll.keys()):
+            if name not in snap[coll_name] and name in coll:
+                coll.remove(coll[name])
+
+
+def _load_recipe(stem):
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(stem, str(Path(__file__).resolve().parent / (stem + ".py")))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def stage_fp_hold(obj):
+    """SK_FPArms posed in A_FPArms_HoldRod_Idle frame 0 with this rod on hand_r_rod, built with the arms and animation
+    recipes' own functions (read only: the frame follows their current pose). If that fails, the rod alone at the
+    recorded frame-0 transform. Returns (rod instance, info, cleanup)."""
+    snap = _snapshot()
+    scene = bpy.context.scene
+    info = {}
+    try:
+        anim = _load_recipe("anim_fp_arms")
+        arms_mod = anim.load_recipe("sk_fp_arms")
+        mesh_obj, arms_info = arms_mod.build()
+        sides = {"l": anim.Side(arms_info, "l"), "r": anim.Side(arms_info, "r")}
+        anim.SIDES_R = sides["r"]
+        arm_obj = anim.build_armature(sides)
+        B = anim.rest_matrices(arm_obj)
+        knob_grip = anim.knob_grip_matrix(B, sides["l"])
+        anim.build_armature(sides, B["hand_r_rod"] @ knob_grip)
+        B = anim.rest_matrices(arm_obj)
+        anim.add_twist_weights(mesh_obj, sides)
+        anim.skin(mesh_obj, arm_obj)
+        P, _metrics = anim.Poser(B, sides, knob_grip).hold(0)
+        anim.apply_basis(arm_obj, anim.pose_to_basis(B, P))
+        rod_M = P["hand_r_rod"].copy()
+        info["source"] = "anim_fp_arms.py pose solver: A_FPArms_HoldRod_Idle frame 0, arms shown"
+    except Exception as exc:  # preview only: never block the asset on the other recipes
+        _remove_since(snap)
+        rot = (Matrix.Rotation(math.radians(HOLD_F0_YAW_DEG), 3, "Z")
+               @ Matrix.Rotation(math.radians(-HOLD_F0_PITCH_DEG), 3, "Y"))
+        rod_M = Matrix.Translation(HOLD_F0_GRIP_M) @ rot.to_4x4()
+        info["source"] = "fallback: rod alone at the recorded HoldRod f0 transform (%s: %s)" % (
+            type(exc).__name__, exc)
+    rod = bpy.data.objects.new("PV_FPRod", obj.data)
+    scene.collection.objects.link(rod)
+    rod.matrix_world = rod_M
     obj.hide_render = True
+    bpy.context.view_layer.update()
+    X = rod_M.to_3x3() @ Vector((1, 0, 0))
+    info["hand_r_rod_unreal"] = {
+        "location_cm": [round(rod_M.translation.x * 100, 2), round(-rod_M.translation.y * 100, 2),
+                        round(rod_M.translation.z * 100, 2)],
+        "pitch_deg": round(math.degrees(math.atan2(X.z, math.hypot(X.x, X.y))), 2),
+        "yaw_deg": round(math.degrees(math.atan2(-X.y, X.x)), 2)}
 
     def cleanup():
         obj.hide_render = False
-        for h in (water, inst):
-            bpy.data.objects.remove(h, do_unlink=True)
-    return cleanup
+        _remove_since(snap)
+    return rod, info, cleanup
+
+
+def _blank_only(obj, matrix):
+    """Temporary object with only the blank's faces (material M_Rod_Blank), for the bare-blank width mask."""
+    bm = bmesh.new()
+    bm.from_mesh(obj.data)
+    bmesh.ops.delete(bm, geom=[f for f in bm.faces if f.material_index != BLANK], context="FACES")
+    me = bpy.data.meshes.new("PV_BlankOnly")
+    bm.to_mesh(me)
+    bm.free()
+    o = bpy.data.objects.new("PV_BlankOnly", me)
+    bpy.context.scene.collection.objects.link(o)
+    o.matrix_world = matrix
+    return o
+
+
+def fp_readability(obj, preview_path):
+    """Designer B-M1 check: the rod as held in the first-person HoldRod frame, 1920x1080 at 90 deg hFOV (Unreal's
+    FP camera), over the tropical day and dusk palette backdrops (fp_preview.py). Measures the blank's on-screen width
+    at FP_SAMPLES and where it crosses the water just below the horizon. Returns (paths, info)."""
+    import fp_preview as fpp
+    base = Path(preview_path)
+    parts = base.with_name(base.stem + "_fp_parts")
+    rod, info, cleanup = stage_fp_hold(obj)
+    try:
+        frames = {k: fpp.render_fp(base.with_name("%s_fp_%s%s" % (base.stem, k, base.suffix)), k)
+                  for k in fpp.BACKDROPS}
+        blank = _blank_only(obj, rod.matrix_world)
+        masks = {"blank": fpp.render_mask(parts / "mask_blank.png", [blank]),
+                 "whole_rod": fpp.render_mask(parts / "mask_rod.png", [rod])}
+        M = rod.matrix_world
+        axis = (M.to_3x3() @ Vector((1, 0, 0))).normalized()
+
+        def sample(name, x):
+            return {"name": name, "point": M @ Vector((x, 0, 0)), "axis": axis, "radius_m": blank_radius(x),
+                    "rod_x_m": x}
+        samples = [sample(n, TIP_X - s) for n, s in FP_SAMPLES]
+        # over the water: the blank point that projects FP_WATER_BELOW_HORIZON_PX below the horizon (center row)
+        h = fpp.FP_RESOLUTION[1]
+        target_y = h / 2.0 + FP_WATER_BELOW_HORIZON_PX
+        xs = [0.30 + 0.01 * i for i in range(131)]
+        ys = [h - fpp.project(M @ Vector((x, 0, 0)))[1] for x in xs]
+        x_w = min(zip(xs, ys), key=lambda p: abs(p[1] - target_y))[0]
+        samples.append(sample("over water (%d px below the horizon)" % FP_WATER_BELOW_HORIZON_PX, x_w))
+        results = fpp.measure(samples, masks, frames)
+        for rec, s in zip(results, samples):
+            rec["rod_x_m"] = round(s["rod_x_m"], 3)
+            rec["blank_radius_mm"] = round(s["radius_m"] * 1000, 2)
+        tip, water = results[0], results[-1]
+        zoom = fpp.zoom_sheet(base.with_name(base.stem + "_fp_zoom" + base.suffix),
+                              [[(frames["day"], tip["screen_px"]), (frames["dusk"], tip["screen_px"])],
+                               [(frames["day"], water["screen_px"]), (frames["dusk"], water["screen_px"])]])
+    finally:
+        cleanup()
+    info.update({"resolution": list(fpp.FP_RESOLUTION), "hfov_deg": fpp.FP_HFOV_DEG, "backdrops": list(fpp.BACKDROPS),
+                 "frames": frames, "zoom": zoom, "masks": masks,
+                 "zoom_layout": "144 px crops x5: top row = tip (day | dusk), bottom row = blank over water (day | dusk)",
+                 "samples": results})
+    return {"day": frames["day"], "dusk": frames["dusk"], "zoom": zoom}, info
 
 
 def main():
@@ -230,18 +360,22 @@ def main():
     obj, info = build()
     tris = pb.triangle_count([obj])
     ok, budget = style.check_budget(tris, BUDGET_KIND)
+    fp_paths, fp_info = fp_readability(obj, args.preview)
     views = [
         {"name": "side", "location": (0.67, -3.0, -0.03), "target": (0.67, 0.0, -0.03), "ortho_scale": 2.05,
          "resolution": (1536, 384)},
         {"name": "handle", "location": (-0.42, 0.30, 0.20), "target": (0.06, 0.0, -0.035), "lens": 35.0},
         {"name": "reel", "location": (0.08, 0.36, -0.10), "target": (0.09, 0.0, -0.05), "lens": 50.0},
         {"name": "tip", "location": (1.50, -0.14, 0.05), "target": (1.62, 0.0, -0.004), "lens": 50.0},
-        {"name": "fp", "location": (0.0, 0.0, 0.0), "target": (1.0, 0.0, 0.0), "lens": pb.lens_for_hfov(90.0),
-         "resolution": (1280, 720), "world_rgb": style.linear(style.TROPICAL.SKY_DAY), "view_transform": "Standard",
-         "setup": lambda: stage_first_person(obj)},
+        {"name": "fp_day", "image": fp_paths["day"]},
+        {"name": "fp_dusk", "image": fp_paths["dusk"]},
+        {"name": "fp_zoom", "image": fp_paths["zoom"]},
     ]
     info.update({"budget_ok": ok, "budget": budget, "topology": mk.mesh_stats(obj),
-                 "intended_length_m": round(TIP_X - BUTT_X, 3)})
+                 "intended_length_m": round(TIP_X - BUTT_X, 3),
+                 "guides": [{"x_m": g[0], "ring_radius_m": g[1], "tube_radius_m": g[2]} for g in GUIDES],
+                 "tiptop": {"x_m": TIPTOP[0], "ring_radius_m": TIPTOP[1], "tube_radius_m": TIPTOP[2]},
+                 "blank_radius_m": [BLANK_R0, BLANK_R1], "fp_readability": fp_info})
     pb.finish(args, [obj], views=views, extra=info)
 
 
