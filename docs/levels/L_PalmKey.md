@@ -1,6 +1,7 @@
 # L_PalmKey: vertical slice island (T-005 greybox)
 
-Owner: level-designer. Status: greybox design v1 (2026-09-23), built from data, previews checked; not yet built in the editor.
+Owner: level-designer. Status: greybox v1.1 (2026-09-23). v1 built in the editor (7ca48e4); v1.1 = designer review
+follow-up (Saved/AgentLogs/design/20260923-013000-palmkey-greybox.md: M1, M2, S1-S4), previews checked, rebuild pending.
 Source of truth: `data/levels/L_PalmKey.json` (layout) -> `Content/Python/levels/build_level.py` (Unreal) and
 `art/recipes/preview_level_layout.py` (Blender preview). Both expand the JSON through `Content/Python/levels/layout.py`,
 so the preview shows exactly what the builder spawns. Edit the JSON, never the built level by hand.
@@ -140,12 +141,25 @@ stage 3) when a bite comes from that spot (T-006).
 |---|---|---|---|
 | Crawl Cave (the only way into the Hidden Cove) | through the ridge at Y -15 m, X 28..42 m, floor +180 | mouth 2 m (300 cm clear), crouch 2 m (135 cm, 2.4 m wide), crawl 6 m (60 cm, 1.6 m wide), crouch 2 m (135), exit 2 m (300) | clearance ray tests 300 / 135 / 60 / 135, all PASS |
 
+Readability (designer M1): the three low ceilings are `rock` (lighter) while walls and the mouth/exit frames stay
+`rock_dark`, so each ceiling drop reads as a lighter band before you reach it and the portal stays dark from outside.
+Three shadowless fill lights (`cave/fill_in` X 30.5 m, `cave/fill_mid` X 35 m, `cave/fill_out` X 39.5 m; color
+#8FD3F0, radius 4-4.5 m) sit just under the ceilings. They use the soft falloff (no inverse-square hotspot): about
+12 / 10 / 12 lux-equivalent at the light, 0.83-0.94 of that on the walls. Target on screen: walls in the
+#2E3A40-#3E4A4F luminance range (the preview gives ~#1C4860: right value, bluer hue because of the sky-blue light),
+ceilings a lighter band (~#4A89A0).
+
 The cove is sealed by rock arms (+6 m) that run into deep water (seabed -800). The north mound was shrunk so you can't
 wade round the arms, and the headland is walled off from it by the ridge (+6.2-6.5 m).
 
 ## 8. Landmarks and wayfinding
 - The Beacon (Rocky Point, top +14 m, lit lantern and point light): visible from spawn over the grass hill (see
   `eye_spawn.png`), from the jetty and from the lagoon.
+- The first frame (spawn yaw 23, level): Beacon just right of center, Tall Palm and the jetty over reef water on the
+  right, the dark cave mouth at the left edge. The dock NPC and shop are 11 m to the left (95 deg), so they can't share
+  the frame with the Beacon (121 deg apart). Moving the start doesn't help: south of the dock root the reef water drops
+  behind the sand rise, east or north pushes the cave mouth out of frame. Yaw 20 -> 23 adds more jetty and reef water
+  on the right while keeping the cave mouth in (designer S4, lead: keep Beacon-first).
 - The Tall Palm (16 m, leaning south-east): marks Palm Beach and the way east.
 - The dock lantern (on the dock head) and the dock root lamp: the night beacon home.
 - The ridge skyline with the dark cave mouth and a bent palm next to it (`lm_cave`).
@@ -153,14 +167,32 @@ wade round the arms, and the headland is walled off from it by the ridge (+6.2-6
 
 ## 9. Respawn
 Four PlayerStarts at the dock root (1.5 m apart, co-op 2-4), `PlayerStartTag = Respawn.Dock`, tags `Lure.Respawn`,
-`Respawn=Dock`. Spawn and respawn are the same place, facing north-north-east (Beacon ahead, Tall Palm right, shop 11 m
-left). No other respawn in the slice.
+`Respawn=Dock`. Spawn and respawn are the same place, facing north-north-east, yaw 23 (Beacon ahead, Tall Palm and
+jetty water right, shop 11 m left). No other respawn in the slice.
 
 ## 10. Water and hazards
 The water planes never collide. Shallow shelves (-60 to -200, turquoise overlay discs) can be waded; the seabed
 elsewhere is -800 with no way out. Until T-017 decides whether falling into the water means swimming or getting caught,
 a player in deep water is stuck; the playtester uses teleports (`Lure.Teleport <id>`). Suggested T-017 rule: water
 deeper than 1.5 m under the capsule counts as fallen in, so you respawn at the dock.
+
+## 10b. Light, exposure and palette (designer S1-S3, ART_STYLE 2026-09-23)
+The layout's `time_of_day` names the active preset in `time_of_day_presets` (T-013 will drive presets from data;
+dusk and night hold proposals only). `tropical_day`:
+- **Fixed exposure** `exposure_ev100` 1.0: the builder spawns one unbound PostProcessVolume with manual exposure, no
+  physical camera, bias = -EV100 (exposure scale 0.5). With the 10 lux sun (x0.84 through the atmosphere at 50 deg)
+  plus sky fill, sunlit horizontal surfaces land at about their palette hex after Unreal's filmic tonemapper, which
+  keeps mid tones and compresses highlights (preview samples: sand #E0D2A2 for #F2D6A2, grass #468A3B for #3F7A42,
+  rock #7C8189 for #6B7275). Night and caves are no longer brightened by auto exposure. +0.25 EV = darker.
+- **Haze**: fog density 0.03 from 30 m (was 0.006 from 40 m), color #8FD3F0 as an on-screen target (the builder
+  divides out the exposure and the tonemapper), SkyAtmosphere contribution 0. By the engine's fog formula
+  (`levels.layout.fog_transmittance`): Gull Key at 210 m 22% fog (readable), sea at 400 m 41%, sky 6 deg up 60%,
+  10 deg 42%, 20 deg 22%; the Beacon from spawn 4%.
+- **Sky**: SkyAtmosphere luminance x1.8 / 2.1 / 2.4 lifts the steel-blue zenith (~#3E607C in the v1 PIE shot) toward
+  #8FD3F0 (estimated ~#6095B9); the real-time sky light captures that too, so its intensity 0.45 keeps the shadow
+  fill about where it was. First guesses, to check in the rebuild screenshot.
+- **Palette**: `rock` #6B7275 (M2), `grass` #3F7A42 (S3, fronds keep `palm_green`), `water_deep` #0A5560 and both
+  waters at roughness 0.3 (S2: less sky reflection, deep reads different from shallow).
 
 ## 11. Marker contract (for engineers)
 Until gameplay classes exist, markers are TargetPoints / TriggerBoxes / PlayerStarts whose tags carry the data:
@@ -174,10 +206,16 @@ Until gameplay classes exist, markers are TargetPoints / TriggerBoxes / PlayerSt
 - every spawned actor: `LureLayout`, `LureLayout=L_PalmKey`, `LureId=<element id>` (the rebuild key)
 When a class exists (e.g. ALureFishingSpot), map it in the JSON: `"marker_classes": {"fishing_spot": "/Script/VibeGame.LureFishingSpot"}`.
 The builder then spawns that class; the tags stay.
+- **Sell point (T-010):** `sell_dock` is an `ALureSellPoint` (mapped via `marker_classes.sell_point`) at [-3400,-600,100],
+  on the shop apron 130 cm in front of the counter, so a player walking up from the spawn reaches its 300 cm radius at the
+  counter. `"properties": {"MarketId": "PalmKeyDock"}` (DT_FishMarket row). Editor label "SELL (PalmKeyDock)".
+- Any marker may carry `"properties": {"PropName": value}`; the builder sets them with set_editor_property after
+  spawning (FName/Text/Vector converted; unknown names only warn).
 
 ## 12. Performance notes
 About 470 actors (365 basic-shape primitives: 144 of them palm parts; 5 props; 8 lights; about 90 markers and labels).
-Everything is static except 1 movable sun, a real-time sky light and 4 point lights with shadows off. That is cheap for
+Everything is static except 1 movable sun, a real-time sky light and 7 point lights with shadows off (4 lamps, 3 cave
+fills), plus 1 unbound PostProcessVolume. That is cheap for
 greybox. The water is 1 plane plus 7 thin discs. For T-020, replace palms with one mesh (ISM/HISM), merge the ridge and
 point rocks into island module meshes, and give terrain real meshes. Keep total actors under about 300 after the art
 pass. Performance budget capture: T-023.
@@ -192,12 +230,18 @@ pass. Performance budget capture: T-023.
 - Dock 70 / jetty 60 cm above the water (prone view of the bobber)
 - Islet distance 210 m (boat trip about 20 s at 10 m/s)
 - Grass hill height (+4 m): it hides the lagoon from spawn on purpose. Is the reveal good or confusing?
+- Exposure EV (1.0), fog density (0.03), sky luminance factor and sky light intensity: sample the zenith, sand and
+  Gull Key in the rebuild screenshots
+- Cave fill intensity (18 / 14 / 18, radius 750/550/750) and color #B8D8E6 (tuned after rebuild b974f4d)
 
 ## 14. Build and preview
 - Preview (Blender, headless): `powershell -NoProfile -ExecutionPolicy Bypass -File tools/blender-run.ps1 -Recipe
   art/recipes/preview_level_layout.py`. It writes `Saved/AgentLogs/previews/levels/L_PalmKey/` (map_overview,
-  map_north, eye_spawn, eye_dock_head, eye_mouth_prone, eye_shadow_s2, eye_cave_crawl, eye_jetty) and a contact sheet
-  `Saved/AgentLogs/previews/levels/L_PalmKey.png`. It fails if any cover or clearance test fails.
+  map_north, eye_spawn, eye_cave_mouth, eye_cave_crouch, eye_dock_head, eye_mouth_prone, eye_shadow_s2, eye_cave_crawl,
+  eye_jetty) and a contact sheet `Saved/AgentLogs/previews/levels/L_PalmKey.png`. It fails if any cover or clearance
+  test fails. Eye shots use the "engine look" (Cycles, the preset's exposure, Unreal's fog formula and filmic
+  tonemapper, the cave fill lights). It can't show the SkyAtmosphere (the sky is the palette gradient), Lumen or local
+  exposure, so the in-engine zenith and shade values need the rebuild screenshot.
 - Build (editor-operator, run_python):
   `import importlib, levels.layout, levels.build_level as bl; importlib.reload(levels.layout); importlib.reload(bl); result = bl.build("data/levels/L_PalmKey.json")`
   then `bl.frame_view("data/levels/L_PalmKey.json", "<view id>")` for screenshots matching the preview shots.

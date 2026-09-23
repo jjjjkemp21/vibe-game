@@ -14,6 +14,7 @@
   ],
   "world": {"game_mode_override": null},
   "labels_in_game": false,
+  "marker_classes": {"sell_point": "/Script/VibeGame.LureSellPoint"},
   "metrics": {
     "source": "DT_Movement.csv (lane eng1 0cac885) + engine defaults (gravity -980, step 45, walkable 44.765 deg)",
     "walk_cm_s": 350,
@@ -37,18 +38,18 @@
   },
   "materials": {
     "sand": {"color": "#F2D6A2", "roughness": 0.9, "notes": "TROPICAL.SAND"},
-    "grass": {"color": "#3F8F4A", "roughness": 0.85, "notes": "TROPICAL.PALM_GREEN (greybox grass)"},
+    "grass": {"color": "#3F7A42", "roughness": 0.85, "notes": "TROPICAL grass (ART_STYLE 2026-09-23, designer S3): darker than palm green so sand, water and the Beacon lead"},
     "palm_green": {"color": "#3F8F4A", "roughness": 0.8, "notes": "TROPICAL.PALM_GREEN"},
     "leaf_dark": {"color": "#2A5E36", "roughness": 0.8, "notes": "TROPICAL.LEAF_DARK"},
     "palm_trunk": {"color": "#C9A66B", "roughness": 0.85, "notes": "TROPICAL.ROPE (light tan trunk)"},
     "wood": {"color": "#8A5A3B", "roughness": 0.85, "notes": "TROPICAL.WEATHERED_WOOD"},
     "wood_dark": {"color": "#6E4A33", "roughness": 0.85, "notes": "weathered wood 20% darker, for posts (derived)"},
     "rope": {"color": "#C9A66B", "roughness": 0.85, "notes": "TROPICAL.ROPE"},
-    "rock": {"color": "#8A9A9C", "roughness": 0.8, "notes": "FOGGY.FOG as sunlit tropical rock (mood board A)"},
+    "rock": {"color": "#6B7275", "roughness": 0.8, "notes": "TROPICAL rock (ART_STYLE 2026-09-23, designer M2): mid grey in sun, grey not teal in shade"},
     "rock_dark": {"color": "#3E4A4F", "roughness": 0.8, "notes": "FOGGY.ROCK: cave, cliff shadows, seabed"},
     "reef": {"color": "#F28F6B", "roughness": 0.7, "notes": "TROPICAL.REEF"},
-    "water_shallow": {"color": "#3ED1C4", "roughness": 0.15, "water": true, "notes": "TROPICAL.SHALLOW_WATER (greybox water, opaque)"},
-    "water_deep": {"color": "#0E6F7A", "roughness": 0.15, "water": true, "notes": "TROPICAL.DEEP_WATER"},
+    "water_shallow": {"color": "#3ED1C4", "roughness": 0.3, "water": true, "notes": "TROPICAL.SHALLOW_WATER (greybox water, opaque); roughness 0.3 = less sky reflection (designer S2)"},
+    "water_deep": {"color": "#0A5560", "roughness": 0.3, "water": true, "notes": "darker than TROPICAL.DEEP_WATER #0E6F7A so the greybox plane (sky reflection, no depth) reads ~#0E6F7A on screen (designer S2)"},
     "accent": {"color": "#FF4D3D", "roughness": 0.6, "notes": "TROPICAL.ACCENT (awning, beacon bands)"},
     "lantern": {"color": "#E8C46A", "roughness": 0.6, "emissive": 4.0, "notes": "FOGGY.LANTERN, glowing"},
     "beacon_white": {"color": "#F3E9D2", "roughness": 0.7, "notes": "UI.PARCHMENT as whitewash"},
@@ -56,14 +57,32 @@
   },
   "lights": [
     {"id": "sun", "type": "directional", "rot": {"pitch": -50, "yaw": -35, "roll": 0}, "intensity": 10.0, "color": "#FFF4E0", "notes": "Default = day. T-013 drives the time of day (sun pitch/yaw, color, intensity per preset)."},
-    {"id": "sky_atmosphere", "type": "sky_atmosphere"},
+    {"id": "sky_atmosphere", "type": "sky_atmosphere", "notes": "sky values from the time-of-day preset"},
     {"id": "sky_light", "type": "sky_light", "real_time_capture": true},
-    {"id": "fog", "type": "height_fog", "preset": "tropical_day"}
+    {"id": "fog", "type": "height_fog", "notes": "fog values from the time-of-day preset"},
+    {"id": "post", "type": "post_process", "notes": "unbound PostProcessVolume: fixed exposure from the time-of-day preset (no auto exposure)"},
+    {"id": "cave/fill_mouth", "type": "point", "at": [2750, -1500, 300], "falloff": "soft", "falloff_exponent": 2, "intensity": 10, "radius": 700, "color": "#B8D8E6", "shadows": false, "notes": "Rebuild b974f4d: lifts the outer mouth walls (sampled #020A14) toward #2E3A40-#3E4A4F, no hotspot"},
+    {"id": "cave/fill_in", "type": "point", "at": [3050, -1500, 225], "falloff": "soft", "falloff_exponent": 2, "intensity": 9, "radius": 750, "color": "#C8D2D6", "shadows": false, "notes": "Designer M1: daylight spill in the crouch-in section, 40 cm under its ceiling. Soft falloff (no hotspot): about 12 lux-equivalent at the light, 0.83 of that on the walls 1.2 m away -> rock_dark walls ~#1C4860 in the preview (target luminance #2E3A40-#3E4A4F, bluer hue from the sky-blue light), rock ceiling a lighter band ~#4A89A0"},
+    {"id": "cave/fill_mid", "type": "point", "at": [3500, -1500, 200], "falloff": "soft", "falloff_exponent": 2, "intensity": 7, "radius": 550, "color": "#C8D2D6", "shadows": false, "notes": "Designer M1: middle of the 60 cm crawl, 15 cm under its ceiling; walls 0.8 m away get 0.94 of it"},
+    {"id": "cave/fill_out", "type": "point", "at": [3950, -1500, 225], "falloff": "soft", "falloff_exponent": 2, "intensity": 9, "radius": 750, "color": "#C8D2D6", "shadows": false, "notes": "Designer M1: crouch-out section, mirror of fill_in"}
   ],
+  "time_of_day": "tropical_day",
+  "time_of_day_presets": {
+    "tropical_day": {
+      "exposure_ev100": 1.0,
+      "fog": {"density": 0.03, "height_falloff": 0.2, "color": "#8FD3F0", "start_distance": 3000, "max_opacity": 1.0, "sky_ambient": 0.0},
+      "sky": {"luminance_factor": [2.35, 2.75, 3.1]},
+      "sky_light": {"intensity": 0.35},
+      "notes": [
+        "Rebuild b974f4d tuning: sky x1.3 (zenith #528CBE -> ~#6FA0C8), sky light 0.45->0.35 to keep shadow fill; cave fills #B8D8E6 (neutral), +50% intensity, radius 750/550/750 so the mouth outer walls (#020A14) and crawl walls (#15465C) reach #2E3A40-#3E4A4F. Designer S1 + ART_STYLE: fixed exposure, palette hex = on-screen target. EV100 1.0 = exposure scale 0.5: the 10 lux sun (x0.84 atmosphere, 50 deg) plus sky fill puts sunlit horizontal surfaces at ~1.05x their albedo before the filmic tonemapper (which keeps mid tones, compresses highlights). Tune in steps of 0.25: +0.25 = darker.",
+        "Fog: density 0.03 from 30 m (was 0.006 from 40 m). levels.layout.fog_transmittance: Gull Key at 210 m 22% fog (readable), sea edge 400 m 41%, sky 6 deg up 60%, 10 deg 42%, 20 deg 22%, Beacon from spawn 4%. Color = on-screen target (builder undoes exposure + tonemapper); sky_ambient 0 keeps the SkyAtmosphere from adding to it.",
+        "Sky: luminance x1.8/2.1/2.4 lifts the steel-blue zenith (~#3E607C in the T-005 PIE shot) toward #8FD3F0 (estimate ~#6095B9); the real-time sky light captures that too, so its intensity 0.45 keeps the shadow fill about where it was. First guesses: check the zenith in the rebuild screenshot."
+      ]
+    },
+    "tropical_dusk": {"exposure_ev100": 0.0, "fog": {"density": 0.012, "height_falloff": 0.2, "color": "#FF9A5A", "start_distance": 2500, "sky_ambient": 0.0}, "notes": "Proposal for T-013 (not built): the sun preset and the EV get tuned together there."},
+    "tropical_night": {"exposure_ev100": -3.0, "fog": {"density": 0.02, "height_falloff": 0.15, "color": "#1B2440", "start_distance": 1500, "sky_ambient": 0.0}, "notes": "Proposal for T-013 (not built): night stays dark (fixed EV, no auto brightening), lamps and the Beacon carry it."}
+  },
   "fog_presets": {
-    "tropical_day": {"density": 0.006, "height_falloff": 0.2, "color": "#8FD3F0", "start_distance": 4000},
-    "tropical_dusk": {"density": 0.012, "height_falloff": 0.2, "color": "#FF9A5A", "start_distance": 2500},
-    "tropical_night": {"density": 0.02, "height_falloff": 0.15, "color": "#1B2440", "start_distance": 1500},
     "lagoon_mist": {"density": 0.05, "height_falloff": 0.5, "color": "#8A9A9C", "start_distance": 500, "notes": "T-016: local mist when the shadow stirs"}
   },
   "blocks": [
@@ -103,13 +122,13 @@
     {"id": "cave/mouth_ceiling", "shape": "box", "at": [2900.0, -1500, 480], "size": [200, 400, 170], "mat": "rock_dark", "group": "cave"},
     {"id": "cave/crouch_in_wall_w", "shape": "box", "at": [3100.0, -1660.0, 180], "size": [200, 80.0, 470], "mat": "rock_dark", "group": "cave"},
     {"id": "cave/crouch_in_wall_e", "shape": "box", "at": [3100.0, -1340.0, 180], "size": [200, 80.0, 470], "mat": "rock_dark", "group": "cave"},
-    {"id": "cave/crouch_in_ceiling", "shape": "box", "at": [3100.0, -1500, 315], "size": [200, 400, 335], "mat": "rock_dark", "group": "cave"},
+    {"id": "cave/crouch_in_ceiling", "shape": "box", "at": [3100.0, -1500, 315], "size": [200, 400, 335], "mat": "rock", "group": "cave"},
     {"id": "cave/crawl_wall_w", "shape": "box", "at": [3500.0, -1640.0, 180], "size": [600, 120.0, 470], "mat": "rock_dark", "group": "cave"},
     {"id": "cave/crawl_wall_e", "shape": "box", "at": [3500.0, -1360.0, 180], "size": [600, 120.0, 470], "mat": "rock_dark", "group": "cave"},
-    {"id": "cave/crawl_ceiling", "shape": "box", "at": [3500.0, -1500, 240], "size": [600, 400, 410], "mat": "rock_dark", "group": "cave"},
+    {"id": "cave/crawl_ceiling", "shape": "box", "at": [3500.0, -1500, 240], "size": [600, 400, 410], "mat": "rock", "group": "cave"},
     {"id": "cave/crouch_out_wall_w", "shape": "box", "at": [3900.0, -1660.0, 180], "size": [200, 80.0, 470], "mat": "rock_dark", "group": "cave"},
     {"id": "cave/crouch_out_wall_e", "shape": "box", "at": [3900.0, -1340.0, 180], "size": [200, 80.0, 470], "mat": "rock_dark", "group": "cave"},
-    {"id": "cave/crouch_out_ceiling", "shape": "box", "at": [3900.0, -1500, 315], "size": [200, 400, 335], "mat": "rock_dark", "group": "cave"},
+    {"id": "cave/crouch_out_ceiling", "shape": "box", "at": [3900.0, -1500, 315], "size": [200, 400, 335], "mat": "rock", "group": "cave"},
     {"id": "cave/exit_ceiling", "shape": "box", "at": [4100.0, -1500, 480], "size": [200, 400, 170], "mat": "rock_dark", "group": "cave"},
     {"id": "point/base", "shape": "box", "at": [2400, 3000, -800], "size": [1600, 1600, 1100], "yaw": 25, "mat": "rock", "group": "rocky_point"},
     {"id": "point/head", "shape": "box", "at": [3500, 4000, -800], "size": [1600, 1800, 1120], "yaw": 25, "mat": "rock", "group": "rocky_point"},
@@ -185,11 +204,13 @@
     {"id": "cove/stash", "mesh": "/Game/Art/Props/SM_GoldenCrate", "at": [4450, -2150, 371.5], "yaw": 35, "tags": ["Lure.QuestTarget", "Quest=find_hidden_cove"], "preview": {"shape": "box", "size": [100, 100, 100], "mat": "wood"}}
   ],
   "markers": [
-    {"id": "ps_1", "type": "player_start", "at": [-3300, -50, 100.2], "yaw": 20, "player_start_tag": "Respawn.Dock", "tags": ["Lure.Respawn", "Respawn=Dock"], "name": "", "label": false},
-    {"id": "ps_2", "type": "player_start", "at": [-3300, 100, 103.2], "yaw": 20, "player_start_tag": "Respawn.Dock", "tags": ["Lure.Respawn", "Respawn=Dock"], "name": "START / RESPAWN", "label": true},
-    {"id": "ps_3", "type": "player_start", "at": [-3300, 250, 105.5], "yaw": 20, "player_start_tag": "Respawn.Dock", "tags": ["Lure.Respawn", "Respawn=Dock"], "name": "", "label": false},
-    {"id": "ps_4", "type": "player_start", "at": [-3300, 400, 107.0], "yaw": 20, "player_start_tag": "Respawn.Dock", "tags": ["Lure.Respawn", "Respawn=Dock"], "name": "", "label": false},
+    {"id": "ps_1", "type": "player_start", "at": [-3300, -50, 100.2], "yaw": 23, "player_start_tag": "Respawn.Dock", "tags": ["Lure.Respawn", "Respawn=Dock"], "name": "", "label": false},
+    {"id": "ps_2", "type": "player_start", "at": [-3300, 100, 103.2], "yaw": 23, "player_start_tag": "Respawn.Dock", "tags": ["Lure.Respawn", "Respawn=Dock"], "name": "START / RESPAWN", "label": true},
+    {"id": "ps_3", "type": "player_start", "at": [-3300, 250, 105.5], "yaw": 23, "player_start_tag": "Respawn.Dock", "tags": ["Lure.Respawn", "Respawn=Dock"], "name": "", "label": false},
+    {"id": "ps_4", "type": "player_start", "at": [-3300, 400, 107.0], "yaw": 23, "player_start_tag": "Respawn.Dock", "tags": ["Lure.Respawn", "Respawn=Dock"], "name": "", "label": false},
     {"id": "npc_dock", "type": "npc", "at": [-3400, -1000, 100], "yaw": 90, "role": "shop+requests", "name": "Dock NPC (shop, requests, sell)"},
+    {"id": "sell_dock", "type": "sell_point", "at": [-3400, -600, 100], "yaw": 270, "properties": {"MarketId": "PalmKeyDock"}, "tags": ["Lure.SellPoint"], "notes": "On the shop apron, 130 cm in front of the counter (counter front y=-700, apron to y=-450); 300 cm radius covers the whole counter front. Walk-up from the spawn path (ps_1 at y=-50)."},
+    {"id": "label_sell_dock", "type": "label", "text": "SELL (PalmKeyDock)", "at": [-3400, -600, 330]},
     {"id": "boat_mooring", "type": "boat_mooring", "at": [-6450, 300, 0], "yaw": 90, "name": "Boat mooring (T-018)", "floating": true},
     {"type": "fishing_spot", "id": "dock_end", "name": "Dock End", "at": [-7000, 600, 0], "radius": 600, "cast_from": [-6000, 600, 70], "habitat": "Habitat.Shore", "hours": [[0, 24]], "time_label": "any", "level_band": [1, 2], "danger": "none", "species_hint": ["Bonefish (L1, day)", "Sand Grunt (L1, any time; proposed)"], "notes": "First cast of the game: safe, lit by the dock lantern at night, 25 s from spawn.", "region": "Region.Tropical.PalmKey"},
     {"type": "fishing_spot", "id": "palm_beach", "name": "Palm Beach", "at": [-4400, 4300, 0], "radius": 700, "cast_from": [-3600, 3300, 91.2], "habitat": "Habitat.Shore", "hours": [[0, 24]], "time_label": "any", "level_band": [1, 2], "danger": "none", "species_hint": ["Bonefish (L1, day)", "Sand Grunt (L1, any time)"], "notes": "Shore casting from the sand; the Tall Palm is behind you.", "region": "Region.Tropical.PalmKey"},
@@ -225,7 +246,9 @@
     {"id": "label_hazard", "type": "label", "text": "Deep water = hazard (T-017)", "at": [-7200, -6000, 0], "map_px": 15}
   ],
   "views": [
-    {"id": "spawn", "eye": [-3300, 250, 105.5], "stance": "stand", "look_at": [2500, 3100, 1000], "fov": 90, "caption": "Spawn (stand 165): beacon ahead, Tall Palm right, shop left"},
+    {"id": "spawn", "eye": [-3300, 250, 105.5], "stance": "stand", "look_at": [5905.0, 4157.3, 270.5], "fov": 90, "caption": "Spawn first frame (stand 165, yaw 23, level): Beacon ahead, Tall Palm and jetty water right, cave mouth left"},
+    {"id": "cave_mouth", "eye": [2780, -1500, 180], "stance": "stand", "look_at": [3300, -1500, 300], "fov": 90, "caption": "Cave mouth (stand 165) facing the crouch section: lit ceiling drop ahead"},
+    {"id": "cave_crouch", "eye": [3080, -1500, 180], "stance": "crouch", "look_at": [3700, -1500, 215], "fov": 90, "caption": "Crouched in the crouch-in section (eye 95): the 60 cm crawl ahead"},
     {"id": "dock_head", "eye": [-6150, 900, 70], "stance": "stand", "look_at": [-19000, 17000, 250], "fov": 90, "caption": "Dock head looking SE: Gull Key islet on the horizon (boat goal)"},
     {"id": "mouth_prone", "eye": [905.0, -5219.1, 80], "stance": "prone", "look_at": [500, -5750, 0], "fov": 90, "caption": "Prone at the arm tip (eye 35): lip on the right, cast into the inner mouth"},
     {"id": "shadow_s2", "eye_abs": [1800, -7000, 120], "look_at": [1100, -4900, 110], "fov": 50, "proxies": [{"at": [905.0, -5219.1, 80], "stance": "prone"}, {"at": [1159.1, -4614.1, 80.0], "stance": "crouch"}, {"at": [1339.1, -3937.6, 80.0], "stance": "stand"}], "caption": "Shadow eye S2 (120 cm, 50 deg lens): prone at the tip hidden; crouch and stand on the arm visible"},

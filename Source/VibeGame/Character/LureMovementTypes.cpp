@@ -94,6 +94,26 @@ bool FLureMovementRow::Validate(FString& OutProblem) const
 		OutProblem = FString::Printf(TEXT("SurfaceFloatSettleTime %.2f must be >= 0.05 s"), SurfaceFloatSettleTime);
 		return false;
 	}
+	// Rod pose (T-006).
+	const float RodValues[] = { RodMoveSpeedIn, RodMoveSpeedOut, RodStillDelay, RodPoseBlendTime, ArmsPitchFollowUp, RodHoldClearance };
+	for (const float Value : RodValues)
+	{
+		if (!FMath::IsFinite(Value) || Value < 0.f)
+		{
+			OutProblem = TEXT("rod pose values must be finite and >= 0");
+			return false;
+		}
+	}
+	if (RodMoveSpeedOut > RodMoveSpeedIn)
+	{
+		OutProblem = FString::Printf(TEXT("RodMoveSpeedOut %.1f must be <= RodMoveSpeedIn %.1f"), RodMoveSpeedOut, RodMoveSpeedIn);
+		return false;
+	}
+	if (ArmsPitchFollowUp > 1.f)
+	{
+		OutProblem = FString::Printf(TEXT("ArmsPitchFollowUp %.2f must be in [0, 1]"), ArmsPitchFollowUp);
+		return false;
+	}
 	return true;
 }
 
@@ -148,6 +168,10 @@ FLureMovementRow FLureMovementData::GetFallbackRow(ELureMovementState State)
 		return Row;
 	};
 
+	// Rod pose and fishing (T-006): the struct defaults (HoldRod, 15/5 cm/s, 0.3 s, follow-up 1, no clearance check, CanFish)
+	// except Prone (prone hold / tuck, arms stay down when looking up, 130 cm wall check) and Sprint (no fishing).
+	// The Swim rows keep the defaults: swimming (and climbing) always blocks fishing and puts the rod away, whatever the row says.
+	FLureMovementRow Row;
 	switch (State)
 	{
 	case ELureMovementState::Swim:
@@ -156,11 +180,18 @@ FLureMovementRow FLureMovementData::GetFallbackRow(ELureMovementState State)
 	case ELureMovementState::SwimSprint:
 		return WithExtras(WithBob(MakeRow(290.f, 900.f, 90.f, 34.f, 118.f, 0.3f, 3.0f, 0.f, false), 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f), 60.f, 300.f, 10.f, 0.f, 0.f);
 	case ELureMovementState::Sprint:
-		return WithExtras(WithBob(MakeRow(600.f, 2048.f, 90.f, 34.f, 165.f, 0.25f, 2.5f, 440.f, true), 3.0f, 1.8f, 1.2f, 1.5f, 0.f, 0.3f, 1.0f), 100.f, 400.f, 0.f, 0.f, 0.f);
+		Row = WithExtras(WithBob(MakeRow(600.f, 2048.f, 90.f, 34.f, 165.f, 0.25f, 2.5f, 440.f, true), 3.0f, 1.8f, 1.2f, 1.5f, 0.f, 0.3f, 1.0f), 100.f, 400.f, 0.f, 0.f, 0.f);
+		Row.CanFish = false;
+		return Row;
 	case ELureMovementState::Crouch:
 		return WithExtras(WithBob(MakeRow(180.f, 1600.f, 55.f, 34.f, 95.f, 0.20f, 0.5f, 380.f, true), 0.5f, 0.9f, 0.9f, 0.3f, 0.f, 0.f, 1.0f), 100.f, 400.f, 0.f, 0.f, 0.f);
 	case ELureMovementState::Prone:
-		return WithExtras(WithBob(MakeRow(90.f, 1200.f, 26.f, 25.f, 35.f, 0.45f, 0.2f, 0.f, false), 0.4f, 1.6f, 2.0f, 0.3f, 1.5f, 1.2f, 0.85f), 0.f, 0.f, 0.f, 12.f, 0.42f);
+		Row = WithExtras(WithBob(MakeRow(90.f, 1200.f, 26.f, 25.f, 35.f, 0.45f, 0.2f, 0.f, false), 0.4f, 1.6f, 2.0f, 0.3f, 1.5f, 1.2f, 0.85f), 0.f, 0.f, 0.f, 12.f, 0.42f);
+		Row.RodPoseStill = EFPArmsPose::ProneHold;
+		Row.RodPoseMoving = EFPArmsPose::ProneTuck;
+		Row.ArmsPitchFollowUp = 0.f;
+		Row.RodHoldClearance = 130.f;
+		return Row;
 	case ELureMovementState::Stand:
 	default:
 		return WithExtras(WithBob(MakeRow(350.f, 2048.f, 90.f, 34.f, 165.f, 0.25f, 1.0f, 420.f, true), 1.5f, 1.0f, 0.6f, 0.4f, 0.f, 0.f, 1.0f), 100.f, 400.f, 0.f, 0.f, 0.f);

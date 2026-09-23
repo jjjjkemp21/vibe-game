@@ -12,6 +12,8 @@
 #include "Game/LureGameMode.h"
 #include "GameMapsSettings.h"
 #include "Misc/PackageName.h"
+#include "UObject/EnumProperty.h"
+#include "UObject/UnrealType.h"
 #include <limits>
 
 // =====================================================================================================================
@@ -141,9 +143,25 @@ bool FQAMoveDataNumericCellsAreNumbers::RunTest(const FString& Parameters)
 			const FString Name = Header[Column].TrimStartAndEnd();
 			const FString Cell = Cells[Column].TrimStartAndEnd().TrimQuotes();
 			const FString Where = FString::Printf(TEXT("%s.%s = '%s'"), *Cells[0].TrimStartAndEnd(), *Name, *Cell);
-			if (Name == TEXT("CanJump"))
+			// T-006 (unreal-engineer): bool and enum columns by reflection (CanJump, CanFish, RodPoseStill, RodPoseMoving).
+			const FProperty* Property = FLureMovementRow::StaticStruct()->FindPropertyByName(FName(*Name));
+			const FEnumProperty* EnumProperty = CastField<FEnumProperty>(Property);
+			if (Name == TEXT("CanJump") || CastField<FBoolProperty>(Property))
 			{
 				TestTrue(Where + TEXT(" is True or False"), Cell.Equals(TEXT("True"), ESearchCase::IgnoreCase) || Cell.Equals(TEXT("False"), ESearchCase::IgnoreCase));
+			}
+			else if (EnumProperty && EnumProperty->GetEnum())
+			{
+				// QA (T-006 review): exactly one of the authored names. GetIndexByNameString alone also accepts the generated
+				// "<Enum>_MAX" entry (which imports as an invalid pose) and other spellings; require the exact short name.
+				const UEnum* Enum = EnumProperty->GetEnum();
+				const int32 NumAuthored = Enum->NumEnums() - (Enum->ContainsExistingMax() ? 1 : 0);
+				bool bAuthored = false;
+				for (int32 Index = 0; Index < NumAuthored; ++Index)
+				{
+					bAuthored |= Enum->GetNameStringByIndex(Index).Equals(Cell, ESearchCase::CaseSensitive);
+				}
+				TestTrue(Where + TEXT(" is exactly one of the enum's names (never _MAX)"), bAuthored);
 			}
 			else
 			{

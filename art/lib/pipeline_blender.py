@@ -5,6 +5,8 @@ Recipes run headless through tools/blender-run.ps1:
 
 Conventions: metric, 1 Blender unit = 1 m (= 100 Unreal units), Z up, prop pivot at bottom center,
 object + mesh named with the Unreal asset name (SM_...), materials named M_...
+Static meshes: export_fbx(). Rigged/animated assets (armature + skinned meshes + clips): export_skeletal_fbx(), which
+writes centimeter FBX files with no scale on any bone (see the notes above SKELETAL_FBX_SETTINGS).
 """
 import argparse
 import json
@@ -12,7 +14,7 @@ import sys
 from pathlib import Path
 
 import bpy
-from mathutils import Vector
+from mathutils import Matrix, Vector
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 EXPORT_ROOT = REPO_ROOT / "art" / "export"
@@ -119,6 +121,242 @@ def export_fbx(objects, out_path):
         bake_anim=False,
     )
     return str(out_path)
+
+
+# ---------------------------------------------------------------------------------------------------
+# Skeletal export (armature + skinned meshes + baked actions), in CENTIMETERS
+# ---------------------------------------------------------------------------------------------------
+# Why: a meter FBX (UnitScaleFactor 100) makes Unreal's "Convert Scene Unit" put a local scale of 100 on the `root`
+# bone while the child bones keep meter translations (found on SK_FPArms, T-004). Everything attached to a bone then
+# inherits 100x. So skeletal files are written the way Unreal wants them: header UnitScaleFactor = 1.0 (cm), bone
+# and mesh data in centimeter values, and no scale on any node (armature, mesh, bones, animation curves).
+#
+# How (recipes keep authoring in meters; nothing in the scene changes):
+# 1. export_skeletal_fbx() makes temporary copies of the armature, its skinned meshes and the actions its NLA strips
+#    and active action use, scaled x100 about the origin: bone rest heads/tails and vertices x100 (Armature/Mesh
+#    .transform), object locations x100, pose-bone and object `location` keys x100. Rotations, rolls and scale keys are
+#    untouched. The copies carry the originals' exact names (the originals are renamed for the moment).
+# 2. The scene unit scale is set to 0.01 (1 Blender unit = 1 cm) for the export, with
+#    apply_scale_options="FBX_SCALE_NONE" ("All Local"): FBX UnitScaleFactor is written as exactly 1.0, and the unit
+#    factor on the object transforms is 100 * 0.01 = 1 (0.99999998 in doubles; the exporter's float32 transform matrix
+#    rounds it to exactly 1.0, checked below). FBX_SCALE_ALL/UNITS would instead write UnitScaleFactor 0.99999998.
+# 3. The copies are deleted, names and scene units restored, and the written file is checked with fbx_scale_report():
+#    UnitScaleFactor == 1.0 and every Model node (Lcl Scaling) and every animated scale key within 1e-5 of 1.0.
+# Unreal import: Convert Scene ON (axis), Convert Scene Unit OFF (the file is cm; ON is an exact no-op too), Force
+# Front X Axis OFF, uniform scale 1.0.
+SKELETAL_FBX_CM_PER_UNIT = 100.0
+SKELETAL_FBX_SETTINGS = dict(
+    apply_unit_scale=True, apply_scale_options="FBX_SCALE_NONE", global_scale=1.0,
+    axis_forward="-Z", axis_up="Y", use_mesh_modifiers=True, mesh_smooth_type="FACE",
+    add_leaf_bones=False, primary_bone_axis="Y", secondary_bone_axis="X",
+    use_armature_deform_only=False, armature_nodetype="NULL",
+)
+SKELETAL_FBX_BAKE_SETTINGS = dict(
+    bake_anim_use_all_bones=True, bake_anim_use_nla_strips=True, bake_anim_use_all_actions=False,
+    bake_anim_force_startend_keying=True, bake_anim_step=1.0, bake_anim_simplify_factor=0.0,
+)
+# Modifiers whose result does not depend on the mesh's size (anything else must be applied before a skeletal export)
+_SCALE_FREE_MODIFIERS = {"ARMATURE", "TRIANGULATE", "EDGE_SPLIT", "WEIGHTED_NORMAL", "SUBSURF"}
+_SCALE_TOLERANCE = 1e-5
+
+
+def _is_location_path(data_path):
+    return data_path == "location" or data_path.endswith(".location")
+
+
+def _scaled_action_copy(action, k):
+    """Copy of `action` with every `location` F-curve (object or pose bone) multiplied by k."""
+    new = action.copy()
+    for layer in new.layers:
+        for strip in layer.strips:
+            for bag in strip.channelbags:
+                for fc in bag.fcurves:
+                    if not _is_location_path(fc.data_path):
+                        continue
+                    for kp in fc.keyframe_points:
+                        kp.co.y *= k
+                        kp.handle_left.y *= k
+                        kp.handle_right.y *= k
+    return new
+
+
+def _slot(action, identifier):
+    return next(s for s in action.slots if s.identifier == identifier)
+
+
+def _check_unit_scale(obj):
+    s = obj.matrix_basis.to_scale()
+    if max(abs(c - 1.0) for c in s) > _SCALE_TOLERANCE:
+        raise ValueError("%s has object scale %s: apply scale before a skeletal export" % (obj.name, tuple(s)))
+
+
+def export_skeletal_fbx(out_path, armature, meshes=(), bake_anim=False, **overrides):
+    """Export `armature` (+ its skinned `meshes`) as one FBX in centimeters with no scale on any node (see the notes
+    above SKELETAL_FBX_SETTINGS). bake_anim=True writes one take per unmuted NLA strip (take name = strip name), as
+    Unreal wants for one clip per file: mute every other track before calling. overrides: extra/changed exporter
+    keywords. The scene is left exactly as it was. Returns fbx_scale_report(out_path) (raises if the file is not cm or
+    any node or scale key is off 1.0)."""
+    ensure_fbx_exporter()
+    out_path = Path(out_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    if armature.type != "ARMATURE":
+        raise ValueError(armature.name + " is not an armature")
+    meshes = list(meshes)
+    for o in [armature] + meshes:
+        _check_unit_scale(o)
+    for m in meshes:
+        bad = [md.name for md in m.modifiers if md.type not in _SCALE_FREE_MODIFIERS]
+        if bad:
+            raise ValueError("%s: apply modifiers %s before a skeletal export (they depend on size)" % (m.name, bad))
+
+    k = SKELETAL_FBX_CM_PER_UNIT
+    S, Si = Matrix.Scale(k, 4), Matrix.Scale(1.0 / k, 4)
+    scene = bpy.context.scene
+    units = (scene.unit_settings.system, scene.unit_settings.scale_length)
+    ad = armature.animation_data
+    actions = []
+    if ad is not None:
+        if ad.action is not None:
+            actions.append(ad.action)
+        actions += [s.action for t in ad.nla_tracks for s in t.strips if s.action is not None]
+    actions = list(dict.fromkeys(actions))
+    originals = list(dict.fromkeys([armature, armature.data] + meshes + [m.data for m in meshes] + actions))
+    names = {id_: id_.name for id_ in originals}
+    made = []
+    try:
+        for id_ in originals:
+            id_.name = names[id_] + "~m"
+        act_map = {}
+        for a in actions:
+            c = _scaled_action_copy(a, k)
+            c.name = names[a]
+            act_map[a] = c
+            made.append(c)
+        arm_c = armature.copy()
+        arm_c.name = names[armature]
+        made.append(arm_c)
+        arm_c.data = armature.data.copy()
+        arm_c.data.name = names[armature.data]
+        made.append(arm_c.data)
+        scene.collection.objects.link(arm_c)
+        arm_c.data.transform(S)
+        arm_c.matrix_parent_inverse = S @ armature.matrix_parent_inverse @ Si
+        arm_c.matrix_basis = S @ armature.matrix_basis @ Si
+        cad = arm_c.animation_data
+        if cad is not None:
+            if cad.action is not None:
+                slot = cad.action_slot.identifier if cad.action_slot else None
+                cad.action = act_map[cad.action]
+                if slot:
+                    cad.action_slot = _slot(cad.action, slot)
+            for t in cad.nla_tracks:
+                for s in t.strips:
+                    if s.action is None:
+                        continue
+                    keep = (s.frame_start, s.frame_end, s.action_frame_start, s.action_frame_end,
+                            s.action_slot.identifier if s.action_slot else None)
+                    s.action = act_map[s.action]
+                    if keep[4]:
+                        s.action_slot = _slot(s.action, keep[4])
+                    if (s.frame_start, s.frame_end, s.action_frame_start, s.action_frame_end) != keep[:4]:
+                        raise RuntimeError("NLA strip %s changed its range when its action was swapped" % s.name)
+        objs = [arm_c]
+        for m in meshes:
+            mc = m.copy()
+            mc.name = names[m]
+            made.append(mc)
+            mc.data = m.data.copy()
+            mc.data.name = names[m.data]
+            made.append(mc.data)
+            scene.collection.objects.link(mc)
+            mc.data.transform(S, shape_keys=True)
+            if m.parent == armature:
+                mc.parent = arm_c
+            mc.matrix_parent_inverse = S @ m.matrix_parent_inverse @ Si
+            mc.matrix_basis = S @ m.matrix_basis @ Si
+            for md in mc.modifiers:
+                if md.type == "ARMATURE" and md.object == armature:
+                    md.object = arm_c
+            objs.append(mc)
+        scene.unit_settings.system = "METRIC"
+        scene.unit_settings.scale_length = 1.0 / k
+        bpy.context.view_layer.update()
+        select_only(objs)
+        kw = dict(SKELETAL_FBX_SETTINGS)
+        kw.update(filepath=str(out_path), use_selection=True, object_types={o.type for o in objs}, bake_anim=bake_anim)
+        if bake_anim:
+            kw.update(SKELETAL_FBX_BAKE_SETTINGS)
+        kw.update(overrides)
+        bpy.ops.export_scene.fbx(**kw)
+    finally:
+        scene.unit_settings.system, scene.unit_settings.scale_length = units
+        for id_ in made:
+            if isinstance(id_, bpy.types.Object):
+                bpy.data.objects.remove(id_, do_unlink=True)
+        for id_ in made:
+            if isinstance(id_, bpy.types.Armature):
+                bpy.data.armatures.remove(id_)
+            elif isinstance(id_, bpy.types.Mesh):
+                bpy.data.meshes.remove(id_)
+            elif isinstance(id_, bpy.types.Action):
+                bpy.data.actions.remove(id_)
+        for id_ in originals:
+            id_.name = names[id_]
+        bpy.context.view_layer.update()
+    report_ = fbx_scale_report(out_path)
+    if not report_["ok"]:
+        raise RuntimeError("Skeletal FBX is not clean cm / scale 1: %s" % json.dumps(report_))
+    return report_
+
+
+def fbx_scale_report(path):
+    """Read an FBX file (Blender's own parser) and report what Unreal will see for units and scale:
+    unit_scale_factor (1.0 = cm), the largest deviation from 1.0 of any Model node's Lcl Scaling (bones, armature,
+    meshes) and of any animated scale key (S curves), the largest |translation| of any node (cm magnitudes vs m),
+    and the take names. ok = cm header and every scale within 1e-5 of 1.0."""
+    ensure_fbx_exporter()
+    from io_scene_fbx import parse_fbx
+
+    root, _version = parse_fbx.parse(str(path))
+
+    def child(e, id_):
+        return next((c for c in e.elems if c.id == id_), None)
+
+    def props70(e):
+        p = child(e, b"Properties70")
+        return {c.props[0]: c.props[4:] for c in p.elems} if p else {}
+
+    gs = props70(child(root, b"GlobalSettings"))
+    objects = child(root, b"Objects")
+    node_dev, max_t, nodes = 0.0, 0.0, 0
+    s_nodes, curves, stacks = set(), {}, []
+    for e in objects.elems:
+        if e.id == b"Model":
+            nodes += 1
+            p = props70(e)
+            node_dev = max([node_dev] + [abs(v - 1.0) for v in p.get(b"Lcl Scaling", [1.0, 1.0, 1.0])])
+            max_t = max([max_t] + [abs(v) for v in p.get(b"Lcl Translation", [0.0, 0.0, 0.0])])
+        elif e.id == b"AnimationCurveNode" and e.props[1].split(b"\x00")[0] == b"S":
+            s_nodes.add(e.props[0])
+        elif e.id == b"AnimationCurve":
+            kv = child(e, b"KeyValueFloat")
+            curves[e.props[0]] = list(kv.props[0]) if kv else []
+        elif e.id == b"AnimationStack":
+            stacks.append(e.props[1].split(b"\x00")[0].decode())
+    anim_dev, s_curves = 0.0, 0
+    conns = child(root, b"Connections")
+    for c in (conns.elems if conns else []):
+        if c.props[0] == b"OP" and c.props[1] in curves and c.props[2] in s_nodes:
+            s_curves += 1
+            anim_dev = max([anim_dev] + [abs(v - 1.0) for v in curves[c.props[1]]])
+    usf = gs.get(b"UnitScaleFactor", [None])[0]
+    rep = {
+        "file": str(path), "unit_scale_factor": usf, "original_unit_scale_factor": gs.get(b"OriginalUnitScaleFactor", [None])[0],
+        "model_nodes": nodes, "max_node_scale_dev": node_dev, "scale_curves": s_curves, "max_anim_scale_dev": anim_dev,
+        "max_node_translation": round(max_t, 4), "takes": stacks,
+    }
+    rep["ok"] = usf == 1.0 and node_dev <= _SCALE_TOLERANCE and anim_dev <= _SCALE_TOLERANCE
+    return rep
 
 
 def world_bounds(objects):

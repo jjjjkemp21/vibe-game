@@ -413,7 +413,19 @@ bool FQAMoveInputAllSixActionsResolveByName::RunTest(const FString& Parameters)
 		TestNotNull(FString::Printf(TEXT("%s resolves"), Name), ULureInputSubsystem::GetInputActionByName(Name));
 	}
 	const TArray<FName> Listed = ULureInputSubsystem::GetInputActionNames();
-	TestEqual(TEXT("GetInputActionNames lists 6 actions"), Listed.Num(), 6);
+	// QA (T-006 review): the list is EXACTLY the known actions - the 6 movement actions, T-010's Interact, and T-006's Cast and Hook
+	// (tested in Project.Fishing.QA.Input.*). A new action must be added here on purpose; an unexpected, duplicate or renamed action fails.
+	const TArray<FName> Known = { TEXT("Move"), TEXT("Look"), TEXT("Jump"), TEXT("Sprint"), TEXT("Crouch"), TEXT("Prone"), TEXT("Interact"), TEXT("Cast"), TEXT("Hook") };
+	TestEqual(TEXT("GetInputActionNames lists exactly the known actions (6 movement + Interact + Cast + Hook)"), Listed.Num(), Known.Num());
+	TSet<FName> Unique;
+	for (const FName& Name : Listed)
+	{
+		bool bDuplicate = false;
+		Unique.Add(Name, &bDuplicate);
+		TestFalse(FString::Printf(TEXT("%s is listed once"), *Name.ToString()), bDuplicate);
+		TestTrue(FString::Printf(TEXT("%s is a known action"), *Name.ToString()), Known.Contains(Name));
+		TestNotNull(FString::Printf(TEXT("%s resolves by name"), *Name.ToString()), ULureInputSubsystem::GetInputActionByName(Name));
+	}
 	for (const TCHAR* Name : QAMovementInput::Names)
 	{
 		TestTrue(FString::Printf(TEXT("GetInputActionNames lists %s"), Name), Listed.Contains(FName(Name)));

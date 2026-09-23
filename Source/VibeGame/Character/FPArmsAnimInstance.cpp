@@ -10,6 +10,8 @@ void UFPArmsAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 	if (const ALurePlayerCharacter* Character = Cast<ALurePlayerCharacter>(TryGetPawnOwner()))
 	{
 		bHoldingRod = Character->IsHoldingRod();
+		ArmsPose = Character->GetArmsPose();
+		ArmsPoseBlendTime = Character->GetArmsPoseBlendTime();
 		Stance = Character->GetStance();
 		bSwimming = Character->IsSwimming();
 	}

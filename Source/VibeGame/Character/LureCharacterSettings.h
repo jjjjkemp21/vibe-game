@@ -110,4 +110,8 @@ public:
 
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category="Controls|Keys")
 	TArray<FKey> ProneKeys;
+
+	/** Use the nearest interactable: sell the cooler at a sell point (T-010); later NPCs */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category="Controls|Keys")
+	TArray<FKey> InteractKeys;
 };

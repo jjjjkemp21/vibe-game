@@ -20,6 +20,7 @@ ULureCharacterSettings::ULureCharacterSettings()
 	SprintKeys = { EKeys::LeftShift, EKeys::Gamepad_LeftThumbstick };
 	CrouchKeys = { EKeys::C, EKeys::LeftControl, EKeys::Gamepad_FaceButton_Right };
 	ProneKeys = { EKeys::Z, EKeys::Gamepad_DPad_Down };
+	InteractKeys = { EKeys::E, EKeys::Gamepad_FaceButton_Left };
 }
 
 #if WITH_EDITOR

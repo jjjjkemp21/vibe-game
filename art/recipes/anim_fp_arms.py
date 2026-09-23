@@ -8,6 +8,9 @@ Exports (art/export/Characters/):
   A_FPArms_StanceDip.fbx          armature only, one take  (one-shot, frames 0-8; import as additive)
   A_FPArms_Prone_HoldRod_Idle.fbx armature only, one take  (loop, frames 0-90; prone and still)
   A_FPArms_Prone_TuckRod.fbx      armature only, one take  (loop, frames 0-90; prone and crawling)
+All files are CENTIMETERS (FBX UnitScaleFactor 1.0, bone/mesh/key values in cm, no scale on any node) through
+pb.export_skeletal_fbx (art/lib/pipeline_blender.py); the rig itself is authored in meters. RESULT_JSON "fbx_units"
+has each file's unit/scale check, "reimport_check" the Blender re-import.
 Spec for Unreal: art/export/Characters/SK_FPArms.anim.md
 Previews (Saved/AgentLogs/previews/): SK_FPArms_anim.png (contact sheet) and full-size 1920x1080 first-person frames
 over the palette backdrops of art/lib/fp_preview.py (tropical day / dusk, lit like the mood boards):
@@ -761,38 +764,28 @@ def set_basis(arm_obj, basis):
 # ---------------------------------------------------------------------------------------------------------------
 # Export + re-import check
 # ---------------------------------------------------------------------------------------------------------------
-def export_skeletal(path, objs, bake):
-    pb.ensure_fbx_exporter()
-    Path(path).parent.mkdir(parents=True, exist_ok=True)
-    pb.select_only(objs)
-    kw = dict(filepath=str(path), use_selection=True, object_types={o.type for o in objs},
-              apply_unit_scale=True, apply_scale_options="FBX_SCALE_ALL", global_scale=1.0,
-              axis_forward="-Z", axis_up="Y", use_mesh_modifiers=True, mesh_smooth_type="FACE",
-              add_leaf_bones=False, primary_bone_axis="Y", secondary_bone_axis="X",
-              use_armature_deform_only=False, armature_nodetype="NULL", bake_anim=bake)
-    if bake:
-        kw.update(bake_anim_use_all_bones=True, bake_anim_use_nla_strips=True, bake_anim_use_all_actions=False,
-                  bake_anim_force_startend_keying=True, bake_anim_step=1.0, bake_anim_simplify_factor=0.0)
-    bpy.ops.export_scene.fbx(**kw)
-    return str(path)
-
-
 def export_all(arm_obj, mesh_obj):
+    """SK_FPArms + one file per action, in CENTIMETERS with no scale on any node (pb.export_skeletal_fbx: the rig is
+    authored in meters; the export writes cm values and UnitScaleFactor 1.0). Returns (paths, per-file scale reports)."""
     ad = arm_obj.animation_data
     ad.action = None
     for tr in ad.nla_tracks:
         tr.mute = True
     rest_pose(arm_obj)
     bpy.context.scene.frame_set(0)
-    out = {"SK_FPArms": export_skeletal(EXPORT_DIR / "SK_FPArms.fbx", [arm_obj, mesh_obj], bake=False)}
+    path = EXPORT_DIR / "SK_FPArms.fbx"
+    units = {"SK_FPArms": pb.export_skeletal_fbx(path, arm_obj, [mesh_obj], bake_anim=False)}
+    out = {"SK_FPArms": str(path)}
     for name, _f0, _f1 in ACTIONS:
         for tr in ad.nla_tracks:
             tr.mute = tr.name != name
-        out[name] = export_skeletal(EXPORT_DIR / (name + ".fbx"), [arm_obj], bake=True)
+        path = EXPORT_DIR / (name + ".fbx")
+        units[name] = pb.export_skeletal_fbx(path, arm_obj, [], bake_anim=True)
+        out[name] = str(path)
     for tr in ad.nla_tracks:
         tr.mute = True
     rest_pose(arm_obj)
-    return out
+    return out, units
 
 
 def snapshot():
@@ -839,21 +832,34 @@ def motion_check(arm_obj):
     return out
 
 
+def scale_dev(M):
+    return max(abs(c - 1.0) for c in M.to_scale())
+
+
 def reimport_check(exports, B, mesh_bounds, poser):
-    """Re-import every FBX: bone positions/axes, mesh bounds and baked poses must match the source."""
+    """Re-import every FBX (Blender's importer, scene in meters): bone positions/axes, mesh bounds and baked poses must
+    match the source. The files are cm (UnitScaleFactor 1.0), so the importer puts its cm -> m factor (0.01) on the
+    armature OBJECT and the bones themselves carry cm values: bone_heads_cm_max_error_mm compares the armature-space
+    bone heads with the source x100, and *_bone_scale_dev is the largest deviation from 1.0 of any bone's rest or posed
+    armature-space scale (no bone may carry the unit conversion)."""
     scene = bpy.context.scene
     fps = scene.render.fps
+    k = pb.SKELETAL_FBX_CM_PER_UNIT
     res = {}
     snap = snapshot()
     arm, mesh = import_fbx(exports["SK_FPArms"])
     mw = arm.matrix_world
     head_err = max((mw @ arm.data.bones[n].head_local - B[n].translation).length for n in B)
+    head_cm_err = max((arm.data.bones[n].head_local - B[n].translation * k).length for n in B)
     rot_err = max(math.degrees((mw.to_3x3().normalized() @ arm.data.bones[n].matrix_local.to_3x3()).to_quaternion()
                                .rotation_difference(B[n].to_3x3().to_quaternion()).angle) for n in B)
     mn, mx = pb.world_bounds([mesh])
     res["SK_FPArms"] = {
-        "bones": len(arm.data.bones), "armature_object_scale": [round(c, 4) for c in mw.to_scale()],
+        "bones": len(arm.data.bones), "armature_object_scale": [round(c, 6) for c in mw.to_scale()],
         "max_bone_head_error_mm": round(head_err * 1000, 3), "max_bone_axis_error_deg": round(rot_err, 3),
+        "bone_heads_cm_max_error_mm": round(head_cm_err * 10, 3),
+        "rest_bone_scale_dev": max(scale_dev(b.matrix_local) for b in arm.data.bones),
+        "hand_r_head_cm": [round(c, 3) for c in arm.data.bones["hand_r"].head_local],
         "mesh_min_m": [round(c, 4) for c in mn], "mesh_max_m": [round(c, 4) for c in mx],
         "source_min_m": [round(c, 4) for c in mesh_bounds[0]], "source_max_m": [round(c, 4) for c in mesh_bounds[1]],
         "skinned_groups": len(mesh.vertex_groups),
@@ -864,7 +870,13 @@ def reimport_check(exports, B, mesh_bounds, poser):
         arm, _m = import_fbx(exports[name])
         act = arm.animation_data.action if arm.animation_data else None
         entry = {"action": act.name if act else None,
-                 "frame_range": [round(c, 2) for c in act.frame_range] if act else None}
+                 "frame_range": [round(c, 2) for c in act.frame_range] if act else None,
+                 "armature_object_scale": [round(c, 6) for c in arm.matrix_world.to_scale()]}
+        sdev = 0.0
+        for f in range(0, f1 + 1, 3):
+            scene.frame_set(f)
+            sdev = max([sdev] + [scale_dev(pbone.matrix) for pbone in arm.pose.bones])
+        entry["posed_bone_scale_dev"] = sdev
         fn = poser.source(name)
         if fn is not None:
             err, rot = 0.0, 0.0
@@ -1569,7 +1581,7 @@ def main():
     metrics = {name: poser.source(name)(0)[1] for name, _a, _b in ACTIONS if poser.source(name)}
 
     motion = motion_check(arm_obj)
-    exports = export_all(arm_obj, mesh_obj)
+    exports, fbx_units = export_all(arm_obj, mesh_obj)
     check = reimport_check(exports, B, mesh_bounds, poser)
 
     # SM_Rod_Basic staged on hand_r_rod for the checks and previews (zero transform = Copy Transforms of the bone)
@@ -1591,6 +1603,7 @@ def main():
     P_tuck0, _ = poser.tuck(0)
     extra = {
         "exports": exports,
+        "fbx_units": fbx_units,
         "skeleton": "SKEL_FPArms (armature object 'Armature' is dropped by Unreal; root bone = 'root')",
         "bones": [{"name": b.name, "parent": b.parent.name if b.parent else None, "deform": b.use_deform,
                    "head_m": [round(c, 4) for c in b.head_local], "tail_m": [round(c, 4) for c in b.tail_local]}

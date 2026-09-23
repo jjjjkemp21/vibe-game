@@ -13,36 +13,57 @@ Previews (`Saved/AgentLogs/previews/`; first-person frames are 1920x1080 over th
 (prone hold under a 60 cm ceiling), `SK_FPArms_prone_tuck_gap_fp.png` (tuck in the 60 cm gap),
 `SK_FPArms_prone_wall_fp.png` (tuck, wall 50 cm ahead), `SK_FPArms_prone_blend.png` (hold -> tuck crossfade and the
 rod-tip path), `SK_FPArms_prone_clearance.png` (side/top views with the ceiling, floor and wall lines).
+`SK_FPArms_cm_reimport.png` (2026-09-23 unit check: the old meter files, left, and the new cm files, right,
+re-imported and posed by HoldRod_Idle / Prone_TuckRod frame 0, eye and side views; identical, max 0.0004 mm).
 
 ## Files (art/export/Characters/)
 
 | File | Content | Import as |
 |---|---|---|
-| `SK_FPArms.fbx` | skinned mesh (1456 tris, 2 materials) + 16-bone skeleton, bind pose, **no animation** (unchanged since 720cdd5) | Skeletal Mesh `SK_FPArms`, new skeleton renamed **`SKEL_FPArms`** |
-| `A_FPArms_Idle.fbx` | armature only, one take `A_FPArms_Idle` (unchanged) | Animation on `SKEL_FPArms` |
-| `A_FPArms_HoldRod_Idle.fbx` | armature only, one take (**changed**: designer B-S1 pose) | Animation on `SKEL_FPArms` (reimport over the existing asset) |
-| `A_FPArms_StanceDip.fbx` | armature only, one take (unchanged) | Animation on `SKEL_FPArms`, then set **additive** (below) |
-| `A_FPArms_Prone_HoldRod_Idle.fbx` | armature only, one take (**new**) | Animation on `SKEL_FPArms` |
-| `A_FPArms_Prone_TuckRod.fbx` | armature only, one take (**new**) | Animation on `SKEL_FPArms` |
+| `SK_FPArms.fbx` | skinned mesh (1456 tris, 2 materials) + 16-bone skeleton, bind pose, **no animation** | Skeletal Mesh `SK_FPArms`, skeleton **`SKEL_FPArms`** |
+| `A_FPArms_Idle.fbx` | armature only, one take `A_FPArms_Idle` | Animation on `SKEL_FPArms` |
+| `A_FPArms_HoldRod_Idle.fbx` | armature only, one take | Animation on `SKEL_FPArms` |
+| `A_FPArms_StanceDip.fbx` | armature only, one take | Animation on `SKEL_FPArms`, set **additive** (below) |
+| `A_FPArms_Prone_HoldRod_Idle.fbx` | armature only, one take | Animation on `SKEL_FPArms` |
+| `A_FPArms_Prone_TuckRod.fbx` | armature only, one take | Animation on `SKEL_FPArms` |
 
 One clip per file, so the asset name = file name = take name.
+
+**2026-09-23: all six files re-exported in CENTIMETERS** (fix for the 100x `root` bone scale found at import). Same
+meshes, bones, rest pose, rolls, `hand_r_rod`/`hand_l_crank` frames, clips, names and timings; only the unit changed.
+All six must be re-imported (steps under "Unreal import").
 
 ## Axes, scale, origin
 
 - Origin = **camera / eye point**. Attach the arms mesh to the first-person camera with a **zero relative
   transform**. No root motion anywhere; the `root` bone never moves.
 - Unreal = Blender x 100 cm with Y negated: Blender +X = Unreal +X (forward), Blender +Y (left) = Unreal -Y, Z up.
-- Exported with `apply_scale_options=FBX_SCALE_ALL`, `add_leaf_bones=False`, primary bone axis Y / secondary X, NLA
-  strips baked at 30 fps, no curve simplification. The Blender armature object is named `Armature`, so Unreal's FBX
-  importer drops that node and `root` becomes the skeleton root.
-- Blender re-import check (RESULT_JSON `reimport_check`): 16 bones, bone heads and axes 0.0 mm / 0.0 deg off, mesh
-  bounds identical to the model-artist's static export (x -12.4..67.9 cm, y +-26.0 cm, z -34.8..-16.1 cm from the
-  eye), baked poses of all 5 clips 0.0 mm / 0.0 deg off at frames 0/30/45/60/90 (hands, fingers, thumb, `hand_r_rod`,
-  `hand_l_crank`), take ranges 0-90 / 0-90 / 0-8 / 0-90 / 0-90. The re-exported SK_FPArms / Idle / StanceDip were
-  compared with the committed files: identical content, so those files were not touched.
-- Expected in Unreal: mesh bounds about 80 x 52 x 19 cm; `hand_r` at (48, 17, -21.5) cm in component space.
-  **If the skeleton shows an extra `Armature` root bone, or the bounds are 100x off, stop and report it**; don't fix it
-  in the editor.
+- **Units: the files are centimeters.** FBX header `UnitScaleFactor` = `OriginalUnitScaleFactor` = **1.0** exactly;
+  bone translations, vertices and translation keys are cm values (e.g. `hand_r` bind head (48, -17, -21.5) in the file);
+  no scale on any node: armature node, mesh node, all 16 bones and every scale key are 1.0 (largest deviation
+  3.6e-7, float noise). Nothing for Unreal to convert, so every bone imports at scale 1.0.
+- Export: `pb.export_skeletal_fbx()` in `art/lib/pipeline_blender.py` (shared by every skeletal asset; settings in
+  `SKELETAL_FBX_SETTINGS` / `SKELETAL_FBX_BAKE_SETTINGS`). The rig is authored in meters; the export works on temporary
+  x100 copies (bones, vertices, object and pose `location` keys; rotations, rolls and scale keys untouched) with the
+  scene unit scale at 0.01 and `apply_unit_scale=True, apply_scale_options="FBX_SCALE_NONE"` ("All Local"),
+  `global_scale=1.0`, `axis_forward=-Z, axis_up=Y` (unchanged), `add_leaf_bones=False`, primary bone axis Y /
+  secondary X, `use_armature_deform_only=False`, `armature_nodetype=NULL`, `use_mesh_modifiers=True`,
+  `mesh_smooth_type=FACE`; clips: NLA strips baked at 30 fps, all bones keyed, step 1, no curve simplification.
+  The export reads the written file back and fails unless the header is 1.0 and every node/scale key is within 1e-5
+  of 1.0 (RESULT_JSON `fbx_units`). The Blender armature object is named `Armature`, so Unreal's FBX importer drops
+  that node and `root` becomes the skeleton root.
+- Checked against the previous (meter) files, value by value: node translations and translation keys exactly x100
+  (max error 2.4e-5 cm), rotations identical (max 4.6e-5 deg), vertices x100 (3.6e-6 cm), per-corner normals, UVs,
+  weights, key times and take names/ranges identical. Against the model-artist's static `sk_fp_arms.py` export: same
+  vertices in Unreal space (max 3e-5 cm), same bounds x -12.4..67.9, y +-26.0, z -34.8..-16.1 cm, same -90 deg axis
+  node, same forward axis.
+- Blender re-import check (RESULT_JSON `reimport_check`): 16 bones, bone heads and axes 0.0 mm / 0.0 deg off (the
+  importer puts its cm -> m factor 0.01 on the armature object; bone heads in the armature are the source x100 with
+  0.0 mm error; rest and posed bone scales 1.0 within 1.1e-6), mesh bounds identical, baked poses of all 5 clips
+  0.0 mm / 0.0 deg off at frames 0/30/45/60/90, take ranges 0-90 / 0-90 / 0-8 / 0-90 / 0-90.
+- Expected in Unreal: mesh bounds about 80 x 52 x 19 cm; `hand_r` at (48, 17, -21.5) cm in component space; the
+  `root` bone's local scale 1.0. **If the skeleton shows an extra `Armature` root bone, any bone has a scale other than
+  1.0, or the bounds are 100x off, stop and report it**; don't fix it in the editor.
 
 ## Skeleton `SKEL_FPArms` (16 bones, unchanged)
 
@@ -120,13 +141,40 @@ points back and out to the right). In Prone_HoldRod_Idle frame 0: (42.9, 21.0, -
 
 ## Unreal import (editor-operator)
 
-1. `SK_FPArms.fbx` is unchanged: nothing to do if it is already imported. Otherwise: `/Game/Art/Characters/FPArms/`,
-   Skeletal Mesh, create a new skeleton and rename it `SKEL_FPArms`; import animations **off**; no physics asset;
-   Force Front X Axis **off**; uniform scale 1.0; normals imported. Materials `M_FPArms_Sleeve` (#7C8A63) and
+Import settings for these files (and every skeletal FBX from `pb.export_skeletal_fbx`): **Convert Scene ON** (axis
+conversion, as before), **Convert Scene Unit OFF** (the file is already cm; ON would also be an exact no-op because the
+header is exactly 1.0, but OFF makes it explicit), **Force Front X Axis OFF**, **Import Uniform Scale 1.0**, no import
+rotation/translation offset, normals imported, no physics asset. In `Content/Python/pipeline_unreal.py` terms:
+`_fbx_options(...)` with `convert_scene_unit=False`; `reimport_interchange(path, convert_scene_unit=False, ...)`.
+
+**Re-import of the existing assets (2026-09-23 cm fix)**, in this order, all in `/Game/Art/Characters/FPArms/`
+(the source paths are unchanged, `art/export/Characters/<name>.fbx`):
+1. `SK_FPArms`: re-import with Convert Scene Unit **OFF** and **Update Skeleton Reference Pose ON**
+   (`reimport_interchange("/Game/Art/Characters/FPArms/SK_FPArms", convert_scene_unit=False,
+   update_skeleton_ref_pose=True)`). The `SKEL_FPArms` reference pose must change: `root` scale 100 -> 1 and bone
+   translations m -> cm. Same 16 bones and hierarchy, so the skeleton, `ABP_FPArms` and sockets stay valid.
+2. All five clips, Convert Scene Unit **OFF** (`reimport_interchange("/Game/Art/Characters/FPArms/<A_FPArms_*>",
+   convert_scene_unit=False)`): `A_FPArms_Idle`, `A_FPArms_HoldRod_Idle`, `A_FPArms_StanceDip`,
+   `A_FPArms_Prone_HoldRod_Idle`, `A_FPArms_Prone_TuckRod`. Their old tracks carry the 100x root, so none may be left
+   un-reimported. Afterwards check that `A_FPArms_StanceDip` is still Additive Local Space / Skeleton Reference Pose and
+   the loops still loop with root motion off (steps 3-4 below).
+3. Verify before handing back (stop and report if any fails):
+   - every bone's reference-pose LOCAL scale is 1.0, `root` included
+     (`skel.get_reference_pose().get_ref_bone_pose(b, unreal.AnimPoseSpaces.LOCAL).scale3d`);
+   - LOCAL translation lengths in cm, not m: `arms` 26.9 cm (was 0.269 under a 100x root), `lowerarm_r` 31.0 cm,
+     `hand_r` 27.0 cm;
+   - `skeleton_report()` unchanged from the first import: 16 bones, component-space heads `hand_r` (48, 17, -21.5),
+     `hand_r_rod` (54.1, 13.8, -24.1), `hand_l_crank` (50.5, 3.8, -30.9) cm, bounds about 80.3 x 51.9 x 18.7 cm;
+   - `A_FPArms_HoldRod_Idle` frame 0: `hand_r_rod` at (42.9, 21.0, -23.0) cm in component space;
+   - PIE shot from the camera like `Saved/AgentLogs/editor/20260923-t004-import/pie_fp_rod.png`: same framing, and
+     SM_Rod_Basic on `hand_r_rod` now at scale 1.0 even with a scale-inheriting attach rule.
+
+First-time import (a fresh project or a new copy), for reference:
+1. `SK_FPArms.fbx` -> `/Game/Art/Characters/FPArms/`, Skeletal Mesh, create a new skeleton and rename it
+   `SKEL_FPArms`; import animations **off**; settings above. Materials `M_FPArms_Sleeve` (#7C8A63) and
    `M_FPArms_Skin` (#B98563).
-2. `A_FPArms_HoldRod_Idle.fbx`: **reimport** over the existing asset (the pose changed). New
-   `A_FPArms_Prone_HoldRod_Idle.fbx` and `A_FPArms_Prone_TuckRod.fbx` -> same folder: animation only,
-   Skeleton = `SKEL_FPArms`, animation length = exported time, 30 fps (from the file). Names stay `A_FPArms_*`.
+2. The five `A_FPArms_*.fbx` -> same folder: animation only, Skeleton = `SKEL_FPArms`, animation length = exported
+   time, 30 fps (from the file), settings above. Names stay `A_FPArms_*`.
 3. `A_FPArms_StanceDip`: Additive Anim Type = **Local Space**, Base Pose Type = **Skeleton Reference Pose**.
 4. All loops (`Idle`, `HoldRod_Idle`, `Prone_HoldRod_Idle`, `Prone_TuckRod`): looping in their players; Enable Root
    Motion off. **Don't strip `hand_r_rod` tracks** (it's non-deforming but animated in the tuck).
@@ -247,3 +295,6 @@ sways the two fists with each crawl step. The tuck keeps 5.5 cm to a 50 cm wall,
 - **Crossfade hold <-> tuck**: for about 0.1 s mid-blend the rod turns in the fist and its tip sweeps up to ~1.9 m out
   to the player's right, low. It crosses a side wall if one is that close; it never crosses the view or rises.
 - **Dusk in the gap** is very dark in the previews (low sun in front, rock ceiling): expected, not a pose issue.
+- **Polygon order** of `SK_FPArms.fbx` can differ between reruns of the recipe (bmesh extrude ordering in the
+  mesh recipe's thumb, `meshkit.extrude_branch`): the same polygons, winding, normals and weights, only listed in a
+  different order. No visual or gameplay effect.

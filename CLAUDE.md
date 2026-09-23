@@ -29,7 +29,7 @@ You are building a game for Jimmy. Jimmy does not read or write code: he plays b
 1. Gameplay logic is C++. Blueprints only as thin child classes holding asset references and default values; no logic in Blueprint graphs.
 2. Tuning lives in data (DataTables with CSV/JSON sources in the repo, or DataAssets), so "feel" changes are data edits.
 3. Never edit `.uasset`, `.umap` or `.blend` as text (a hook blocks it). Change Unreal assets through the editor (unreal-mcp) or Unreal Python; Blender assets through recipes.
-4. One editor user at a time: only `editor-operator` (building/changing things) or `playtester` (playing in PIE, read-only), or you when not delegating, may call `unreal-mcp`, and only after the lead hands them the editor. One call at a time; never two editor agents in parallel.
+4. One editor user at a time: only an `editor-operator` of any level (building/changing things) or `playtester` (playing in PIE, read-only), or you when not delegating, may call `unreal-mcp`, and only after the lead hands them the editor. One call at a time; never two editor agents in parallel.
 5. Batch editor work: one Python script doing many operations beats many small tool calls. Put reusable code in `Content/Python/pipeline_unreal.py`.
 6. Evidence before "done": build result, test report, and for anything visible a screenshot or preview you actually looked at. Follow the `verification` skill.
 7. Commit after every verified step with a clear message. Commit before any long or risky editor session.
@@ -46,6 +46,7 @@ Form: `powershell -NoProfile -ExecutionPolicy Bypass -File tools/<script>.ps1 [a
 - `tools/run-tests.ps1 -Filter Project`: headless automation tests with a JSON report.
 - `tools/unreal-python.ps1 -Function <fn> -ArgsJson '<json>'`: headless Unreal Python (editor closed).
 - `tools/blender-run.ps1 -Recipe art/recipes/<file>.py`: headless Blender recipe (export + preview + stats).
+- `tools/cleanup.ps1 [-Paths a,b] [-Apply]`: frees disk space (stale screenshots, scratch, old test runs and logs, named superseded Progress photos). Dry run unless -Apply; only touches git-ignored output folders.
 Every script writes `Saved/AgentLogs/status/<script>.json` (state, message, log path).
 
 ## Conventions
@@ -65,21 +66,71 @@ Every script writes `Saved/AgentLogs/status/<script>.json` (state, message, log 
 - `level-designer`: designs maps and play spaces (flow, pacing, fishing spots, cover and sight lines, crawl routes): plan in `docs/levels/`, layout data in `data/levels/*.json` (the source of truth), a generic builder `Content/Python/levels/build_level.py` that the editor-operator runs, and Blender layout previews. It never calls unreal-mcp itself.
 - `qa-engineer`: senior QA. Writes independent unit, data-validation and integration tests (owns `Source/VibeGame/Tests/`, `docs/TEST_PLAN.md`), runs the full suite, reports PASS/FAIL with evidence; never changes production code.
 - `playtester`: plays the game in PIE (injected input + screenshots), runs the feature scenario and free play, reports bugs and feel notes; read-only.
+- `janitor`: housekeeping for Jimmy's disk (Jimmy, 2026-09-23). The lead runs it after each push to GitHub, at milestones, or when Saved/ passes ~500 MB. Deletes only through `tools/cleanup.ps1`.
 - `designer`: reviews playtester screenshots and previews against GAME_DESIGN.md / ART_STYLE.md and the mood boards; verdict + prioritized change requests; changes nothing.
 - Typical flow per task: implementer (unreal-engineer / model-artist / animation-artist / level-designer / editor-operator) -> qa-engineer tests -> playtester plays -> designer reviews -> lead fixes or accepts -> release gate before publishing.
 C++ work and Blender work (model-artist, animation-artist) can run in parallel; two Blender agents can too, as long as they work on different recipes.
-- Lanes (parallel C++): the main checkout `C:\GameDev\VibeGame` is the editor lane (editor-operator, playtester, art commits, integration by the lead). C++ tasks may run in worktree lanes `C:\GameDev\VibeGame-lanes\<lane>` on branch `lane/<lane>`, each with its own build and headless tests, so builds don't close the editor and two engineers can work at once. Lanes change only text (C++, CSV/JSON data sources, tests, docs they own), never `.uasset`/`.umap`. Builds queue safely (`-WaitMutex`). The lead merges a lane into `main` after its tests pass (rebase, fast-forward), then rebuilds the main checkout (editor closed briefly) before editor or playtest work. Keep engineering lanes to about 2; more adds merge overhead without speed. A QA lane (`qa1`) exists for independent test work while the editor runs in main. Anything touching the running editor, or closing/building/relaunching it, is serialized by you (the lead).
+- Lanes (parallel C++): the main checkout `C:\GameDev\VibeGame` is the editor lane (editor-operator, playtester, art commits, integration by the lead). C++ tasks may run in worktree lanes `C:\GameDev\VibeGame-lanes\<lane>` on branch `lane/<lane>`, each with its own build and headless tests, so builds don't close the editor and two engineers can work at once. Lanes change only text (C++, CSV/JSON data sources, tests, docs they own), never `.uasset`/`.umap`. Builds queue safely (`-WaitMutex`). The lead merges a lane into `main` after its tests pass (rebase, fast-forward), then rebuilds the main checkout (editor closed briefly) before editor or playtest work. Use as many lanes and agents as the work needs for speed and accuracy (Jimmy, 2026-09-23). Give each lane one task, and pick parallel tasks that don't edit the same files; if two must share a file (e.g. DT_Movement), keep the edits additive and say so in both briefs. Create a lane with `git worktree add ../VibeGame-lanes/<lane> -b lane/<lane> <base>` and copy `tools/local.settings.json` into it. A QA lane (`qa1`) exists for independent test work while the editor runs in main. Anything touching the running editor, or closing/building/relaunching it, is serialized by you (the lead).
 - The lead is the project manager: assigns tasks, briefs agents with the relevant vision and rules, verifies results, and keeps `docs/TASKS.md` current.
 - Work log: when a task starts, the lead adds `In progress: <owner agent>, started <date>` to that task line in `docs/TASKS.md`; when it's done, the task moves to "Done" with its commit hash. Before starting work, every agent reads the task lines marked "In progress" so it knows what the others are doing and stays off their files.
 
 ## Token budget (Jimmy asked to keep usage down)
-- Agents write their full report to a file (`Saved/AgentLogs/<area>/<yyyyMMdd-HHmmss>-<topic>.md`, e.g. `qa/`, `playtest/`, `build/`) and RETURN only a short summary: at most ~25 lines. That means verdict, key numbers, commit hash, blockers, the report path. No full test lists, no pasted file contents, no long tables unless asked.
+- Agents write their full report to a file (`Saved/AgentLogs/<area>/<yyyyMMdd-HHmmss>-<topic>.md`, e.g. `qa/`, `playtest/`, `build/`) and RETURN only a short summary: at most ~25 lines. That means verdict, key numbers, commit hash, blockers, the report path. No full test lists, no pasted file contents, no long tables unless asked. If writing the report file is refused, return the report as text; the lead saves it to the report path.
 - Tool output: filter it (`tail`, `grep`, `head`, `--stat`) instead of dumping whole logs; Read big files with offset/limit; never paste base64 images; read only the images you must judge.
 - Lead: brief agents concisely and point to files (specs, reports) instead of restating them. Resume an agent (SendMessage) only for short follow-ups where its context really helps; otherwise start a fresh agent with pointers to the relevant files. Delegate broad searches. Suggest `/compact` to Jimmy at milestones (e.g. after a push).
+- Model and effort per agent. They are pinned in each agent's frontmatter (`model`, `effort`).
+  - Model: **every agent uses Opus 5.5 (`claude-opus-5-5`)**. Jimmy, 2026-09-23: quality first, token use is not a concern. The built-in helpers (Explore, general-purpose, Plan) also get `model: opus` in the Agent call.
+  - Effort: set per agent and experience level (Jimmy, 2026-09-23). The lead picks the level from the task, not the role:
+    - junior: small, well-specified work that follows an existing pattern
+    - mid: standard features
+    - senior: very complex work, i.e. new systems or architecture, networking, hard bugs, new hero assets or new hard animations
+    Each level's own agent `description` says exactly when to use it. "Hypercode", as Jimmy called it, = senior = effort `max`.
+  Agent names carry their level and effort (Jimmy, 2026-09-23): `<role>-<junior|mid|senior>-<effort>`.
+  | Role | junior | mid | senior |
+  |---|---|---|---|
+  | unreal-engineer | `unreal-engineer-junior-medium` | `unreal-engineer-mid-high` | `unreal-engineer-senior-max` |
+  | qa-engineer | `qa-engineer-junior-low` | `qa-engineer-mid-medium` | `qa-engineer-senior-max` |
+  | model-artist | `model-artist-junior-medium` | `model-artist-mid-high` | `model-artist-senior-max` |
+  | animation-artist | `animation-artist-junior-medium` | `animation-artist-mid-high` | `animation-artist-senior-max` |
+  | level-designer | `level-designer-junior-low` | `level-designer-mid-medium` | `level-designer-senior-max` |
+  | editor-operator | `editor-operator-junior-low` | `editor-operator-mid-medium` | `editor-operator-senior-max` |
+  | playtester | - | `playtester-low` | - |
+  | designer | - | `designer-low` | - |
+  | janitor | - | `janitor-low` | - |
+  Elsewhere in this file and in the skills, a plain role name (e.g. "editor-operator") means that role at any level.
+  Junior and senior agents are thin wrappers: they read and follow the role's mid-level file (e.g. `.claude/agents/unreal-engineer-mid-high.md`), so each role's rules live in one file.
+  A junior that finds the task bigger than briefed stops and reports back, and the lead re-assigns it to a senior.
+  **Mixed-difficulty tasks (Jimmy, 2026-09-23).** Split a task into parts by difficulty and give each part its own agent at the right level. Example: a senior designs and builds the core system; a mid adds the standard feature plumbing; a junior adds data rows, the placeholder text UI and routine tests. Give each part its own files or lane, brief the order and hand-offs (a junior starts from the senior's committed API), and list the parts on the task line in docs/TASKS.md.
+  **Ultracode, used sparingly (Jimmy, 2026-09-23).** Only for the very toughest work, and only where a single senior (effort max) isn't enough. That means:
+    (a) a foundational design that is expensive to undo later, such as the multiplayer sync model, the creature AI and senses foundation, or the noise/mic pipeline; or
+    (b) a senior agent already failed or got stuck on it; or
+    (c) a bug with an unknown cause that survived one senior investigation.
+  Everything else, including most senior work, is one senior agent plus the normal QA gate. Before running a workflow, the lead writes on the task line which of (a)-(c) applies. The workflow is run as a Workflow (load the `workflow-authoring` skill first), one phase per workflow so the lead reviews between them:
+    1. Design, as a judge panel: 3 senior agents (`agentType: '<role>-senior-max'`) propose independent approaches; judges score them against the vision and the specs; the winner is synthesized into docs/specs/.
+    2. Implementation: one senior in a lane.
+    3. Adversarial review: reviewers with different lenses try to break it, and a majority vote decides each finding.
+    4. Fix and verify, then the normal QA, playtest and designer gate.
+  **Keep workflows small (Jimmy, 2026-09-23).** He stopped a T-026 review that took 31 agents and ~4M tokens because it used too many resources. Limits:
+    - At most ~8 agents per workflow.
+    - One skeptic per finding, and 3 only for a blocker.
+    - A review usually has 2-3 lenses, not 4.
+    - Set a time limit.
+    - Save partial results: a stopped run's findings can be read from its journal.
+  **Ultracode names (Jimmy, 2026-09-23).** Every ultracode run and agent has a set name, so the lead and Jimmy can tell who did what:
+    - The workflow's `meta.name` is `ultracode-<task>-<phase>`, e.g. `ultracode-T026-review` or `ultracode-T016-design`.
+    - Every agent() call gets `agentType` = a named team agent (e.g. `unreal-engineer-senior-max`) and `label` = `ultracode:<phase>:<agentType>:<job>`. Phases are design, judge, build, review, verify and fix; the job is the lens, approach or finding number. Examples:
+      - `ultracode:design:unreal-engineer-senior-max:risk-first`
+      - `ultracode:judge:qa-engineer-senior-max:1`
+      - `ultracode:review:unreal-engineer-senior-max:networking`
+      - `ultracode:verify:qa-engineer-senior-max:networking-3`
+    - Never use unnamed default workflow agents. Report findings and results under these labels.
+  Never fan out editor work: unreal-mcp stays one agent at a time (rule 4). The workflow size guideline is set in /config ("Dynamic workflow size"; Jimmy can raise it).
+  New agents (whenever Jimmy asks for one, or the lead adds one) get `model: claude-opus-5-5` and an effort chosen like this: high for math, geometry, code or tricky logic; medium for known procedures; low for checklists, reviews and chores. Add junior/senior levels where the role's work varies in difficulty, then name each level `<role>-<level>-<effort>`, add it to this table and tell Jimmy.
+  Changing a model, or upgrading to a newer one, needs Jimmy's OK.
 - Subagent conversations end with their task; nothing to compact there. Keeping reports short is what saves tokens.
 
 ## Working with Jimmy
 - He playtests. Feedback notes land in `Saved/Playtest/` once the feedback key exists (see `playtest-feedback` skill). Turn each note into a task in `docs/TASKS.md`.
 - Report in plain language: what changed, what to try next time he plays, and anything you need from him.
-- Progress screenshots for Jimmy: `C:\GameDev\VibeGame\Progress\` (not in git). Whenever something visible is verified (a new asset preview, a level screenshot, a playtest shot, a before/after), the lead copies the best 1-3 images there as `<yyyy-MM-dd>_<NN>_<short_plain_description>.png` (NN continues the day's numbering). Only verified, looked-at images; no logs.
+- Progress screenshots for Jimmy: `C:\GameDev\VibeGame\Progress\` (not in git). Whenever something visible is verified (a new asset preview, a level screenshot, a playtest shot, a before/after), the lead copies the best 1-3 images there as `<yyyy-MM-dd>_<NN>_<short_plain_description>.png` (NN continues the day's numbering). Only verified, looked-at images; no logs. Superseded photos are pruned by the janitor (newest per subject; mood boards and palette stay).
 - Source of truth for what we build: `docs/GAME_DESIGN.md`, `docs/ART_STYLE.md`, `docs/TASKS.md`.

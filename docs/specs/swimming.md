@@ -52,7 +52,11 @@ Code: `Source/VibeGame/Character/LureSwimMovement.cpp` (movement), `LureWaterVol
 - **Ladders** (`ALureLadder`) allow higher edges: a swimmer in the ladder's grab zone who presses Jump climbs to the
   edge above it (up to the ladder's `MaxClimbHeight`, default 300 cm), whichever way they face.
 - **Fishing (T-006):** `ALurePlayerCharacter::IsSwimming()` is true from falling in until standing on land again (the
-  climb included); `OnSwimStateChanged(bool)` fires on every machine when it changes. Swimming cancels fishing.
+  climb included); `OnSwimStateChanged(bool)` fires on every machine when it changes. Swimming cancels fishing, and the
+  climbs (`MOVE_Custom`: ClimbOut, LedgeClimb) are busy too (fishing-rules.md, "Swimming and climbing"). Fishing reads
+  the state each tick and never listens to the event, so a late settled event can't cancel a fresh cast. In the water
+  the rod is put away and the arms' pose (ABP_FPArms, T-006) is `Idle`.
+- **HUD:** the refused-stance hint (`GetStanceHintText()`) is a line of `ALureHUD`'s plain-text status.
 - **Networking:** the swim state is the engine's movement mode (predicted by the owner, simulated by the server from the
   same moves, `ReplicatedMovementMode` to other players). Climbs: see "Networking contract" below.
 - **Arms (placeholder):** lowered out of view while swimming (`SwimArmsDrop`, `SwimArmsPitch`). Slot for the real clip:

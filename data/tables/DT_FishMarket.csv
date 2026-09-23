@@ -1,0 +1,3 @@
+Name,DisplayName,SellMultiplier,DevComment
+Default,"Fish buyer",1.0,"Used by sell points without a MarketId (ULureProgressionSettings DefaultMarketId). Pays the fish's rolled Value."
+PalmKeyDock,"Palm Key dock",1.0,"The Palm Key dock sell point (T-010). PLACEHOLDER: a later dock or NPC can pay more or less."

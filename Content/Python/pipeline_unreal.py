@@ -146,7 +146,12 @@ def import_datatable(src_path, dest_path, row_struct):
     settings = unreal.CSVImportSettings()
     settings.set_editor_property("import_row_struct", struct)
     settings.set_editor_property("import_type", unreal.CSVImportType.ECSV_DATA_TABLE)
-    factory = unreal.CSVImportFactory()
+    # UCSVImportFactory::FactoryCanImport only accepts .csv ("Unknown extension 'json'" otherwise); the engine's
+    # ReimportDataTableFactory (a UCSVImportFactory subclass registered for .json) parses JSON sources the same way.
+    if src_path.lower().endswith(".json"):
+        factory = unreal.ReimportDataTableFactory()
+    else:
+        factory = unreal.CSVImportFactory()
     factory.set_editor_property("automated_import_settings", settings)
     imported = _run_import(src_path, folder, name, factory=factory)
     table = _first_of(imported, unreal.DataTable, dest_path)
@@ -463,6 +468,332 @@ def take_screenshot(path, width=1280, height=720):
     les.editor_invalidate_viewports()
     unreal.AutomationLibrary.take_high_res_screenshot(width, height, path, force_game_view=False)
     return {"screenshot": path, "note": "written on the next rendered frame; check the file before reading it"}
+
+
+# ---------------- Anim Blueprint graphs (T-006: ABP_FPArms) ----------------
+# How to edit an anim graph from Python (UE 5.8; the same C++ API Epic's BlueprintTools MCP toolset wraps):
+#   abp, ed = anim_graph("/Game/.../ABP_X")                  ed = unreal.BlueprintGraphEditor for "AnimGraph"
+#   ed.create_node_from_name(type_id, unreal.Vector2D(x, y), [])   spawns ANY action-menu entry. type_id is
+#       "<menu category>|<menu name>" with the spaces removed, e.g. "Animation|Blends|BlendPoses(EFPArmsPose)",
+#       "Animation|Sequences|Play'A_FPArms_Idle'" (list them: [s for s in ed.list_available_nodes([]) if "Blend" in s]).
+#   ed.add_get_member_variable_node("ArmsPose")               getter for a C++ parent property (a fast-path binding)
+#   _connect(src_node, "Pose", dst_node, "BlendPose_1")        link by INTERNAL pin names (see anim_graph_report)
+#   set_anim_node(node, loop_animation=True, ...)              fields of the node's runtime struct (get/set "node")
+#   compile_anim_blueprint(abp)                                status + every node error/warning text
+# The one thing Python cannot do: expose per-enum pose pins on a "Blend Poses (<Enum>)" node. Its VisibleEnumEntries
+# has no CPF_Edit (set_editor_property and ToolsetLibrary.set_object_properties refuse it) and ExposeEnumElementAsPin
+# is protected C++, reachable only from the node's context menu ("Add pin for element"). Drive that menu with the
+# unreal-mcp SlateInspectorToolset (recipe in fparms_abp_prepare), then continue in Python.
+
+FPARMS_DIR = "/Game/Art/Characters/FPArms"
+FPARMS_ABP = FPARMS_DIR + "/ABP_FPArms"
+FPARMS_SYNC_GROUP = "FPArmsBreath"
+FPARMS_ENUM_BLEND = "Animation|Blends|BlendPoses(EFPArmsPose)"
+# EFPArmsPose (Source/VibeGame/Character/FPArmsPose.h) in enum order: (entry, pin label on the node, clip).
+# Idle (= 0) plays on the node's Default pin; the others get their own pin, exposed in this order, so pose pin N
+# (BlendPose_N) = enum value N, and any value without a pin (a pose added later) falls back to Idle, never the bind pose.
+FPARMS_POSES = [
+    ("Idle", "Default", "A_FPArms_Idle"),
+    ("HoldRod", "Hold Rod", "A_FPArms_HoldRod_Idle"),
+    ("ProneHold", "Prone Hold", "A_FPArms_Prone_HoldRod_Idle"),
+    ("ProneTuck", "Prone Tuck", "A_FPArms_Prone_TuckRod"),
+]
+FPARMS_NOTE = (
+    "Arms pose (T-006). No logic here (CLAUDE.md rule 1): C++ UFPArmsAnimInstance sets ArmsPose from DT_Movement "
+    "RodPoseStill / RodPoseMoving and ArmsPoseBlendTime from RodPoseBlendTime.\n"
+    "Blend Poses (EFPArmsPose): Default pin = Idle (enum 0, and any pose without its own pin), then Hold Rod, "
+    "Prone Hold, Prone Tuck = pins 1-3. Standard Blend, Linear (the clearance in SK_FPArms.anim.md was measured "
+    "with this). All four players loop in sync group FPArmsBreath.\n"
+    "New pose: add the enum value in C++, right-click this node > Add pin for element, add a Play '<clip>' player, "
+    "then extend FPARMS_POSES in Content/Python/pipeline_unreal.py and rerun fparms_abp_wire().")
+
+_ANIM_NODE_KEYS = ["sequence", "loop_animation", "play_rate", "group_name", "group_role", "method", "slot_name",
+                   "blend_time", "blend_type", "transition_type", "child_upate_mode", "blend_profile",
+                   "custom_blend_curve", "active_enum_value", "active_value"]
+
+
+def anim_graph(abp_path, graph_name="AnimGraph"):
+    """(anim blueprint, unreal.BlueprintGraphEditor) for one graph of an Anim Blueprint."""
+    abp = unreal.load_asset(abp_path)
+    if abp is None:
+        raise RuntimeError("No asset at " + abp_path)
+    ed = unreal.BlueprintGraphEditor.get_graph_editor_by_name(abp, graph_name)
+    if ed is None:
+        raise RuntimeError("No graph %s in %s" % (graph_name, abp_path))
+    return abp, ed
+
+
+def _is_input(pin):
+    return pin.get_pin_direction() == unreal.EdGraphPinDirection.EGPD_INPUT
+
+
+def _plain(value):
+    """JSON-friendly form of a property value (objects as asset names, enums as names, floats rounded)."""
+    if value is None or isinstance(value, (bool, int, str)):
+        return value
+    if isinstance(value, float):
+        return round(value, 4)
+    if isinstance(value, unreal.Name):
+        return str(value)
+    if isinstance(value, unreal.EnumBase):
+        return value.name
+    if isinstance(value, unreal.Object):
+        return value.get_name()
+    try:
+        return [_plain(v) for v in value]
+    except TypeError:
+        return str(value)
+
+
+def _pin(node, name, direction=None):
+    """The pin with internal name `name` ('Pose', 'Source', 'Result', 'BlendPose_1', 'BlendTime_0', 'ActiveEnumValue',
+    or the variable name on a getter). Raises with the node's pin list if it is missing."""
+    names = []
+    for p in node.list_all_pins():
+        names.append(str(p.get_pin_name()))
+        if names[-1] == name and (direction is None or p.get_pin_direction() == direction):
+            return p
+    raise RuntimeError("%s has no pin %r (pins: %s)" % (node.get_name(), name, names))
+
+
+def _connect(src_node, src_pin, dst_node, dst_pin):
+    """Link output src_pin -> input dst_pin, replacing whatever dst_pin had. True if a new link was made."""
+    out_pin = _pin(src_node, src_pin, unreal.EdGraphPinDirection.EGPD_OUTPUT)
+    in_pin = _pin(dst_node, dst_pin, unreal.EdGraphPinDirection.EGPD_INPUT)
+    linked = list(in_pin.list_connected_pins())
+    if len(linked) == 1 and linked[0].is_same_native_pin(out_pin):
+        return False
+    if linked:
+        in_pin.break_pin_links()
+    if not out_pin.try_create_connection(in_pin):
+        raise RuntimeError("Could not link %s.%s -> %s.%s" % (src_node.get_name(), src_pin, dst_node.get_name(), dst_pin))
+    return True
+
+
+def set_anim_node(node, **values):
+    """Set fields of an anim graph node's runtime struct (FAnimNode_*; e.g. sequence=, loop_animation=, group_name=,
+    blend_type=) and write the struct back, so the node gets its normal PostEditChange handling."""
+    struct = node.get_editor_property("node")
+    for key, value in values.items():
+        struct.set_editor_property(key, value)
+    node.set_editor_property("node", struct)
+    return struct
+
+
+def _getter_var(node):
+    """Variable name read by a K2Node_VariableGet (its value pin is named after the variable), else None."""
+    if node.get_class().get_name() != "K2Node_VariableGet":
+        return None
+    outs = [p for p in node.list_all_pins() if not _is_input(p)]
+    return str(outs[0].get_pin_name()) if outs else None
+
+
+def _nodes_of(ed, class_name):
+    return [n for n in ed.list_all_nodes() if n.get_class().get_name() == class_name]
+
+
+def _getter(ed, variable):
+    """The graph's getter node for `variable` (created if missing; extra copies are removed)."""
+    found = [n for n in _nodes_of(ed, "K2Node_VariableGet") if _getter_var(n) == variable]
+    for extra in found[1:]:
+        ed.remove_nodes([extra])
+    if found:
+        return found[0]
+    node = ed.add_get_member_variable_node(variable)
+    if node is None:
+        raise RuntimeError("add_get_member_variable_node(%r) failed (is it a property of the parent class?)" % variable)
+    return node
+
+
+def anim_graph_report(abp_path, graph_name="AnimGraph"):
+    """Every node of an anim graph: class, title, position, pins (type, default or links) and key runtime settings."""
+    abp, ed = anim_graph(abp_path, graph_name)
+    nodes = []
+    for n in ed.list_all_nodes():
+        pos = n.get_node_pos()
+        entry = {"name": n.get_name(), "class": n.get_class().get_name(),
+                 "title": str(n.get_node_title()).replace("\n", " | "), "pos": [pos.x, pos.y], "pins": []}
+        for p in n.list_all_pins():
+            pin = {"pin": str(p.get_pin_name()), "dir": "in" if _is_input(p) else "out",
+                   "type": str(p.get_pin_type_display_string())}
+            links = ["%s.%s" % (c.get_owning_node().get_name(), c.get_pin_name()) for c in p.list_connected_pins()]
+            if links:
+                pin["links"] = links
+            elif _is_input(p):
+                pin["default"] = p.get_pin_value()
+            entry["pins"].append(pin)
+        try:
+            struct = n.get_editor_property("node")
+        except Exception:
+            struct = None
+        if struct is not None:
+            settings = {}
+            for key in _ANIM_NODE_KEYS:
+                try:
+                    settings[key] = _plain(struct.get_editor_property(key))
+                except Exception:
+                    pass
+            entry["settings"] = settings
+        nodes.append(entry)
+    comments = [unreal.BlueprintEditorLibrary.get_comment_text(c) for c in ed.list_comment_nodes()]
+    parent = unreal.BlueprintEditorLibrary.get_blueprint_parent_class(abp)
+    return {"abp": abp_path, "graph": graph_name, "parent": parent.get_name() if parent else None,
+            "nodes": nodes, "comments": comments}
+
+
+def compile_anim_blueprint(abp):
+    """Compile; returns the status (BS_UP_TO_DATE = no errors and no warnings) and every node message in every graph."""
+    ok = unreal.BlueprintEditorLibrary.compile_blueprint(abp)
+    status = abp.get_editor_property("status")
+    problems = []
+    for graph in unreal.BlueprintEditorLibrary.list_graphs(abp):
+        ged = unreal.BlueprintGraphEditor.get_graph_editor(graph)
+        for kind, nodes in (("error", ged.list_nodes_with_errors()), ("warning", ged.list_nodes_with_warnings()),
+                            ("note", ged.list_nodes_with_notes())):
+            for n in nodes:
+                problems.append({"kind": kind, "graph": graph.get_name(), "node": n.get_name(),
+                                 "msg": n.get_editor_property("error_msg")})
+    return {"compiled": bool(ok), "status": status.name if hasattr(status, "name") else str(status),
+            "clean": status == unreal.BlueprintStatus.BS_UP_TO_DATE and not problems, "problems": problems}
+
+
+def _fparms_players(ed):
+    """{clip name: Sequence Player node} for the FP arms clips already in the graph."""
+    out = {}
+    for n in _nodes_of(ed, "AnimGraphNode_SequencePlayer"):
+        seq = n.get_editor_property("node").get_editor_property("sequence")
+        if seq is not None:
+            out.setdefault(seq.get_name(), n)
+    return out
+
+
+def _fparms_pose_pins(blend):
+    return [str(p.get_pin_name()) for p in blend.list_all_pins() if str(p.get_pin_name()).startswith("BlendPose_")]
+
+
+def fparms_abp_prepare(abp_path=FPARMS_ABP):
+    """ABP_FPArms 4-pose graph, step 1 of 3 (T-006; spec SK_FPArms.anim.md "Wiring"). Idempotent.
+
+    Removes the first version's 'Blend Poses by bool' and its Get bHoldingRod, makes one looping Sequence Player per
+    FPARMS_POSES clip (sync group FPArmsBreath, can be leader) and one 'Blend Poses (EFPArmsPose)' node (Standard
+    Blend, Linear, child update Default), laid out left to right. Does not compile or save.
+
+    Step 2 (UI only, see the module note above): in the open ABP editor expose the enum pins in FPARMS_POSES order
+    (Hold Rod, Prone Hold, Prone Tuck) with the unreal-mcp SlateInspectorToolset: Snapshot the ABP window, Click the
+    node title "Blend Poses (EFPArmsPose)" with button="right", Snapshot again, Click the menu entry under "Add pin for
+    element"; repeat (refs change after each rebuild). The node then shows Default / Hold Rod / Prone Hold / Prone Tuck
+    Pose pins. Step 3: fparms_abp_wire().
+    """
+    abp, ed = anim_graph(abp_path)
+    removed = []
+    for n in list(ed.list_all_nodes()):
+        cls = n.get_class().get_name()
+        if cls == "AnimGraphNode_BlendListByBool" or (cls == "K2Node_VariableGet" and _getter_var(n) == "bHoldingRod"):
+            removed.append(n.get_name())
+            ed.remove_nodes([n])
+
+    players = _fparms_players(ed)
+    created = []
+    for i, (_, _, clip) in enumerate(FPARMS_POSES):
+        node = players.get(clip)
+        if node is None:
+            node = ed.create_node_from_name("Animation|Sequences|Play'%s'" % clip, unreal.Vector2D(0.0, 0.0), [])
+            if node is None:
+                raise RuntimeError("No action-menu entry Play'%s' (is the clip imported on SKEL_FPArms?)" % clip)
+            created.append(node.get_name())
+        seq = unreal.load_asset("%s/%s" % (FPARMS_DIR, clip))
+        set_anim_node(node, sequence=seq, loop_animation=True, play_rate=1.0, group_name=FPARMS_SYNC_GROUP,
+                      group_role=unreal.AnimGroupRole.CAN_BE_LEADER, method=unreal.AnimSyncMethod.SYNC_GROUP)
+        node.set_node_pos(unreal.IntPoint(0, -360 + 170 * i))
+
+    blends = _nodes_of(ed, "AnimGraphNode_BlendListByEnum")
+    if len(blends) > 1:
+        raise RuntimeError("More than one Blend Poses (enum) node: %s; remove the extra one" % [b.get_name() for b in blends])
+    if blends:
+        blend = blends[0]
+    else:
+        blend = ed.create_node_from_name(FPARMS_ENUM_BLEND, unreal.Vector2D(420.0, -200.0), [])
+        if blend is None:
+            raise RuntimeError("No action-menu entry " + FPARMS_ENUM_BLEND)
+        created.append(blend.get_name())
+    set_anim_node(blend, transition_type=unreal.BlendListTransitionType.STANDARD_BLEND,
+                  blend_type=unreal.AlphaBlendOption.LINEAR, child_upate_mode=unreal.BlendListChildUpdateMode.DEFAULT)
+    blend.set_node_pos(unreal.IntPoint(420, -200))
+    unreal.BlueprintEditorLibrary.refresh_open_editors_for_blueprint(abp)
+    pose_pins = _fparms_pose_pins(blend)
+    return {"removed": removed, "created": created, "blend": blend.get_name(), "title": str(blend.get_node_title()),
+            "pose_pins": pose_pins, "exposed_enum_pins": len(pose_pins) - 1,
+            "next": "expose %s in the node's context menu, in that order, then fparms_abp_wire()"
+                    % [label for _, label, _ in FPARMS_POSES[len(pose_pins):]]}
+
+
+def fparms_abp_wire(abp_path=FPARMS_ABP, save=True):
+    """ABP_FPArms 4-pose graph, step 3 of 3 (after fparms_abp_prepare and the UI step). Idempotent.
+
+    Players -> Blend Poses (EFPArmsPose) pins 0-3 (FPARMS_POSES order), Get ArmsPose -> Active Enum Value, Get
+    ArmsPoseBlendTime -> every Blend Time pin, blend -> Slot DefaultSlot -> Slot StanceAdditive -> Output Pose, plus a
+    note comment. Compiles and (if clean and save=True) saves. Returns the compile result and the graph report.
+    """
+    abp, ed = anim_graph(abp_path)
+    blends = _nodes_of(ed, "AnimGraphNode_BlendListByEnum")
+    if len(blends) != 1:
+        raise RuntimeError("Expected one Blend Poses (EFPArmsPose) node, found %d: run fparms_abp_prepare()" % len(blends))
+    blend = blends[0]
+    pose_pins = _fparms_pose_pins(blend)
+    if len(pose_pins) != len(FPARMS_POSES):
+        raise RuntimeError("%d pose pins on %s, need %d: expose %s in its context menu first (step 2)"
+                           % (len(pose_pins), blend.get_name(), len(FPARMS_POSES),
+                              [label for _, label, _ in FPARMS_POSES[len(pose_pins):]]))
+    players = _fparms_players(ed)
+    missing = [clip for _, _, clip in FPARMS_POSES if clip not in players]
+    if missing:
+        raise RuntimeError("No Sequence Player for %s: run fparms_abp_prepare()" % missing)
+    slots = {}
+    for n in _nodes_of(ed, "AnimGraphNode_Slot"):
+        slots[str(n.get_editor_property("node").get_editor_property("slot_name"))] = n
+    for name in ("DefaultSlot", "StanceAdditive"):
+        if name not in slots:
+            raise RuntimeError("No Slot '%s' node in the graph" % name)
+    roots = _nodes_of(ed, "AnimGraphNode_Root")
+    if len(roots) != 1:
+        raise RuntimeError("Expected one Output Pose node, found %d" % len(roots))
+
+    links = 0
+    for i, (_, _, clip) in enumerate(FPARMS_POSES):
+        links += _connect(players[clip], "Pose", blend, "BlendPose_%d" % i)
+    pose_get = _getter(ed, "ArmsPose")
+    time_get = _getter(ed, "ArmsPoseBlendTime")
+    links += _connect(pose_get, "ArmsPose", blend, "ActiveEnumValue")
+    for i in range(len(FPARMS_POSES)):
+        links += _connect(time_get, "ArmsPoseBlendTime", blend, "BlendTime_%d" % i)
+    links += _connect(blend, "Pose", slots["DefaultSlot"], "Source")
+    links += _connect(slots["DefaultSlot"], "Pose", slots["StanceAdditive"], "Source")
+    links += _connect(slots["StanceAdditive"], "Pose", roots[0], "Result")
+
+    # Layout, left to right (graph units): players | getters | blend | slots | output.
+    for i, (_, _, clip) in enumerate(FPARMS_POSES):
+        players[clip].set_node_pos(unreal.IntPoint(0, -360 + 170 * i))
+    time_get.set_node_pos(unreal.IntPoint(230, 290))
+    pose_get.set_node_pos(unreal.IntPoint(230, 370))
+    blend.set_node_pos(unreal.IntPoint(420, -200))
+    slots["DefaultSlot"].set_node_pos(unreal.IntPoint(800, -200))
+    slots["StanceAdditive"].set_node_pos(unreal.IntPoint(1100, -200))
+    roots[0].set_node_pos(unreal.IntPoint(1400, -200))
+    notes = [c for c in ed.list_comment_nodes() if unreal.BlueprintEditorLibrary.get_comment_text(c).startswith("Arms pose (T-006)")]
+    if notes:
+        unreal.BlueprintEditorLibrary.set_comment_text(notes[0], FPARMS_NOTE)
+    else:
+        ed.add_comment_node(FPARMS_NOTE, unreal.Vector2D(0.0, -620.0), unreal.Vector2D(1650.0, 190.0))
+
+    # Refresh the open editor BEFORE compiling and saving: a refresh after the save marks the package dirty again.
+    unreal.BlueprintEditorLibrary.refresh_open_editors_for_blueprint(abp)
+    compiled = compile_anim_blueprint(abp)
+    saved = False
+    if save and compiled["clean"]:
+        saved = unreal.EditorAssetLibrary.save_loaded_asset(abp, only_if_is_dirty=False)
+    dirty = [p.get_name() for p in unreal.EditorLoadingAndSavingUtils.get_dirty_content_packages()]
+    return {"new_links": links, "compile": compiled, "saved": bool(saved), "dirty_after_save": abp_path in dirty,
+            "graph": anim_graph_report(abp_path)}
 
 
 def build_golden_level(level_path="/Game/Maps/Dev/L_GoldenPath", mesh_path="/Game/Art/Props/SM_GoldenCrate"):

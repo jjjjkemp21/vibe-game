@@ -28,6 +28,8 @@ class TROPICAL:
     REEF = "#F28F6B"
     SAND = "#F2D6A2"
     PALM_GREEN = "#3F8F4A"
+    GRASS = "#3F7A42"  # ground cover; palm fronds stay PALM_GREEN
+    ROCK = "#6B7275"   # sunlit tropical rock
     LEAF_DARK = "#2A5E36"
     WEATHERED_WOOD = "#8A5A3B"
     ROPE = "#C9A66B"

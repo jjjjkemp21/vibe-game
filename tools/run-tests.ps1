@@ -4,72 +4,146 @@
 # A plain substring match would also run engine tests that merely contain the word (e.g. "Project Promotion Pass",
 # ConfigSettings "Project" tests), which create projects/maps and rewrite Config/DefaultGame.ini.
 # To run one exact test, pass its full path with -Substring.
-# Exit 0 = at least one test ran and none failed.
+# Exit 0 = the process finished normally, every discovered test completed, and none failed.
+# The run FAILS (exit 1, status "failed") on: a crash signature in the log or an abnormal process exit; fewer completed
+# tests than the runner discovered for the filter ("Found N automation tests"); a missing or truncated index.json report.
+# Dry run of the verdict logic on an existing report folder (no Unreal process, no status file written):
+#   tools/run-tests.ps1 -ParseReportDir Saved/AgentLogs/tests/<stamp> [-ParseExitCode <n>]
 param(
     [string]$Filter = 'Project',
     [switch]$Substring,
     [int]$TimeoutMinutes = 45,
-    [switch]$AllowWhileEditorOpen
+    [switch]$AllowWhileEditorOpen,
+    [string]$ParseReportDir = '',
+    [int]$ParseExitCode = [int]::MinValue
 )
 . (Join-Path $PSScriptRoot '_common.ps1')
 $name = 'run-tests'
-
-try { $uproject = Get-ProjectFile; $cmdExe = Get-EditorCmdExe } catch { Write-Status -Name $name -State 'failed' -Message $_.Exception.Message; exit 1 }
-if (((Get-EditorProcesses).Count -gt 0) -and (-not $AllowWhileEditorOpen)) {
-    Write-Status -Name $name -State 'failed' -Message 'The editor is open. For the canonical headless run: save, tools/stop-editor.ps1, then rerun. (Or pass -AllowWhileEditorOpen for read-only tests, or use the in-editor testing tools via unreal-mcp.)'
-    exit 3
+$parseOnly = [bool]$ParseReportDir
+function Set-RunStatus([string]$State, [string]$Message, [string]$LogPath = '', $Details = $null) {
+    if ($parseOnly) { Write-Host ('[' + $name + ' dry-run] ' + $State + ': ' + $Message) }
+    else { Write-Status -Name $name -State $State -Message $Message -LogPath $LogPath -Details $Details }
 }
 
-$stamp = Get-Timestamp
-$reportDir = Join-Path (Get-LogDir 'tests') $stamp
-New-Item -ItemType Directory -Force -Path $reportDir | Out-Null
-$logBase = Join-Path $reportDir 'run'
-$runArg = if ($Substring -or $Filter.Contains(':')) { $Filter } else { 'StartsWith:' + $Filter }
-$argList = '"' + $uproject + '" -ExecCmds="Automation RunTests ' + $runArg + ';Quit" -TestExit="Automation Test Queue Empty" -ReportExportPath="' + $reportDir + '" -unattended -nopause -nosplash -nullrhi -NoSound -stdout -FullStdOutLogOutput'
-Write-Status -Name $name -State 'running' -Message ('Running tests matching ' + $Filter) -LogPath ($logBase + '.out.log')
-$r = Invoke-Logged -FilePath $cmdExe -ArgumentList $argList -LogBase $logBase -TimeoutMinutes $TimeoutMinutes
+if ($parseOnly) {
+    $reportDir = (Resolve-Path $ParseReportDir).Path
+    $logBase = Join-Path $reportDir 'run'
+    $r = [pscustomobject]@{ ExitCode = $ParseExitCode; TimedOut = $false; OutLog = ($logBase + '.out.log'); ErrLog = ($logBase + '.err.log') }
+} else {
+    try { $uproject = Get-ProjectFile; $cmdExe = Get-EditorCmdExe } catch { Write-Status -Name $name -State 'failed' -Message $_.Exception.Message; exit 1 }
+    if (((Get-EditorProcesses).Count -gt 0) -and (-not $AllowWhileEditorOpen)) {
+        Write-Status -Name $name -State 'failed' -Message 'The editor is open. For the canonical headless run: save, tools/stop-editor.ps1, then rerun. (Or pass -AllowWhileEditorOpen for read-only tests, or use the in-editor testing tools via unreal-mcp.)'
+        exit 3
+    }
+
+    $stamp = Get-Timestamp
+    $reportDir = Join-Path (Get-LogDir 'tests') $stamp
+    New-Item -ItemType Directory -Force -Path $reportDir | Out-Null
+    $logBase = Join-Path $reportDir 'run'
+    $runArg = if ($Substring -or $Filter.Contains(':')) { $Filter } else { 'StartsWith:' + $Filter }
+    $argList = '"' + $uproject + '" -ExecCmds="Automation RunTests ' + $runArg + ';Quit" -TestExit="Automation Test Queue Empty" -ReportExportPath="' + $reportDir + '" -unattended -nopause -nosplash -nullrhi -NoSound -stdout -FullStdOutLogOutput'
+    Write-Status -Name $name -State 'running' -Message ('Running tests matching ' + $Filter) -LogPath ($logBase + '.out.log')
+    $r = Invoke-Logged -FilePath $cmdExe -ArgumentList $argList -LogBase $logBase -TimeoutMinutes $TimeoutMinutes
+}
 
 $passed = New-Object System.Collections.ArrayList
 $failed = New-Object System.Collections.ArrayList
+$notRunNames = New-Object System.Collections.ArrayList
+$problems = New-Object System.Collections.ArrayList
+
+# 1) The JSON report (index.json). Missing or unparsable = failed run.
 $index = Join-Path $reportDir 'index.json'
-if (Test-Path $index) {
+$reportOk = $false
+if (-not (Test-Path $index)) { [void]$problems.Add('JSON report missing') }
+else {
     try {
-        $j = Get-Content -Path $index -Raw -Encoding UTF8 | ConvertFrom-Json
+        $j = Get-Content -Path $index -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
+        if (($null -eq $j) -or ($null -eq $j.PSObject.Properties['tests'])) { throw 'no "tests" array' }
         foreach ($t in @($j.tests)) {
             if (-not $t) { continue }
             $tn = [string]$t.fullTestPath
             if (-not $tn) { $tn = [string]$t.testDisplayName }
-            if ([string]$t.state -eq 'Success') { [void]$passed.Add($tn) }
-            else {
+            $st = [string]$t.state
+            if ($st -eq 'Success') { [void]$passed.Add($tn) }
+            elseif ($st -eq 'Fail') {
                 $msgs = @()
                 foreach ($e in @($t.entries)) { if ($e -and $e.event -and ($e.event.type -eq 'Error')) { $msgs += [string]$e.event.message } }
-                [void]$failed.Add(($tn + ' [' + $t.state + '] ' + ($msgs -join ' | ')))
+                [void]$failed.Add(($tn + ' [' + $st + '] ' + ($msgs -join ' | ')))
             }
+            else { [void]$notRunNames.Add(($tn + ' [' + $st + ']')) }
         }
-    } catch { }
-}
-if ((($passed.Count + $failed.Count) -eq 0) -and (Test-Path $r.OutLog)) {
-    foreach ($m in @(Select-String -Path $r.OutLog -Pattern 'Test Completed\. Result=\{(\w+)\}\s+Name=\{([^}]*)\}\s+Path=\{([^}]*)\}' -ErrorAction SilentlyContinue)) {
-        $res = $m.Matches[0].Groups[1].Value; $path = $m.Matches[0].Groups[3].Value
-        if ($res -eq 'Success') { [void]$passed.Add($path) } else { [void]$failed.Add($path + ' [' + $res + ']') }
+        $reportOk = $true
+    } catch {
+        $why = ([string]$_.Exception.Message -split "`r?`n")[0]
+        if ($why.Length -gt 120) { $why = $why.Substring(0, 120) }
+        [void]$problems.Add('JSON report truncated or unreadable (' + $why + ')')
+        $passed.Clear(); $failed.Clear(); $notRunNames.Clear()
     }
 }
 
-$details = @{ filter = $Filter; reportDir = $reportDir; passed = @($passed); failed = @($failed); exitCode = $r.ExitCode; timedOut = $r.TimedOut }
+# 2) The log: discovered count, per-test fallback counts, crash signatures, completion marker.
+$logText = ''
+if (Test-Path $r.OutLog) {
+    # Shared read: the stdout redirect handle can still be open for a moment after the process exits.
+    for ($try = 0; $try -lt 10; $try++) {
+        try {
+            $fs = [IO.FileStream]::new($r.OutLog, [IO.FileMode]::Open, [IO.FileAccess]::Read, ([IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete))
+            try { $logText = [IO.StreamReader]::new($fs).ReadToEnd() } finally { $fs.Dispose() }
+            break
+        } catch { $readErr = $_.Exception.Message; Start-Sleep -Milliseconds 500 }
+    }
+    if (-not $logText) { [void]$problems.Add('could not read the test log (' + $readErr + ')') }
+}
+if ((-not $reportOk) -and $logText) {
+    # Counts from the log so the message is still useful; the run stays failed because the report is bad.
+    foreach ($m in [regex]::Matches($logText, 'Test Completed\. Result=\{(\w+)\}\s+Name=\{([^}]*)\}\s+Path=\{([^}]*)\}')) {
+        $res = $m.Groups[1].Value; $path = $m.Groups[3].Value
+        if ($res -eq 'Success') { [void]$passed.Add($path) } else { [void]$failed.Add($path + ' [' + $res + ']') }
+    }
+}
+$discovered = -1
+$found = [regex]::Matches($logText, 'Found (\d+) automation tests based on')
+if ($found.Count -gt 0) { $discovered = [int]$found[$found.Count - 1].Groups[1].Value }
+$completed = $passed.Count + $failed.Count
+$notRun = if ($discovered -ge 0) { [Math]::Max(0, $discovered - $completed) } else { $notRunNames.Count }
+if (($discovered -lt 0) -and ($completed -gt 0)) { [void]$problems.Add('the runner never logged how many tests it discovered') }
+elseif (($discovered -ge 0) -and ($completed -lt $discovered)) { [void]$problems.Add('only ' + $completed + ' of ' + $discovered + ' discovered tests completed') }
+
+$crashSig = [regex]::Match($logText, '=== Critical error: ===|Unhandled Exception:|LaunchWindowsStartup\.ExceptionHandler|Assertion failed:')
+if ($crashSig.Success) { [void]$problems.Add('crash signature in log ("' + $crashSig.Value + '")') }
+if (($completed -gt 0) -and (-not [regex]::IsMatch($logText, '\*\*\*\* TEST COMPLETE\. EXIT CODE: -?\d+ \*\*\*\*'))) {
+    [void]$problems.Add('log has no "TEST COMPLETE" line (the runner did not finish)')
+}
+if (($r.ExitCode -ne [int]::MinValue) -and (-not $r.TimedOut)) {
+    # Unreal exits 0 when every test passed and 255 (RequestExitWithStatus 255) when some failed; anything else is abnormal.
+    $okCodes = if ($failed.Count -gt 0) { @(0, 1, 255, -1) } else { @(0) }
+    if ($okCodes -notcontains $r.ExitCode) { [void]$problems.Add('abnormal process exit code ' + $r.ExitCode) }
+}
+
+# 3) Verdict.
+$discText = if ($discovered -ge 0) { '' + $discovered } else { '?' }
+$counts = $discText + ' discovered, ' + $passed.Count + ' passed, ' + $failed.Count + ' failed, ' + $notRun + ' not run'
+$details = @{ filter = $Filter; reportDir = $reportDir; discovered = $discovered; notRun = $notRun; problems = @($problems); passed = @($passed); failed = @($failed); notRunTests = @($notRunNames); exitCode = $r.ExitCode; timedOut = $r.TimedOut }
 if ($r.TimedOut) {
-    Write-Status -Name $name -State 'timeout' -Message ('Tests timed out after ' + $TimeoutMinutes + ' min.') -LogPath $r.OutLog -Details $details
+    Set-RunStatus 'timeout' ('Tests timed out after ' + $TimeoutMinutes + ' min. ' + $counts + '.') $r.OutLog $details
     exit 1
 }
-if (($passed.Count + $failed.Count) -eq 0) {
-    Write-Status -Name $name -State 'failed' -Message ('No tests ran for filter "' + $Filter + '". Was the build current? List tests with -ExecCmds="Automation List;Quit".') -LogPath $r.OutLog -Details $details
+if ($completed -eq 0) {
+    Set-RunStatus 'failed' ('No tests ran for filter "' + $Filter + '" (' + $counts + '). Was the build current? List tests with -ExecCmds="Automation List;Quit". ' + ($problems -join '; ')) $r.OutLog $details
     Write-Host (Get-LogTail $r.OutLog 40)
     exit 1
 }
+if ($problems.Count -gt 0) {
+    Set-RunStatus 'failed' ('Run crashed or incomplete: ' + ($problems -join '; ') + '. ' + $counts + '. Report: ' + $reportDir) $r.OutLog $details
+    $failed | ForEach-Object { Write-Host ('FAIL ' + $_) }
+    Write-Host (Get-LogTail $r.OutLog 25)
+    exit 1
+}
 if ($failed.Count -gt 0) {
-    Write-Status -Name $name -State 'failed' -Message ('' + $failed.Count + ' failed, ' + $passed.Count + ' passed.') -LogPath $r.OutLog -Details $details
+    Set-RunStatus 'failed' ($counts + '. Report: ' + $reportDir) $r.OutLog $details
     $failed | ForEach-Object { Write-Host ('FAIL ' + $_) }
     exit 1
 }
-Write-Status -Name $name -State 'succeeded' -Message ('' + $passed.Count + ' passed, 0 failed. Report: ' + $reportDir) -LogPath $r.OutLog -Details $details
+Set-RunStatus 'succeeded' ($counts + '. Report: ' + $reportDir) $r.OutLog $details
 $passed | ForEach-Object { Write-Host ('PASS ' + $_) }
 exit 0
