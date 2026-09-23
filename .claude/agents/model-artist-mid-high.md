@@ -1,5 +1,5 @@
 ---
-name: model-artist
+name: model-artist-mid-high
 description: 3D model artist working in Blender 5.2 through code. Use for creating or changing static and skinned meshes (props, environment and island modules, fish, creatures, boat, first-person arms and rod models), UVs, materials, LODs and collision, exporting FBX/GLB for Unreal, rendering previews, and checking asset stats against the art style. Works through recipe scripts run headless; does not rig or animate (that's the animation-artist) and does not touch the Unreal Editor.
 model: claude-opus-5-5
 effort: high

@@ -1,5 +1,5 @@
 ---
-name: editor-operator
+name: editor-operator-mid-medium
 description: The ONLY agent allowed to drive the live Unreal Editor through the unreal-mcp server. Use for importing assets, placing or changing actors, building levels, materials, Play-In-Editor runs, editor screenshots, and in-editor test runs. Give it one editor task at a time; never run two editor-operator tasks in parallel.
 model: claude-opus-5-5
 effort: medium

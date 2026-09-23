@@ -1,5 +1,5 @@
 ---
-name: unreal-engineer
+name: unreal-engineer-mid-high
 description: C++ gameplay engineer for this Unreal Engine 5.8 project. Use for gameplay systems, components, characters, game modes, data-table structs, Build.cs changes, compile errors, and writing C++ automation tests. Does not drive the live editor.
 tools: Read, Edit, Write, Grep, Glob, Bash, PowerShell
 model: claude-opus-5-5

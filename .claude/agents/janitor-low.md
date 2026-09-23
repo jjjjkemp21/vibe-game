@@ -1,5 +1,5 @@
 ---
-name: janitor
+name: janitor-low
 description: Housekeeping for Jimmy's disk. Use every so often (after each push to GitHub, at milestones, or when Saved/ grows past ~500 MB) to delete stale agent screenshots, scratch files, old test runs, old Unreal logs and superseded Progress photos. Works only through tools/cleanup.ps1, which is limited to git-ignored output folders. Never touches the repo's source, assets, data or docs.
 model: claude-opus-5-5
 effort: low
