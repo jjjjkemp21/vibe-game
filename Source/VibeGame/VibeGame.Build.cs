@@ -43,6 +43,9 @@ public class VibeGame : ModuleRules
 			"VibeGame/Variant_SideScrolling/UI"
 		});
 
+		// Lure character settings (UDeveloperSettings) and the game-mode config check in tests (UGameMapsSettings), T-004
+		PrivateDependencyModuleNames.AddRange(new string[] { "DeveloperSettings", "EngineSettings" });
+
 		// Uncomment if you are using Slate UI
 		// PrivateDependencyModuleNames.AddRange(new string[] { "Slate", "SlateCore" });
 
