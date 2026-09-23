@@ -14,6 +14,14 @@ description: Definition of done and evidence rules for this game project - which
 | Performance-sensitive | frame timing captured before and after (e.g. `stat unit`, CSV profiler) |
 | Anything the player sees or does | `playtester` PIE report PASS (scenario + free play, screenshots) + `designer` review APPROVED (or must-fix items done) |
 
+## Test depth by risk (Jimmy: don't over-test tools)
+| Tier | Examples | Tests | Playtester | Designer |
+|---|---|---|---|---|
+| Light | dev/debug tools (F8 note, console commands, playtest driver), editor scripts, pipeline tooling | implementer tests for the core logic only; QA adds tests only where a bug was found | one short smoke check (does it work end to end?) | no |
+| Standard | player-facing UI, level layout, props/art, single features | implementer + a focused QA set (key boundaries and failure cases, not exhaustive) | scenario + brief free play | yes, for anything visible |
+| Full | core gameplay systems and data (fish roll, movement, fishing fight, noise/creatures, economy), save/load, networking | implementer + thorough independent QA (boundaries, data validation, determinism, scale) | full scenario + free play (+ 2-player where networked) | yes |
+The lead picks the tier when briefing and says it in the brief. Don't gold-plate: stop when the tier's evidence is in.
+
 ## Who verifies
 - The implementer's own tests are a start, not the proof. The `qa-engineer` adds independent tests derived from the acceptance criteria (boundaries, invalid data, determinism, regressions) and keeps `docs/TEST_PLAN.md` (system -> tests -> gaps) current.
 - The `playtester` plays the feature in PIE and reports bugs and feel notes; the `designer` reviews those screenshots against GAME_DESIGN.md, ART_STYLE.md and `art/reference/` mood boards.
