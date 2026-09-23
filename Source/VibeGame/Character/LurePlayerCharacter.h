@@ -171,6 +171,12 @@ public:
 	UPROPERTY(BlueprintAssignable, Category="Lure|Swim")
 	FLureSwimStateChangedSignature OnSwimStateChanged;
 
+	/**
+	 *  Fires OnSwimStateChanged if IsSwimming changed since the last time it fired. Runs on every movement mode change,
+	 *  except while the owning client reconciles with a server correction: the movement component calls it once after that.
+	 */
+	void UpdateSwimState();
+
 	/** Swim-stroke clip for the arms (slot for the animation-artist). Loops in DefaultSlot while swimming; missing = the arms are lowered instead. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Lure|First Person")
 	TSoftObjectPtr<UAnimSequenceBase> SwimStrokeAnimation;

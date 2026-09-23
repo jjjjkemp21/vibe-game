@@ -25,7 +25,20 @@ void ALurePlayerCharacter::OnMovementModeChanged(EMovementMode PrevMovementMode,
 {
 	Super::OnMovementModeChanged(PrevMovementMode, PreviousCustomMode);
 
-	// Runs wherever the mode changes: server, owning client (also on replays) and other players (replicated mode).
+	// Runs wherever the mode changes: server, owning client and other players (replicated mode).
+	UpdateSwimState();
+}
+
+void ALurePlayerCharacter::UpdateSwimState()
+{
+	// While the owning client applies a server correction and replays its moves, the mode can pass through states the
+	// server never had (e.g. back into a climb it had already finished): report only the settled state, which the
+	// movement component asks for once the replay is done (ULureCharacterMovementComponent::ClientUpdatePositionAfterServerUpdate).
+	const ULureCharacterMovementComponent* Movement = GetLureMovement();
+	if (Movement && Movement->IsReconcilingWithServer())
+	{
+		return;
+	}
 	const bool bSwimmingNow = IsSwimming();
 	if (bSwimmingNow != bWasSwimming)
 	{

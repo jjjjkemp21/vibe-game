@@ -2,7 +2,8 @@
 
 Jimmy, 2026-09-23: falling in means swimming, not getting caught. The slice swims at the surface only; diving comes later.
 Code: `Source/VibeGame/Character/LureSwimMovement.cpp` (movement), `LureWaterVolume.*`, `LureLadder.*`,
-`LurePlayerCharacterSwim.cpp`. Tests: `Project.Movement.Swim.*` (`Tests/Movement/LureSwimTest.cpp`).
+`LurePlayerCharacterSwim.cpp`. Tests: `Project.Movement.Swim.*` (`Tests/Movement/LureSwimTest.cpp`; networking:
+`Tests/Movement/LureSwimNetTest.cpp`).
 
 ## Rules
 - **Water** is a physics volume with `bWaterVolume` (use `ALureWaterVolume`). The engine switches the character to its
@@ -27,10 +28,35 @@ Code: `Source/VibeGame/Character/LureSwimMovement.cpp` (movement), `LureWaterVol
 - **Fishing (T-006):** `ALurePlayerCharacter::IsSwimming()` is true from falling in until standing on land again (the
   climb included); `OnSwimStateChanged(bool)` fires on every machine when it changes. Swimming cancels fishing.
 - **Networking:** the swim state is the engine's movement mode (predicted by the owner, simulated by the server from the
-  same moves, `ReplicatedMovementMode` to other players). The climb is planned from the same move on both sides.
+  same moves, `ReplicatedMovementMode` to other players). Climbs: see "Networking contract" below.
 - **Arms (placeholder):** lowered out of view while swimming (`SwimArmsDrop`, `SwimArmsPitch`). Slot for the real clip:
   `ALurePlayerCharacter::SwimStrokeAnimation` (default `/Game/Art/Characters/FPArms/A_FPArms_SwimStroke`), looped in
   `DefaultSlot` while swimming once it exists; `UFPArmsAnimInstance::bSwimming` for the ABP graph.
+
+## Networking contract (T-026 netfix, review N0-N3; tests `Project.Movement.Swim.Net.*`)
+- **Only the Jump flag travels.** In the water, `DoJump` (called by `CheckJumpInput` before the owning client saves the
+  move) only checks that an edge is there and queues the climb; `PhysSwimming` starts it inside the move. The saved move
+  keeps `FLAG_JumpPressed`, and the server plans its own climb from it (`FindClimbOutPlan` on the server's state), so a
+  client can't force a climb the server wouldn't allow. Replays plan it again from the same flag. The jump climb onto a
+  land ledge (`LedgeClimb`) already starts inside the move (`PhysFalling`).
+- **Other players' copies** (simulated proxies) never plan a climb: during `ClimbOut` / `LedgeClimb` they move with the
+  replicated velocity and keep the replicated mode until the server's next mode (Walking, or Falling if blocked).
+- **Corrections carry the climb state** (`FLureMoveResponseDataContainer`, only in corrections; acks keep the engine's
+  size): the server's plan while it climbs, and `TakeoffFeetHeight`. The owning client restores both after the engine
+  applies the correction, so its replay continues the server's climb (it used to freeze). `TakeoffFeetHeight` is not
+  restored from saved moves on purpose: every replay starts from a correction, and a saved value would come from the
+  client's old, wrong path.
+- **`OnSwimStateChanged` on the owning client** fires once the correction and its replay have settled, not for the
+  modes in between (no in/out pair when a correction replays a climb the client had already finished).
+
+Patterns for new movement features:
+1. Anything triggered by an input flag (Jump, a future dive or ladder key) changes the movement mode inside the move
+   (`PerformMovement` / `Phys*`), never in `DoJump`, `CheckJumpInput` or an input handler, or the flag never reaches the server.
+2. Every `PhysCustom` sub-mode needs a `ROLE_SimulatedProxy` branch: the engine runs `PhysCustom` on other players'
+   copies too (`SimulateMovement` -> `MoveSmooth`), and they have none of the owner's private state.
+3. Every member that shapes a predicted move (plans, timers, reference heights) is either rebuilt from the saved move
+   (its compressed flags) or carried in the correction (`FLureMoveResponseDataContainer`).
+Tests reach movement internals through `FLureMovementTestAccess` (`Tests/Movement/LureMovementTestAccess.h`).
 
 ## Level builder recipe
 Water volume, one per body of water (one big box can cover the whole sea around an island):

@@ -288,7 +288,10 @@ namespace LurePlaytestFixTest
 	}
 }
 
-using namespace LurePlaytestFixTest;
+// The tests live inside the helper namespace (not behind a file-scope "using namespace"): unity builds merge test files,
+// and a using-directive would leak into the next file and make same-named helpers there ambiguous.
+namespace LurePlaytestFixTest
+{
 
 // ---------------------------------------------------------------------------------------------------------------------
 // B1: one climb rule
@@ -604,5 +607,7 @@ bool FLureProneLedgeFallTest::RunTest(const FString& Parameters)
 	TestFalse(TEXT("no penetration"), IsPenetrating(Character));
 	return true;
 }
+
+} // namespace LurePlaytestFixTest
 
 #endif // WITH_DEV_AUTOMATION_TESTS

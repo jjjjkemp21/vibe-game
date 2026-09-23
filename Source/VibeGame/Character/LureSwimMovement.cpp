@@ -390,6 +390,18 @@ void ULureCharacterMovementComponent::OnMovementModeChanged(EMovementMode Previo
 
 void ULureCharacterMovementComponent::PhysSwimming(float DeltaTime, int32 Iterations)
 {
+	// Jump was pressed this move with an edge to climb (DoJump queued it): the climb starts here, inside the move, the
+	// same way on the owning client, on the server (from the move's Jump flag) and in replays.
+	if (bClimbOutRequested)
+	{
+		bClimbOutRequested = false;
+		if (TryStartClimbOut())
+		{
+			StartNewPhysics(DeltaTime, Iterations);
+			return;
+		}
+	}
+
 	float SurfaceZ = 0.f;
 	if (ShouldFloatAtSurface() && GetWaterSurfaceHeight(SurfaceZ))
 	{
@@ -495,14 +507,36 @@ void ULureCharacterMovementComponent::PhysClimb(float DeltaTime, int32 Iteration
 {
 	using namespace LureSwimPrivate;
 
-	if (DeltaTime < MIN_TICK_TIME)
+	if (DeltaTime < MIN_TICK_TIME || !CharacterOwner)
 	{
 		return;
 	}
+
+	// Other players' copies (simulated proxies): the engine runs PhysCustom for them too (SimulateMovement -> MoveSmooth),
+	// and they never have a plan. Follow the replicated velocity and never change the mode here: the server's next
+	// replicated mode (Walking, or Falling if the climb was blocked) ends the climb. Changing it here would flip the copy
+	// between Falling and the replicated climb on every net update, and fire OnSwimStateChanged each time (review N1).
+	// Pattern: every PhysCustom sub-mode needs a simulated-proxy branch like this one.
+	if (CharacterOwner->GetLocalRole() == ROLE_SimulatedProxy)
+	{
+		const FVector ProxyDelta = Velocity * DeltaTime;
+		if (!ProxyDelta.IsNearlyZero())
+		{
+			FHitResult Hit(1.f);
+			SafeMoveUpdatedComponent(ProxyDelta, UpdatedComponent->GetComponentQuat(), true, Hit);
+			if (Hit.IsValidBlockingHit() && Hit.Time < 1.f)
+			{
+				SlideAlongSurface(ProxyDelta, 1.f - Hit.Time, Hit.Normal, Hit, false);
+			}
+		}
+		return;
+	}
+
 	if (!bHasClimbPlan)
 	{
-		// Only a server correction can put an owning client here without a plan: hold still, the server finishes the climb.
-		if (CharacterOwner && CharacterOwner->GetLocalRole() == ROLE_AutonomousProxy)
+		// Last resort: corrections carry the server's plan (FLureMoveResponseDataContainer), so an owning client should
+		// never be here. If it is, hold still: the server finishes the climb and its next correction carries the plan.
+		if (CharacterOwner->GetLocalRole() == ROLE_AutonomousProxy)
 		{
 			Velocity = FVector::ZeroVector;
 			return;

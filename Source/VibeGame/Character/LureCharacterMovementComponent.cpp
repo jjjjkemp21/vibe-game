@@ -40,6 +40,9 @@ ULureCharacterMovementComponent::ULureCharacterMovementComponent()
 	// Swimming (T-026): coast to a stop in the water instead of gliding on (the engine default is 0).
 	BrakingDecelerationSwimming = 600.f;
 
+	// Server replies carry the climb state (see FLureMoveResponseDataContainer).
+	SetMoveResponseDataContainer(LureMoveResponseData);
+
 	SyncEngineFieldsFromRows();
 }
 
@@ -276,10 +279,29 @@ bool ULureCharacterMovementComponent::ClientUpdatePositionAfterServerUpdate()
 	// (the engine does the same for jump and crouch).
 	const bool bRealWantsToSprint = bWantsToSprint;
 	const bool bRealWantsToProne = bWantsToProne;
-	const bool bResult = Super::ClientUpdatePositionAfterServerUpdate();
+	bool bResult = false;
+	{
+		TGuardValue<bool> Reconciling(bReconcilingWithServer, true);
+		bResult = Super::ClientUpdatePositionAfterServerUpdate();
+	}
 	bWantsToSprint = bRealWantsToSprint;
 	bWantsToProne = bRealWantsToProne;
+
+	// The correction and the replay are done: report the settled in-water state once, not every mode in between (a
+	// correction into a climb the client had already finished would otherwise fire "in" then "out" in one frame).
+	if (ALurePlayerCharacter* LureCharacter = GetLureCharacter())
+	{
+		LureCharacter->UpdateSwimState();
+	}
 	return bResult;
+}
+
+void ULureCharacterMovementComponent::PerformMovement(float DeltaSeconds)
+{
+	Super::PerformMovement(DeltaSeconds);
+
+	// A queued climb (DoJump) belongs to this move only: drop it even if the move ended before PhysSwimming ran.
+	bClimbOutRequested = false;
 }
 
 // ---- Engine overrides ----
@@ -334,7 +356,15 @@ bool ULureCharacterMovementComponent::DoJump(bool bReplayingMoves, float DeltaTi
 {
 	if (IsSwimming())
 	{
-		return TryStartClimbOut(); // no jumping from the water: Jump pulls you out onto a low edge or up a ladder
+		// No jumping from the water: Jump pulls you out onto a low edge or up a ladder. DoJump runs in CheckJumpInput,
+		// BEFORE the owning client saves the move, so it only queues the climb. Changing the mode here would clear
+		// bPressedJump (ACharacter::OnMovementModeChanged -> ResetJumpState), the move would carry no Jump flag, and the
+		// server would never climb (review N0). PhysSwimming starts the climb inside the move. The server receives only
+		// the Jump flag and plans its own climb, so a client can't force one the server wouldn't allow; replays re-plan
+		// from the same flag. The engine calls DoJump even when CanJump() is false (p.UseLegacyDoJump), so check it here.
+		FLureClimbPlan Unused;
+		bClimbOutRequested = CharacterOwner && CharacterOwner->CanJump() && FindClimbOutPlan(Unused);
+		return bClimbOutRequested;
 	}
 	JumpZVelocity = GetRow(GetMovementState()).JumpZVelocity;
 	return Super::DoJump(bReplayingMoves, DeltaTime);
@@ -812,6 +842,101 @@ FNetworkPredictionData_Client* ULureCharacterMovementComponent::GetPredictionDat
 		MutableThis->ClientPredictionData = new FNetworkPredictionData_Client_Lure(*this);
 	}
 	return ClientPredictionData;
+}
+
+// ---- Server corrections (T-026 netfix, review N2/N3) ----
+
+void ULureCharacterMovementComponent::ClientHandleMoveResponse(const FCharacterMoveResponseDataContainer& MoveResponse)
+{
+	TGuardValue<bool> Reconciling(bReconcilingWithServer, true);
+	bClientCorrectionApplied = false;
+
+	// The engine: ack, or correction (location, velocity, mode; the replay follows in the next TickComponent).
+	Super::ClientHandleMoveResponse(MoveResponse);
+
+	// Only for a correction the engine really applied (a stale timestamp or an unresolved base is ignored), and only for
+	// our own container (the one MoveResponsePacked_ClientReceive deserializes into).
+	if (bClientCorrectionApplied && &MoveResponse == &LureMoveResponseData)
+	{
+		ApplyCorrectionClimbState(LureMoveResponseData);
+	}
+	bClientCorrectionApplied = false;
+}
+
+void ULureCharacterMovementComponent::OnClientCorrectionReceived(FNetworkPredictionData_Client_Character& ClientData, float TimeStamp, FVector NewLocation,
+	FVector NewVelocity, FMovementBaseInterfaceData* NewMovementBaseInterfaceData, FName NewBaseBoneName, bool bHasBase, bool bBaseRelativePosition,
+	uint8 ServerMovementMode, FVector ServerGravityDirection)
+{
+	Super::OnClientCorrectionReceived(ClientData, TimeStamp, NewLocation, NewVelocity, NewMovementBaseInterfaceData, NewBaseBoneName, bHasBase,
+		bBaseRelativePosition, ServerMovementMode, ServerGravityDirection);
+	bClientCorrectionApplied = true;
+}
+
+void ULureCharacterMovementComponent::ApplyCorrectionClimbState(const FLureMoveResponseDataContainer& Response)
+{
+	// Runs after the engine applied the corrected mode. Entering Falling reset the takeoff to the corrected mid-air feet
+	// height, and Falling -> Falling kept the client's own; the server's value is the right one either way (N3).
+	TakeoffFeetHeight = Response.TakeoffFeetHeight;
+
+	// Corrected into a climb: continue the server's plan, so the replay climbs instead of holding still (N2).
+	bHasClimbPlan = Response.bHasClimbPlan && IsClimbing();
+	ClimbPlan = bHasClimbPlan ? Response.ClimbPlan : FLureClimbPlan();
+}
+
+void FLureMoveResponseDataContainer::ServerFillResponseData(const UCharacterMovementComponent& CharacterMovement, const FClientAdjustment& PendingAdjustment)
+{
+	Super::ServerFillResponseData(CharacterMovement, PendingAdjustment);
+
+	bHasClimbPlan = false;
+	ClimbPlan = FLureClimbPlan();
+	TakeoffFeetHeight = 0.f;
+
+	const ULureCharacterMovementComponent* Movement = Cast<const ULureCharacterMovementComponent>(&CharacterMovement);
+	if (IsCorrection() && Movement)
+	{
+		// The server's state now is its state after the corrected move: client moves arrive before actors tick, and the
+		// reply is sent when the frame ends (the engine reads its root motion state for corrections the same way).
+		bHasClimbPlan = Movement->bHasClimbPlan && Movement->IsClimbing();
+		ClimbPlan = bHasClimbPlan ? Movement->ClimbPlan : FLureClimbPlan();
+		TakeoffFeetHeight = Movement->TakeoffFeetHeight;
+	}
+}
+
+bool FLureMoveResponseDataContainer::Serialize(UCharacterMovementComponent& CharacterMovement, FArchive& Ar, UPackageMap* PackageMap)
+{
+	const bool bEngineDataOk = Super::Serialize(CharacterMovement, Ar, PackageMap);
+
+	if (!IsCorrection())
+	{
+		// Acks carry nothing extra (they are frequent; keep them the engine's size).
+		if (Ar.IsLoading())
+		{
+			bHasClimbPlan = false;
+			ClimbPlan = FLureClimbPlan();
+			TakeoffFeetHeight = 0.f;
+		}
+		return bEngineDataOk;
+	}
+
+	// Full precision, like the engine's corrected location: the replay must follow the server's path exactly.
+	bool bLocalSuccess = true;
+	Ar.SerializeBits(&bHasClimbPlan, 1);
+	if (bHasClimbPlan)
+	{
+		ClimbPlan.Start.NetSerialize(Ar, PackageMap, bLocalSuccess);
+		ClimbPlan.RiseTo.NetSerialize(Ar, PackageMap, bLocalSuccess);
+		ClimbPlan.Target.NetSerialize(Ar, PackageMap, bLocalSuccess);
+		Ar << ClimbPlan.LedgeHeight;
+		Ar << ClimbPlan.Speed;
+		Ar.SerializeBits(&ClimbPlan.bUsesLadder, 1);
+	}
+	else if (Ar.IsLoading())
+	{
+		ClimbPlan = FLureClimbPlan();
+	}
+	Ar << TakeoffFeetHeight;
+
+	return bEngineDataOk && bLocalSuccess && !Ar.IsError();
 }
 
 FSavedMove_Lure::FSavedMove_Lure()

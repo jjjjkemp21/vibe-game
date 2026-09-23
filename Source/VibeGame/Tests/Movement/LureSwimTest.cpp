@@ -288,7 +288,10 @@ namespace LureSwimTest
 	}
 }
 
-using namespace LureSwimTest;
+// The tests live inside the helper namespace (not behind a file-scope "using namespace"): unity builds merge test files,
+// and a using-directive would leak into the next file and make same-named helpers there ambiguous.
+namespace LureSwimTest
+{
 
 // ---------------------------------------------------------------------------------------------------------------------
 // Data
@@ -657,8 +660,6 @@ bool FLureSwimNoStancesTest::RunTest(const FString& Parameters)
 // Getting out
 // ---------------------------------------------------------------------------------------------------------------------
 
-namespace LureSwimTest
-{
 	/** Swims next to a dock of EdgeHeight, presses Jump, and reports whether the character ended up standing on it. */
 	bool TryClimbOut(FAutomationTestBase& Test, UDataTable* Table, float EdgeHeight, bool bExpectOut, const FString& Label)
 	{
@@ -721,7 +722,6 @@ namespace LureSwimTest
 		}
 		return true;
 	}
-}
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLureSwimClimbOutTest, "Project.Movement.Swim.ClimbOutAtEdgeHeightFromData", LureSwimTest::Flags)
 
@@ -974,5 +974,7 @@ bool FLureSwimArmsTest::RunTest(const FString& Parameters)
 	Pool.Tick(2);
 	return true;
 }
+
+} // namespace LureSwimTest
 
 #endif // WITH_DEV_AUTOMATION_TESTS
