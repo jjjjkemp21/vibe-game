@@ -110,12 +110,11 @@ C++ work and Blender work (model-artist, animation-artist) can run in parallel; 
     2. Implementation: one senior in a lane.
     3. Adversarial review: reviewers with different lenses try to break it, and a majority vote decides each finding.
     4. Fix and verify, then the normal QA, playtest and designer gate.
-  **Keep workflows small (Jimmy, 2026-09-23).** He stopped a T-026 review that took 31 agents and ~4M tokens because it used too many resources. Limits:
-    - At most ~8 agents per workflow.
-    - One skeptic per finding, and 3 only for a blocker.
-    - A review usually has 2-3 lenses, not 4.
-    - Set a time limit.
-    - Save partial results: a stopped run's findings can be read from its journal.
+  **Scale by need, at the right effort (Jimmy, 2026-09-23, clarified).** Use as many agents (and workflow agents) as the work needs to go fast and stay accurate. What Jimmy cares about is that EVERY agent runs at the effort its job needs.
+    - Pick the named level for each agent: junior, mid or senior.
+    - In workflows, set `agentType` to the right level for each stage, e.g. reviewers `<role>-senior-max` and verifiers or skeptics `qa-engineer-mid-medium` or `-junior-low`. Never leave stages on the default or max effort by accident.
+    - The T-026 review he stopped ran every agent at top effort. Count was never the problem.
+    - If a workflow is stopped, save its partial results from its journal.
   **Ultracode names (Jimmy, 2026-09-23).** Every ultracode run and agent has a set name, so the lead and Jimmy can tell who did what:
     - The workflow's `meta.name` is `ultracode-<task>-<phase>`, e.g. `ultracode-T026-review` or `ultracode-T016-design`.
     - Every agent() call gets `agentType` = a named team agent (e.g. `unreal-engineer-senior-max`) and `label` = `ultracode:<phase>:<agentType>:<job>`. Phases are design, judge, build, review, verify and fix; the job is the lens, approach or finding number. Examples:
