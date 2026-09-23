@@ -74,4 +74,5 @@ C++ work and Blender work (model-artist, animation-artist) can run in parallel; 
 ## Working with Jimmy
 - He playtests. Feedback notes land in `Saved/Playtest/` once the feedback key exists (see `playtest-feedback` skill). Turn each note into a task in `docs/TASKS.md`.
 - Report in plain language: what changed, what to try next time he plays, and anything you need from him.
+- Progress screenshots for Jimmy: `C:\GameDev\VibeGame\Progress\` (not in git). Whenever something visible is verified (a new asset preview, a level screenshot, a playtest shot, a before/after), the lead copies the best 1-3 images there as `<yyyy-MM-dd>_<NN>_<short_plain_description>.png` (NN continues the day's numbering). Only verified, looked-at images; no logs.
 - Source of truth for what we build: `docs/GAME_DESIGN.md`, `docs/ART_STYLE.md`, `docs/TASKS.md`.
