@@ -26,3 +26,7 @@ Plugins/**/Intermediate/
 tools/local.settings.json
 .claude/settings.local.json
 CLAUDE.local.md
+
+# ---- Python ----
+__pycache__/
+*.pyc
