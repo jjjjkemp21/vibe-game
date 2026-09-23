@@ -58,6 +58,10 @@ public:
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category="Placeholder UI")
 	bool bShowPlaceholderText = true;
 
+	/** Seconds a placeholder notice ("Level up! Level 2", "Sold 2 fish for 48 coins") stays on the owner's HUD */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category="Placeholder UI", meta=(ClampMin="0.5", Units="s"))
+	float NoticeSeconds = 4.0f;
+
 	/**
 	 *  Loads a table synchronously (game thread). Null with a readable OutError if it is not set, the asset does not exist
 	 *  (checked first, so no engine load errors are logged) or it has another row struct.

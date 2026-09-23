@@ -21,6 +21,8 @@ public:
 	TArray<int32> MoneyDeltas;
 	TArray<int32> XpDeltas;
 	int32 FishLanded = 0;
+	/** (FishSold, MoneyEarned) of every OnFishSold */
+	TArray<TPair<int32, int32>> Sales;
 
 	void Listen(ULureProgressionComponent* Progression)
 	{
@@ -29,6 +31,7 @@ public:
 		Progression->OnMoneyChanged.AddDynamic(this, &ULureProgressionTestListener::HandleMoneyChanged);
 		Progression->OnXpChanged.AddDynamic(this, &ULureProgressionTestListener::HandleXpChanged);
 		Progression->OnFishLanded.AddDynamic(this, &ULureProgressionTestListener::HandleFishLanded);
+		Progression->OnFishSold.AddDynamic(this, &ULureProgressionTestListener::HandleFishSold);
 	}
 
 	UFUNCTION()
@@ -45,4 +48,7 @@ public:
 
 	UFUNCTION()
 	void HandleFishLanded(ULureProgressionComponent* Progression, const FFishInstance& Fish, const FLureFishLandedResult& Result) { ++FishLanded; }
+
+	UFUNCTION()
+	void HandleFishSold(ULureProgressionComponent* Progression, int32 FishSold, int32 MoneyEarned) { Sales.Emplace(FishSold, MoneyEarned); }
 };
