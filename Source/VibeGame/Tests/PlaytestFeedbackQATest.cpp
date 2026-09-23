@@ -22,6 +22,7 @@
 #include "InputCoreTypes.h"
 #include "Playtest/PlaytestNoteWriter.h"
 #include "Playtest/PlaytestFeedbackSubsystem.h"
+#include "Playtest/PlaytestFeedbackRules.h"
 #include <limits>
 
 #if WITH_DEV_AUTOMATION_TESTS && VIBEGAME_WITH_PLAYTEST_FEEDBACK
@@ -1713,7 +1714,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPlaytestQAGitWorktreeTest, "Project.Playtest.Q
 bool FPlaytestQAGitWorktreeTest::RunTest(const FString& Parameters)
 {
 	// in a git worktree (the C++ lanes are worktrees) .git is a FILE pointing at <main>/.git/worktrees/<name>;
-	// branch refs live in the main (common) git dir. The spec says "commit id if available", so 'unknown' is allowed.
+	// branch refs live in the main (common) git dir, found through the "commondir" file. Since round 2 (B5) both
+	// cases must give the real commit id: a note from a lane build must not record "unknown".
 	PlaytestQA::FScopedTempDir Temp;
 	const FString MainGitDir = Temp.Path / TEXT("MainRepo/.git");
 	const FString DetachedHash = FString::ChrN(40, TEXT('f'));
@@ -1727,8 +1729,7 @@ bool FPlaytestQAGitWorktreeTest::RunTest(const FString& Parameters)
 	PlaytestQA::WriteAscii(DetachedGitDir / TEXT("HEAD"), DetachedHash + TEXT("\n"));
 	PlaytestQA::WriteAscii(DetachedGitDir / TEXT("commondir"), TEXT("../..\n"));
 	const FString DetachedResult = FPlaytestNoteWriter::ReadGitCommit(DetachedRepo);
-	TestTrue(FString::Printf(TEXT("Worktree, detached HEAD: its commit or 'unknown', never other text (got '%s')"), *DetachedResult), DetachedResult == DetachedHash || DetachedResult == TEXT("unknown"));
-	AddInfo(FString::Printf(TEXT("Worktree, detached HEAD: %s"), DetachedResult == DetachedHash ? TEXT("resolved") : TEXT("'unknown'")));
+	TestEqual(TEXT("Worktree, detached HEAD: the commit in the worktree's own HEAD"), DetachedResult, DetachedHash);
 
 	// branch checked out in the worktree (like lane/eng1): the ref is only in the common dir
 	const FString BranchRepo = Temp.Path / TEXT("WorktreeBranch");
@@ -1737,8 +1738,7 @@ bool FPlaytestQAGitWorktreeTest::RunTest(const FString& Parameters)
 	PlaytestQA::WriteAscii(BranchGitDir / TEXT("HEAD"), TEXT("ref: refs/heads/lane/eng1\n"));
 	PlaytestQA::WriteAscii(BranchGitDir / TEXT("commondir"), TEXT("../..\n"));
 	const FString BranchResult = FPlaytestNoteWriter::ReadGitCommit(BranchRepo);
-	TestTrue(FString::Printf(TEXT("Worktree, branch HEAD: the branch commit or 'unknown', never other text (got '%s')"), *BranchResult), BranchResult == BranchHash || BranchResult == TEXT("unknown"));
-	AddInfo(FString::Printf(TEXT("Worktree, branch HEAD: %s"), BranchResult == BranchHash ? TEXT("resolved") : TEXT("'unknown' (commondir not followed)")));
+	TestEqual(TEXT("Worktree, branch HEAD: the branch commit from the common dir (commondir followed)"), BranchResult, BranchHash);
 	return true;
 }
 
@@ -1759,6 +1759,858 @@ bool FPlaytestQAConfigDefaultsTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("The game pauses while the note box is open"), Defaults->bPauseWhileTyping);
 	TestTrue(FString::Printf(TEXT("FPS window is 5 s (got %.2f)"), Defaults->FpsWindowSeconds), FMath::IsNearlyEqual(Defaults->FpsWindowSeconds, 5.0f));
 	TestTrue(FString::Printf(TEXT("Screenshot timeout is positive (got %.2f)"), Defaults->ScreenshotTimeoutSeconds), Defaults->ScreenshotTimeoutSeconds > 0.0f);
+	return true;
+}
+
+// =====================================================================================================================
+// Round 2 (4f56d15): UTC timestamp, camera block, multi-line text, F8 routing rules, confirmation toast, worktrees.
+// =====================================================================================================================
+
+namespace PlaytestQA
+{
+	static const TCHAR* KeyActionName(const EPlaytestFeedbackKeyAction Action)
+	{
+		switch (Action)
+		{
+		case EPlaytestFeedbackKeyAction::PassThrough: return TEXT("PassThrough");
+		case EPlaytestFeedbackKeyAction::Consume: return TEXT("Consume");
+		case EPlaytestFeedbackKeyAction::OpenNote: return TEXT("OpenNote");
+		default: return TEXT("?");
+		}
+	}
+
+	static const TCHAR* BoxActionName(const EPlaytestNoteBoxKeyAction Action)
+	{
+		switch (Action)
+		{
+		case EPlaytestNoteBoxKeyAction::PassThrough: return TEXT("PassThrough");
+		case EPlaytestNoteBoxKeyAction::Submit: return TEXT("Submit");
+		case EPlaytestNoteBoxKeyAction::Cancel: return TEXT("Cancel");
+		case EPlaytestNoteBoxKeyAction::Consume: return TEXT("Consume");
+		default: return TEXT("?");
+		}
+	}
+
+	/** F8 during normal play: feedback key, first press, session running, not ejected, nobody typing */
+	static FPlaytestFeedbackKeyContext PlayingF8()
+	{
+		FPlaytestFeedbackKeyContext Context;
+		Context.bIsFeedbackKey = true;
+		Context.bIsRepeat = false;
+		Context.bSessionRunning = true;
+		Context.bEjected = false;
+		Context.bTypingInText = false;
+		return Context;
+	}
+
+	static void ExpectKeyAction(FAutomationTestBase& Test, const FString& What, const FPlaytestFeedbackKeyContext& Context, const EPlaytestFeedbackKeyAction Expected)
+	{
+		const EPlaytestFeedbackKeyAction Actual = FPlaytestFeedbackRules::DecideFeedbackKey(Context);
+		Test.TestTrue(FString::Printf(TEXT("%s: expected %s, got %s"), *What, KeyActionName(Expected), KeyActionName(Actual)), Actual == Expected);
+	}
+
+	static FPlaytestFeedbackCandidate Candidate(const bool bRunning, const int32 PIEInstance, const uint64 LastFocusSerial = 0, const bool bFocused = false, const bool bPrimary = false, const bool bActive = false)
+	{
+		FPlaytestFeedbackCandidate Out;
+		Out.bSessionRunning = bRunning;
+		Out.PIEInstance = PIEInstance;
+		Out.LastFocusSerial = LastFocusSerial;
+		Out.bViewportFocused = bFocused;
+		Out.bIsPrimaryPIE = bPrimary;
+		Out.bFeedbackActive = bActive;
+		return Out;
+	}
+
+	static void ExpectHandler(FAutomationTestBase& Test, const FString& What, const TArray<FPlaytestFeedbackCandidate>& Candidates, const int32 ExpectedIndex)
+	{
+		const int32 Actual = FPlaytestFeedbackRules::ChooseHandler(Candidates);
+		Test.TestEqual(FString::Printf(TEXT("%s: chosen index"), *What), Actual, ExpectedIndex);
+	}
+
+	/** Deterministic multi-line note of exactly Length characters: LF line breaks, no leading/trailing whitespace */
+	static FString MakeMultiLineText(const int32 Length)
+	{
+		FString Out;
+		for (int32 Line = 1; Out.Len() < Length; ++Line)
+		{
+			Out += FString::Printf(TEXT("Line %03d: the jetty rail \"floats\" a bit, see C:\\path %s\n"), Line, *FromCodePoints({ 0xE9 }));
+		}
+		Out.LeftInline(Length);
+		Out[Length - 1] = TEXT('x'); // never end on whitespace or a line break
+		return Out;
+	}
+
+	/** Expects Object.Name to be JSON null */
+	static void ExpectNull(FAutomationTestBase& Test, const FString& What, const TSharedPtr<FJsonObject>& Object, const TCHAR* Name)
+	{
+		ExpectField(Test, What, Object, Name, EJson::Null);
+	}
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// UTC timestamp: note.json "timestamp" is UTC (ISO 8601, ms, Z); the folder name stays local time.
+// ---------------------------------------------------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPlaytestQATimestampFormatTest, "Project.Playtest.QA.Timestamp.UtcFormat", PLAYTEST_QA_FLAGS)
+
+bool FPlaytestQATimestampFormatTest::RunTest(const FString& Parameters)
+{
+	struct FCase
+	{
+		FDateTime Utc;
+		const TCHAR* Expected;
+		const TCHAR* Why;
+	};
+	const FCase Cases[] = {
+		{ FDateTime(2026, 9, 23, 2, 5, 9, 250), TEXT("2026-09-23T02:05:09.250Z"), TEXT("documented example") },
+		{ FDateTime(2027, 1, 1, 0, 0, 0, 0), TEXT("2027-01-01T00:00:00.000Z"), TEXT("midnight, milliseconds written as .000") },
+		{ FDateTime(2026, 12, 31, 23, 59, 59, 999), TEXT("2026-12-31T23:59:59.999Z"), TEXT("largest values, .999 not rounded up") },
+		{ FDateTime(2028, 2, 29, 13, 7, 3, 7), TEXT("2028-02-29T13:07:03.007Z"), TEXT("leap day, 24-hour clock, zero-padded milliseconds") },
+	};
+	for (const FCase& Case : Cases)
+	{
+		const FString Text = FPlaytestNoteWriter::MakeUtcTimestamp(Case.Utc);
+		TestEqual(FString::Printf(TEXT("MakeUtcTimestamp: %s"), Case.Why), Text, FString(Case.Expected));
+
+		FDateTime Parsed;
+		const bool bParsed = FDateTime::ParseIso8601(*Text, Parsed);
+		TestTrue(FString::Printf(TEXT("'%s' parses back as ISO 8601 to the same UTC instant"), *Text), bParsed && Parsed == Case.Utc);
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPlaytestQATimestampStampNowTest, "Project.Playtest.QA.Timestamp.StampNowIsOneInstant", PLAYTEST_QA_FLAGS)
+
+bool FPlaytestQATimestampStampNowTest::RunTest(const FString& Parameters)
+{
+	const FDateTime UtcBefore = FDateTime::UtcNow();
+	FPlaytestNoteData Note;
+	FPlaytestNoteWriter::StampNow(Note);
+	const FTimespan Offset = FPlaytestNoteWriter::GetLocalUtcOffset();
+
+	TestTrue(FString::Printf(TEXT("TimestampUtc is the UTC clock now (%s vs %s)"), *Note.TimestampUtc.ToIso8601(), *UtcBefore.ToIso8601()), FMath::Abs((Note.TimestampUtc - UtcBefore).GetTotalSeconds()) < 5.0);
+	TestTrue(FString::Printf(TEXT("Timestamp is the local clock now (%s)"), *Note.Timestamp.ToString()), FMath::Abs((Note.Timestamp - FDateTime::Now()).GetTotalSeconds()) < 5.0);
+	TestTrue(FString::Printf(TEXT("Local minus UTC equals GetLocalUtcOffset exactly (one clock reading): %.3f h vs %.3f h"), (Note.Timestamp - Note.TimestampUtc).GetTotalHours(), Offset.GetTotalHours()),
+		(Note.Timestamp - Note.TimestampUtc) == Offset);
+	TestTrue(FString::Printf(TEXT("The offset is whole minutes (%lld ticks)"), Offset.GetTicks()), Offset.GetTicks() % ETimespan::TicksPerMinute == 0);
+	TestTrue(FString::Printf(TEXT("The offset is a real time zone, -12 h..+14 h (%.2f h)"), Offset.GetTotalHours()), Offset.GetTotalHours() >= -12.0 && Offset.GetTotalHours() <= 14.0);
+	const FTimespan OsOffset = FDateTime::Now() - FDateTime::UtcNow();
+	TestTrue(FString::Printf(TEXT("The offset matches the OS clocks within a minute (%.3f h vs %.3f h)"), Offset.GetTotalHours(), OsOffset.GetTotalHours()), FMath::Abs((OsOffset - Offset).GetTotalSeconds()) < 60.0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPlaytestQATimestampFolderVsJsonTest, "Project.Playtest.QA.Timestamp.FolderLocalJsonUtc", PLAYTEST_QA_FLAGS)
+
+bool FPlaytestQATimestampFolderVsJsonTest::RunTest(const FString& Parameters)
+{
+	// the folder is named in local time, note.json "timestamp" is the same instant in UTC, even across a date change
+	struct FCase
+	{
+		FDateTime Local;
+		FDateTime Utc;
+		const TCHAR* Folder;
+		const TCHAR* Json;
+		const TCHAR* Why;
+	};
+	const FCase Cases[] = {
+		{ FDateTime(2026, 9, 22, 21, 5, 9, 250), FDateTime(2026, 9, 23, 4, 5, 9, 250), TEXT("20260922-210509"), TEXT("2026-09-23T04:05:09.250Z"), TEXT("UTC-7: UTC is already the next day") },
+		{ FDateTime(2027, 1, 1, 5, 0, 0, 0), FDateTime(2026, 12, 31, 23, 15, 0, 0), TEXT("20270101-050000"), TEXT("2026-12-31T23:15:00.000Z"), TEXT("UTC+5:45: UTC is still the previous year") },
+		{ FDateTime(2026, 9, 22, 14, 3, 7, 0), FDateTime(2026, 9, 22, 14, 3, 7, 0), TEXT("20260922-140307"), TEXT("2026-09-22T14:03:07.000Z"), TEXT("UTC+0: both the same") },
+	};
+	for (const FCase& Case : Cases)
+	{
+		FPlaytestNoteData Note = PlaytestQA::MakeNote(TEXT("timestamp check"));
+		Note.Timestamp = Case.Local;
+		Note.TimestampUtc = Case.Utc;
+		TestEqual(FString::Printf(TEXT("%s: folder name is local time"), Case.Why), FPlaytestNoteWriter::MakeFolderName(Note.Timestamp), FString(Case.Folder));
+		TestEqual(FString::Printf(TEXT("%s: GetUtcTimestampText uses TimestampUtc"), Case.Why), FPlaytestNoteWriter::GetUtcTimestampText(Note), FString(Case.Json));
+		const TSharedPtr<FJsonObject> Root = PlaytestQA::ParseStrict(*this, Case.Why, FPlaytestNoteWriter::ToJsonString(Note, false));
+		PlaytestQA::ExpectString(*this, Case.Why, Root, TEXT("timestamp"), FString(Case.Json));
+	}
+
+	// and the same on disk: folder local, note.json UTC
+	PlaytestQA::FScopedTempDir Temp;
+	FPlaytestNoteData Note = PlaytestQA::MakeNote(TEXT("on disk"));
+	Note.Timestamp = Cases[0].Local;
+	Note.TimestampUtc = Cases[0].Utc;
+	FString Folder, Error;
+	TestTrue(FString::Printf(TEXT("WriteNote succeeds (error: '%s')"), *Error), FPlaytestNoteWriter::WriteNote(Temp.Path, Note, 0, 0, TArray<FColor>(), Folder, Error));
+	TestEqual(TEXT("On disk: the folder is named in local time"), PlaytestQA::FolderName(Folder), FString(Cases[0].Folder));
+	FString Json;
+	FFileHelper::LoadFileToString(Json, *(Folder / TEXT("note.json")));
+	const TSharedPtr<FJsonObject> Root = PlaytestQA::ParseStrict(*this, TEXT("on disk"), Json);
+	PlaytestQA::ExpectString(*this, TEXT("on disk"), Root, TEXT("timestamp"), FString(Cases[0].Json));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPlaytestQATimestampDerivedTest, "Project.Playtest.QA.Timestamp.DerivedWhenUtcUnset", PLAYTEST_QA_FLAGS)
+
+bool FPlaytestQATimestampDerivedTest::RunTest(const FString& Parameters)
+{
+	// header contract: TimestampUtc unset -> derived from Timestamp with the machine's offset; both unset -> ""
+	FPlaytestNoteData Note = PlaytestQA::MakeNote(TEXT("no utc"));
+	Note.Timestamp = FDateTime(2026, 9, 22, 21, 5, 9, 250);
+	Note.TimestampUtc = FDateTime();
+	const FString Expected = FPlaytestNoteWriter::MakeUtcTimestamp(Note.Timestamp - FPlaytestNoteWriter::GetLocalUtcOffset());
+	TestEqual(TEXT("Only local time set: UTC is local minus the machine offset"), FPlaytestNoteWriter::GetUtcTimestampText(Note), Expected);
+	const TSharedPtr<FJsonObject> Root = PlaytestQA::ParseStrict(*this, TEXT("only local"), FPlaytestNoteWriter::ToJsonString(Note, false));
+	PlaytestQA::ExpectString(*this, TEXT("only local"), Root, TEXT("timestamp"), Expected);
+
+	const FPlaytestNoteData Empty = FPlaytestNoteData();
+	TestEqual(TEXT("Neither time set: empty text"), FPlaytestNoteWriter::GetUtcTimestampText(Empty), FString());
+	const TSharedPtr<FJsonObject> EmptyRoot = PlaytestQA::ParseStrict(*this, TEXT("no times"), FPlaytestNoteWriter::ToJsonString(Empty, false));
+	PlaytestQA::ExpectString(*this, TEXT("no times"), EmptyRoot, TEXT("timestamp"), FString());
+	return true;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Camera block: camera {location {x,y,z}, rotation {pitch,yaw,roll}}, NaN/Inf written as null.
+// ---------------------------------------------------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPlaytestQACameraSchemaTest, "Project.Playtest.QA.Json.CameraBlockSchema", PLAYTEST_QA_FLAGS)
+
+bool FPlaytestQACameraSchemaTest::RunTest(const FString& Parameters)
+{
+	PlaytestQA::FScopedTempDir Temp;
+	FPlaytestNoteData Note = PlaytestQA::MakeNote(TEXT("look at the rock"));
+	// every camera value differs from the player values, so a copied or swapped block is caught
+	Note.CameraLocation = FVector(1100.5, -640.25, 250.75);
+	Note.CameraRotation = FRotator(-35.5, 140.25, 1.5);
+
+	FString Folder, Error, Warning;
+	if (!TestTrue(FString::Printf(TEXT("WriteNote succeeds (error: '%s')"), *Error), FPlaytestNoteWriter::WriteNote(Temp.Path, Note, 0, 0, TArray<FColor>(), Folder, Error, &Warning)))
+	{
+		return true;
+	}
+	TestTrue(FString::Printf(TEXT("A clean note produces no warning (got '%s')"), *Warning), Warning.IsEmpty());
+	FString Json;
+	FFileHelper::LoadFileToString(Json, *(Folder / TEXT("note.json")));
+	const FString What = TEXT("note.json");
+	const TSharedPtr<FJsonObject> Root = PlaytestQA::ParseStrict(*this, What, Json);
+	if (!Root.IsValid())
+	{
+		return true;
+	}
+
+	const TSharedPtr<FJsonObject> Camera = PlaytestQA::ExpectObject(*this, What, Root, TEXT("camera"));
+	const TSharedPtr<FJsonObject> CameraLocation = PlaytestQA::ExpectObject(*this, TEXT("camera"), Camera, TEXT("location"));
+	PlaytestQA::ExpectNumber(*this, TEXT("camera.location"), CameraLocation, TEXT("x"), Note.CameraLocation.X, 1e-3);
+	PlaytestQA::ExpectNumber(*this, TEXT("camera.location"), CameraLocation, TEXT("y"), Note.CameraLocation.Y, 1e-3);
+	PlaytestQA::ExpectNumber(*this, TEXT("camera.location"), CameraLocation, TEXT("z"), Note.CameraLocation.Z, 1e-3);
+	const TSharedPtr<FJsonObject> CameraRotation = PlaytestQA::ExpectObject(*this, TEXT("camera"), Camera, TEXT("rotation"));
+	PlaytestQA::ExpectNumber(*this, TEXT("camera.rotation"), CameraRotation, TEXT("pitch"), Note.CameraRotation.Pitch, 1e-3);
+	PlaytestQA::ExpectNumber(*this, TEXT("camera.rotation"), CameraRotation, TEXT("yaw"), Note.CameraRotation.Yaw, 1e-3);
+	PlaytestQA::ExpectNumber(*this, TEXT("camera.rotation"), CameraRotation, TEXT("roll"), Note.CameraRotation.Roll, 1e-3);
+
+	// the player pose is still its own
+	const TSharedPtr<FJsonObject> Location = PlaytestQA::ExpectObject(*this, What, Root, TEXT("location"));
+	PlaytestQA::ExpectNumber(*this, TEXT("location"), Location, TEXT("x"), Note.Location.X, 1e-3);
+	PlaytestQA::ExpectNumber(*this, TEXT("location"), Location, TEXT("z"), Note.Location.Z, 1e-3);
+	const TSharedPtr<FJsonObject> Rotation = PlaytestQA::ExpectObject(*this, What, Root, TEXT("rotation"));
+	PlaytestQA::ExpectNumber(*this, TEXT("rotation"), Rotation, TEXT("pitch"), Note.Rotation.Pitch, 1e-3);
+	PlaytestQA::ExpectNumber(*this, TEXT("rotation"), Rotation, TEXT("yaw"), Note.Rotation.Yaw, 1e-3);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPlaytestQACameraNonFiniteTest, "Project.Playtest.QA.Json.CameraNonFiniteIsNull", PLAYTEST_QA_FLAGS)
+
+bool FPlaytestQACameraNonFiniteTest::RunTest(const FString& Parameters)
+{
+	PlaytestQA::FScopedTempDir Temp;
+	const double NaN = std::numeric_limits<double>::quiet_NaN();
+	const double Inf = std::numeric_limits<double>::infinity();
+	FPlaytestNoteData Note = PlaytestQA::MakeNote(TEXT("camera went weird"));
+	Note.CameraLocation.X = NaN;
+	Note.CameraLocation.Y = 5.0;
+	Note.CameraLocation.Z = Inf;
+	Note.CameraRotation.Pitch = -Inf;
+	Note.CameraRotation.Yaw = 90.0;
+	Note.CameraRotation.Roll = NaN;
+
+	FString Folder, Error, Warning;
+	if (!TestTrue(FString::Printf(TEXT("WriteNote still saves the note (error: '%s')"), *Error), FPlaytestNoteWriter::WriteNote(Temp.Path, Note, 0, 0, TArray<FColor>(), Folder, Error, &Warning)))
+	{
+		return true;
+	}
+	TestFalse(TEXT("A warning reports the NaN/Inf values written as null"), Warning.IsEmpty());
+	FString Json;
+	FFileHelper::LoadFileToString(Json, *(Folder / TEXT("note.json")));
+	const TSharedPtr<FJsonObject> Root = PlaytestQA::ParseStrict(*this, TEXT("non-finite camera"), Json);
+	if (!Root.IsValid())
+	{
+		return true;
+	}
+	PlaytestQA::ExpectString(*this, TEXT("non-finite camera"), Root, TEXT("text"), Note.Text);
+	const TSharedPtr<FJsonObject> Camera = PlaytestQA::ExpectObject(*this, TEXT("note.json"), Root, TEXT("camera"));
+	const TSharedPtr<FJsonObject> CameraLocation = PlaytestQA::ExpectObject(*this, TEXT("camera"), Camera, TEXT("location"));
+	PlaytestQA::ExpectNull(*this, TEXT("camera.location (NaN)"), CameraLocation, TEXT("x"));
+	PlaytestQA::ExpectNumber(*this, TEXT("camera.location"), CameraLocation, TEXT("y"), 5.0, 1e-9);
+	PlaytestQA::ExpectNull(*this, TEXT("camera.location (+Inf)"), CameraLocation, TEXT("z"));
+	const TSharedPtr<FJsonObject> CameraRotation = PlaytestQA::ExpectObject(*this, TEXT("camera"), Camera, TEXT("rotation"));
+	PlaytestQA::ExpectNull(*this, TEXT("camera.rotation (-Inf)"), CameraRotation, TEXT("pitch"));
+	PlaytestQA::ExpectNumber(*this, TEXT("camera.rotation"), CameraRotation, TEXT("yaw"), 90.0, 1e-9);
+	PlaytestQA::ExpectNull(*this, TEXT("camera.rotation (NaN)"), CameraRotation, TEXT("roll"));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPlaytestQADefaultRound2FieldsTest, "Project.Playtest.QA.Json.DefaultNoteHasCameraAndTimestamp", PLAYTEST_QA_FLAGS)
+
+bool FPlaytestQADefaultRound2FieldsTest::RunTest(const FString& Parameters)
+{
+	const FString What = TEXT("default note");
+	const TSharedPtr<FJsonObject> Root = PlaytestQA::ParseStrict(*this, What, FPlaytestNoteWriter::ToJsonString(FPlaytestNoteData(), false));
+	const TSharedPtr<FJsonObject> Camera = PlaytestQA::ExpectObject(*this, What, Root, TEXT("camera"));
+	const TSharedPtr<FJsonObject> CameraLocation = PlaytestQA::ExpectObject(*this, TEXT("camera"), Camera, TEXT("location"));
+	const TSharedPtr<FJsonObject> CameraRotation = PlaytestQA::ExpectObject(*this, TEXT("camera"), Camera, TEXT("rotation"));
+	for (const TCHAR* Axis : { TEXT("x"), TEXT("y"), TEXT("z") })
+	{
+		PlaytestQA::ExpectNumber(*this, TEXT("camera.location"), CameraLocation, Axis, 0.0, 1e-9);
+	}
+	for (const TCHAR* Axis : { TEXT("pitch"), TEXT("yaw"), TEXT("roll") })
+	{
+		PlaytestQA::ExpectNumber(*this, TEXT("camera.rotation"), CameraRotation, Axis, 0.0, 1e-9);
+	}
+	PlaytestQA::ExpectString(*this, What, Root, TEXT("timestamp"), FString());
+	return true;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Multi-line note text: Slate CRLF -> "\n", ends trimmed, up to 2000 characters, newlines survive note.json.
+// ---------------------------------------------------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPlaytestQANormalizeTextTest, "Project.Playtest.QA.Text.NormalizeLineEndings", PLAYTEST_QA_FLAGS)
+
+bool FPlaytestQANormalizeTextTest::RunTest(const FString& Parameters)
+{
+	struct FCase
+	{
+		FString Raw;
+		FString Expected;
+		const TCHAR* Why;
+	};
+	const FString Accents = PlaytestQA::FromCodePoints({ 0xE9, 0x20, 0x1F3A3 });
+	const FCase Cases[] = {
+		{ TEXT("line one\r\nline two"), TEXT("line one\nline two"), TEXT("CRLF (Slate on Windows) becomes LF") },
+		{ TEXT("line one\nline two"), TEXT("line one\nline two"), TEXT("LF stays LF") },
+		{ TEXT("a\r\nb\nc\r\n\r\nd"), TEXT("a\nb\nc\n\nd"), TEXT("mixed endings; a blank line inside the note is kept") },
+		{ TEXT("\r\n  hello there \t\r\n"), TEXT("hello there"), TEXT("leading/trailing spaces, tabs and line breaks are trimmed") },
+		{ TEXT("keep   inner  spaces\tand tabs"), TEXT("keep   inner  spaces\tand tabs"), TEXT("inner whitespace is kept") },
+		{ TEXT("spaces at a line end   \r\nnext"), TEXT("spaces at a line end   \nnext"), TEXT("only the ends of the whole note are trimmed, not each line") },
+		{ TEXT(""), TEXT(""), TEXT("empty stays empty") },
+		{ TEXT(" \r\n\t \r\n"), TEXT(""), TEXT("whitespace-only becomes empty") },
+		{ Accents + TEXT("\r\nok"), Accents + TEXT("\nok"), TEXT("non-ASCII text is untouched") },
+	};
+	for (const FCase& Case : Cases)
+	{
+		const FString Actual = FPlaytestFeedbackRules::NormalizeNoteText(Case.Raw);
+		TestTrue(FString::Printf(TEXT("NormalizeNoteText: %s (%s)"), Case.Why, *PlaytestQA::DescribeDifference(Actual, Case.Expected)), Actual.Equals(Case.Expected, ESearchCase::CaseSensitive));
+		TestFalse(FString::Printf(TEXT("NormalizeNoteText: %s: no CR left"), Case.Why), Actual.Contains(TEXT("\r")));
+		TestTrue(FString::Printf(TEXT("NormalizeNoteText: %s: normalizing twice changes nothing"), Case.Why), FPlaytestFeedbackRules::NormalizeNoteText(Actual).Equals(Actual, ESearchCase::CaseSensitive));
+	}
+	// informational: a lone CR (old Mac line ending) never comes from Slate
+	AddInfo(FString::Printf(TEXT("Lone CR 'a\\rb' normalizes to '%s'"), *FPlaytestFeedbackRules::NormalizeNoteText(TEXT("a\rb")).ReplaceCharWithEscapedChar()));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPlaytestQAMultiLineJsonTest, "Project.Playtest.QA.Text.MultiLineJsonRoundTrip", PLAYTEST_QA_FLAGS)
+
+bool FPlaytestQAMultiLineJsonTest::RunTest(const FString& Parameters)
+{
+	// what the box gives (CRLF) -> what is saved ("\n") -> note.json escapes it as \n and reads back identical
+	PlaytestQA::FScopedTempDir Temp;
+	const FString Raw = TEXT("First line\r\nSecond line with \"quotes\"\r\n\r\nFourth after a blank line\r\n");
+	const FString Saved = FPlaytestFeedbackRules::NormalizeNoteText(Raw);
+	TestEqual(TEXT("Saved text"), Saved, FString(TEXT("First line\nSecond line with \"quotes\"\n\nFourth after a blank line")));
+
+	FString Folder, Error;
+	if (!TestTrue(FString::Printf(TEXT("WriteNote succeeds (error: '%s')"), *Error), FPlaytestNoteWriter::WriteNote(Temp.Path, PlaytestQA::MakeNote(Saved), 0, 0, TArray<FColor>(), Folder, Error)))
+	{
+		return true;
+	}
+	FString Json;
+	FFileHelper::LoadFileToString(Json, *(Folder / TEXT("note.json")));
+	TestTrue(TEXT("note.json stores the line break as the escape \\n"), Json.Contains(TEXT("First line\\nSecond line")));
+	TestTrue(TEXT("note.json keeps the blank line as \\n\\n"), Json.Contains(TEXT("\\\"quotes\\\"\\n\\nFourth")));
+	TestFalse(TEXT("note.json has no \\r escape (no CR was saved)"), Json.Contains(TEXT("\\r")));
+	const TSharedPtr<FJsonObject> Root = PlaytestQA::ParseStrict(*this, TEXT("multi-line"), Json);
+	PlaytestQA::ExpectString(*this, TEXT("multi-line"), Root, TEXT("text"), Saved);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPlaytestQAMaxLengthTest, "Project.Playtest.QA.Text.MaxLengthBoundary", PLAYTEST_QA_FLAGS)
+
+bool FPlaytestQAMaxLengthTest::RunTest(const FString& Parameters)
+{
+	// the note box caps input at 2000 characters; nothing after the box may shorten or alter a note around that size
+	PlaytestQA::FScopedTempDir Temp;
+	for (const int32 Length : { 1999, 2000, 2001 })
+	{
+		const FString Text = PlaytestQA::MakeMultiLineText(Length);
+		TestEqual(FString::Printf(TEXT("%d chars: generated length"), Length), Text.Len(), Length);
+		const FString Saved = FPlaytestFeedbackRules::NormalizeNoteText(Text);
+		TestTrue(FString::Printf(TEXT("%d chars: an already-normalized note is unchanged (%s)"), Length, *PlaytestQA::DescribeDifference(Saved, Text)), Saved.Equals(Text, ESearchCase::CaseSensitive));
+		PlaytestQA::ExpectTextRoundTrip(*this, FString::Printf(TEXT("%d-char multi-line note"), Length), Temp.Path, Saved);
+	}
+
+	// a full 2000-character box as Slate returns it (CRLF): each CRLF becomes one "\n", nothing else changes
+	const FString Lf = PlaytestQA::MakeMultiLineText(2000);
+	const FString Crlf = Lf.Replace(TEXT("\n"), TEXT("\r\n"));
+	int32 LineBreaks = 0;
+	for (const TCHAR C : Lf)
+	{
+		LineBreaks += (C == TEXT('\n')) ? 1 : 0;
+	}
+	TestEqual(TEXT("CRLF version is longer by one char per line break"), Crlf.Len(), 2000 + LineBreaks);
+	TestTrue(TEXT("The CRLF box text normalizes to the LF text exactly"), FPlaytestFeedbackRules::NormalizeNoteText(Crlf).Equals(Lf, ESearchCase::CaseSensitive));
+	return true;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// F8 decision rules (FPlaytestFeedbackRules::DecideFeedbackKey): captured vs passed to the editor/game.
+// ---------------------------------------------------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPlaytestQARulesOpenTest, "Project.Playtest.QA.Rules.F8OpensNoteInPlay", PLAYTEST_QA_FLAGS)
+
+bool FPlaytestQARulesOpenTest::RunTest(const FString& Parameters)
+{
+	PlaytestQA::ExpectKeyAction(*this, TEXT("F8 during play"), PlaytestQA::PlayingF8(), EPlaytestFeedbackKeyAction::OpenNote);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPlaytestQARulesEjectedTest, "Project.Playtest.QA.Rules.F8GoesToEditorWhenEjected", PLAYTEST_QA_FLAGS)
+
+bool FPlaytestQARulesEjectedTest::RunTest(const FString& Parameters)
+{
+	// ejected (simulate): F8 is the editor's "Possess" again, so it must pass through, first press or held
+	FPlaytestFeedbackKeyContext Context = PlaytestQA::PlayingF8();
+	Context.bEjected = true;
+	PlaytestQA::ExpectKeyAction(*this, TEXT("F8 while ejected"), Context, EPlaytestFeedbackKeyAction::PassThrough);
+	Context.bIsRepeat = true;
+	PlaytestQA::ExpectKeyAction(*this, TEXT("Held F8 while ejected"), Context, EPlaytestFeedbackKeyAction::PassThrough);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPlaytestQARulesTypingTest, "Project.Playtest.QA.Rules.F8PassesThroughWhileTyping", PLAYTEST_QA_FLAGS)
+
+bool FPlaytestQARulesTypingTest::RunTest(const FString& Parameters)
+{
+	// focus in a text field (editor field, editor console, game UI) or the game console open: F8 is left alone
+	FPlaytestFeedbackKeyContext Context = PlaytestQA::PlayingF8();
+	Context.bTypingInText = true;
+	PlaytestQA::ExpectKeyAction(*this, TEXT("F8 while typing in a text field / console open"), Context, EPlaytestFeedbackKeyAction::PassThrough);
+	Context.bIsRepeat = true;
+	PlaytestQA::ExpectKeyAction(*this, TEXT("Held F8 while typing"), Context, EPlaytestFeedbackKeyAction::PassThrough);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPlaytestQARulesNotRunningTest, "Project.Playtest.QA.Rules.F8PassesThroughWhenNotPlaying", PLAYTEST_QA_FLAGS)
+
+bool FPlaytestQARulesNotRunningTest::RunTest(const FString& Parameters)
+{
+	// no running session (editor idle, loading, tearing down): F8 is not ours
+	FPlaytestFeedbackKeyContext Context = PlaytestQA::PlayingF8();
+	Context.bSessionRunning = false;
+	PlaytestQA::ExpectKeyAction(*this, TEXT("F8 with no running session"), Context, EPlaytestFeedbackKeyAction::PassThrough);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPlaytestQARulesRepeatTest, "Project.Playtest.QA.Rules.HeldF8IsSwallowed", PLAYTEST_QA_FLAGS)
+
+bool FPlaytestQARulesRepeatTest::RunTest(const FString& Parameters)
+{
+	// holding F8 during play: repeats neither open a second note nor leak to the editor's eject
+	FPlaytestFeedbackKeyContext Context = PlaytestQA::PlayingF8();
+	Context.bIsRepeat = true;
+	PlaytestQA::ExpectKeyAction(*this, TEXT("Held (repeating) F8 during play"), Context, EPlaytestFeedbackKeyAction::Consume);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPlaytestQARulesTableTest, "Project.Playtest.QA.Rules.FeedbackKeyAllCombinations", PLAYTEST_QA_FLAGS)
+
+bool FPlaytestQARulesTableTest::RunTest(const FString& Parameters)
+{
+	// all 32 combinations against the documented rule:
+	// captured = feedback key AND running AND NOT ejected AND NOT typing; captured repeat -> Consume, captured press -> OpenNote
+	for (int32 Bits = 0; Bits < 32; ++Bits)
+	{
+		FPlaytestFeedbackKeyContext Context;
+		Context.bIsFeedbackKey = (Bits & 1) != 0;
+		Context.bIsRepeat = (Bits & 2) != 0;
+		Context.bSessionRunning = (Bits & 4) != 0;
+		Context.bEjected = (Bits & 8) != 0;
+		Context.bTypingInText = (Bits & 16) != 0;
+		const bool bCaptured = Context.bIsFeedbackKey && Context.bSessionRunning && !Context.bEjected && !Context.bTypingInText;
+		const EPlaytestFeedbackKeyAction Expected = !bCaptured ? EPlaytestFeedbackKeyAction::PassThrough
+			: (Context.bIsRepeat ? EPlaytestFeedbackKeyAction::Consume : EPlaytestFeedbackKeyAction::OpenNote);
+		PlaytestQA::ExpectKeyAction(*this, FString::Printf(TEXT("key=%d repeat=%d running=%d ejected=%d typing=%d"),
+			Context.bIsFeedbackKey ? 1 : 0, Context.bIsRepeat ? 1 : 0, Context.bSessionRunning ? 1 : 0, Context.bEjected ? 1 : 0, Context.bTypingInText ? 1 : 0), Context, Expected);
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPlaytestQARulesNoteBoxTest, "Project.Playtest.QA.Rules.NoteBoxKeys", PLAYTEST_QA_FLAGS)
+
+bool FPlaytestQARulesNoteBoxTest::RunTest(const FString& Parameters)
+{
+	struct FCase
+	{
+		FKey Key;
+		bool bShift;
+		FKey FeedbackKey;
+		EPlaytestNoteBoxKeyAction Expected;
+		const TCHAR* Why;
+	};
+	const FCase Cases[] = {
+		{ EKeys::Enter, false, EKeys::F8, EPlaytestNoteBoxKeyAction::Submit, TEXT("Enter saves") },
+		{ EKeys::Enter, true, EKeys::F8, EPlaytestNoteBoxKeyAction::PassThrough, TEXT("Shift+Enter is a new line (goes to the text box)") },
+		{ EKeys::Escape, false, EKeys::F8, EPlaytestNoteBoxKeyAction::Cancel, TEXT("Esc cancels") },
+		{ EKeys::Escape, true, EKeys::F8, EPlaytestNoteBoxKeyAction::Cancel, TEXT("Shift+Esc also cancels") },
+		{ EKeys::F8, false, EKeys::F8, EPlaytestNoteBoxKeyAction::Consume, TEXT("F8 again is swallowed") },
+		{ EKeys::F8, true, EKeys::F8, EPlaytestNoteBoxKeyAction::Consume, TEXT("Shift+F8 is swallowed") },
+		{ EKeys::A, false, EKeys::F8, EPlaytestNoteBoxKeyAction::PassThrough, TEXT("letters are typed") },
+		{ EKeys::BackSpace, false, EKeys::F8, EPlaytestNoteBoxKeyAction::PassThrough, TEXT("Backspace edits") },
+		{ EKeys::Left, true, EKeys::F8, EPlaytestNoteBoxKeyAction::PassThrough, TEXT("Shift+arrow selects") },
+		{ EKeys::F9, false, EKeys::F9, EPlaytestNoteBoxKeyAction::Consume, TEXT("a rebound feedback key (F9) is the one swallowed") },
+		{ EKeys::F8, false, EKeys::F9, EPlaytestNoteBoxKeyAction::PassThrough, TEXT("with F9 as the feedback key, F8 is an ordinary key") },
+	};
+	for (const FCase& Case : Cases)
+	{
+		const EPlaytestNoteBoxKeyAction Actual = FPlaytestFeedbackRules::DecideNoteBoxKey(Case.Key, Case.bShift, Case.FeedbackKey);
+		TestTrue(FString::Printf(TEXT("%s: expected %s, got %s"), Case.Why, PlaytestQA::BoxActionName(Case.Expected), PlaytestQA::BoxActionName(Actual)), Actual == Case.Expected);
+	}
+	return true;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Which game instance handles F8 (FPlaytestFeedbackRules::ChooseHandler)
+// ---------------------------------------------------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPlaytestQAHandlerOrderTest, "Project.Playtest.QA.Rules.HandlerOrder", PLAYTEST_QA_FLAGS)
+
+bool FPlaytestQAHandlerOrderTest::RunTest(const FString& Parameters)
+{
+	using PlaytestQA::Candidate;
+	// Candidate(running, PIE, lastFocus, focused, primary, active)
+	PlaytestQA::ExpectHandler(*this, TEXT("No instances"), {}, INDEX_NONE);
+	PlaytestQA::ExpectHandler(*this, TEXT("Nothing running (even if focused, primary, recently focused)"), { Candidate(false, 0, 9, true, true) }, INDEX_NONE);
+	PlaytestQA::ExpectHandler(*this, TEXT("One running standalone game"), { Candidate(true, INDEX_NONE) }, 0);
+
+	// 1. an instance with its note box open/capturing wins over focus, recency and primary
+	PlaytestQA::ExpectHandler(*this, TEXT("1: active note box beats a focused primary instance"),
+		{ Candidate(true, 0, 9, true, true), Candidate(true, 1, 0, false, false, true) }, 1);
+
+	// 2. focused running viewport
+	PlaytestQA::ExpectHandler(*this, TEXT("2: the focused viewport beats a more recently focused one"),
+		{ Candidate(true, 0, 9), Candidate(true, 1, 3, true) }, 1);
+	PlaytestQA::ExpectHandler(*this, TEXT("2: a focused viewport that is not running is skipped"),
+		{ Candidate(false, 0, 9, true), Candidate(true, 1, 2) }, 1);
+
+	// 3. most recently focused running viewport
+	PlaytestQA::ExpectHandler(*this, TEXT("3: most recently focused wins"),
+		{ Candidate(true, 0, 3), Candidate(true, 1, 7), Candidate(true, 2, 0) }, 1);
+	PlaytestQA::ExpectHandler(*this, TEXT("3: recent focus beats primary"),
+		{ Candidate(true, 0, 0, false, true), Candidate(true, 1, 4) }, 1);
+	PlaytestQA::ExpectHandler(*this, TEXT("3: a recently focused instance that is not running is skipped"),
+		{ Candidate(true, 0, 2), Candidate(false, 1, 9) }, 0);
+
+	// 4. primary PIE instance (no focus history)
+	PlaytestQA::ExpectHandler(*this, TEXT("4: primary beats a lower PIE number"),
+		{ Candidate(true, 0), Candidate(true, 1, 0, false, true) }, 1);
+
+	// 5. lowest PIE instance, standalone counts as lowest, then list order
+	PlaytestQA::ExpectHandler(*this, TEXT("5: lowest PIE instance"),
+		{ Candidate(true, 2), Candidate(true, 1), Candidate(true, 3) }, 1);
+	PlaytestQA::ExpectHandler(*this, TEXT("5: standalone (INDEX_NONE) counts as lowest"),
+		{ Candidate(true, 0), Candidate(true, INDEX_NONE) }, 1);
+	PlaytestQA::ExpectHandler(*this, TEXT("5: a tie goes to the first in the list"),
+		{ Candidate(true, 1), Candidate(true, 1) }, 0);
+	PlaytestQA::ExpectHandler(*this, TEXT("5: instances that are not running are skipped"),
+		{ Candidate(false, 0), Candidate(true, 2) }, 1);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPlaytestQAHandlerPermutationTest, "Project.Playtest.QA.Rules.HandlerIndependentOfListOrder", PLAYTEST_QA_FLAGS)
+
+bool FPlaytestQAHandlerPermutationTest::RunTest(const FString& Parameters)
+{
+	// the same set of instances must pick the same instance in whatever order the engine lists them
+	using PlaytestQA::Candidate;
+	struct FScenario
+	{
+		const TCHAR* Name;
+		TArray<FPlaytestFeedbackCandidate> Candidates; // PIEInstance values are unique and identify the expected pick
+		int32 ExpectedPIE;
+	};
+	const FScenario Scenarios[] = {
+		{ TEXT("rule 1 (active)"), { Candidate(true, 0, 5, true, true), Candidate(true, 1, 9), Candidate(true, 2, 0, false, false, true), Candidate(true, 3) }, 2 },
+		{ TEXT("rule 2 (focused)"), { Candidate(true, 0, 5, false, true), Candidate(true, 1, 9), Candidate(true, 2, 1, true), Candidate(false, 3, 12, true) }, 2 },
+		{ TEXT("rule 3 (recent)"), { Candidate(true, 2, 3), Candidate(true, 1, 7), Candidate(false, 0, 9, true, true), Candidate(true, 3) }, 1 },
+		{ TEXT("rule 4 (primary)"), { Candidate(true, 0), Candidate(true, 2, 0, false, true), Candidate(true, 1), Candidate(true, 3) }, 2 },
+		{ TEXT("rule 5 (lowest)"), { Candidate(true, 3), Candidate(true, 1), Candidate(false, 0), Candidate(true, 2) }, 1 },
+	};
+	for (const FScenario& Scenario : Scenarios)
+	{
+		int32 Mismatches = 0;
+		int32 Checked = 0;
+		// all 24 orders of the 4 candidates
+		for (int32 A = 0; A < 4; ++A)
+		for (int32 B = 0; B < 4; ++B)
+		for (int32 C = 0; C < 4; ++C)
+		for (int32 D = 0; D < 4; ++D)
+		{
+			if (A == B || A == C || A == D || B == C || B == D || C == D)
+			{
+				continue;
+			}
+			const TArray<FPlaytestFeedbackCandidate> Ordered = { Scenario.Candidates[A], Scenario.Candidates[B], Scenario.Candidates[C], Scenario.Candidates[D] };
+			const int32 Chosen = FPlaytestFeedbackRules::ChooseHandler(Ordered);
+			++Checked;
+			if (!Ordered.IsValidIndex(Chosen) || Ordered[Chosen].PIEInstance != Scenario.ExpectedPIE)
+			{
+				++Mismatches;
+			}
+		}
+		TestEqual(FString::Printf(TEXT("%s: orders checked"), Scenario.Name), Checked, 24);
+		TestEqual(FString::Printf(TEXT("%s: orders that picked a different instance than PIE %d"), Scenario.Name, Scenario.ExpectedPIE), Mismatches, 0);
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPlaytestQATextWidgetsTest, "Project.Playtest.QA.Rules.TextEntryWidgets", PLAYTEST_QA_FLAGS)
+
+bool FPlaytestQATextWidgetsTest::RunTest(const FString& Parameters)
+{
+	for (const TCHAR* Type : { TEXT("SEditableText"), TEXT("SMultiLineEditableText"), TEXT("SEditableTextBox"), TEXT("SMultiLineEditableTextBox") })
+	{
+		TestTrue(FString::Printf(TEXT("%s receives typed text (F8 must not be stolen)"), Type), FPlaytestFeedbackRules::IsTextEntryWidgetType(FName(Type)));
+	}
+	for (const TCHAR* Type : { TEXT("SViewport"), TEXT("SGameLayerManager"), TEXT("SButton"), TEXT("SCheckBox"), TEXT("SWindow"), TEXT("STextBlock") })
+	{
+		TestFalse(FString::Printf(TEXT("%s is not a text field"), Type), FPlaytestFeedbackRules::IsTextEntryWidgetType(FName(Type)));
+	}
+	TestFalse(TEXT("No widget (NAME_None) is not a text field"), FPlaytestFeedbackRules::IsTextEntryWidgetType(NAME_None));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPlaytestQATeardownTest, "Project.Playtest.QA.Rules.TeardownSave", PLAYTEST_QA_FLAGS)
+
+bool FPlaytestQATeardownTest::RunTest(const FString& Parameters)
+{
+	// the game ends with the box open: keep what was typed, drop an empty box
+	TestFalse(TEXT("Box not open: nothing to save"), FPlaytestFeedbackRules::ShouldSaveOnTeardown(false, TEXT("typed text")));
+	TestFalse(TEXT("Open but empty: dropped"), FPlaytestFeedbackRules::ShouldSaveOnTeardown(true, FString()));
+	TestFalse(TEXT("Open with only spaces/line breaks: empty once normalized, dropped"), FPlaytestFeedbackRules::ShouldSaveOnTeardown(true, TEXT(" \r\n\t ")));
+	TestTrue(TEXT("Open with one character: saved"), FPlaytestFeedbackRules::ShouldSaveOnTeardown(true, TEXT("x")));
+	TestTrue(TEXT("Open with multi-line text: saved"), FPlaytestFeedbackRules::ShouldSaveOnTeardown(true, TEXT("\r\n  the boat sank\r\nhere  \r\n")));
+	return true;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Confirmation toast words (FPlaytestFeedbackRules::MakeConfirmation)
+// ---------------------------------------------------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPlaytestQAConfirmationTest, "Project.Playtest.QA.Rules.Confirmation", PLAYTEST_QA_FLAGS)
+
+bool FPlaytestQAConfirmationTest::RunTest(const FString& Parameters)
+{
+	const FPlaytestConfirmation Saved = FPlaytestFeedbackRules::MakeConfirmation(true, TEXT("the dock is slippery"), true, TEXT("20260922-210509"), FString(), FString());
+	TestEqual(TEXT("Saved note: title"), Saved.Title, FString(TEXT("Note saved. Thanks!")));
+	TestTrue(FString::Printf(TEXT("Saved note: the folder name is shown (detail '%s')"), *Saved.Detail), Saved.Detail.Contains(TEXT("20260922-210509")));
+	TestFalse(TEXT("Saved note: saved style"), Saved.bFailure);
+
+	const FPlaytestConfirmation Bookmark = FPlaytestFeedbackRules::MakeConfirmation(true, FString(), true, TEXT("20260922-210510"), FString(), FString());
+	TestEqual(TEXT("Empty text with a screenshot: title"), Bookmark.Title, FString(TEXT("Screenshot saved (no text)")));
+	TestTrue(FString::Printf(TEXT("Empty text: the folder name is shown (detail '%s')"), *Bookmark.Detail), Bookmark.Detail.Contains(TEXT("20260922-210510")));
+	TestFalse(TEXT("Empty text: saved style"), Bookmark.bFailure);
+
+	const FPlaytestConfirmation Warned = FPlaytestFeedbackRules::MakeConfirmation(true, TEXT("text"), false, TEXT("20260922-210511"), TEXT("screenshot dropped"), FString());
+	TestTrue(FString::Printf(TEXT("Saved with a warning: still reported as saved (title '%s')"), *Warned.Title), Warned.Title.StartsWith(TEXT("Note saved")));
+	TestFalse(TEXT("Saved with a warning: saved style"), Warned.bFailure);
+	AddInfo(FString::Printf(TEXT("Saved with a warning shows: '%s' / '%s'"), *Warned.Title, *Warned.Detail));
+
+	const FPlaytestConfirmation Failed = FPlaytestFeedbackRules::MakeConfirmation(false, TEXT("some text"), false, FString(), FString(), TEXT("disk full"));
+	TestEqual(TEXT("Failed: title names the reason and where the text went"), Failed.Title, FString(TEXT("Note NOT saved: disk full. Your text is in the log.")));
+	TestTrue(TEXT("Failed: failure style"), Failed.bFailure);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPlaytestQAConfirmationTruthTest, "Project.Playtest.QA.Rules.ConfirmationNeverClaimsMissingScreenshot", PLAYTEST_QA_FLAGS)
+
+bool FPlaytestQAConfirmationTruthTest::RunTest(const FString& Parameters)
+{
+	// screenshot timed out (no screenshot.png) and Enter on an empty box: the toast must not say a screenshot was saved
+	const FPlaytestConfirmation Confirmation = FPlaytestFeedbackRules::MakeConfirmation(true, FString(), /*bHasScreenshot*/ false, TEXT("20260922-210512"), TEXT("screenshot timed out"), FString());
+	TestFalse(FString::Printf(TEXT("Toast without a screenshot does not claim one (title '%s')"), *Confirmation.Title), Confirmation.Title.Contains(TEXT("Screenshot saved")));
+	TestFalse(TEXT("It is still a saved note (note.json with the context), not a failure"), Confirmation.bFailure);
+	return true;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Screenshot contract since B2: an invalid screenshot is dropped with a warning, the note is still saved.
+// ---------------------------------------------------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPlaytestQAScreenshotDroppedTest, "Project.Playtest.QA.Screenshot.InvalidPixelsDroppedWithWarning", PLAYTEST_QA_FLAGS)
+
+bool FPlaytestQAScreenshotDroppedTest::RunTest(const FString& Parameters)
+{
+	PlaytestQA::FScopedTempDir Temp;
+	struct FCase
+	{
+		const TCHAR* Name;
+		int32 Width;
+		int32 Height;
+		int32 NumPixels;
+		bool bValid;
+	};
+	const FCase Cases[] = {
+		{ TEXT("Valid2x2"), 2, 2, 4, true },
+		{ TEXT("TooFewPixels"), 4, 2, 5, false },
+		{ TEXT("ZeroSizeWithPixels"), 0, 0, 8, false },
+		{ TEXT("NegativeSize"), -4, -2, 8, false },
+	};
+	for (const FCase& Case : Cases)
+	{
+		const FString Root = Temp.Path / Case.Name;
+		TArray<FColor> Pixels;
+		Pixels.Init(FColor::Blue, Case.NumPixels);
+		const FPlaytestNoteData Note = PlaytestQA::MakeNote(FString::Printf(TEXT("screenshot case %s"), Case.Name));
+		FString Folder, Error, Warning;
+		const bool bWritten = FPlaytestNoteWriter::WriteNote(Root, Note, Case.Width, Case.Height, Pixels, Folder, Error, &Warning);
+		if (!TestTrue(FString::Printf(TEXT("%s: the note is saved (error: '%s')"), Case.Name, *Error), bWritten))
+		{
+			continue;
+		}
+		TestEqual(FString::Printf(TEXT("%s: warning only when the screenshot is dropped (warning '%s')"), Case.Name, *Warning), Warning.IsEmpty() ? 0 : 1, Case.bValid ? 0 : 1);
+		TestEqual(FString::Printf(TEXT("%s: screenshot.png exists only for valid pixels"), Case.Name), FPaths::FileExists(Folder / TEXT("screenshot.png")) ? 1 : 0, Case.bValid ? 1 : 0);
+		FString Json;
+		FFileHelper::LoadFileToString(Json, *(Folder / TEXT("note.json")));
+		const TSharedPtr<FJsonObject> Root2 = PlaytestQA::ParseStrict(*this, Case.Name, Json);
+		PlaytestQA::ExpectString(*this, Case.Name, Root2, TEXT("text"), Note.Text);
+		PlaytestQA::ExpectString(*this, Case.Name, Root2, TEXT("screenshot"), Case.bValid ? FString(TEXT("screenshot.png")) : FString());
+	}
+	return true;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Commit id: more worktree layouts (B5) and the IsCommitHash rule (B4)
+// ---------------------------------------------------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPlaytestQAGitWorktreeRelativeTest, "Project.Playtest.QA.Git.WorktreeRelativeGitdirAndPackedCommon", PLAYTEST_QA_FLAGS)
+
+bool FPlaytestQAGitWorktreeRelativeTest::RunTest(const FString& Parameters)
+{
+	// .git file with a RELATIVE gitdir, commondir with an ABSOLUTE path, the branch only in the common packed-refs
+	PlaytestQA::FScopedTempDir Temp;
+	const FString MainGitDir = Temp.Path / TEXT("Main/.git");
+	const FString Packed = FString::ChrN(40, TEXT('c'));
+	const FString Other = FString::ChrN(40, TEXT('d'));
+	PlaytestQA::WriteAscii(MainGitDir / TEXT("packed-refs"), TEXT("# pack-refs with: peeled fully-peeled sorted\n") + Other + TEXT(" refs/heads/main\n") + Packed + TEXT(" refs/heads/lane/qa1\n"));
+	const FString WorktreeGitDir = MainGitDir / TEXT("worktrees/qa1");
+	PlaytestQA::WriteAscii(WorktreeGitDir / TEXT("HEAD"), TEXT("ref: refs/heads/lane/qa1\n"));
+	PlaytestQA::WriteAscii(WorktreeGitDir / TEXT("commondir"), MainGitDir + TEXT("\n"));
+	const FString Repo = Temp.Path / TEXT("Lanes/qa1");
+	PlaytestQA::WriteAscii(Repo / TEXT(".git"), TEXT("gitdir: ../../Main/.git/worktrees/qa1\n"));
+	TestEqual(TEXT("Relative gitdir + absolute commondir + packed branch ref"), FPlaytestNoteWriter::ReadGitCommit(Repo), Packed);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPlaytestQAGitWorktreeLocalRefsTest, "Project.Playtest.QA.Git.WorktreePerWorktreeRefsStayLocal", PLAYTEST_QA_FLAGS)
+
+bool FPlaytestQAGitWorktreeLocalRefsTest::RunTest(const FString& Parameters)
+{
+	// documented like git: refs/bisect/ (and refs/worktree/, refs/rewritten/) belong to the worktree, not the common dir
+	PlaytestQA::FScopedTempDir Temp;
+	const FString MainGitDir = Temp.Path / TEXT("Main/.git");
+	const FString WorktreeGitDir = MainGitDir / TEXT("worktrees/wt");
+	const FString Local = FString::ChrN(40, TEXT('a'));
+	const FString Shared = FString::ChrN(40, TEXT('b'));
+	PlaytestQA::WriteAscii(MainGitDir / TEXT("refs/bisect/bad"), Shared + TEXT("\n"));
+	PlaytestQA::WriteAscii(WorktreeGitDir / TEXT("refs/bisect/bad"), Local + TEXT("\n"));
+	PlaytestQA::WriteAscii(WorktreeGitDir / TEXT("HEAD"), TEXT("ref: refs/bisect/bad\n"));
+	PlaytestQA::WriteAscii(WorktreeGitDir / TEXT("commondir"), TEXT("../..\n"));
+	const FString Repo = Temp.Path / TEXT("Wt");
+	PlaytestQA::WriteAscii(Repo / TEXT(".git"), FString::Printf(TEXT("gitdir: %s\n"), *WorktreeGitDir));
+	TestEqual(TEXT("refs/bisect/bad is read from the worktree's own git dir"), FPlaytestNoteWriter::ReadGitCommit(Repo), Local);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPlaytestQAGitWorktreeBrokenTest, "Project.Playtest.QA.Git.WorktreeBrokenIsUnknown", PLAYTEST_QA_FLAGS)
+
+bool FPlaytestQAGitWorktreeBrokenTest::RunTest(const FString& Parameters)
+{
+	// a lane deleted or moved behind git's back: never a crash, never text that is not a commit
+	PlaytestQA::FScopedTempDir Temp;
+	struct FCase
+	{
+		const TCHAR* Name;
+		FString GitFile;
+	};
+	const FString Missing = Temp.Path / TEXT("does/not/exist/.git/worktrees/gone");
+	const FCase Cases[] = {
+		{ TEXT("GitdirMissing"), FString::Printf(TEXT("gitdir: %s\n"), *Missing) },
+		{ TEXT("NoGitdirPrefix"), TEXT("hello\n") },
+		{ TEXT("EmptyGitFile"), FString() },
+		{ TEXT("GitdirWithoutPath"), TEXT("gitdir: \n") },
+	};
+	for (const FCase& Case : Cases)
+	{
+		const FString Repo = Temp.Path / Case.Name;
+		PlaytestQA::WriteAscii(Repo / TEXT(".git"), Case.GitFile);
+		TestEqual(FString::Printf(TEXT("%s: 'unknown'"), Case.Name), FPlaytestNoteWriter::ReadGitCommit(Repo), FString(TEXT("unknown")));
+	}
+
+	// commondir points nowhere: the branch cannot be resolved
+	const FString WorktreeGitDir = Temp.Path / TEXT("Main/.git/worktrees/wt");
+	PlaytestQA::WriteAscii(WorktreeGitDir / TEXT("HEAD"), TEXT("ref: refs/heads/lane/x\n"));
+	PlaytestQA::WriteAscii(WorktreeGitDir / TEXT("commondir"), Missing + TEXT("\n"));
+	const FString Repo = Temp.Path / TEXT("CommondirMissing");
+	PlaytestQA::WriteAscii(Repo / TEXT(".git"), FString::Printf(TEXT("gitdir: %s\n"), *WorktreeGitDir));
+	TestEqual(TEXT("CommondirMissing: 'unknown'"), FPlaytestNoteWriter::ReadGitCommit(Repo), FString(TEXT("unknown")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPlaytestQAGitIsCommitHashTest, "Project.Playtest.QA.Git.IsCommitHashBoundaries", PLAYTEST_QA_FLAGS)
+
+bool FPlaytestQAGitIsCommitHashTest::RunTest(const FString& Parameters)
+{
+	const FString Mixed40 = TEXT("0123456789abcdef0123456789abcdef01234567");
+	TestTrue(TEXT("40 hex (SHA-1)"), FPlaytestNoteWriter::IsCommitHash(Mixed40));
+	TestTrue(TEXT("64 hex (SHA-256)"), FPlaytestNoteWriter::IsCommitHash(FString::ChrN(64, TEXT('f'))));
+	struct FCase
+	{
+		FString Value;
+		const TCHAR* Why;
+	};
+	const FCase Rejected[] = {
+		{ FString(), TEXT("empty") },
+		{ FString::ChrN(39, TEXT('a')), TEXT("39 chars") },
+		{ FString::ChrN(41, TEXT('a')), TEXT("41 chars") },
+		{ FString::ChrN(63, TEXT('a')), TEXT("63 chars") },
+		{ FString::ChrN(65, TEXT('a')), TEXT("65 chars") },
+		{ FString::ChrN(39, TEXT('a')) + TEXT("g"), TEXT("40 chars with a non-hex 'g'") },
+		{ Mixed40 + TEXT("\n"), TEXT("trailing line break") },
+		{ TEXT(" ") + FString::ChrN(39, TEXT('a')), TEXT("leading space within 40 chars") },
+		{ TEXT("unknown"), TEXT("the 'unknown' marker") },
+	};
+	for (const FCase& Case : Rejected)
+	{
+		TestFalse(FString::Printf(TEXT("Not a commit id: %s"), Case.Why), FPlaytestNoteWriter::IsCommitHash(Case.Value));
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPlaytestQAConfigToastTest, "Project.Playtest.QA.Config.ToastDurations", PLAYTEST_QA_FLAGS)
+
+bool FPlaytestQAConfigToastTest::RunTest(const FString& Parameters)
+{
+	// spec: the toast shows for ~7 s; a failure is shown longer
+	const UPlaytestFeedbackSubsystem* Defaults = GetDefault<UPlaytestFeedbackSubsystem>();
+	if (!TestNotNull(TEXT("Subsystem class defaults exist"), Defaults))
+	{
+		return true;
+	}
+	TestTrue(FString::Printf(TEXT("Saved toast is about 7 s (5..10, got %.2f)"), Defaults->ToastSeconds), Defaults->ToastSeconds >= 5.0f && Defaults->ToastSeconds <= 10.0f);
+	TestTrue(FString::Printf(TEXT("Failure toast stays longer than the saved toast (%.2f > %.2f)"), Defaults->FailureToastSeconds, Defaults->ToastSeconds), Defaults->FailureToastSeconds > Defaults->ToastSeconds);
 	return true;
 }
 
