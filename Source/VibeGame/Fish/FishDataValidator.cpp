@@ -3,6 +3,11 @@
 #include "Fish/FishDataValidator.h"
 #include "Fish/FishRoll.h"
 #include "Engine/DataTable.h"
+#include "Dom/JsonObject.h"
+#include "Dom/JsonValue.h"
+#include "Serialization/JsonReader.h"
+#include "Serialization/JsonSerializer.h"
+#include "UObject/UnrealType.h"
 
 namespace FishValidatorPrivate
 {
@@ -280,6 +285,17 @@ TArray<FString> FFishDataValidator::Validate(const FFishTables& Tables)
 					*ByRank[i].Key.ToString(), High.Rank, High.RollWeight, *ByRank[i - 1].Key.ToString(), Low.Rank, Low.RollWeight));
 			}
 		}
+		// Among enabled tiers a rarer tier never gives less XP (ties allowed; non-finite values are reported by the row checks)
+		for (int32 i = 1; i < ByRank.Num(); ++i)
+		{
+			const FFishRarityRow& Low = *ByRank[i - 1].Value;
+			const FFishRarityRow& High = *ByRank[i].Value;
+			if (High.XpMultiplier < Low.XpMultiplier)
+			{
+				C.Problem(FString::Printf(TEXT("DT_FishRarity: XpMultiplier must not decrease with Rank among enabled tiers ('%s' rank %d has %g, '%s' rank %d has %g)"),
+					*ByRank[i].Key.ToString(), High.Rank, High.XpMultiplier, *ByRank[i - 1].Key.ToString(), Low.Rank, Low.XpMultiplier));
+			}
+		}
 	}
 
 	// ---- Species ----
@@ -380,5 +396,117 @@ TArray<FString> FFishDataValidator::Validate(const FFishTables& Tables)
 		C.CheckTagList(Row.WeatherTags, { TEXT("Weather") }, Where + TEXT(".WeatherTags"));
 	}
 
+	return Out;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Raw JSON source check (types the importer would silently misread)
+
+namespace FishValidatorPrivate
+{
+	static FString DescribeJson(const FJsonValue& Value)
+	{
+		switch (Value.Type)
+		{
+		case EJson::String: return FString::Printf(TEXT("text \"%s\""), *Value.AsString());
+		case EJson::Number: return TEXT("a number");
+		case EJson::Boolean: return TEXT("a boolean");
+		case EJson::Array: return TEXT("an array");
+		case EJson::Object: return TEXT("an object");
+		case EJson::Null: return TEXT("null");
+		default: return TEXT("nothing");
+		}
+	}
+
+	static void CheckJsonObject(const FJsonObject& Object, const UStruct* Struct, const FString& Where, TArray<FString>& Out);
+
+	static void CheckJsonValue(const FJsonValue& Value, const FProperty* Property, const FString& Where, TArray<FString>& Out)
+	{
+		if (const FArrayProperty* ArrayProperty = CastField<FArrayProperty>(Property))
+		{
+			if (Value.Type == EJson::Array) // any other type is an import problem already
+			{
+				const TArray<TSharedPtr<FJsonValue>>& Items = Value.AsArray();
+				for (int32 i = 0; i < Items.Num(); ++i)
+				{
+					if (Items[i].IsValid())
+					{
+						CheckJsonValue(*Items[i], ArrayProperty->Inner, FString::Printf(TEXT("%s[%d]"), *Where, i), Out);
+					}
+				}
+			}
+			return;
+		}
+		if (const FStructProperty* StructProperty = CastField<FStructProperty>(Property))
+		{
+			if (StructProperty->Struct == FGameplayTag::StaticStruct() || StructProperty->Struct == FGameplayTagContainer::StaticStruct())
+			{
+				return; // tags are written as text; Validate checks them after import
+			}
+			if (Value.Type != EJson::Object)
+			{
+				Out.Add(FString::Printf(TEXT("%s is %s: write it as a JSON object {...} (the struct text form hides its numbers from this check)"), *Where, *DescribeJson(Value)));
+				return;
+			}
+			CheckJsonObject(*Value.AsObject(), StructProperty->Struct, Where, Out);
+			return;
+		}
+		if (CastField<FBoolProperty>(Property))
+		{
+			if (Value.Type != EJson::Boolean)
+			{
+				Out.Add(FString::Printf(TEXT("%s is %s: it must be JSON true or false (the JSON import reads text in a bool field as false)"), *Where, *DescribeJson(Value)));
+			}
+			return;
+		}
+		const FNumericProperty* NumericProperty = CastField<FNumericProperty>(Property);
+		if (NumericProperty && !NumericProperty->IsEnum() && Value.Type != EJson::Number)
+		{
+			Out.Add(FString::Printf(TEXT("%s is %s: it must be a JSON number (the JSON import reads text in an int field as 0)"), *Where, *DescribeJson(Value)));
+		}
+	}
+
+	static void CheckJsonObject(const FJsonObject& Object, const UStruct* Struct, const FString& Where, TArray<FString>& Out)
+	{
+		for (TFieldIterator<FProperty> It(Struct); It; ++It)
+		{
+			const TSharedPtr<FJsonValue> Value = Object.TryGetField(It->GetName());
+			if (Value.IsValid())
+			{
+				CheckJsonValue(*Value, *It, Where + TEXT(".") + It->GetName(), Out);
+			}
+		}
+	}
+}
+
+TArray<FString> FFishDataValidator::ValidateJsonSource(const FString& Json, const UScriptStruct* RowStruct, const FString& TableName)
+{
+	using namespace FishValidatorPrivate;
+	TArray<FString> Out;
+	if (!RowStruct)
+	{
+		Out.Add(TableName + TEXT(": no row struct given"));
+		return Out;
+	}
+	TArray<TSharedPtr<FJsonValue>> Rows;
+	const TSharedRef<TJsonReader<TCHAR>> Reader = TJsonReaderFactory<TCHAR>::Create(Json);
+	if (!FJsonSerializer::Deserialize(Reader, Rows))
+	{
+		Out.Add(FString::Printf(TEXT("%s: the source is not a JSON array of rows (%s)"), *TableName, *Reader->GetErrorMessage()));
+		return Out;
+	}
+	for (int32 i = 0; i < Rows.Num(); ++i)
+	{
+		const TSharedPtr<FJsonObject>* Row = nullptr;
+		if (!Rows[i].IsValid() || !Rows[i]->TryGetObject(Row) || !Row || !Row->IsValid())
+		{
+			Out.Add(FString::Printf(TEXT("%s: row #%d is not a JSON object"), *TableName, i));
+			continue;
+		}
+		FString Name;
+		(*Row)->TryGetStringField(TEXT("Name"), Name);
+		const FString Where = FString::Printf(TEXT("%s row '%s'"), *TableName, Name.IsEmpty() ? *FString::Printf(TEXT("#%d"), i) : *Name);
+		CheckJsonObject(**Row, RowStruct, Where, Out);
+	}
 	return Out;
 }

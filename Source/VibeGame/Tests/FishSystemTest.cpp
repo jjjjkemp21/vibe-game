@@ -14,6 +14,8 @@
 #include "Fish/FishDataValidator.h"
 #include "Fish/FishRoll.h"
 #include "Fish/FishSettings.h"
+#include "Misc/OutputDeviceRedirector.h"
+#include "Misc/ScopeLock.h"
 #include <limits>
 
 #if WITH_DEV_AUTOMATION_TESTS
@@ -1304,6 +1306,277 @@ bool FFishWorkedExampleTest::RunTest(const FString& Parameters)
 	}
 	TestTrue(FString::Printf(TEXT("Weight %.4f = SampleWeight(U %.6f) x weight mods = %.4f"), Fish.WeightKg, U, ExpectedWeight), FMath::IsNearlyEqual(Fish.WeightKg, ExpectedWeight, 1e-4f));
 	TestEqual(TEXT("Value = max(1, round-half-up(9 x weight x multipliers))"), Fish.Value, FMath::Max(1, RoundHalfUp(9.0 * Fish.WeightKg * ValueMultiplier)));
+	return true;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+/** Counts LogLureFish warnings that contain a text (implementer tests; flushes the log before counting) */
+class FFishWarningCapture : public FOutputDevice
+{
+public:
+	FFishWarningCapture() { GLog->AddOutputDevice(this); }
+	virtual ~FFishWarningCapture() override { GLog->RemoveOutputDevice(this); }
+
+	virtual void Serialize(const TCHAR* Text, ELogVerbosity::Type Verbosity, const FName& Category) override
+	{
+		if (Category == LogLureFish.GetCategoryName() && (Verbosity & ELogVerbosity::VerbosityMask) == ELogVerbosity::Warning)
+		{
+			FScopeLock Lock(&Mutex);
+			Lines.Add(Text);
+		}
+	}
+
+	virtual bool CanBeUsedOnAnyThread() const override { return true; }
+	virtual bool CanBeUsedOnMultipleThreads() const override { return true; }
+
+	int32 Count(const TCHAR* Pattern) const
+	{
+		GLog->Flush();
+		FScopeLock Lock(&Mutex);
+		int32 Found = 0;
+		for (const FString& Line : Lines)
+		{
+			Found += Line.Contains(Pattern) ? 1 : 0;
+		}
+		return Found;
+	}
+
+private:
+	mutable FCriticalSection Mutex;
+	TArray<FString> Lines;
+};
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FFishDataWarningsOnceTest, "Project.Fish.Roll.DataWarningsLoggedOnce", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FFishDataWarningsOnceTest::RunTest(const FString& Parameters)
+{
+	// No AddExpectedMessage here: the automation framework swallows expected messages before other log devices see
+	// them, and this test counts the warnings (warnings don't fail tests in this project)
+
+	// Bad rows the roll survives: a tier with RollWeight -5 (counts as 0), a sure modifier with Multiply 0 (skipped),
+	// a modifier with RollChance 1.5 (clamped to 1)
+	auto MakeBroken = [](FTestTables& Out)
+	{
+		MakeSyntheticTables(Out);
+		FFishRarityRow Bad;
+		Bad.DisplayName = FText::FromString(TEXT("Bad"));
+		Bad.Rank = 1;
+		Bad.RollWeight = -5.0f;
+		Bad.ValueMultiplier = 2.0f;
+		Out.Rarities->AddRow(TEXT("T_BadTier"), Bad);
+		Out.Modifiers->AddRow(TEXT("T_ZeroMul"), MakeModifier(TEXT("Zero"), 1.0f, NAME_None, { MakeMod(TEXT("Fish.Stat.Strength"), EFishStatModOp::Multiply, 0.0f) }));
+		Out.Modifiers->AddRow(TEXT("T_BigChance"), MakeModifier(TEXT("Big"), 1.5f, NAME_None, {}));
+	};
+	FTestTables T;
+	MakeBroken(T);
+	const FFishTables Tables = T.Get();
+	const FGameplayTag Strength = Tag(TEXT("Fish.Stat.Strength"));
+
+	// 1. 500 rolls on the same bad rows: the guards act every time, each problem is logged once
+	{
+		FFishWarningCapture Log;
+		int32 Same = 0;
+		for (int32 Seed = 1; Seed <= 500; ++Seed)
+		{
+			FFishInstance Fish;
+			const bool bOk = FFishRoll::Roll(Tables, MakeContext(TEXT("T_Fish"), Seed), Fish);
+			Same += (bOk && Fish.RarityId == FName(TEXT("T_Tier")) && Fish.GetStat(Strength) == 10.0f && Fish.ModifierIds.Num() == 2) ? 1 : 0;
+		}
+		TestEqual(TEXT("Every roll guards the same way (bad tier never rolls, x0 skipped, both modifiers kept)"), Same, 500);
+		TestEqual(TEXT("Invalid RollWeight: 1 warning in 500 rolls"), Log.Count(TEXT("invalid RollWeight")), 1);
+		TestEqual(TEXT("Multiply 0: 1 warning in 500 rolls"), Log.Count(TEXT("invalid Multiply")), 1);
+		TestEqual(TEXT("RollChance 1.5: 1 warning in 500 rolls"), Log.Count(TEXT("invalid RollChance")), 1);
+	}
+
+	// 2. The same bad row in a new table object (a reimport into a new object, a test fixture) warns again, once
+	{
+		FTestTables Fresh;
+		MakeBroken(Fresh);
+		FFishWarningCapture Log;
+		for (int32 Seed = 1; Seed <= 3; ++Seed)
+		{
+			FFishInstance Fish;
+			FFishRoll::Roll(Fresh.Get(), MakeContext(TEXT("T_Fish"), Seed), Fish);
+		}
+		TestEqual(TEXT("A new table object with the same bad row warns once"), Log.Count(TEXT("invalid RollWeight")), 1);
+	}
+
+	// 3. ResetDataWarnings: the same table warns again
+	{
+		FFishRoll::ResetDataWarnings();
+		FFishWarningCapture Log;
+		FFishInstance Fish;
+		FFishRoll::Roll(Tables, MakeContext(TEXT("T_Fish"), 1), Fish);
+		FFishRoll::Roll(Tables, MakeContext(TEXT("T_Fish"), 2), Fish);
+		TestEqual(TEXT("After ResetDataWarnings the same row warns once more"), Log.Count(TEXT("invalid RollWeight")), 1);
+	}
+
+	// 4. A data problem that makes the roll impossible: fails every time, logged once
+	{
+		FTestTables Broken;
+		MakeSyntheticTables(Broken);
+		Broken.Species->FindRow<FFishSpeciesRow>(TEXT("T_Fish"), TEXT("test"))->WeightMin = 5.0f; // > WeightMax 2
+		FFishWarningCapture Log;
+		int32 Failures = 0;
+		for (int32 Seed = 1; Seed <= 100; ++Seed)
+		{
+			FFishInstance Fish;
+			Failures += FFishRoll::Roll(Broken.Get(), MakeContext(TEXT("T_Fish"), Seed), Fish) ? 0 : 1;
+		}
+		TestEqual(TEXT("An invalid weight range fails all 100 rolls"), Failures, 100);
+		TestEqual(TEXT("... with 1 warning"), Log.Count(TEXT("invalid weight range")), 1);
+	}
+
+	// 5. Caller problems warn on every call; an unknown forced id fails the roll (forced overrides are for tests and debug tools)
+	{
+		FFishRollContext NanLuck = MakeContext(TEXT("T_Fish"), 1);
+		NanLuck.Luck = std::numeric_limits<float>::quiet_NaN();
+		FFishRollContext BadRarity = MakeContext(TEXT("T_Fish"), 1);
+		BadRarity.ForcedRarityId = TEXT("T_NoSuchTier");
+		FFishRollContext BadModifier = MakeContext(TEXT("T_Fish"), 1);
+		BadModifier.bForceModifiers = true;
+		BadModifier.ForcedModifierIds = { TEXT("T_BigChance"), TEXT("T_NoSuchModifier") };
+		FFishWarningCapture Log;
+		int32 NanOk = 0;
+		int32 ForcedFailures = 0;
+		for (int32 i = 0; i < 3; ++i)
+		{
+			FFishInstance Fish;
+			NanOk += FFishRoll::Roll(Tables, NanLuck, Fish) ? 1 : 0;
+			ForcedFailures += FFishRoll::Roll(Tables, BadRarity, Fish) ? 0 : 1;
+			ForcedFailures += (!FFishRoll::Roll(Tables, BadModifier, Fish) && !Fish.IsValid()) ? 1 : 0;
+		}
+		TestEqual(TEXT("NaN luck still rolls"), NanOk, 3);
+		TestEqual(TEXT("An unknown forced rarity or modifier fails the whole roll (no partial fish)"), ForcedFailures, 6);
+		TestEqual(TEXT("NaN luck warns on every call"), Log.Count(TEXT("luck is NaN")), 3);
+		TestEqual(TEXT("An unknown forced rarity warns on every call"), Log.Count(TEXT("T_NoSuchTier")), 3);
+		TestEqual(TEXT("An unknown forced modifier warns on every call"), Log.Count(TEXT("T_NoSuchModifier")), 3);
+	}
+
+	// 6. The memory is bounded
+	{
+		FFishRoll::ResetDataWarnings();
+		const int32 Capacity = FFishRoll::DataWarningCapacity;
+		int32 New = 0;
+		for (int32 i = 0; i < Capacity + 10; ++i)
+		{
+			New += FFishRoll::RememberDataWarning(T.Species.Get(), TEXT("T_Fish"), FString::Printf(TEXT("problem %d"), i)) ? 1 : 0;
+		}
+		TestEqual(TEXT("Every distinct problem counts as new"), New, Capacity + 10);
+		const int32 Remembered = FFishRoll::NumDataWarningsRemembered();
+		TestTrue(FString::Printf(TEXT("Remembered keys stay bounded (%d <= %d)"), Remembered, Capacity), Remembered <= Capacity);
+		TestFalse(TEXT("The latest problem is still remembered"), FFishRoll::RememberDataWarning(T.Species.Get(), TEXT("T_Fish"), FString::Printf(TEXT("problem %d"), Capacity + 9)));
+		TestTrue(TEXT("A different row is a different key"), FFishRoll::RememberDataWarning(T.Species.Get(), TEXT("T_Other"), FString::Printf(TEXT("problem %d"), Capacity + 9)));
+		FFishRoll::ResetDataWarnings();
+		TestEqual(TEXT("ResetDataWarnings forgets every key"), FFishRoll::NumDataWarningsRemembered(), 0);
+	}
+	return true;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FFishXpRankTest, "Project.Fish.Data.XpMultiplierRisesWithRank", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FFishXpRankTest::RunTest(const FString& Parameters)
+{
+	// The validator's XpMultiplier-order problems after one change to a fresh copy of the real data
+	auto XpProblems = [this](TFunctionRef<void(FTestTables&)> Change)
+	{
+		TArray<FString> Found;
+		FTestTables T;
+		if (LoadRealTables(*this, T))
+		{
+			Change(T);
+			for (const FString& Problem : FFishDataValidator::Validate(T.Get()))
+			{
+				if (Problem.Contains(TEXT("XpMultiplier must not decrease with Rank")))
+				{
+					Found.Add(Problem);
+				}
+			}
+		}
+		return Found;
+	};
+	auto EditRarity = [](FTestTables& T, const TCHAR* Id, float XpMultiplier, float RollWeight)
+	{
+		FFishRarityRow Row = *T.Get().FindRarity(Id);
+		Row.XpMultiplier = XpMultiplier;
+		if (RollWeight >= 0.0f)
+		{
+			Row.RollWeight = RollWeight;
+		}
+		T.Rarities->AddRow(Id, Row);
+	};
+
+	TestEqual(TEXT("Starter data: XP never drops as rank rises"), XpProblems([](FTestTables&) {}).Num(), 0);
+
+	const TArray<FString> Drop = XpProblems([&EditRarity](FTestTables& T) { EditRarity(T, TEXT("Rare"), 1.1f, -1.0f); });
+	TestTrue(FString::Printf(TEXT("Rare x1.1 below Uncommon x1.25 is reported, naming both tiers (got: %s)"), *FString::Join(Drop, TEXT(" | "))),
+		Drop.Num() == 1 && Drop[0].Contains(TEXT("'Rare'")) && Drop[0].Contains(TEXT("'Uncommon'")));
+
+	TestEqual(TEXT("A tie is allowed (Rare x1.25 = Uncommon x1.25)"), XpProblems([&EditRarity](FTestTables& T) { EditRarity(T, TEXT("Rare"), 1.25f, -1.0f); }).Num(), 0);
+	TestEqual(TEXT("A disabled tier (RollWeight 0) is skipped (Epic x0.5)"), XpProblems([&EditRarity](FTestTables& T) { EditRarity(T, TEXT("Epic"), 0.5f, -1.0f); }).Num(), 0);
+	TestEqual(TEXT("... and checked once it is enabled (Epic x0.5, RollWeight 1)"), XpProblems([&EditRarity](FTestTables& T) { EditRarity(T, TEXT("Epic"), 0.5f, 1.0f); }).Num(), 1);
+	return true;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FFishJsonSourceTypesTest, "Project.Fish.Data.JsonSourceTypes", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FFishJsonSourceTypesTest::RunTest(const FString& Parameters)
+{
+	struct FSource { const TCHAR* File; const TCHAR* Table; UScriptStruct* Struct; };
+	const FSource Sources[] = {
+		{ TEXT("DT_FishSpecies.json"), TEXT("DT_FishSpecies"), FFishSpeciesRow::StaticStruct() },
+		{ TEXT("DT_FishRarity.json"), TEXT("DT_FishRarity"), FFishRarityRow::StaticStruct() },
+		{ TEXT("DT_FishModifier.json"), TEXT("DT_FishModifier"), FFishModifierRow::StaticStruct() },
+		{ TEXT("DT_FishStat.json"), TEXT("DT_FishStat"), FFishStatRow::StaticStruct() },
+	};
+	for (const FSource& Source : Sources)
+	{
+		const TArray<FString> Problems = FFishDataValidator::ValidateJsonSource(ReadSource(*this, Source.File), Source.Struct, Source.Table);
+		TestEqual(FString::Printf(TEXT("%s: every number and bool is typed (%s)"), Source.File, *FString::Join(Problems, TEXT(" | "))), Problems.Num(), 0);
+	}
+
+	// Each case edits one value in a real source. bImportReports: the engine's JSON import already reports it as a problem.
+	struct FCase { const TCHAR* What; int32 Source; const TCHAR* From; const TCHAR* To; const TCHAR* Expected; bool bImportReports; };
+	const FCase Cases[] = {
+		{ TEXT("text in a float field"), 1, TEXT("\"RollWeight\": 8,"), TEXT("\"RollWeight\": \"high\","), TEXT("DT_FishRarity row 'Rare'.RollWeight is text \"high\""), true },
+		{ TEXT("text in a nested float (StatMods[0].Value)"), 2, TEXT("\"Op\": \"Add\", \"Value\": 15 }"), TEXT("\"Op\": \"Add\", \"Value\": \"high\" }"), TEXT("'Feisty'.StatMods[0].Value is text \"high\""), true },
+		{ TEXT("text in an int field (Rank)"), 1, TEXT("\"Rank\": 2,"), TEXT("\"Rank\": \"high\","), TEXT("DT_FishRarity row 'Rare'.Rank is text \"high\""), false },
+		{ TEXT("text in an int field (MaxModifiers)"), 0, TEXT("\"MaxModifiers\": 2,"), TEXT("\"MaxModifiers\": \"lots\","), TEXT(".MaxModifiers is text \"lots\""), false },
+		{ TEXT("text in a bool field"), 3, TEXT("\"bIsDifficultyStat\": true"), TEXT("\"bIsDifficultyStat\": \"high\""), TEXT(".bIsDifficultyStat is text \"high\""), false },
+		{ TEXT("a number written as text"), 1, TEXT("\"RollWeight\": 8,"), TEXT("\"RollWeight\": \"8\","), TEXT("'Rare'.RollWeight is text \"8\""), false },
+		{ TEXT("a struct in text form"), 0, TEXT("{ \"StartHour\": 5, \"EndHour\": 19 }"), TEXT("\"(StartHour=5,EndHour=19)\""), TEXT("'Bonefish'.TimeWindows[0] is text"), false },
+	};
+	for (const FCase& Case : Cases)
+	{
+		const FSource& Source = Sources[Case.Source];
+		FString Json = ReadSource(*this, Source.File);
+		if (!TestTrue(FString::Printf(TEXT("%s: the fixture text is in %s"), Case.What, Source.File), Json.ReplaceInline(Case.From, Case.To, ESearchCase::CaseSensitive) > 0))
+		{
+			continue;
+		}
+		TStrongObjectPtr<UDataTable> Imported;
+		const TArray<FString> ImportProblems = ImportJson(Imported, Source.Struct, Json);
+		FString ImportNote = ImportProblems.Num() > 0 ? ImportProblems[0] : FString(TEXT("no problem reported"));
+		if (Case.Source == 1)
+		{
+			if (const FFishRarityRow* Rare = Imported->FindRow<FFishRarityRow>(TEXT("Rare"), TEXT("test"), false))
+			{
+				ImportNote += FString::Printf(TEXT("; Rare imported with Rank %d, RollWeight %g"), Rare->Rank, Rare->RollWeight);
+			}
+		}
+		AddInfo(FString::Printf(TEXT("%s -> JSON import: %s"), Case.What, *ImportNote));
+		if (Case.bImportReports)
+		{
+			TestTrue(FString::Printf(TEXT("%s: the JSON import already reports it"), Case.What), ImportProblems.Num() > 0);
+		}
+		const TArray<FString> Problems = FFishDataValidator::ValidateJsonSource(Json, Source.Struct, Source.Table);
+		TestTrue(FString::Printf(TEXT("%s: ValidateJsonSource reports it (expected '%s'; got: %s)"), Case.What, Case.Expected, *FString::Join(Problems, TEXT(" | "))),
+			AnyProblemMentions(Problems, Case.Expected));
+	}
+
+	TestTrue(TEXT("Text that isn't a JSON array is reported"), FFishDataValidator::ValidateJsonSource(TEXT("{ oops"), FFishRarityRow::StaticStruct(), TEXT("DT_FishRarity")).Num() > 0);
 	return true;
 }
 

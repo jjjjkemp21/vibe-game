@@ -78,6 +78,17 @@ enum class EFishRollStage : uint32
  *      Stats sorted by tag name (FName::LexicalLess).
  *  Stat mod guards: a mod on a stat with no DT_FishStat row, a non-finite value, or a Multiply <= 0 is skipped with a
  *  warning. Example: base Strength 10, Feisty {+5, x2}, Other {+3} -> (10 + 5 + 3) * 2 = 36 (never 33).
+ *
+ *  Warnings, two kinds:
+ *   - Data warnings (a bad row: the guards above, an invalid RollWeight/RollChance, an unknown allowed rarity, a species
+ *     with an invalid weight range, no Weight stat row, a species that can roll no rarity, ...) are logged ONCE per
+ *     (table object, row, problem) per session (RememberDataWarning), so one bad row can't flood the log. The roll
+ *     behaves the same every time (skip, count as 0, or fail); only the log line is deduplicated.
+ *   - Caller warnings (missing tables, unknown species, NaN luck or ForcedWeightFraction, an unknown forced id) are
+ *     logged on every call.
+ *  Forced overrides are for tests and debug tools (T-025 Lure.GiveFish): an unknown ForcedRarityId, or any unknown id in
+ *  ForcedModifierIds, fails the whole roll with a Warning naming the id (no partial fish, the known ids are not kept).
+ *  The data validator (FFishDataValidator) is the place that reports every data problem; the roll only guards.
  */
 struct FFishRoll
 {
@@ -137,6 +148,23 @@ struct FFishRoll
 
 	/** The one stat tag the code knows by name: "Fish.Stat.Weight" */
 	static FName WeightStatName();
+
+	/** How many data-warning keys are remembered before the set is emptied (bounded memory) */
+	static constexpr int32 DataWarningCapacity = 1024;
+
+	/**
+	 *  The once-per-session filter for data warnings. Returns true the first time a (table object, row, problem) is seen
+	 *  (the caller logs it), false after that. Problem is stable text (no per-roll numbers). Keys use the table object's
+	 *  identity (FObjectKey), so a new table object (e.g. a test fixture) warns again. At DataWarningCapacity keys the set
+	 *  is emptied, so a problem may log once more but is never hidden for good. Thread-safe.
+	 */
+	static bool RememberDataWarning(const UDataTable* Table, FName RowId, const FString& Problem);
+
+	/** Forgets every remembered data warning (tests, debug tools) */
+	static void ResetDataWarnings();
+
+	/** Number of remembered data-warning keys (<= DataWarningCapacity) */
+	static int32 NumDataWarningsRemembered();
 };
 
 /**

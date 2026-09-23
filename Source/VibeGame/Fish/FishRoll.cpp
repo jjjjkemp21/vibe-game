@@ -4,6 +4,8 @@
 #include "Fish/FishSettings.h"
 #include "Engine/DataTable.h"
 #include "Templates/TypeHash.h"
+#include "UObject/ObjectKey.h"
+#include "Misc/ScopeLock.h"
 
 namespace FishRollPrivate
 {
@@ -18,6 +20,48 @@ namespace FishRollPrivate
 	static bool HasRows(const UDataTable* Table, const UScriptStruct* RowStruct)
 	{
 		return Table && Table->GetRowStruct() == RowStruct;
+	}
+
+	/** A remembered data warning: which table object, which row, which problem (stable text) */
+	struct FDataWarningKey
+	{
+		FObjectKey Table;
+		FName Row;
+		FString Problem;
+
+		bool operator==(const FDataWarningKey& Other) const
+		{
+			return Table == Other.Table && Row == Other.Row && Problem.Equals(Other.Problem, ESearchCase::CaseSensitive);
+		}
+
+		friend uint32 GetTypeHash(const FDataWarningKey& Key)
+		{
+			return HashCombine(HashCombine(GetTypeHash(Key.Table), GetTypeHash(Key.Row)), GetTypeHash(Key.Problem));
+		}
+	};
+
+	struct FDataWarningMemory
+	{
+		FCriticalSection Lock;
+		TSet<FDataWarningKey> Seen;
+	};
+
+	static FDataWarningMemory& DataWarnings()
+	{
+		static FDataWarningMemory Memory;
+		return Memory;
+	}
+
+	/**
+	 *  A data problem met during a roll (a bad row): logged once per (table object, row, problem) per session.
+	 *  Problem = the stable key text; Message = the full log line (may name the species or per-roll numbers).
+	 */
+	static void WarnData(const UDataTable* Table, FName RowId, const FString& Problem, const FString& Message)
+	{
+		if (FFishRoll::RememberDataWarning(Table, RowId, Problem))
+		{
+			UE_LOG(LogLureFish, Warning, TEXT("%s [data warning: logged once per session for this row]"), *Message);
+		}
 	}
 
 	/** floor(X + 0.5), clamped into int32 range; non-finite -> Fallback */
@@ -112,7 +156,8 @@ namespace FishRollPrivate
 	};
 
 	/** All Adds (in order), then all Multiplies (in order, a product). Invalid mods are skipped with a warning. */
-	static void ApplyStatMods(FWorkingStats& Stats, const TArray<TPair<FName, const FFishStatMod*>>& Mods, FName SpeciesId, TArray<FString>* Trace)
+	static void ApplyStatMods(FWorkingStats& Stats, const TArray<TPair<FName, const FFishStatMod*>>& Mods, const UDataTable* SourceTable, FName SpeciesId,
+		TArray<FString>* Trace)
 	{
 		for (const EFishStatModOp Phase : { EFishStatModOp::Add, EFishStatModOp::Multiply })
 		{
@@ -126,14 +171,15 @@ namespace FishRollPrivate
 				FWorkStat* Stat = Stats.Find(Mod.StatTag);
 				if (!Stat)
 				{
-					UE_LOG(LogLureFish, Warning, TEXT("Fish roll %s: %s changes stat '%s', which has no DT_FishStat row; skipped"),
-						*SpeciesId.ToString(), *Entry.Key.ToString(), *Mod.StatTag.ToString());
+					const FString Problem = FString::Printf(TEXT("changes stat '%s', which has no DT_FishStat row"), *Mod.StatTag.ToString());
+					WarnData(SourceTable, Entry.Key, Problem, FString::Printf(TEXT("Fish roll %s: %s %s; skipped"), *SpeciesId.ToString(), *Entry.Key.ToString(), *Problem));
 					continue;
 				}
 				if (!FMath::IsFinite(Mod.Value) || (Phase == EFishStatModOp::Multiply && Mod.Value <= 0.0f))
 				{
-					UE_LOG(LogLureFish, Warning, TEXT("Fish roll %s: %s has an invalid %s %g on '%s'; skipped"),
-						*SpeciesId.ToString(), *Entry.Key.ToString(), Phase == EFishStatModOp::Add ? TEXT("Add") : TEXT("Multiply"), Mod.Value, *Mod.StatTag.ToString());
+					const FString Problem = FString::Printf(TEXT("has an invalid %s %g on '%s'"),
+						Phase == EFishStatModOp::Add ? TEXT("Add") : TEXT("Multiply"), Mod.Value, *Mod.StatTag.ToString());
+					WarnData(SourceTable, Entry.Key, Problem, FString::Printf(TEXT("Fish roll %s: %s %s; skipped"), *SpeciesId.ToString(), *Entry.Key.ToString(), *Problem));
 					continue;
 				}
 				const double Before = Stat->Value;
@@ -380,6 +426,46 @@ FName FFishRoll::WeightStatName()
 	return Name;
 }
 
+bool FFishRoll::RememberDataWarning(const UDataTable* Table, FName RowId, const FString& Problem)
+{
+	using namespace FishRollPrivate;
+	FDataWarningMemory& Memory = DataWarnings();
+	FDataWarningKey Key{ FObjectKey(Table), RowId, Problem };
+	bool bForgot = false;
+	{
+		FScopeLock Lock(&Memory.Lock);
+		if (Memory.Seen.Contains(Key))
+		{
+			return false;
+		}
+		if (Memory.Seen.Num() >= DataWarningCapacity)
+		{
+			Memory.Seen.Reset();
+			bForgot = true;
+		}
+		Memory.Seen.Add(MoveTemp(Key));
+	}
+	if (bForgot)
+	{
+		UE_LOG(LogLureFish, Log, TEXT("Fish data warnings: %d different problems seen this session; forgetting them (each may log once more)"), DataWarningCapacity);
+	}
+	return true;
+}
+
+void FFishRoll::ResetDataWarnings()
+{
+	FishRollPrivate::FDataWarningMemory& Memory = FishRollPrivate::DataWarnings();
+	FScopeLock Lock(&Memory.Lock);
+	Memory.Seen.Reset();
+}
+
+int32 FFishRoll::NumDataWarningsRemembered()
+{
+	FishRollPrivate::FDataWarningMemory& Memory = FishRollPrivate::DataWarnings();
+	FScopeLock Lock(&Memory.Lock);
+	return Memory.Seen.Num();
+}
+
 // ---------------------------------------------------------------------------------------------------------------------
 // The roll pipeline
 
@@ -389,9 +475,17 @@ bool FFishRoll::Roll(const FFishTables& Tables, const FFishRollContext& Context,
 	OutFish = FFishInstance();
 	const FName SpeciesId = Context.SpeciesId;
 
+	// Caller problems (missing tables, unknown species, unknown forced ids): a warning on every call
 	auto Fail = [OutTrace, &SpeciesId](const FString& Error)
 	{
 		UE_LOG(LogLureFish, Warning, TEXT("Fish roll %s failed: %s"), *SpeciesId.ToString(), *Error);
+		if (OutTrace) { OutTrace->Add(TEXT("FAILED: ") + Error); }
+		return false;
+	};
+	// Data problems (a bad row makes the roll impossible): the roll fails every time, the warning is logged once per session
+	auto FailData = [OutTrace, &SpeciesId](const UDataTable* Table, FName RowId, const FString& Error)
+	{
+		WarnData(Table, RowId, Error, FString::Printf(TEXT("Fish roll %s failed: %s"), *SpeciesId.ToString(), *Error));
 		if (OutTrace) { OutTrace->Add(TEXT("FAILED: ") + Error); }
 		return false;
 	};
@@ -405,10 +499,16 @@ bool FFishRoll::Roll(const FFishTables& Tables, const FFishRollContext& Context,
 
 	if (!(FMath::IsFinite(Species.WeightMin) && FMath::IsFinite(Species.WeightMax) && Species.WeightMin > 0.0f && Species.WeightMax >= Species.WeightMin))
 	{
-		return Fail(FString::Printf(TEXT("invalid weight range [%g, %g]"), Species.WeightMin, Species.WeightMax));
+		return FailData(Tables.Species, SpeciesId, FString::Printf(TEXT("invalid weight range [%g, %g]"), Species.WeightMin, Species.WeightMax));
 	}
-	if (!(FMath::IsFinite(Species.SizeSkew) && Species.SizeSkew > 0.0f)) { return Fail(FString::Printf(TEXT("invalid SizeSkew %g"), Species.SizeSkew)); }
-	if (!(FMath::IsFinite(Species.ReferenceWeight) && Species.ReferenceWeight > 0.0f)) { return Fail(FString::Printf(TEXT("invalid ReferenceWeight %g"), Species.ReferenceWeight)); }
+	if (!(FMath::IsFinite(Species.SizeSkew) && Species.SizeSkew > 0.0f))
+	{
+		return FailData(Tables.Species, SpeciesId, FString::Printf(TEXT("invalid SizeSkew %g"), Species.SizeSkew));
+	}
+	if (!(FMath::IsFinite(Species.ReferenceWeight) && Species.ReferenceWeight > 0.0f))
+	{
+		return FailData(Tables.Species, SpeciesId, FString::Printf(TEXT("invalid ReferenceWeight %g"), Species.ReferenceWeight));
+	}
 
 	const int32 Seed = Context.Seed;
 	if (OutTrace)
@@ -439,15 +539,15 @@ bool FFishRoll::Roll(const FFishTables& Tables, const FFishRollContext& Context,
 			WeightStat = &Stat;
 		}
 	}
-	if (!WeightStat) { return Fail(TEXT("DT_FishStat has no Fish.Stat.Weight row")); }
+	if (!WeightStat) { return FailData(Tables.Stats, NAME_None, TEXT("DT_FishStat has no Fish.Stat.Weight row")); }
 
 	for (const FFishStatValue& BaseStat : Species.BaseStats)
 	{
 		FWorkStat* Stat = Stats.Find(BaseStat.Tag);
 		if (!Stat || Stat == WeightStat || !FMath::IsFinite(BaseStat.Value))
 		{
-			UE_LOG(LogLureFish, Warning, TEXT("Fish roll %s: base stat '%s' = %g is unregistered, the weight, or not finite; skipped"),
-				*SpeciesId.ToString(), *BaseStat.Tag.ToString(), BaseStat.Value);
+			const FString Problem = FString::Printf(TEXT("base stat '%s' = %g is unregistered, the weight, or not finite"), *BaseStat.Tag.ToString(), BaseStat.Value);
+			WarnData(Tables.Species, SpeciesId, Problem, FString::Printf(TEXT("Fish roll %s: %s; skipped"), *SpeciesId.ToString(), *Problem));
 			continue;
 		}
 		Stat->Value = BaseStat.Value;
@@ -539,7 +639,8 @@ bool FFishRoll::Roll(const FFishTables& Tables, const FFishRollContext& Context,
 		{
 			if (!Tables.FindRarity(Id))
 			{
-				UE_LOG(LogLureFish, Warning, TEXT("Fish roll %s: allowed rarity '%s' is not a DT_FishRarity row; ignored"), *SpeciesId.ToString(), *Id.ToString());
+				const FString Problem = FString::Printf(TEXT("allowed rarity '%s' is not a DT_FishRarity row"), *Id.ToString());
+				WarnData(Tables.Species, SpeciesId, Problem, FString::Printf(TEXT("Fish roll %s: %s; ignored"), *SpeciesId.ToString(), *Problem));
 			}
 		}
 		const TArray<TPair<FName, float>> Candidates = GetRarityWeights(Tables, Species, Luck);
@@ -550,7 +651,8 @@ bool FFishRoll::Roll(const FFishTables& Tables, const FFishRollContext& Context,
 			const float Raw = Tables.FindRarity(Entry.Key)->RollWeight;
 			if (!FMath::IsFinite(Raw) || Raw < 0.0f)
 			{
-				UE_LOG(LogLureFish, Warning, TEXT("Fish roll %s: rarity '%s' has an invalid RollWeight %g; counted as 0"), *SpeciesId.ToString(), *Entry.Key.ToString(), Raw);
+				const FString Problem = FString::Printf(TEXT("has an invalid RollWeight %g"), Raw);
+				WarnData(Tables.Rarities, Entry.Key, Problem, FString::Printf(TEXT("Fish roll %s: rarity '%s' %s; counted as 0"), *SpeciesId.ToString(), *Entry.Key.ToString(), *Problem));
 			}
 			Weights.Add(Entry.Value);
 			if (OutTrace)
@@ -563,7 +665,7 @@ bool FFishRoll::Roll(const FFishTables& Tables, const FFishRollContext& Context,
 		const int32 Index = PickWeightedIndex(Weights, U);
 		if (Index == INDEX_NONE)
 		{
-			return Fail(TEXT("no allowed rarity has a roll weight above 0"));
+			return FailData(Tables.Species, SpeciesId, TEXT("no allowed rarity has a roll weight above 0"));
 		}
 		RarityId = Candidates[Index].Key;
 		if (OutTrace)
@@ -581,7 +683,7 @@ bool FFishRoll::Roll(const FFishTables& Tables, const FFishRollContext& Context,
 		{
 			Mods.Emplace(RarityId, &Mod);
 		}
-		ApplyStatMods(Stats, Mods, SpeciesId, OutTrace);
+		ApplyStatMods(Stats, Mods, Tables.Rarities, SpeciesId, OutTrace);
 	}
 	const int32 Level = static_cast<int32>(FMath::Clamp(static_cast<int64>(Species.BaseLevel) + Rarity.LevelBonus, int64(1), static_cast<int64>(MAX_int32)));
 	if (OutTrace)
@@ -629,7 +731,9 @@ bool FFishRoll::Roll(const FFishTables& Tables, const FFishRollContext& Context,
 			float Chance = Row.RollChance;
 			if (!FMath::IsFinite(Chance) || Chance < 0.0f || Chance > 1.0f)
 			{
-				UE_LOG(LogLureFish, Warning, TEXT("Fish roll %s: modifier '%s' has an invalid RollChance %g; clamped to [0, 1]"), *SpeciesId.ToString(), *Rows[i].Key.ToString(), Chance);
+				const FString Problem = FString::Printf(TEXT("has an invalid RollChance %g"), Chance);
+				WarnData(Tables.Modifiers, Rows[i].Key, Problem,
+					FString::Printf(TEXT("Fish roll %s: modifier '%s' %s; clamped to [0, 1]"), *SpeciesId.ToString(), *Rows[i].Key.ToString(), *Problem));
 				Chance = FMath::IsFinite(Chance) ? FMath::Clamp(Chance, 0.0f, 1.0f) : 0.0f;
 			}
 			const bool bHit = bEligible && U < Chance;
@@ -719,7 +823,7 @@ bool FFishRoll::Roll(const FFishTables& Tables, const FFishRollContext& Context,
 		{
 			OutTrace->Add(FString::Printf(TEXT("  kept [%s]; all Adds, then all Multiplies:"), *FString::JoinBy(Kept, TEXT(", "), [](const FName& Id) { return Id.ToString(); })));
 		}
-		ApplyStatMods(Stats, Mods, SpeciesId, OutTrace);
+		ApplyStatMods(Stats, Mods, Tables.Modifiers, SpeciesId, OutTrace);
 	}
 
 	// 5. Clamp ----------------------------------------------------------------------------------------------------------
@@ -729,7 +833,8 @@ bool FFishRoll::Roll(const FFishTables& Tables, const FFishRollContext& Context,
 		const double High = FMath::Max(Stat.Row->Min, Stat.Row->Max);
 		if (FMath::IsNaN(Stat.Value))
 		{
-			UE_LOG(LogLureFish, Warning, TEXT("Fish roll %s: stat '%s' became NaN; reset to its default"), *SpeciesId.ToString(), *Stat.Tag.ToString());
+			const FString Problem = FString::Printf(TEXT("stat '%s' became NaN"), *Stat.Tag.ToString());
+			WarnData(Tables.Species, SpeciesId, Problem, FString::Printf(TEXT("Fish roll %s: %s; reset to its default"), *SpeciesId.ToString(), *Problem));
 			Stat.Value = Stat.Row->Default;
 		}
 		Stat.Value = FMath::Clamp(Stat.Value, Low, High);
@@ -753,7 +858,8 @@ bool FFishRoll::Roll(const FFishTables& Tables, const FFishRollContext& Context,
 	const double RawValue = static_cast<double>(Species.BaseValuePerKg) * WeightKg * ValueMultiplier;
 	if (!FMath::IsFinite(RawValue) || RawValue < 0.0)
 	{
-		UE_LOG(LogLureFish, Warning, TEXT("Fish roll %s: value %g is invalid (check BaseValuePerKg and value multipliers); using 1"), *SpeciesId.ToString(), RawValue);
+		WarnData(Tables.Species, SpeciesId, TEXT("invalid value"), FString::Printf(TEXT("Fish roll %s: value %g is invalid with rarity %s (check BaseValuePerKg and value multipliers); using 1"),
+			*SpeciesId.ToString(), RawValue, *RarityId.ToString()));
 	}
 	const int32 Value = FMath::Max(1, RoundHalfUpToInt(RawValue, 1));
 	const int32 Xp = ComputeXp(Tables.Tuning, Level, Rarity.XpMultiplier);
