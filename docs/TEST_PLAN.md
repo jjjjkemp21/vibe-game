@@ -87,8 +87,8 @@ Fixtures: tables from CSV text only (the data/tables sources or QA fixtures). QA
 
 ### T-010 findings (qa-engineer, 2026-09-23)
 - T010-O1 (hardening, not reachable by players): `ULureInteractionComponent::TryInteract` / `ALureSellPoint::SellAll` accept a destroyed (pending-kill) sell point passed directly and still sell. The player path is safe (the subsystem unregisters it, and a server RPC resolves a destroyed actor to null), so no failing test; suggested one-line fix: `IsValid(Target)` in TryInteract and the sell functions.
-- T010-O2 (spec gap): a save with an unknown CoolerId keeps that id and uses `FallbackCoolerSlots` (8) instead of switching to the default row; the spec only defines None. Write the rule down (the test accepts either and logs what happened).
-- T010-O3: `FallbackCoolerSlots` (8) duplicates the Basic row (8); if Basic changes, a missing table gives a different size.
+- T010-O2: RESOLVED in 40c547b. An unknown CoolerId now switches to DefaultCoolerId, with a warning (progression-rules.md); test Project.Progression.Save.UnknownCoolerUsesDefaultRow.
+- T010-O3: RESOLVED in 40c547b. The fallback size lives only in LureProgressionSettings.h and is used only when DT_Cooler or its default row is missing.
 
 ### T-010 gaps (not covered by automation)
 - Real replication over a net driver (owner-only fish list delivery, the Interact RPC from a real client, a joining client not getting OnLevelUp for its initial level): playtester 2-player PIE.
