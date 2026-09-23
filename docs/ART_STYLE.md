@@ -44,7 +44,7 @@ Character (placeholder first-person arms, 7cd2157): sleeve `#7C8A63` (faded oliv
 - Textures: 512 px default, 1024 px for hero items.
 
 ## Orientation rule
-Expected (from the exporter settings, not yet verified in an editor screenshot): Blender +X = Unreal +X (forward), Blender +Y = Unreal -Y, Z up; Unreal location = (100x, -100y, 100z) cm. The editor-operator confirms this when importing SM_Rod_Basic / SK_FPArms (the first directional assets), then this note becomes the rule.
+CONFIRMED in the editor 2026-09-23 (SM_Rod_Basic on SK_FPArms `hand_r_rod`, PIE screenshot Saved/AgentLogs/editor/20260923-t004-import/pie_fp_rod.png): Blender +X = Unreal +X (forward), Blender +Y = Unreal -Y, Z up; Unreal location = (100x, -100y, 100z) cm. Model directional props facing Blender +X. Skeletal FBX must be exported in centimeters with no armature scale (see the animation-artist's export settings); a meter-declared FBX imports with a 100x `root` bone scale.
 
 ## Characters and animation
 - First person: the player sees their own arms and the rod. Placeholder arms first, taken from Epic's first-person content or a simple blockout; stylized custom arms later.
