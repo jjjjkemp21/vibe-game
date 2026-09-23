@@ -3,7 +3,7 @@
 Jimmy, 2026-09-23: falling in means swimming, not getting caught. The slice swims at the surface only; diving comes later.
 Code: `Source/VibeGame/Character/LureSwimMovement.cpp` (movement), `LureWaterVolume.*`, `LureLadder.*`,
 `LurePlayerCharacterSwim.cpp`. Tests: `Project.Movement.Swim.*` (`Tests/Movement/LureSwimTest.cpp`; networking:
-`Tests/Movement/LureSwimNetTest.cpp`).
+`Tests/Movement/LureSwimNetTest.cpp`; the volume in editor worlds: `Tests/Movement/LureWaterVolumeEditorTest.cpp`).
 
 ## Rules
 - **Water** is a physics volume with `bWaterVolume` (use `ALureWaterVolume`). The engine switches the character to its
@@ -106,8 +106,70 @@ vol = unreal.get_editor_subsystem(unreal.EditorActorSubsystem).spawn_actor_from_
     unreal.LureWaterVolume, unreal.Vector(cx, cy, 0.0))
 vol.set_editor_property("surface_half_size", unreal.Vector2D(half_x, half_y))
 vol.set_editor_property("water_depth", 900.0)
-vol.set_water_size(unreal.Vector2D(half_x, half_y), 900.0)  # rebuilds the collision now (same values)
+vol.set_water_size(unreal.Vector2D(half_x, half_y), 900.0)  # rebuilds the collision and the editor brush now
 ```
+`set_water_size` is safe in the editor and at runtime. Resize with these two values only: the volume overwrites its
+brush (Brush Settings and geometry-mode edits don't stick; see the next section).
+
+## Water volume and the editor (T-026 crash fix, 2026-09-23)
+**The crash.** The level builder crashed the editor with `Assertion failed: Actor->Brush [BSPOps.cpp:527]` when it spawned
+the water volume. `spawn_actor_from_class` places a volume class through the editor's volume actor factory:
+`UActorFactory::CreateBrushForVolumeActor` gives the actor a brush, builds a shape into it, and then calls
+`FBSPOps::csgPrepMovingBrush`, which checks the brush. The brush builder's last step re-registers the actor's components.
+`ALureWaterVolume::PostRegisterAllComponents` then rebuilt the water box, and that rebuild deliberately set `Brush = nullptr`
+("the shape is ours"), so the check fired. `UBrushComponent::HasInvertedPolys` (called on map load for mirrored
+brushes) and actor conversion also expect a brush on every volume.
+
+**How swimming uses the volume** (what any fix had to keep):
+- The engine's `USceneComponent::UpdatePhysicsVolume` on the capsule first compares the volume root's **bounds** with
+  the capsule's (a quick reject), then overlaps the brush component's **collision body**, then keeps the highest-priority
+  `APhysicsVolume` whose body holds the capsule center (`IsOverlapInVolume`). `IsInWater()` is that volume's
+  `bWaterVolume`, so it drives every engine swim transition.
+- `FindWaterLine` and `ImmersionDepth` trace the brush component's body (complex traces: the body answers them with
+  `CTF_UseSimpleAsComplex`).
+- Ours: `ULureCharacterMovementComponent::IsPointInWater` (stance refusal) uses `EncompassesPoint` (the body).
+  `GetWaterSurfaceHeight` uses `ALureWaterVolume::GetSurfaceHeight` (the actor's Z). `ALureWaterVolume::IsPointInWater`
+  is the same box computed from the properties.
+- In editor builds (the editor and PIE) `UBrushComponent::CalcBounds` takes the bounds from the **brush polygons** if
+  there are any, otherwise from the body. So a brush whose shape differs from the body breaks the quick reject in PIE.
+
+**Options.** (a) Keep `APhysicsVolume`, and make the brush match the box. (b) Make the water a non-brush actor (a
+`UBoxComponent`) that the swim code queries. (b) was rejected. The engine picks physics volumes only from
+`APhysicsVolume` actors (`Cast<APhysicsVolume>(Owner)`), so (b) would mean replacing the engine's swim entry and exit
+(`IsInWater`, `FindWaterLine`, `ImmersionDepth`, fluid friction) inside the predicted movement code. That is a large
+change to the networking contract, only to fix an editor-side problem.
+
+**Chosen: (a), one shape with two views of it.**
+- **Collision, every build:** the transient box body from `SurfaceHalfSize` / `WaterDepth` (unchanged recipe). It is
+  rebuilt in `OnConstruction`, in `PostRegisterAllComponents` (spawn, load, PIE copy, editor re-register) and in
+  `SetWaterSize`. It is never saved, so every machine builds the same body from the level's saved values. (Loading a
+  level in the editor therefore logs `LureWaterVolume_N does not have BrushBodySetup. No collision.` from
+  `ABrush::PostLoad`. This is expected: the body is built a moment later, when the components register.) Sizes are used clamped to 1 cm .. 100 km,
+  and NaN or infinite sizes become 1 cm (`GetWaterBoxHalfExtent`), so a layout typo can't hand the physics engine an
+  infinite box.
+- **Editor brush, editor builds:** the volume never drops its brush. `SyncEditorBrush` rewrites the brush's polygons to
+  the same box: 6 outward-facing quads, top face at the actor's origin. It clears `BrushBuilder`, because the factory's
+  2 m builder shape would lie in the Details panel. If an editor world has no brush (the volume was spawned from code
+  without a factory), `SyncEditorBrush` creates one. Game worlds get none: there the bounds come from the body. This
+  code needs no editor module (UModel, UPolys and FPoly are Engine).
+- **The hook:** the editor's own brush rebuild (`csgPrepMovingBrush`: factory placement, paste, undo/redo, Build) ends
+  with `BuildSimpleBrushCollision`. That writes the brush's convex hulls into our body. The body never cooks, so the hulls
+  would give no collision. The rebuild then calls `ABrush::RebuildNavigationData`, its only caller in the engine, which
+  `ANavModifierVolume` also overrides. `ALureWaterVolume` overrides it to rebuild the box body.
+- **Networking unchanged:** level-placed volumes load on every machine with the same values and build the same body, so
+  the server and the owning client detect water identically. A volume spawned at runtime would need `SurfaceHalfSize`
+  and `WaterDepth` replicated (not the case in the slice).
+
+**Rules for new volume classes (patterns to follow):**
+1. Never set `Brush` (or `BrushComponent->Brush`) to null on an `ABrush` in the editor. If the shape comes from data,
+   make the brush match the data.
+2. Rebuild derived collision in `PostRegisterAllComponents` **and** in `RebuildNavigationData` (after any editor brush
+   rebuild). Build a fresh body each time; the editor edits the current one in place.
+3. Editor-only engine calls go behind `WITH_EDITOR` (`FPoly::Finalize` and `UModel::BuildBound` are editor-only).
+   Editor modules (UnrealEd, EditorFramework) are only for tests (Build.cs, `Target.bBuildEditor`).
+4. Test editor placement the way the editor does it: `GEditor->FindActorFactoryForActorClass` plus
+   `UPlacementSubsystem::PlaceAsset` into an editor test world
+   (`Tests/Movement/LureWaterVolumeEditorTest.cpp`, `Project.Movement.Swim.WaterVolumeEditor.*`).
 
 Ladder:
 - Class `ALureLadder` (Python `unreal.LureLadder`). **Origin = where the ladder meets the water surface, on the face of

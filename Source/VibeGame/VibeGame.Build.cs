@@ -49,6 +49,14 @@ public class VibeGame : ModuleRules
 		// Lure character settings (UDeveloperSettings) and the game-mode config check in tests (UGameMapsSettings), T-004
 		PrivateDependencyModuleNames.AddRange(new string[] { "DeveloperSettings", "EngineSettings" });
 
+		// Editor builds only: tests that place actors the way the editor and the level builder do (actor factories, the
+		// placement subsystem; T-026 water volume crash fix). Gameplay code never uses these: keep editor calls in tests
+		// or behind WITH_EDITOR, so packaged game targets link without them.
+		if (Target.bBuildEditor)
+		{
+			PrivateDependencyModuleNames.AddRange(new string[] { "UnrealEd", "EditorFramework", "TypedElementFramework" });
+		}
+
 		// Uncomment if you are using Slate UI
 		// PrivateDependencyModuleNames.AddRange(new string[] { "Slate", "SlateCore" });
 

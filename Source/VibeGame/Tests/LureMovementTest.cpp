@@ -209,9 +209,9 @@ namespace LureMovementTest
 		Test.TestNearlyEqual(Label + TEXT(": capsule half height"), HalfHeight, Expected.CapsuleHalfHeight, 0.05f);
 		Test.TestNearlyEqual(Label + TEXT(": capsule radius"), Radius, Expected.CapsuleRadius, 0.05f);
 	}
-}
 
-using namespace LureMovementTest;
+// The tests stay inside this namespace (closed at the end of the file): a file-scope `using namespace` leaks Dt and the
+// fixtures into the next files of the unity build (unreal-engineer rule 7; it broke the build again on 2026-09-23).
 
 // ---------------------------------------------------------------------------------------------------------------------
 // Data
@@ -1220,5 +1220,7 @@ bool FLureMovementSetupTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("third-person mesh slot hidden from its owner"), Character->GetMesh()->bOwnerNoSee);
 	return true;
 }
+
+} // namespace LureMovementTest
 
 #endif // WITH_DEV_AUTOMATION_TESTS
