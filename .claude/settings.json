@@ -1,7 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
   "permissions": {
-    "defaultMode": "acceptEdits",
     "allow": [
       "Bash(git *)",
       "PowerShell(git *)",
@@ -12,23 +11,24 @@
       "mcp__unreal-mcp",
       "mcp__blender"
     ],
+    "deny": [
+      "Bash(git push --force *)",
+      "Bash(git push -f *)",
+      "PowerShell(git push --force *)",
+      "PowerShell(git push -f *)"
+    ],
     "ask": [
       "Bash(git reset --hard *)",
       "Bash(git clean *)",
       "PowerShell(git reset --hard *)",
       "PowerShell(git clean *)"
     ],
-    "deny": [
-      "Bash(git push --force *)",
-      "Bash(git push -f *)",
-      "PowerShell(git push --force *)",
-      "PowerShell(git push -f *)"
-    ]
+    "defaultMode": "acceptEdits"
   },
-  "enabledPlugins": {
-    "unreal-engine-skills-for-claude-code@claude-plugins-official": true
-  },
-  "enabledMcpjsonServers": ["unreal-mcp", "blender"],
+  "enabledMcpjsonServers": [
+    "unreal-mcp",
+    "blender"
+  ],
   "hooks": {
     "PreToolUse": [
       {
@@ -37,7 +37,13 @@
           {
             "type": "command",
             "command": "powershell.exe",
-            "args": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "${CLAUDE_PROJECT_DIR}/.claude/hooks/guard-binary-assets.ps1"],
+            "args": [
+              "-NoProfile",
+              "-ExecutionPolicy",
+              "Bypass",
+              "-File",
+              "${CLAUDE_PROJECT_DIR}/.claude/hooks/guard-binary-assets.ps1"
+            ],
             "timeout": 30
           }
         ]
@@ -49,11 +55,20 @@
           {
             "type": "command",
             "command": "powershell.exe",
-            "args": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "${CLAUDE_PROJECT_DIR}/.claude/hooks/require-build-on-stop.ps1"],
+            "args": [
+              "-NoProfile",
+              "-ExecutionPolicy",
+              "Bypass",
+              "-File",
+              "${CLAUDE_PROJECT_DIR}/.claude/hooks/require-build-on-stop.ps1"
+            ],
             "timeout": 60
           }
         ]
       }
     ]
+  },
+  "enabledPlugins": {
+    "unreal-engine-skills-for-claude-code@claude-plugins-official": true
   }
 }
