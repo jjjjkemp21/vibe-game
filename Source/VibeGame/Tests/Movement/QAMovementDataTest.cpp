@@ -74,6 +74,12 @@ bool FQAMoveDataAllFourStancesPresent::RunTest(const FString& Parameters)
 		TestTrue(FString::Printf(TEXT("row '%s' is a known stance (typo?)"), *Name.ToString()), bKnown);
 	}
 	TestEqual(TEXT("exactly 6 rows"), Names.Num(), 6);
+	// QA review of the T-026 fixture edit: the list above must stay in step with the movement states the code resolves.
+	TestEqual(TEXT("one row per ELureMovementState"), Names.Num(), static_cast<int32>(FLureMovementData::NumStates));
+	for (const ELureMovementState State : TEnumRange<ELureMovementState>())
+	{
+		TestTrue(FString::Printf(TEXT("state row %s present"), *FLureMovementData::GetRowName(State).ToString()), Names.Contains(FLureMovementData::GetRowName(State)));
+	}
 	return true;
 }
 
@@ -546,6 +552,8 @@ bool FQAMoveFallbackUnknownExtraRowIgnored::RunTest(const FString& Parameters)
 	TestEqual(TEXT("no stance falls back because of an extra row"), static_cast<int32>(Mask), 0);
 	TestNearlyEqual(TEXT("Stand still from the table"), QAM::RowOf(Resolved, ELureMovementState::Stand).MaxSpeed, 311.f, 0.01f);
 	TestNearlyEqual(TEXT("Prone still from the table"), QAM::RowOf(Resolved, ELureMovementState::Prone).MaxSpeed, 89.f, 0.01f);
+	// The typo row sits next to the real "Swim" row: Swim must still come from its own row, not from "Swimm".
+	TestNearlyEqual(TEXT("Swim from its own row, not the typo row"), QAM::RowOf(Resolved, ELureMovementState::Swim).MaxSpeed, 151.f, 0.01f);
 	return true;
 }
 

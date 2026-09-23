@@ -70,6 +70,38 @@ Latest runs (lane eng1): see the QA report `Saved/AgentLogs/qa/*-eng1-T004.md` i
 - The map scenario (L_Dev_Movement gaps and ceilings, T-005 crawl cave): playtester, and later the T-022 bot run.
 - Prone fishing (rod tuck while crawling): T-006/T-007, not in T-004 code yet.
 
+## T-026 surface swimming + T-004 playtest fixes (lane eng2)
+Implementer tests: `Tests/Movement/LureSwimTest.cpp` (`Project.Movement.Swim.*`, `Project.Movement.Climb.NoClimbRuleLandsOnSlopes`), `LureSwimNetTest.cpp` (`Project.Movement.Swim.Net.*`, 7), `LureMovementPlaytestFixTest.cpp` (`Project.Movement.{Climb,Stance,Camera}.*` B1-B3).
+Independent tests: `Tests/Movement/QASwimTest.cpp` (qa-engineer, 21 tests), from docs/specs/swimming.md, movement-rules.md and review gaps T0/T2-T5. Worlds: transient game worlds, water surface z = 0, seabed -600, 60 Hz; the table is data/tables/DT_Movement.csv with rows edited in memory.
+
+| Area | Tests (`Project.Movement.QA.` + ...) | Level | What they prove |
+|---|---|---|---|
+| Entering the water | Swim.Enter.{FromEveryStanceOffAnEdge, JumpFromTheEdge, FallFromHeightSettlesWithOneEvent} | I | Walk/sprint/crouch/prone off 30 and 100 cm edges, a stand or crouch jump at the edge, a 10 m fall into deep and 150 cm water with settle times 0.05/0.8/3 s: swimming, standing, Stand capsule, no wish kept, SwimSprint while sprinting, float depth, eye height, no penetration; after the plunge never out of the water and exactly one "in" AFTER settling (review T3). Jump back out works at 30 cm, not at 100 cm |
+| Wading vs swimming | Swim.Depth.{WadingVsSwimmingThreshold, CrouchOrProneWhileWadingNoSwimFlicker} | I | 60/88 cm deep = walking, 96/150 = swimming, no events while moving about. Crouch at 60 / prone at 30 cm: no swim-event blip (FAILS, T026-B2) |
+| Two volumes | Swim.Volumes.OverlappingAndTouchingKeepSwimming | I | Overlapping (400 cm) and touching boxes: never out of the water, surface found, height steady, no events |
+| Ladders | Swim.Ladder.{GrabZoneBoundaries, ClimbHeightBoundaries, EnterClimbTopAndBackIn} | U/I | Zone +-1 cm at reach/width/height for 3 yaws, climb direction; dock 300 = ladder 300 climbs, 301 doesn't, 150 with ladder 100 doesn't, a ladder below 60 keeps the row's rule, no room to stand = refused; outside the zone Jump does nothing; in-water for the whole climb, crouch refused mid-climb, one "out" on top, climb time ~ path/speed, walking off the top = "in", leaving the zone restores the row's limit |
+| Leaving | Swim.Leave.{StancesAndSprintWorkAgainOnLand, StepOntoSubmergedShelfNoLaunch} | I | Sprint/crouch/prone work on land after a climb out. Stepping from the water onto shelf tops -58..-90 cm: no launch, ends walking on the shelf (FAILS, T026-B3) |
+| Teleport / respawn | Swim.Teleport.{BetweenWaterAndLand, MidClimbEndsTheClimb}, Climb.TeleportMidPullUpEndsIt | I | Water->land "out", land->water "in", water->water nothing. A teleport mid ClimbOut / LedgeClimb ends the climb at the destination (FAIL, T026-B1) |
+| Swim events | Swim.Events.OncePerRealChangeOverATrip | I | Fall in, sprint, Jump in open water, stance requests, a 150 cm wall, climb out, walk off, beach walk-out: exactly "in,out,in,out", "out" only once standing |
+| Diving path | Swim.DiveRow.SurfaceFloatDepthZeroIsFreeSwimming | I | Review T2: depth 0 is accepted (no fallback), no surface rule, sinks and is not pulled back up, row speed, no prone |
+| Level-design gap | Swim.Gap.SubmergedShelfDeadBandDocumented | I | DOCUMENTS current behavior: vertical shelf tops in (-55, -20) cm (computed from the data) can be neither stepped onto nor climbed; -15 climbs with Jump |
+| Arms | Swim.Arms.StrokeClipPlaysInDefaultSlot | I | Review T4: with a stroke clip (A_FPArms_Idle stands in) the montage plays, ABP_FPArms blends DefaultSlot > 0.9, lowering off, stops on land |
+| Climb rule B1 | Climb.{EdgeLandingRefusedWhereTheEngineAccepts, NeverPerchedBelowALedgeTop} | I | Review T0: 40 edge contacts the engine's IsValidLandingSpot accepts are all refused; flat tops accepted. Frame by frame never walking perched on a 100 cm block's edge (fall without jump, jump released at apex, stand/crouch/sprint jumps; stand and crouch reach the top through the pull-up) |
+| Arms pull-back | Camera.ArmsPullBackFollowsData | I | Review T5: Stand 4 / Prone 9 in the data put the arms at X -4 / -9 |
+
+Implementer-test fixes by QA: `Project.Movement.Camera.ProneArmsPulledBackFromWalls` expected +Stand.ArmsPullBack (wrong sign, passed only while it is 0), now -Stand.ArmsPullBack (review T5). Fixture edits reviewed (sound): `QA.Data.AllFourStancesPresent` (6 rows) now also checks one row per ELureMovementState; `QA.Fallback.UnknownExtraRowIgnored` ("Swimm") now also checks that Swim comes from its own row.
+
+### Open bugs (T-026, found 2026-09-23 by qa-engineer, report `Saved/AgentLogs/qa/20260923-*-T026.md` in main)
+- T026-B1 (major) `Swim.Teleport.MidClimbEndsTheClimb`, `Climb.TeleportMidPullUpEndsIt`: TeleportTo during ClimbOut/LedgeClimb keeps the plan, so PhysClimb drags the character from the destination back toward the old edge at climb speed (423 / 503 cm in 1.5 s), still in MOVE_Custom and IsSwimming true on land.
+- T026-B2 (minor, needs a rule) `Swim.Depth.CrouchOrProneWhileWadingNoSwimFlicker`: crouch in 60 cm or prone in 30 cm water puts the capsule center under the surface: one frame Swimming, the wish is cleared, back to Stand; OnSwimStateChanged fires "in,out" (T-006 would cancel fishing in the reef shallows).
+- T026-B3 (major) `Swim.Leave.StepOntoSubmergedShelfNoLaunch`: stepping from the water onto a vertical shelf top at -58/-60/-65/-70 cm throws the swimmer up (feet to +591/+456/+182/-29 cm, up to 1148 cm/s); -75 cm can't be stepped onto at all; -80..-90 fine. L_PalmKey's reef flat is at -60.
+- Open (review D2, no test yet): with SurfaceFloatDepth 0 the climb out works from any depth.
+
+### T-026 gaps
+- Real 2-player PIE (latency, corrections, proxies): playtester, checklist in the netfix report.
+- Swim stroke: the real A_FPArms_SwimStroke clip, and a clip that fails to play (null montage retried every tick, review T4 case 2).
+- Overlapping volumes with different surface heights or priorities; ladders on pitched docks.
+
 ## Rules
 - Every new behavior gets at least one test written by someone other than its implementer (qa-engineer).
 - Every gameplay DataTable gets a data-validation test (D) when it is created.

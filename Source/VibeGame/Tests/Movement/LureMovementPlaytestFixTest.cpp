@@ -473,14 +473,15 @@ bool FLureProneArmsTest::RunTest(const FString& Parameters)
 	}
 
 	World.Tick(20);
-	TestNearlyEqual(TEXT("standing: arms in place"), static_cast<float>(Player->GetArmsBobOffset().GetLocation().X), RowOf(Table, ELureMovementState::Stand).ArmsPullBack, 0.2f);
+	// QA fix (review T5): the pull-back moves the arms toward the eye (-X) for every row; it passed only while Stand's value was 0.
+	TestNearlyEqual(TEXT("standing: arms pulled back by the Stand row (0 = in place)"), static_cast<float>(Player->GetArmsBobOffset().GetLocation().X), -RowOf(Table, ELureMovementState::Stand).ArmsPullBack, 0.2f);
 	Player->RequestStance(ELureStance::Prone);
 	World.Tick(90);
 	TestEqual(TEXT("prone"), static_cast<int32>(Player->GetStance()), static_cast<int32>(ELureStance::Prone));
 	TestNearlyEqual(TEXT("prone: arms pulled back by the row's ArmsPullBack"), static_cast<float>(Player->GetArmsBobOffset().GetLocation().X), -Prone.ArmsPullBack, 0.2f);
 	Player->RequestStance(ELureStance::Stand);
 	World.Tick(90);
-	TestNearlyEqual(TEXT("standing again: arms back"), static_cast<float>(Player->GetArmsBobOffset().GetLocation().X), 0.f, 0.2f);
+	TestNearlyEqual(TEXT("standing again: arms back"), static_cast<float>(Player->GetArmsBobOffset().GetLocation().X), -RowOf(Table, ELureMovementState::Stand).ArmsPullBack, 0.2f);
 	Controller->UnPossess();
 	World.Tick(2);
 	return true;
