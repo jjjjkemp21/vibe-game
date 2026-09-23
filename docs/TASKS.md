@@ -25,6 +25,12 @@ In progress: unreal-engineer-junior-medium in eng3 (after the T-007 test update 
 - T-008 fish rig and animations DONE d5a9d4f: SKEL_Fish, SK_Bonefish/SK_CoralSnapper, A_Fish_Rest plus 7 additive clips, spec art/export/Fish/SK_Fish.anim.md (report Saved/AgentLogs/anim/20260923-111847-fish.md; Progress 11). In progress: editor-operator-mid-medium importing to /Game/Art/Fish. Then unreal-engineer-junior-medium: scale by weight, and play the clips for the fight states (T-007 mapping; Rest plays Swim_Idle; Landed_Flop alpha 1).
 - DONE 5137a5c: run-tests.ps1 now fails on a crash or an incomplete run (unreal-engineer-junior-medium)
 - DONE 3e7e3a5: the L_PalmKey cave rebuild (crawl walls #35434A, in target; outer mouth faces slightly dark and blue; left for the designer at the gate). Evidence Saved/AgentLogs/editor/20260923-104106-palmkey-cave/
+- 13:40 status:
+  - T-026 MERGED into main ad00f3c. It went through a merge because the rebase conflicted; it includes D1, the HUD stance hint, the swim arms, the no-dead-band and ABP pin-order tests, and QA ad00f3c. Main build green.
+  - In progress:
+    - editor-operator-junior-low: DT_Movement re-import
+    - level-designer-mid-medium: water volumes and exits in both layouts, plus a dev-map pool; dock_end radius 650
+    - unreal-engineer-mid-high: `git merge main` into eng3 (T-007 plus playtest fixes 679583f), and check the QA.Eye GC crash in a single pass
 - DONE: the T-025 smoke check PASS (Saved/AgentLogs/playtest/20260923-104259-T025-smoke/report.md; about 17 calls for the whole scenario including 2 players). Driver follow-ups (junior, later):
   - clear pd.results() per session
   - a default filter for pd.markers()
