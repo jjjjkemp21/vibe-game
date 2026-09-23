@@ -7,6 +7,7 @@
 
 #if WITH_DEV_AUTOMATION_TESTS
 
+#include "DataTableUtils.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
 #include "Serialization/JsonReader.h"
@@ -717,7 +718,10 @@ namespace FishQA_Data
 			}
 			TestTrue(FString::Printf(TEXT("%s: the asset's row struct matches"), Name), Asset->RowStruct == Source->RowStruct);
 			TestEqual(FString::Printf(TEXT("%s: the asset matches data/tables/%s.json (reimport it if not)"), Name, Name),
-				Asset->GetTableAsJSON(), Source->GetTableAsJSON());
+				// UseSimpleText: compare FText by display string. The lossless form carries the text's localization
+				// namespace/key, which depends on the owning package (the asset gets "DT_x [GUID]", a transient table
+				// "DataTable_N []"), so it differs between checkouts even when every value matches.
+				Asset->GetTableAsJSON(EDataTableExportFlags::UseSimpleText), Source->GetTableAsJSON(EDataTableExportFlags::UseSimpleText));
 		}
 		return true;
 	}

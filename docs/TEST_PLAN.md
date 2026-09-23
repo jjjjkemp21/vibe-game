@@ -74,3 +74,8 @@ Latest runs (lane eng1): see the QA report `Saved/AgentLogs/qa/*-eng1-T004.md` i
 - Every new behavior gets at least one test written by someone other than its implementer (qa-engineer).
 - Every gameplay DataTable gets a data-validation test (D) when it is created.
 - Every bug fixed gets a regression test named after the bug.
+
+## Dev tools (T-025, LIGHT gate)
+- `Project.Dev.*` (8, implementer): teleport by marker/tag/spot id/XYZ, PlayerId, stance, GiveFish args + rolls, driver API.
+- `Project.Dev.QA.ClientConsoleRefuses` (QA): on an NM_Client world Teleport and GiveFish refuse, nothing moves or rolls.
+- Gap: a real networked client console (no replicated relay yet) is untested.

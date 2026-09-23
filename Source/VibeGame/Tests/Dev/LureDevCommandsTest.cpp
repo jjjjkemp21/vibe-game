@@ -604,4 +604,47 @@ bool FLureDevPlaytestDriverImportsTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+/** QA (T-025): a client's own console refuses Teleport and GiveFish (server-only) and nothing moves. */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLureDevClientRefusesTest, "Project.Dev.QA.ClientConsoleRefuses", LureDevTest::Flags)
+
+bool FLureDevClientRefusesTest::RunTest(const FString& Parameters)
+{
+	FDevWorld W;
+	if (!W.Create(*this))
+	{
+		return false;
+	}
+	W.AddMarker(FVector(800.f, 0.f, 0.f), 0.f, { TEXT("Teleport=tp_T1") });
+	ALurePlayerCharacter* Player = W.SpawnPlayer(*this, FVector(0.f, 0.f, 0.f), 1);
+	FFishFixture Fixture;
+	if (!Player || !Fixture.Load(*this))
+	{
+		return false;
+	}
+	// Make the test world report NM_Client without a net driver: UWorld::AttemptDeriveFromURL treats a pending
+	// NextURL with a host as a client. No tick runs while it is set, so no travel happens; it is cleared below.
+	W.World->NextURL = TEXT("127.0.0.1:7777/Game/Maps/Dev/L_Nowhere");
+	const bool bClient = W.World->GetNetMode() == NM_Client;
+	TestTrue(TEXT("the test world now reports NM_Client"), bClient);
+	TestFalse(TEXT("HasAuthority is false on a client"), FLureDevCommands::HasAuthority(W.World));
+
+	FOutputDeviceNull Null;
+	const FVector Before = Player->GetActorLocation();
+	const FFishTables Tables = Fixture.Get();
+	FFishInstance Fish;
+	const FString FishLine = Fixture.Species->GetRowNames()[0].ToString() + TEXT(" 5");
+	const bool bTeleported = FLureDevCommands::RunTeleport(Args(TEXT("tp_T1")), W.World, Null);
+	const bool bTeleportedXYZ = FLureDevCommands::RunTeleport(Args(TEXT("500 500 0")), W.World, Null);
+	const bool bGaveFish = FLureDevCommands::RunGiveFish(Args(*FishLine), W.World, Null, &Tables, &Fish);
+	W.World->NextURL.Reset();
+
+	TestFalse(TEXT("Teleport <marker> is refused on a client"), bTeleported);
+	TestFalse(TEXT("Teleport X Y Z is refused on a client"), bTeleportedXYZ);
+	TestTrue(TEXT("the player did not move"), Player->GetActorLocation().Equals(Before, 0.5));
+	TestFalse(TEXT("GiveFish is refused on a client"), bGaveFish);
+	TestFalse(TEXT("... and no fish was rolled"), Fish.IsValid());
+	TestTrue(TEXT("back to authority after clearing the URL"), FLureDevCommands::HasAuthority(W.World));
+	return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS && !UE_BUILD_SHIPPING
