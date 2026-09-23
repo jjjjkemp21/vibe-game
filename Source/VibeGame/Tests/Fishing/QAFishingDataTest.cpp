@@ -217,14 +217,15 @@ bool FQAFishDataFishingRowsMeetDesignLimits::RunTest(const FString& Parameters)
 		TestTrue(Name + TEXT(": the network grace is a small extra, not the window"), Row.HookLatencyGrace >= 0.f && Row.HookLatencyGrace < Row.HookWindow);
 		TestTrue(Name + TEXT(": two nibbles are two tells (a nibble ends before the next is due)"), Row.NibbleDuration < Row.NibbleInterval);
 		TestTrue(Name + TEXT(": nibbles and bites fit the ~30 s loop (waits <= 30 s)"), Row.BiteWaitMax <= 30.f && Row.RebiteWaitMax <= 30.f && Row.BiteWaitMin > 0.f);
-		TestTrue(Name + TEXT(": lead decision 4, a hooked fish lands on its own until T-007 (AutoLandDelay > 0)"), Row.AutoLandDelay > 0.f);
+		// Lead decision 4: AutoLandDelay > 0 lands a hooked fish on its own (placeholder); 0 = it stays hooked for the T-007 reel fight.
+		// Read from the table, never hard-coded: T-007 sets it to 0.
+		TestTrue(FString::Printf(TEXT("%s: AutoLandDelay %.2f s is 0 (reel fight) or a short auto-land (<= 10 s)"), *Name, Row.AutoLandDelay), Row.AutoLandDelay >= 0.f && Row.AutoLandDelay <= 10.f);
 		TestTrue(Name + TEXT(": the no-bite hint comes after a while"), Row.NoBiteHintDelay > 0.f);
 	}
 	if (const FLureFishingRow* Default = Table->FindRow<FLureFishingRow>(TEXT("Default"), TEXT("QA"), false))
 	{
 		TestEqual(TEXT("spec default: EarlyHook = ReelIn (press to reel in and recast)"), StaticEnum<ELureEarlyHookRule>()->GetNameStringByValue(static_cast<int64>(Default->EarlyHook)), FString(TEXT("ReelIn")));
 		TestFalse(TEXT("spec default: MissEndsCast = False (the bobber stays after a miss)"), Default->MissEndsCast);
-		TestNearlyEqual(TEXT("lead decision 4: AutoLandDelay 1.5 s"), Default->AutoLandDelay, 1.5f, 1.0e-4f);
 		TestNearlyEqual(TEXT("spec: HookLatencyGrace 0.15 s"), Default->HookLatencyGrace, 0.15f, 1.0e-4f);
 		TestNearlyEqual(TEXT("spec: NoBiteHintDelay 8 s"), Default->NoBiteHintDelay, 8.f, 1.0e-4f);
 		TestNearlyEqual(TEXT("ART_STYLE: BobberScale 3x"), Default->BobberScale, 3.f, 1.0e-4f);
