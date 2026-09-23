@@ -144,7 +144,16 @@ bool FQAMoveDataNumericCellsAreNumbers::RunTest(const FString& Parameters)
 			}
 			else if (EnumProperty && EnumProperty->GetEnum())
 			{
-				TestTrue(Where + TEXT(" is a known enum name"), EnumProperty->GetEnum()->GetIndexByNameString(Cell) != INDEX_NONE);
+				// QA (T-006 review): exactly one of the authored names. GetIndexByNameString alone also accepts the generated
+				// "<Enum>_MAX" entry (which imports as an invalid pose) and other spellings; require the exact short name.
+				const UEnum* Enum = EnumProperty->GetEnum();
+				const int32 NumAuthored = Enum->NumEnums() - (Enum->ContainsExistingMax() ? 1 : 0);
+				bool bAuthored = false;
+				for (int32 Index = 0; Index < NumAuthored; ++Index)
+				{
+					bAuthored |= Enum->GetNameStringByIndex(Index).Equals(Cell, ESearchCase::CaseSensitive);
+				}
+				TestTrue(Where + TEXT(" is exactly one of the enum's names (never _MAX)"), bAuthored);
 			}
 			else
 			{
