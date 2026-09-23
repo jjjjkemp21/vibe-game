@@ -34,6 +34,16 @@ A first-person, open-world fishing sandbox for 1-4 friends: sail between sunny, 
   Noise works by proximity: creatures hear noise within a radius, and louder noise reaches farther. The mic can be switched off in settings, and then only actions count.
 - Hide and counter: crouch or prone to stay out of a creature's sight line and to dodge certain boss attacks.
 
+## Fish system (built to scale to many species)
+Jimmy wants many species eventually, each catch varying in difficulty and value (for example weight and rarity). The code is data-driven from day one, so adding a species, a rarity tier or a modifier is a data edit, not a code change:
+- **Species** (DT_FishSpecies, one row per species): name, habitat and region tags, time-of-day and weather windows, bait/hook tags, base level, weight range and size distribution, base stats (strength, stamina, speed, fight pattern), base value, mesh and look, which rarities and modifiers it can roll, and its journal info.
+- **Rarity tiers** (DT_FishRarity, rows, not a fixed list): e.g. Common, Uncommon, Rare, Epic, Legendary. Each has a roll chance and multipliers for value, XP and difficulty, plus a visual cue (sheen or glow color). New tiers can be added as rows.
+- **Modifiers** (DT_FishModifier, rows): traits a single catch can roll, such as Heavy, Feisty, Giant, Albino, Scarred, Glowing or Night-born. Each changes stats through a list of (stat, add or multiply, amount) entries, affects value, and has conditions (which species, regions, times) and a roll chance. A catch can carry several modifiers.
+- **Stats are open-ended**: fish stats are a named-stat map (gameplay tags such as Fish.Stat.Strength and Fish.Stat.Stamina), so new stats can be introduced in data and read by the systems that care.
+- **Every catch is an instance**: rolling a bite produces a saved, network-replicated record (species, rarity, modifiers, rolled weight, final stats and value, random seed). The cooler, selling, journal records, trophies, requests and save files all use that record, so new variables are carried everywhere automatically.
+- **One roll pipeline**: species base values, then weight scaling, then rarity, then modifiers, then the final stats and value. It is a single tested function, so balancing is predictable and covered by automation tests.
+- The vertical slice ships with 6 species, 3 rarity tiers and a few modifiers, running on this full system.
+
 ## Win / lose conditions
 - No final win. Goals are self-chosen: level up, complete the journal, finish requests, reach and survive tougher regions.
 - Level scaling instead of locked doors: every region is reachable from the start, but an under-levelled player can't hook or hold the fish there and won't survive the dangers, so beginners level up in the beginner zone first.
