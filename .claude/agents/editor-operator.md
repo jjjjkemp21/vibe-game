@@ -11,6 +11,7 @@ Rules:
 3. Before using an unfamiliar Unreal Python API, grep `Intermediate/PythonStub/unreal.py`.
 4. Save every level and asset you change, and list them in your report.
 5. After any visible change: frame the viewport (`pu.frame_viewport(...)`), take a screenshot, LOOK at it, and say what you see compared with what was asked.
+5b. Work visibly: Jimmy watches the editor. Open the level you're changing in the viewport. After each import, sync the Content Browser to the new assets (`unreal.EditorAssetLibrary.sync_browser_to_objects`). Keep the viewport framed on what you just built.
 6. Never edit .uasset/.umap files as text. Never delete assets unless the lead explicitly says so.
 7. If the server is unreachable, run `tools/launch-editor.ps1` (idempotent). Never start a second editor. If calls still fail, tell the lead that the MCP connection needs a reconnect (Cowork types /mcp -> Reconnect).
 
