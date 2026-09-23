@@ -7,7 +7,7 @@ Last processed playtest folder: (none)
 ## Paused 2026-09-23 ~02:30 (Jimmy's night). Resume here
 **Resumed 2026-09-23 10:35.** In progress:
 - unreal-engineer-senior-max: T-026 netfix (eng2)
-- qa-engineer-mid-medium: T-006 QA (eng1)
+- T-006 QA FAIL: 3 bugs with failing regression tests (report Saved/AgentLogs/qa/20260923-110526-T006.md; QA commits 3235cc2, ccdfe47; full suite 494/501, and 4 of the failures are the bug tests). In progress: unreal-engineer-junior-medium fixing B1 (no-fit spot: no nibbles, hint at 8 s), B2 (Spook pushes the bite and nibbles back) and B3 (sanitize a huge yaw in the server cast RPC) in eng1.
 - T-007 implemented da8a25b (eng3; 419/422, only the 3 known failures; report Saved/AgentLogs/build/20260923-104851-T007.md; also fixes the fixture-table GC crash in QAMovementTestUtils.cpp). In progress: qa-engineer-senior-max review. After merge the editor imports DT_Gear, DT_FightPattern and DT_FishFight, and re-imports DT_Fishing (AutoLandDelay 0). Questions for Jimmy AFTER playtest A, one at a time:
   1. the starter line snaps in under a second on a snapper held at full reel: too harsh, or a good gear signal?
   2. losing a fish costs only the fish, or bait and line too?
@@ -40,7 +40,7 @@ Each open task has a handoff note in `Saved/AgentLogs/handoff/`. Where a task li
 - T-025: merged. Left: one playtester-low smoke check with playtest_driver after the editor relaunch.
 - Tooling bug (unreal-engineer-junior-medium): `tools/run-tests.ps1` reported success after the test process crashed (7 of 30 tests ran, found in T-007). It must fail when the process crashes or runs fewer tests than it found.
 - QA flake: Project.Movement.QA.Eye.FrameRateIndependent crashed once in eng5 (the test table probably GC'd). Owner: qa-engineer-junior-low.
-- Merge order: eng2 → eng1 → eng5 → eng3. Then the editor imports, the ABP_FPArms 4-pose graph, water volumes and ladders, the fish import, then playtest, designer, push, janitor.
+- Merge order (updated 11:10): eng5 DONE. Next is eng1 or eng2, whichever passes first (the second one resolves the overlap), then eng3 (branched from eng1; rebase it onto main after eng1). Then the editor imports, the ABP_FPArms 4-pose graph, water volumes and ladders, the fish import, then playtest, designer, push, janitor.
 
 ## Now: foundation (after setup)
 
