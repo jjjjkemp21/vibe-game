@@ -1,0 +1,28 @@
+# ---- Unreal generated ----
+Binaries/
+DerivedDataCache/
+Intermediate/
+Saved/
+Plugins/**/Binaries/
+Plugins/**/Intermediate/
+
+# ---- IDE ----
+.vs/
+.vscode/
+.idea/
+*.sln
+*.slnx
+*.suo
+*.sdf
+*.opensdf
+*.VC.db
+*.VC.opendb
+
+# ---- Blender backups ----
+*.blend1
+*.blend2
+
+# ---- Machine-local ----
+tools/local.settings.json
+.claude/settings.local.json
+CLAUDE.local.md
