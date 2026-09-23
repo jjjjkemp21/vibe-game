@@ -3,6 +3,7 @@
 #include "Character/LureInputSubsystem.h"
 #include "Character/LureCharacterSettings.h"
 #include "Character/LureMovementTypes.h"
+#include "Fishing/LureFishingSettings.h"
 #include "Engine/Engine.h"
 #include "EnhancedActionKeyMapping.h"
 #include "EnhancedInputLibrary.h"
@@ -17,10 +18,12 @@ const FName FLureInputActionNames::Interact(TEXT("Interact"));
 const FName FLureInputActionNames::Sprint(TEXT("Sprint"));
 const FName FLureInputActionNames::Crouch(TEXT("Crouch"));
 const FName FLureInputActionNames::Prone(TEXT("Prone"));
+const FName FLureInputActionNames::Cast(TEXT("Cast"));
+const FName FLureInputActionNames::Hook(TEXT("Hook"));
 
 TArray<FName> FLureInputActionNames::All()
 {
-	return { Move, Look, Jump, Sprint, Crouch, Prone, Interact };
+	return { Move, Look, Jump, Sprint, Crouch, Prone, Interact, Cast, Hook };
 }
 
 void ULureInputSubsystem::Initialize(FSubsystemCollectionBase& Collection)
@@ -76,6 +79,8 @@ void ULureInputSubsystem::CreateActions()
 		{ FLureInputActionNames::Sprint, EInputActionValueType::Boolean },
 		{ FLureInputActionNames::Crouch, EInputActionValueType::Boolean },
 		{ FLureInputActionNames::Prone, EInputActionValueType::Boolean },
+		{ FLureInputActionNames::Cast, EInputActionValueType::Boolean },
+		{ FLureInputActionNames::Hook, EInputActionValueType::Boolean },
 	};
 
 	Actions.Reset();
@@ -173,4 +178,9 @@ void ULureInputSubsystem::BuildMappings(UInputMappingContext& Context, const TMa
 	Map(FLureInputActionNames::Sprint, Settings.SprintKeys, NoModifiers);
 	Map(FLureInputActionNames::Crouch, Settings.CrouchKeys, NoModifiers);
 	Map(FLureInputActionNames::Prone, Settings.ProneKeys, NoModifiers);
+
+	// Fishing (T-006): keys live in the fishing settings.
+	const ULureFishingSettings* Fishing = GetDefault<ULureFishingSettings>();
+	Map(FLureInputActionNames::Cast, Fishing->CastKeys, NoModifiers);
+	Map(FLureInputActionNames::Hook, Fishing->HookKeys, NoModifiers);
 }

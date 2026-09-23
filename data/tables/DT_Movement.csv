@@ -1,5 +1,5 @@
-Name,MaxSpeed,MaxAcceleration,CapsuleHalfHeight,CapsuleRadius,EyeHeight,TransitionTime,NoiseMultiplier,JumpZVelocity,CanJump,BobStepRate,BobVertical,BobLateral,BobRoll,BobPitch,BobYaw,BobForward,StanceDipPlayRate
-Stand,350,2048,90,34,165,0.25,1.0,420,True,0,0.8,0.6,0.6,0.4,0,0,1.0
-Sprint,600,2048,90,34,165,0.25,2.5,440,True,0,1.6,1.0,1.2,0.9,0,0.3,1.0
-Crouch,180,1600,55,34,95,0.2,0.5,380,True,0,0.5,0.9,0.9,0.3,0,0,1.0
-Prone,90,1200,26,25,35,0.45,0.2,0,False,0,0.4,1.6,2.0,0.3,1.5,1.2,0.85
+Name,MaxSpeed,MaxAcceleration,CapsuleHalfHeight,CapsuleRadius,EyeHeight,TransitionTime,NoiseMultiplier,JumpZVelocity,CanJump,BobStepRate,BobVertical,BobLateral,BobRoll,BobPitch,BobYaw,BobForward,StanceDipPlayRate,RodPoseStill,RodPoseMoving,RodMoveSpeedIn,RodMoveSpeedOut,RodStillDelay,RodPoseBlendTime,ArmsPitchFollowUp,RodHoldClearance,CanFish
+Stand,350,2048,90,34,165,0.25,1.0,420,True,0,0.8,0.6,0.6,0.4,0,0,1.0,HoldRod,HoldRod,15,5,0.3,0.3,1.0,0,True
+Sprint,600,2048,90,34,165,0.25,2.5,440,True,0,1.6,1.0,1.2,0.9,0,0.3,1.0,HoldRod,HoldRod,15,5,0.3,0.3,1.0,0,False
+Crouch,180,1600,55,34,95,0.2,0.5,380,True,0,0.5,0.9,0.9,0.3,0,0,1.0,HoldRod,HoldRod,15,5,0.3,0.3,1.0,0,True
+Prone,90,1200,26,25,35,0.45,0.2,0,False,0,0.4,1.6,2.0,0.3,1.5,1.2,0.85,ProneHold,ProneTuck,15,5,0.3,0.3,0.0,130,True

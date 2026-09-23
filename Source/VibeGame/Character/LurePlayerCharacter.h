@@ -13,6 +13,7 @@ class UAnimInstance;
 class UAnimSequenceBase;
 class UCameraComponent;
 class ULureCharacterMovementComponent;
+class ULureFishingComponent;
 class UMaterialInterface;
 class USkeletalMesh;
 class USkeletalMeshComponent;
@@ -52,6 +53,10 @@ public:
 
 	UFUNCTION(BlueprintPure, Category="Lure|Character")
 	ULureCharacterMovementComponent* GetLureMovement() const;
+
+	/** Rod, cast, bobber, bite and hook (T-006). */
+	UFUNCTION(BlueprintPure, Category="Lure|Character")
+	ULureFishingComponent* GetFishing() const { return Fishing; }
 
 	/**
 	 *  First-person arms mesh (skeleton SKEL_FPArms), loaded at BeginPlay if the FirstPersonArms component has no mesh yet.
@@ -153,6 +158,14 @@ public:
 	UFUNCTION(BlueprintCallable, Category="Lure|First Person")
 	void SetHoldingRod(bool bNewHoldingRod) { bHoldingRod = bNewHoldingRod; }
 
+	/** The arms loop to play (DT_Movement RodPoseStill/RodPoseMoving by stance and motion; Idle without the rod). Owning client. */
+	UFUNCTION(BlueprintPure, Category="Lure|First Person")
+	EFPArmsPose GetArmsPose() const { return ArmsPose; }
+
+	/** Crossfade time into the current pose (the row's RodPoseBlendTime), seconds. */
+	UFUNCTION(BlueprintPure, Category="Lure|First Person")
+	float GetArmsPoseBlendTime() const { return ArmsPoseBlendTime; }
+
 	/** Plays the stance dip additive on the arms at PlayRate. False (and nothing happens) if the arms have no anim instance or the clip is missing. */
 	UFUNCTION(BlueprintCallable, Category="Lure|First Person")
 	bool PlayStanceDip(float PlayRate);
@@ -218,6 +231,10 @@ private:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
 	TObjectPtr<UStaticMeshComponent> PlaceholderBody;
 
+	/** Fishing (T-006): replicated, server-authoritative. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<ULureFishingComponent> Fishing;
+
 	UPROPERTY()
 	TObjectPtr<UMaterialInterface> PlaceholderBodyMaterial;
 
@@ -226,6 +243,12 @@ private:
 	TObjectPtr<UAnimSequenceBase> LoadedStanceDip;
 
 	bool bHoldingRod = false;
+
+	/** Rod pose switch (T-006; client-side only, never replicated). */
+	FLureRodPoseState RodPoseState;
+	EFPArmsPose ArmsPose = EFPArmsPose::Idle;
+	float ArmsPoseBlendTime = 0.3f;
+	void UpdateArmsPose(const FLureMovementRow& Row, float DeltaSeconds);
 
 	/** Bob/sway state (client-side only, never replicated). */
 	FLureArmsBobState ArmsBobState;

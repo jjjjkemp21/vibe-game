@@ -17,6 +17,7 @@
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
 #include "EnhancedInputComponent.h"
+#include "Fishing/LureFishingComponent.h"
 #include "EnhancedInputSubsystems.h"
 #include "GameFramework/PlayerController.h"
 #include "InputAction.h"
@@ -95,6 +96,8 @@ ALurePlayerCharacter::ALurePlayerCharacter(const FObjectInitializer& ObjectIniti
 		PlaceholderBodyMaterial = BasicShapeMaterial.Object;
 	}
 	PlaceholderBodyColor = FLinearColor(FColor(0x7C, 0x8A, 0x63));
+
+	Fishing = CreateDefaultSubobject<ULureFishingComponent>(TEXT("Fishing"));
 
 	CurrentEyeHeight = Stand.EyeHeight;
 	EyeBlendFrom = Stand.EyeHeight;
@@ -258,9 +261,13 @@ void ALurePlayerCharacter::UpdateArmsMotion(float DeltaSeconds)
 
 	// Walk bob + look sway as an offset on the arms (the camera stays steady).
 	const FLureMovementRow& Row = Movement->GetRow(Movement->GetMovementState());
+	UpdateArmsPose(Row, DeltaSeconds);
 	const FTransform Offset = FLureArmsBob::Step(ArmsBobState, Row, GetDefault<ULureCharacterSettings>()->ArmsMotion,
-		static_cast<float>(Movement->Velocity.Size2D()), Movement->IsMovingOnGround(), bHoldingRod, LookRate, DeltaSeconds);
-	FirstPersonArms->SetRelativeLocationAndRotation(Offset.GetLocation(), Offset.Rotator());
+		static_cast<float>(Movement->Velocity.Size2D()), Movement->IsMovingOnGround(), bHoldingRod && ArmsPose != EFPArmsPose::ProneTuck, LookRate, DeltaSeconds);
+	// Looking up, the arms follow only ArmsPitchFollowUp of the pitch (prone: 0, so the rod stays under a 60 cm ceiling).
+	FRotator ArmsRotation = Offset.Rotator();
+	ArmsRotation.Pitch += FLureRodPose::ArmsCounterPitch(RodPoseState.PitchFollowUp, ControlRotation.Pitch);
+	FirstPersonArms->SetRelativeLocationAndRotation(Offset.GetLocation(), ArmsRotation);
 
 	// Additive dip whenever the posture changes.
 	const ELureStance Stance = Movement->GetStance();
@@ -269,6 +276,24 @@ void ALurePlayerCharacter::UpdateArmsMotion(float DeltaSeconds)
 		LastDipStance = Stance;
 		PlayStanceDip(Movement->GetStanceRow(Stance).StanceDipPlayRate);
 	}
+}
+
+void ALurePlayerCharacter::UpdateArmsPose(const FLureMovementRow& Row, float DeltaSeconds)
+{
+	// Rod pose by stance and motion from DT_Movement (spec SK_FPArms.anim.md "Switch rule").
+	const ULureCharacterMovementComponent* Movement = GetLureMovement();
+	FLureRodPoseInput Input;
+	Input.bHoldingRod = bHoldingRod;
+	Input.Speed2D = Movement ? static_cast<float>(Movement->Velocity.Size2D()) : 0.f;
+	Input.MoveInput = static_cast<float>(GetLastMovementInputVector().Size2D());
+	Input.bLineOut = Fishing && Fishing->IsLineOut();
+	Input.DeltaTime = DeltaSeconds;
+	if (bHoldingRod && Row.RodHoldClearance > 0.f && Row.RodPoseStill == EFPArmsPose::ProneHold && FirstPersonCamera)
+	{
+		Input.bHoldBlocked = FLureRodPose::TraceHoldClearance(GetWorld(), FirstPersonCamera->GetComponentLocation(), GetControlRotation(), Row.RodHoldClearance, this);
+	}
+	ArmsPose = FLureRodPose::Step(RodPoseState, Row, Input);
+	ArmsPoseBlendTime = Row.RodPoseBlendTime;
 }
 
 bool ALurePlayerCharacter::PlayStanceDip(float PlayRate)
@@ -779,6 +804,11 @@ void ALurePlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInpu
 	Input->BindAction(CrouchAction, ETriggerEvent::Completed, this, &ALurePlayerCharacter::HandleCrouchReleased);
 	Input->BindAction(ProneAction, ETriggerEvent::Started, this, &ALurePlayerCharacter::HandlePronePressed);
 	Input->BindAction(ProneAction, ETriggerEvent::Completed, this, &ALurePlayerCharacter::HandleProneReleased);
+
+	if (Fishing)
+	{
+		Fishing->BindInput(*Input); // Cast (hold + release) and Hook (T-006)
+	}
 }
 
 void ALurePlayerCharacter::HandleMove(const FInputActionValue& Value)

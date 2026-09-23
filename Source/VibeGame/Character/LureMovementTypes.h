@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "Engine/DataTable.h"
 #include "Misc/EnumRange.h"
+#include "Character/FPArmsPose.h"
 #include "LureMovementTypes.generated.h"
 
 /**
@@ -114,6 +115,44 @@ struct FLureMovementRow : public FTableRowBase
 	/** Play rate of the A_FPArms_StanceDip additive when entering this stance (0 = no dip). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Arms Bob", meta=(ClampMin="0"))
 	float StanceDipPlayRate = 1.f;
+
+	// ---- Rod pose and fishing (T-006; spec SK_FPArms.anim.md "Switch rule"). Import-optional: old CSV fixtures keep these defaults. ----
+
+	/** Arms pose while holding the rod and still (HoldRod; ProneHold when prone). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Rod Pose", meta=(DataTableImportOptional))
+	EFPArmsPose RodPoseStill = EFPArmsPose::HoldRod;
+
+	/** Arms pose while holding the rod and moving (HoldRod; ProneTuck when prone: a tucked rod can't fish). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Rod Pose", meta=(DataTableImportOptional))
+	EFPArmsPose RodPoseMoving = EFPArmsPose::HoldRod;
+
+	/** cm/s: faster than this counts as moving (switches to RodPoseMoving at once). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Rod Pose", meta=(ClampMin="0", DataTableImportOptional))
+	float RodMoveSpeedIn = 15.f;
+
+	/** cm/s: slower than this (and no move input) counts toward still. Must be <= RodMoveSpeedIn. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Rod Pose", meta=(ClampMin="0", DataTableImportOptional))
+	float RodMoveSpeedOut = 5.f;
+
+	/** Seconds below RodMoveSpeedOut before switching back to the still pose. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Rod Pose", meta=(ClampMin="0", DataTableImportOptional))
+	float RodStillDelay = 0.3f;
+
+	/** Seconds of crossfade into this row's poses (ABP_FPArms Blend Time pins bind to it). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Rod Pose", meta=(ClampMin="0", DataTableImportOptional))
+	float RodPoseBlendTime = 0.3f;
+
+	/** Share (0..1) of the camera's UPWARD pitch the arms follow (0 when prone: the arms stay on the ground when you look up). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Rod Pose", meta=(ClampMin="0", ClampMax="1", DataTableImportOptional))
+	float ArmsPitchFollowUp = 1.f;
+
+	/** Prone hold wall check, cm: keep the tuck while still if something is this close ahead (0 = off). Never while a line is out. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Rod Pose", meta=(ClampMin="0", DataTableImportOptional))
+	float RodHoldClearance = 0.f;
+
+	/** Whether you can cast (and keep a line out) in this state. Sprint = false. Moving in a tucked pose also blocks fishing. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Rod Pose", meta=(DataTableImportOptional))
+	bool CanFish = true;
 
 	/** Runtime sanity check (finite, positive, HalfHeight >= Radius, eye inside the capsule, ...). Returns false and a reason if the row is unusable. */
 	bool Validate(FString& OutProblem) const;

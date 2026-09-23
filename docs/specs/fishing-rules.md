@@ -1,0 +1,77 @@
+# Fishing rules (T-006: cast, bobber, bite, hook), unreal-engineer decisions 2026-09-23
+
+Binding for the implementation (`Source/VibeGame/Fishing/`) and the tests (`Project.Fishing.*`). Every feel number is data:
+`data/tables/DT_Fishing.csv` (row `Default`; a gear profile later picks another row), per-stance rod rules in
+`data/tables/DT_Movement.csv`, world/asset settings in Project Settings > Game > Lure Fishing (`Config/DefaultGame.ini`).
+The lead may overrule any of these; a change is a data edit unless marked (code).
+
+## Flow and authority
+- States (replicated, server-written): Idle -> Casting -> Waiting -> Biting -> Hooked -> (placeholder land) -> Idle.
+  Charging is local to the owning client (HUD "Cast power N%"); on release the client sends `ServerCast(charge, aim yaw)`;
+  the server clamps the charge and decides everything else (rules, landing point, spot, nibbles, bite time, fish roll, hook
+  window, hit/miss). Clients draw the bobber and line from the replicated `NetState` (+ `HookedFish`, `LastLandedFish`).
+- The fish that bites is rolled at bite time by the one pipeline (`FFishRoll::PickSpecies` + `FFishRoll::Roll`), seeded from
+  a server RNG. It stays on the server until hooked (then it replicates as `HookedFish`).
+- Remote players get `HookLatencyGrace` (0.15 s) extra hook time on the server; the host and standalone get none.
+
+## Cast
+- Distance = MinCastDistance + (Max - Min) * charge^ChargeExponent, horizontal from the eye, along the view yaw. Charge =
+  hold time / ChargeTime (clamped). Flight time = distance / CastSpeed, clamped to [CastFlightTimeMin, Max]; arc apex =
+  CastArcHeightRatio * distance.
+- Landing: in front of anything solid on the way; on the water surface if the ground there is not above it (LandTolerance
+  2 cm), otherwise on land (a dock, a beach, a rock): the bobber lies there, nothing bites, a press reels in.
+- Water surface: an engine water physics volume (T-026), else the top of an actor tagged `Lure.Water`, else `FallbackWaterZ`
+  (0 = the layouts' `water_z`). Level-designer: tagging the water planes `Lure.Water` is optional today.
+- No casting while: no rod in hand, swimming, in the air, in a DT_Movement row with `CanFish = False` (Sprint), or moving
+  (speed > RodMoveSpeedIn) in a row whose moving pose is `ProneTuck` (prone crawl). Prone and still casts.
+- A line out comes in on its own (result ReeledIn, or Lost with a hooked fish) when you start sprinting, swim, crawl prone
+  (the rod tucks), or get farther than MaxLineLength from the bobber. Jumping keeps the line.
+
+## Spots
+- Read from marker actors tagged `Lure.FishingSpot` with `Key=Value` tags (L_PalmKey.md section 11; exactly what
+  `build_level.py marker_tags()` writes): Spot, Name, Habitat, Region, Radius, Luck, Hours, Levels, Danger, CastFrom.
+  Radius > 0 is required. Hours, Levels and Danger are info only (bites follow each species' time windows).
+- The bobber is in a spot if its 2D distance to the marker is within Radius; overlapping spots: the one you are deepest in
+  (smallest distance / radius).
+- The bite context: habitat and region from the spot (a spot without Region= uses the setting `DefaultRegion`,
+  Region.Tropical), Luck = spot Luck + gear luck (0 until T-011), time of day = `DefaultTimeOfDayHours` (12) until T-013,
+  bait = the setting `DefaultBait` (Bait.Shrimp: both starter species accept it) until gear exists.
+- **No spot in range: nothing bites** (my call). The bobber floats, no bite is scheduled, and after NoBiteHintDelay (8 s) the
+  HUD says "Nothing is biting here". Reason: spots are where the design puts fish; open-water bites would make the island's
+  spots pointless. Data hook for later: the setting `OffSpotHabitat` (a habitat tag name, default none) turns on an
+  off-spot pool (e.g. junk or "Habitat.OpenWater" fish) without code.
+- A spot where no species fits (e.g. the reef at noon) behaves the same: no bite, the hint, and a new check every
+  BiteWaitMax seconds (the time of day moves on).
+
+## Bite, hook, miss
+- Wait: random in [BiteWaitMin, BiteWaitMax] after landing. Before the bite, [NibblesMin, NibblesMax] nibbles about
+  NibbleInterval apart: the bobber tips (NibbleTiltDeg) so its white half shows (designer B-S4). Nibbles are tells only.
+- Bite: the bobber is pulled under by BiteDipDepth (>= its scaled 4.9 cm top, so the red disappears; B-S4) and tugs; the
+  bite sound (setting, optional) plays at the bobber and the owner's controller rumbles (BiteRumbleIntensity/Duration).
+- Hook: a press inside [bite, bite + HookWindow (+ grace)] hooks. After the window closes the bite is a miss: the rolled fish
+  is gone for good. Then `MissEndsCast` decides: False (default) = the bobber stays and a new bite (a new roll) may come
+  after RebiteWait; True = the line comes in.
+- Early press (before a bite, nibbles included): `EarlyHook` = ReelIn (default: press to reel in and recast), Ignore, or
+  Spook (the bite is pushed back SpookDelay). On land or with nothing biting, a press always reels in.
+- Hooked: the reel fight is T-007. Placeholder: after AutoLandDelay (1.5 s) the fish is landed (`LastLandedFish`, HUD
+  "Caught: ..."). AutoLandDelay 0 = stay hooked (for T-007).
+
+## Controls (runtime Enhanced Input, `ULureInputSubsystem::GetInputActionByName`)
+- `Cast` (LMB, gamepad RT): hold to charge, release to cast; while the line is out a press hooks (or reels in early).
+- `Hook`: the same hook press as its own action, no default key (a key can be added in the settings). One key drives one
+  action, so the QA "no key bound to two actions" rule holds.
+
+## Rod, bobber, line (cosmetic)
+- Rod: SM_Rod_Basic on SK_FPArms' `hand_r_rod` bone (SnapToTargetNotIncludingScale + absolute scale: world scale 1 whatever
+  the bones' scale, so it works before and after the arms re-export), first-person primitive, owner only.
+- Rod pose per stance and motion (DT_Movement): Stand/Sprint/Crouch = HoldRod; Prone still = ProneHold, Prone moving =
+  ProneTuck (tuck at once, untuck after RodStillDelay); prone ArmsPitchFollowUp 0 (the arms stay down when looking up);
+  RodHoldClearance 130 cm: a still prone player facing a wall keeps the tuck unless a line is out.
+- Bobber: SM_Bobber at BobberScale (3x), pivot on the water surface, bobs and wobbles.
+- Line: spline-mesh segments from the rod's `LineTip` (moved to where the first-person rod is drawn) to the bobber's
+  `LineAttach`, sagging LineSag while waiting, taut when a fish pulls. Width per point = LinePixelWidth (2.5 px) at the
+  viewer's distance on a 1920-wide view (never under 2 px at 1080p; designer B-S3). Other players see the line from an
+  estimated rod tip (RodTipOffsetFromEye) until they get a visible body and rod.
+- Cast motion: placeholder rod swing (CastSwing* columns). Setting `CastMontage`/`HookMontage` (arms montages from the
+  animation-artist) replaces it without code.
+- HUD: plain white text lines (ALureHUD): cast power, "BITE! Click/RT to hook!", hooked/caught/missed, "Can't cast: ...".
