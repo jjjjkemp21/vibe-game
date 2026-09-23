@@ -168,6 +168,16 @@ object, read into the copy, RepNotifies called on change), not a property copy.
 - T007-B3 (minor) `Data.FishFightStatTagsMustBeFishStats`: `FLureFishFightRow::Validate` only checks the four stat tags are valid, not that
   they are Fish.Stat tags (its own message says so). StrengthStat = Bait.Shrimp imports cleanly and every fish pulls the 0.05 minimum.
 
+### T-007 test updates after the B1-B3 fixes (qa-engineer, 2026-09-23)
+- `Sim.StepMatchesSpecFormulas`: the oracle's snap and slack checks now count whole steps (round(t / dt) > grace / dt), like the B1 fix.
+- `Fight.GearDecidesOutcome` (lead balance decision): part A (reference snapper, seeds 1-8) full reel snaps the starter line, the reef kit lands it; on the 7 kg snapper full reel snaps the starter line (and also the reef
+  braid in 0.8 s: logged, for the lead); careful play lands with both kits, and the reef kit has a higher land rate or a shorter mean land time (seeds 1-8); the world run
+  lands with both kits.
+- T-006 tests updated to the T-007 design: `QA.Interrupt.TooFarFromTheBobber` (bobber distance rule enforced before Hooked, suspended in a
+  fight), `QA.Net.ReplicatedToEveryone` (+FightNet, Loadout, COND_None), `QA.Net.ClientFollowsServerAtEveryStage` (Hooked: FightNet reaches
+  the copy and the bobber rides on the fish; the rig's copy pawn is moved to the server pawn's spot). `QAFishingStateTest.cpp` and
+  `QAFishingNetTest.cpp` no longer use a namespace-scope `using namespace`.
+
 ### T-007 observations (no failing test; for the lead)
 - T007-O1 (balance, T-012): Rod_Reef's Drag 12 is above Line_Mono's strength 10, so letting a fish run can't protect the starter line. Prototype
   (independent Python transcription of the spec, 40 seeds): a careful player (reels < 70 %, eases off > 90 %) lands the reference Coral Snapper

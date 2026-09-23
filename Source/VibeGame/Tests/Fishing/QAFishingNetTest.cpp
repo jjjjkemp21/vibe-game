@@ -163,7 +163,8 @@ namespace NetLocal
 	};
 }
 
-using namespace NetLocal;
+namespace NetLocal
+{
 
 // =====================================================================================================================
 // What crosses the wire
@@ -212,7 +213,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FQAFishNetReplicatedToEveryone, "Project.Fishin
 bool FQAFishNetReplicatedToEveryone::RunTest(const FString& Parameters)
 {
 	// Everyone sees every bobber and line (NetState must reach other players); the owner gets its fish. The server's pending fish is
-	// never replicated (not even a property), so a client can't learn the species before it hooks.
+	// never replicated (not even a property), so a client can't learn the species before it hooks. T-007 adds FightNet (the fight
+	// for the HUD and visuals) and Loadout (the equipped gear): both are gameplay-visible, so every player gets them.
 	UClass* Class = ULureFishingComponent::StaticClass();
 	Class->SetUpRuntimeReplicationData();
 	TArray<FLifetimeProperty> Lifetime;
@@ -226,8 +228,8 @@ bool FQAFishNetReplicatedToEveryone::RunTest(const FString& Parameters)
 		}
 	}
 	Own.Sort();
-	TestEqual(TEXT("the replicated fishing properties"), FString::Join(Own, TEXT(", ")), FString(TEXT("HookedFish, LastLandedFish, NetState")));
-	for (const TCHAR* Name : { TEXT("NetState"), TEXT("HookedFish"), TEXT("LastLandedFish") })
+	TestEqual(TEXT("the replicated fishing properties"), FString::Join(Own, TEXT(", ")), FString(TEXT("FightNet, HookedFish, LastLandedFish, Loadout, NetState")));
+	for (const TCHAR* Name : { TEXT("NetState"), TEXT("HookedFish"), TEXT("LastLandedFish"), TEXT("FightNet"), TEXT("Loadout") })
 	{
 		const FProperty* Property = Class->FindPropertyByName(Name);
 		const FLifetimeProperty* Rep = Property ? Lifetime.FindByPredicate([Property](const FLifetimeProperty& P) { return P.RepIndex == Property->RepIndex; }) : nullptr;
@@ -362,6 +364,16 @@ bool FQAFishNetClientFollowsServerAtEveryStage::RunTest(const FString& Parameter
 		Replicate(*this, Rig.Server, Rig.Client);
 		const FString Label = TEXT("other player's copy, ") + StageName(Stage);
 		TestSameNetState(*this, Label, Rig.Client->GetNetState(), Rig.Server->GetNetState());
+		if (Stage == EStage::Hooked)
+		{
+			// T-007: at Hooked the bobber rides on the fish, placed from the player's position along FightNet (LineOut, SideDeg,
+			// tension, depth). The rig's copy is a second pawn 150 cm to the side; put it where the server's pawn is, as the
+			// replicated pawn would be on another machine.
+			TestTrue(Label + TEXT(": the fight reached the copy (FightNet.bActive)"), Rig.Client->GetFightNet().bActive && Rig.Server->GetFightNet().bActive);
+			TestNearlyEqual(Label + TEXT(": FightNet.LineOut"), Rig.Client->GetFightNet().LineOut, Rig.Server->GetFightNet().LineOut, 0.5f);
+			TestNearlyEqual(Label + TEXT(": FightNet.SideDeg"), Rig.Client->GetFightNet().SideDeg, Rig.Server->GetFightNet().SideDeg, 0.1f);
+			Rig.ClientCharacter->SetActorLocationAndRotation(Rig.ServerCharacter->GetActorLocation(), Rig.ServerCharacter->GetActorRotation(), false, nullptr, ETeleportType::TeleportPhysics);
+		}
 		TestTrue(Label + TEXT(": the same bobber position"), Rig.Client->GetBobberLocation().Equals(Rig.Server->GetBobberLocation(), 0.2));
 		TestEqual(Label + TEXT(": the same hooked fish"), Rig.Client->GetHookedFish().Seed, Rig.Server->GetHookedFish().Seed);
 		if (Stage == EStage::Hooked)
@@ -700,6 +712,8 @@ bool FQAFishNet2PServerDecidesClientsFollow::RunTest(const FString& Parameters)
 }
 
 #endif // WITH_EDITOR
+
+} // namespace NetLocal
 
 } // namespace QAFishing
 

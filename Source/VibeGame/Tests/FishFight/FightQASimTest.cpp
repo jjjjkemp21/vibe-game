@@ -799,6 +799,11 @@ namespace LureFightQA
 			float Over = Pre.OverTime;
 			float SlackTime = Pre.SlackTime;
 			bool bTimers = true;
+			// "Longer than the grace" counts whole steps (B1): a timer of N steps is over the grace only when N > Grace / Dt.
+			auto LongerThan = [Dt](double Time, double Grace)
+			{
+				return FMath::RoundToDouble(Time / Dt) > FMath::Max(0.0, Grace) / Dt + 1.0e-4;
+			};
 			if (LineOut <= T.LandDistance)
 			{
 				Outcome = ELureFightOutcome::Landed;
@@ -812,14 +817,14 @@ namespace LureFightQA
 			else
 			{
 				Over = Tension > G.LineStrength ? Pre.OverTime + Dt : 0.f;
-				if (Over > T.SnapGraceTime)
+				if (LongerThan(Over, T.SnapGraceTime))
 				{
 					Outcome = ELureFightOutcome::Snapped;
 				}
 				else
 				{
 					SlackTime = bSlack ? Pre.SlackTime + Dt : 0.f;
-					if (SlackTime > T.SlackGraceTime * G.HookSecurity)
+					if (LongerThan(SlackTime, static_cast<double>(T.SlackGraceTime) * G.HookSecurity))
 					{
 						Outcome = ELureFightOutcome::ThrewHook;
 					}

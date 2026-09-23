@@ -622,23 +622,41 @@ bool FLureFightGearDecidesOutcome::RunTest(const FString& Parameters)
 		TestEqual(FString::Printf(TEXT("hold reel, seed %d: the reef rod and braid land it (%.1f s)"), Seed, Strong.Elapsed), OutcomeName(Strong.Outcome), OutcomeName(ELureFightOutcome::Landed));
 	}
 
-	// B: a careful player (reels below 70 %, eases off above 90 %, reacts every 0.3 s) on a 7 kg snapper: the weak line still breaks, the right gear lands it.
+	// B (lead balance decision, 2026-09-23): full reel vs gear is part A (same seeds: starter snaps, reef lands); on the 7 kg snapper full reel
+	// snaps the starter line (the 7 kg fish also snaps the reef braid under full reel: logged, reported to the lead);
+	// a careful player (reels below 70 %, eases off above 90 %, reacts every 0.3 s) lands it with both kits, and the reef kit
+	// does better: a higher land rate or a shorter mean land time over the same seeds.
 	FFishInstance BigSnapper;
 	if (!RollFish(*this, Tables, TEXT("CoralSnapper"), TEXT("Common"), 1.f, 22, BigSnapper))
 	{
 		return false;
 	}
 	TestNearlyEqual(TEXT("fixture: 7 kg"), BigSnapper.WeightKg, 7.f, 0.01f);
+	int32 WeakLanded = 0, StrongLanded = 0;
+	double WeakTime = 0.0, StrongTime = 0.0;
 	for (int32 Seed = 1; Seed <= 8; ++Seed)
 	{
+		FLureFightState WeakHold = BeginFight(Data, BigSnapper, Dive, Starter, Seed);
+		FLureFightState StrongHold = BeginFight(Data, BigSnapper, Dive, Reef, Seed);
+		RunPlayer(WeakHold, EPlayer::Hold);
+		RunPlayer(StrongHold, EPlayer::Hold);
+		TestEqual(FString::Printf(TEXT("7 kg, hold reel, seed %d: the starter line snaps (%.1f s)"), Seed, WeakHold.Elapsed), OutcomeName(WeakHold.Outcome), OutcomeName(ELureFightOutcome::Snapped));
+		AddInfo(FString::Printf(TEXT("7 kg, hold reel, seed %d: reef kit %s after %.1f s (full reel on the reef kit is covered by part A)"), Seed, *OutcomeName(StrongHold.Outcome), StrongHold.Elapsed));
+
 		FLureFightState Weak = BeginFight(Data, BigSnapper, Dive, Starter, Seed);
 		FLureFightState Strong = BeginFight(Data, BigSnapper, Dive, Reef, Seed);
 		RunPlayer(Weak, EPlayer::Careful);
 		RunPlayer(Strong, EPlayer::Careful);
-		TestTrue(FString::Printf(TEXT("careful, seed %d: the starter line breaks (%s after %.1f s)"), Seed, *OutcomeName(Weak.Outcome), Weak.Elapsed),
-			Weak.Outcome == ELureFightOutcome::Snapped || Weak.Outcome == ELureFightOutcome::Spooled);
-		TestEqual(FString::Printf(TEXT("careful, seed %d: the reef kit lands it (%.1f s)"), Seed, Strong.Elapsed), OutcomeName(Strong.Outcome), OutcomeName(ELureFightOutcome::Landed));
+		AddInfo(FString::Printf(TEXT("careful, seed %d: starter %s after %.1f s, reef %s after %.1f s"), Seed, *OutcomeName(Weak.Outcome), Weak.Elapsed, *OutcomeName(Strong.Outcome), Strong.Elapsed));
+		if (Weak.Outcome == ELureFightOutcome::Landed) { ++WeakLanded; WeakTime += Weak.Elapsed; }
+		if (Strong.Outcome == ELureFightOutcome::Landed) { ++StrongLanded; StrongTime += Strong.Elapsed; }
 	}
+	TestTrue(FString::Printf(TEXT("careful: the starter kit can land it (%d/8)"), WeakLanded), WeakLanded > 0);
+	TestTrue(FString::Printf(TEXT("careful: the reef kit lands it (%d/8)"), StrongLanded), StrongLanded > 0);
+	const double WeakMean = WeakLanded > 0 ? WeakTime / WeakLanded : 0.0;
+	const double StrongMean = StrongLanded > 0 ? StrongTime / StrongLanded : 0.0;
+	TestTrue(FString::Printf(TEXT("careful: better gear lands more often or faster (reef %d/8, mean %.1f s; starter %d/8, mean %.1f s)"), StrongLanded, StrongMean, WeakLanded, WeakMean),
+		StrongLanded > WeakLanded || (StrongLanded == WeakLanded && StrongLanded > 0 && StrongMean < WeakMean));
 
 	// C: the whole component, server-side, with the loadout from DT_Gear: same fish, same careful player.
 	for (const bool bRightGear : { false, true })
@@ -680,19 +698,10 @@ bool FLureFightGearDecidesOutcome::RunTest(const FString& Parameters)
 			return Fishing->GetFishingState() != ELureFishingState::Hooked;
 		}, 60 * 180);
 		const ELureFishingResult Result = Fishing->GetNetState().LastResult;
-		if (bRightGear)
-		{
-			TestEqual(Label + TEXT(": landed"), ResultName(Result), ResultName(ELureFishingResult::Landed));
-			TestEqual(Label + TEXT(": the landed fish is the hooked one"), Fishing->GetLastLandedFish().Seed, BigSnapper.Seed);
-			TestEqual(Label + TEXT(": OnFishLanded once"), Landed.Num(), 1);
-		}
-		else
-		{
-			TestEqual(FString::Printf(TEXT("%s: the line snapped (%s)"), *Label, *OutcomeName(Fishing->GetFightNet().Outcome)), ResultName(Result), ResultName(ELureFishingResult::Snapped));
-			TestFalse(Label + TEXT(": nothing landed"), Fishing->GetLastLandedFish().IsValid());
-			TestEqual(Label + TEXT(": OnFishLanded not fired"), Landed.Num(), 0);
-			TestTrue(Label + TEXT(": HUD says the line broke"), Fishing->GetStatusText().Contains(TEXT("snapped")) || Fishing->GetStatusText().Contains(TEXT("SNAP")));
-		}
+		// Careful play lands the 7 kg snapper with either kit (lead balance decision); gear decides via part B's rates.
+		TestEqual(FString::Printf(TEXT("%s: landed (%s)"), *Label, *OutcomeName(Fishing->GetFightNet().Outcome)), ResultName(Result), ResultName(ELureFishingResult::Landed));
+		TestEqual(Label + TEXT(": the landed fish is the hooked one"), Fishing->GetLastLandedFish().Seed, BigSnapper.Seed);
+		TestEqual(Label + TEXT(": OnFishLanded once"), Landed.Num(), 1);
 		TestFalse(Label + TEXT(": the fight is over"), Fishing->GetFightNet().bActive);
 		TestFalse(Label + TEXT(": the reel input is reset"), Fishing->IsServerReeling());
 	}
