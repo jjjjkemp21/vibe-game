@@ -209,11 +209,9 @@ namespace LureMovementTest
 		Test.TestNearlyEqual(Label + TEXT(": capsule half height"), HalfHeight, Expected.CapsuleHalfHeight, 0.05f);
 		Test.TestNearlyEqual(Label + TEXT(": capsule radius"), Radius, Expected.CapsuleRadius, 0.05f);
 	}
-}
 
-// The tests stay inside the namespace (no file-scope using-directive: unity builds merge .cpp files).
-namespace LureMovementTest
-{
+// The tests stay inside this namespace (closed at the end of the file): a file-scope `using namespace` leaks Dt and the
+// fixtures into the next files of the unity build (unreal-engineer rule 7; it broke the build again on 2026-09-23).
 
 // ---------------------------------------------------------------------------------------------------------------------
 // Data
