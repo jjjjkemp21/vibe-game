@@ -33,6 +33,7 @@ A first-person, open-world fishing sandbox for 1-4 friends: sail between sunny, 
   - actions: running, jumping into water, splashing, boat speed and wake
   Noise works by proximity: creatures hear noise within a radius, and louder noise reaches farther. The mic can be switched off in settings, and then only actions count.
 - Hide and counter: crouch or prone to stay out of a creature's sight line and to dodge certain boss attacks.
+- Prone fishing (Jimmy, 2026-09-22): you can fish while lying prone (e.g. flat at a dock or rock edge while something searches). The rod is tucked while you crawl and comes out when you stop; cast, reel and land all work prone.
 
 ## Fish system (built to scale to many species)
 Jimmy wants many species eventually, each catch varying in difficulty and value (for example weight and rarity). The code is data-driven from day one, so adding a species, a rarity tier or a modifier is a data edit, not a code change:

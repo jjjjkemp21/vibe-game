@@ -13,6 +13,8 @@ Answers to the qa-engineer's T-004 test-design questions (Saved/AgentLogs/qa/eng
 - **A18, other players:** approve a cheap placeholder body visible to others only (OwnerNoSee), e.g. an engine basic-shape capsule/cylinder in the palette's sleeve color, so 2-player PIE shows other players. A real body comes later.
 - **A28, dev map:** `/Game/Maps/Dev/L_Dev_Movement` (editor-operator, after the merge): floor, the 60/61/59 cm crawl gaps, ceilings 1 cm below and 3 cm above the stand and crouch clearances, a ledge, stairs, a ramp. It uses ALureGameMode (no world-settings override).
 
+- **Prone fishing (Jimmy, 2026-09-22):** allowed. Arms/rod pose by stance + motion: prone and moving = tucked rod (never clips the 60 cm crawl ceiling or walls); prone and still = prone hold pose (casting/reeling allowed; wired in T-006/T-007). The selection is data-driven per stance.
+
 ## Engine pitfalls to handle (each has a QA test)
 - Un-crouch restores the class's built-in capsule height, not DT_Movement's Stand height: apply the table's stand height explicitly.
 - The engine raises half-height to at least the radius, which can make prone too tall for 60 cm: pick the prone radius and half-height so the total height <= 55 cm.
