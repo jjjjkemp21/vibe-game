@@ -269,9 +269,9 @@ namespace LureFishingTest
 		}
 		return Test.TestTrue(TEXT("bobber lands (Waiting)"), World.TickUntil([Fishing]() { return Fishing->GetFishingState() == ELureFishingState::Waiting; }, 240));
 	}
-}
 
-using namespace LureFishingTest;
+// The tests stay inside the namespace (no file-scope using-directive): in a unity build a global
+// "using namespace LureFishingTest" leaks into the next files of the blob (Tag() became ambiguous with FishQA::Tag()).
 
 // =====================================================================================================================
 // Cast distance and charge
@@ -1527,5 +1527,7 @@ bool FLureFishingMovementRodColumns::RunTest(const FString& Parameters)
 	TestFalse(TEXT("a row with RodMoveSpeedOut > RodMoveSpeedIn is invalid"), Bad.Validate(Problem));
 	return true;
 }
+
+} // namespace LureFishingTest
 
 #endif // WITH_DEV_AUTOMATION_TESTS

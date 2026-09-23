@@ -6,6 +6,7 @@
 #include "Engine/DeveloperSettings.h"
 #include "GameplayTagContainer.h"
 #include "InputCoreTypes.h"
+#include "Fishing/FishFightTypes.h"
 #include "LureFishingSettings.generated.h"
 
 class UAnimMontage;
@@ -161,4 +162,36 @@ public:
 	/** Seconds a result or a refusal stays in the placeholder HUD text. */
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category="Controls", meta=(ClampMin="0"))
 	float HudMessageSeconds = 2.5f;
+
+	// ---- Reel fight and gear (T-007; docs/specs/reel-fight-rules.md) ----
+
+	/** Rods, lines and hooks/bait (row struct LureGearRow; source data/tables/DT_Gear.csv). Missing = built-in starter items + one warning. */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category="Fight", meta=(RequiredAssetDataTags="RowStructure=/Script/VibeGame.LureGearRow"))
+	TSoftObjectPtr<UDataTable> GearTable;
+
+	/** Fish fight patterns (row struct LureFightPatternRow; source data/tables/DT_FightPattern.json). Row name = a species' FightPatternId. */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category="Fight", meta=(RequiredAssetDataTags="RowStructure=/Script/VibeGame.LureFightPatternRow"))
+	TSoftObjectPtr<UDataTable> FightPatternTable;
+
+	/** Fight tuning (row struct LureFishFightRow; source data/tables/DT_FishFight.csv). Missing = built-in tuning + one warning. */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category="Fight", meta=(RequiredAssetDataTags="RowStructure=/Script/VibeGame.LureFishFightRow"))
+	TSoftObjectPtr<UDataTable> FishFightTable;
+
+	/** DT_FishFight row used. */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category="Fight")
+	FName FishFightRow;
+
+	/** Gear every player starts with (DT_Gear row names) until the shop (T-012) and saves change it. */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category="Fight")
+	FLureGearLoadout DefaultLoadout;
+
+	/** Arms montages for the fight (animation-artist, later; none = the procedural rod bend only): looped while reeling, played when a fish is hooked and when it is landed. */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category="Fight")
+	TSoftObjectPtr<UAnimMontage> ReelMontage;
+
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category="Fight")
+	TSoftObjectPtr<UAnimMontage> FightMontage;
+
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category="Fight")
+	TSoftObjectPtr<UAnimMontage> LandMontage;
 };

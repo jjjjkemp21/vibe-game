@@ -31,6 +31,15 @@ ULureFishingSettings::ULureFishingSettings()
 	DefaultRegion = TEXT("Region.Tropical");
 
 	CastKeys = { EKeys::LeftMouseButton, EKeys::Gamepad_RightTrigger };
+
+	// Reel fight and gear (T-007).
+	GearTable = TSoftObjectPtr<UDataTable>(FSoftObjectPath(TEXT("/Game/Data/DT_Gear.DT_Gear")));
+	FightPatternTable = TSoftObjectPtr<UDataTable>(FSoftObjectPath(TEXT("/Game/Data/DT_FightPattern.DT_FightPattern")));
+	FishFightTable = TSoftObjectPtr<UDataTable>(FSoftObjectPath(TEXT("/Game/Data/DT_FishFight.DT_FishFight")));
+	FishFightRow = TEXT("Default");
+	DefaultLoadout.Rod = TEXT("Rod_Starter");
+	DefaultLoadout.Line = TEXT("Line_Mono");
+	DefaultLoadout.Hook = TEXT("Hook_Shrimp");
 }
 
 #if WITH_EDITOR

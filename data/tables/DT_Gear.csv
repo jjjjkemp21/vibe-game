@@ -1,0 +1,7 @@
+Name,Slot,DisplayName,Price,RodPower,ReelSpeed,Drag,CastDistanceMultiplier,LineStrength,SpoolLength,HookSecurity,BaitTag,Luck,DevComment
+Rod_Starter,Rod,Old Dock Rod,0,8,120,5,1.0,0,0,0,None,0,Starter rod (default loadout). Rod columns only. PLACEHOLDER numbers (T-007): tune after playtest.
+Rod_Reef,Rod,Reef Rod,250,16,150,12,1.15,0,0,0,None,0,Shop upgrade for T-012: pulls reef fish in. PLACEHOLDER numbers (T-007).
+Line_Mono,Line,Mono Line 10,0,0,0,0,0,10,4000,0,None,0,Starter line (default loadout). Line columns only. PLACEHOLDER numbers (T-007).
+Line_Braid,Line,Braided Line 22,180,0,0,0,0,22,6000,0,None,0,Shop upgrade for T-012: holds a big snapper. PLACEHOLDER numbers (T-007).
+Hook_Shrimp,Hook,Shrimp on a J-Hook,0,0,0,0,0,0,0,1.0,Bait.Shrimp,0,Starter hook and bait (default loadout): both starter species take shrimp. Hook columns only. PLACEHOLDER numbers (T-007).
+Hook_Squid,Hook,Squid on a Circle Hook,60,0,0,0,0,0,0,1.6,Bait.Squid,0.5,Shop upgrade for T-012: the snapper takes squid and the bonefish does not; holds better. PLACEHOLDER numbers (T-007).
