@@ -79,16 +79,39 @@ def select_only(objects):
     bpy.context.view_layer.objects.active = objects[0]
 
 
+SOCKET_PREFIX = "SOCKET_"
+
+
+def add_socket(parent, name, location, rotation=(0.0, 0.0, 0.0), size=0.02):
+    """Unreal static-mesh socket: an empty named SOCKET_<name> parented to `parent` (location/rotation in the
+    parent's local space, meters/radians). Unreal's FBX import turns it into a mesh socket named <name>.
+    export_fbx exports these automatically with their parent; report() lists them in RESULT_JSON."""
+    empty = bpy.data.objects.new(SOCKET_PREFIX + name, None)
+    empty.empty_display_type = "ARROWS"
+    empty.empty_display_size = size
+    bpy.context.scene.collection.objects.link(empty)
+    empty.parent = parent
+    empty.location = location
+    empty.rotation_euler = rotation
+    return empty
+
+
+def socket_children(objects):
+    return [c for o in objects for c in o.children if c.type == "EMPTY" and c.name.startswith(SOCKET_PREFIX)]
+
+
 def export_fbx(objects, out_path):
-    """Export objects as one FBX that Unreal imports at the right scale (1 m cube -> 50 uu box extent)."""
+    """Export objects as one FBX that Unreal imports at the right scale (1 m cube -> 50 uu box extent).
+    SOCKET_ empties parented to the objects are exported too (Unreal makes them mesh sockets)."""
     ensure_fbx_exporter()
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    select_only(objects)
+    sockets = socket_children(objects)
+    select_only(list(objects) + sockets)
     bpy.ops.export_scene.fbx(
         filepath=str(out_path),
         use_selection=True,
-        object_types={"MESH"},
+        object_types={"MESH", "EMPTY"} if sockets else {"MESH"},
         apply_unit_scale=True,
         use_mesh_modifiers=True,
         mesh_smooth_type="FACE",
@@ -141,6 +164,101 @@ def render_preview(objects, out_path, resolution=768):
     return str(out_path)
 
 
+def lens_for_hfov(hfov_deg):
+    """Focal length (mm, 36 mm sensor) for a horizontal field of view."""
+    import math
+    return 18.0 / math.tan(math.radians(hfov_deg) / 2.0)
+
+
+def render_view(out_path, location, target=None, lens=50.0, ortho_scale=None, resolution=(768, 768), world_rgb=None,
+                clip_start=0.01, rotation=None, light="STUDIO", view_transform=None):
+    """Extra Workbench view from `location` looking at `target` (world meters), or with an explicit Euler
+    `rotation` (radians). ortho_scale -> orthographic. lens is the focal length in mm on a 36 mm sensor
+    (horizontal FOV 90 deg = lens 18, see lens_for_hfov). world_rgb (linear) sets the background color for this
+    render only. light: STUDIO (shaded) or FLAT (pure palette colors, use with view_transform="Standard")."""
+    scene = bpy.context.scene
+    out_path = Path(out_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    cam_data = bpy.data.cameras.new("ViewCam")
+    cam_data.sensor_fit = "HORIZONTAL"
+    cam_data.sensor_width = 36.0
+    cam_data.clip_start = clip_start
+    cam_data.clip_end = 1000.0
+    if ortho_scale:
+        cam_data.type = "ORTHO"
+        cam_data.ortho_scale = ortho_scale
+    else:
+        cam_data.lens = lens
+    cam = bpy.data.objects.new("ViewCam", cam_data)
+    scene.collection.objects.link(cam)
+    cam.location = Vector(location)
+    if rotation is not None:
+        cam.rotation_euler = rotation
+    else:
+        cam.rotation_euler = (Vector(target) - Vector(location)).to_track_quat("-Z", "Y").to_euler()
+    scene.camera = cam
+    scene.render.engine = "BLENDER_WORKBENCH"
+    scene.render.resolution_x, scene.render.resolution_y = resolution
+    scene.render.resolution_percentage = 100
+    scene.render.image_settings.file_format = "PNG"
+    scene.render.filepath = str(out_path)
+    shading = scene.display.shading
+    shading.light = light
+    shading.color_type = "MATERIAL"
+    try:
+        shading.show_cavity = light != "FLAT"
+    except Exception:
+        pass
+    old_world = None
+    if world_rgb is not None:
+        if scene.world is None:
+            scene.world = bpy.data.worlds.new("PreviewWorld")
+        old_world = tuple(scene.world.color)
+        scene.world.color = world_rgb
+    old_vt = scene.view_settings.view_transform
+    if view_transform:
+        scene.view_settings.view_transform = view_transform
+    bpy.ops.render.render(write_still=True)
+    scene.view_settings.view_transform = old_vt
+    shading.light = "STUDIO"
+    if old_world is not None:
+        scene.world.color = old_world
+    bpy.data.objects.remove(cam, do_unlink=True)
+    return str(out_path)
+
+
+def contact_sheet(paths, out_path, cols=2, cell=(768, 768), bg=(0.12, 0.12, 0.12)):
+    """Paste images into a grid (each scaled to fit its cell, aspect kept). Returns out_path."""
+    import numpy as np
+    cw, ch = cell
+    rows = (len(paths) + cols - 1) // cols
+    sheet = np.empty((rows * ch, cols * cw, 4), dtype=np.float32)
+    sheet[:] = (bg[0], bg[1], bg[2], 1.0)
+    for i, p in enumerate(paths):
+        img = bpy.data.images.load(str(p))
+        w, h = img.size
+        k = min(cw / w, ch / h)
+        nw, nh = max(1, int(w * k)), max(1, int(h * k))
+        img.scale(nw, nh)
+        px = np.empty(nw * nh * 4, dtype=np.float32)
+        img.pixels.foreach_get(px)
+        px = px.reshape(nh, nw, 4)
+        col, row = i % cols, rows - 1 - i // cols  # image rows start at the bottom
+        x0 = col * cw + (cw - nw) // 2
+        y0 = row * ch + (ch - nh) // 2
+        sheet[y0:y0 + nh, x0:x0 + nw] = px
+        bpy.data.images.remove(img)
+    out_img = bpy.data.images.new("ContactSheet", cols * cw, rows * ch, alpha=False)
+    out_img.pixels.foreach_set(sheet.ravel())
+    out_path = Path(out_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_img.filepath_raw = str(out_path)
+    out_img.file_format = "PNG"
+    out_img.save()
+    bpy.data.images.remove(out_img)
+    return str(out_path)
+
+
 def triangle_count(objects):
     depsgraph = bpy.context.evaluated_depsgraph_get()
     tris = 0
@@ -170,16 +288,41 @@ def report(args, objects, extra=None):
         "materials": sorted({s.material.name for o in objects for s in o.material_slots if s.material}),
         "blender": bpy.app.version_string,
     }
+    sockets = socket_children(objects)
+    if sockets:
+        # Blender (x, y, z) m -> Unreal (x, -y, z) * 100 cm with the default FBX import (Force Front X Axis off).
+        data["sockets"] = {
+            s.name[len(SOCKET_PREFIX):]: {
+                "blender_m": [round(c, 4) for c in s.location],
+                "unreal_cm": [round(s.location.x * 100, 2), round(-s.location.y * 100, 2), round(s.location.z * 100, 2)],
+            } for s in sockets}
     if extra:
         data.update(extra)
     print("RESULT_JSON:" + json.dumps(data))
     return data
 
 
-def finish(args, objects, extra=None):
-    """Standard recipe ending: export FBX, render preview, optionally save .blend, print RESULT_JSON."""
+def finish(args, objects, extra=None, views=None):
+    """Standard recipe ending: export FBX, render preview, optionally save .blend, print RESULT_JSON.
+
+    views: optional list of dicts with render_view() keyword arguments plus "name". Each view is rendered to
+    <preview stem>_<name>.png and the main preview becomes a contact sheet: the default 3/4 view first, then the
+    views in order (left to right, top to bottom, 2 columns)."""
     export_fbx(objects, args.out)
     render_preview(objects, args.preview)
+    if views:
+        base = Path(args.preview)
+        paths = [str(base.with_name(base.stem + "_34" + base.suffix))]
+        Path(args.preview).replace(paths[0])
+        for v in views:
+            v = dict(v)
+            name = v.pop("name")
+            setup = v.pop("setup", None)  # optional callable staging preview-only helpers; returns a cleanup callable
+            cleanup = setup() if setup else None
+            paths.append(render_view(base.with_name(base.stem + "_" + name + base.suffix), **v))
+            if cleanup:
+                cleanup()
+        contact_sheet(paths, args.preview, cols=2)
     if args.save_blend:
         BLEND_ROOT.mkdir(parents=True, exist_ok=True)
         bpy.ops.wm.save_as_mainfile(filepath=str(BLEND_ROOT / (args.asset_name + ".blend")))
