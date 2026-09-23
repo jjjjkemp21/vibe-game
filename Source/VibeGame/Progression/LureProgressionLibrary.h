@@ -53,10 +53,7 @@ public:
 	UFUNCTION(BlueprintCallable, Category="Lure|Progression", meta=(DefaultToSelf="Context"))
 	static int32 HandlePlayerCaught(AActor* Context);
 
-	/** Placeholder HUD lines for a local player: the status line and, near an interactable, its prompt */
+	/** Placeholder HUD lines for a local player: the status line and, near an interactable, its prompt (drawn by ALureHUD) */
 	UFUNCTION(BlueprintPure, Category="Lure|Progression")
 	static TArray<FString> GetPlaceholderStatusLines(const APlayerController* PlayerController);
-
-	/** Hooks the placeholder text into every HUD (AHUD::OnHUDPostRender) once per process; no-op after the first call */
-	static void RegisterPlaceholderHud();
 };

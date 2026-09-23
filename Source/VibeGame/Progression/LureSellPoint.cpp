@@ -116,7 +116,14 @@ FLureSaleResult ALureSellPoint::SellAll(APawn* Seller)
 		return FLureSaleResult();
 	}
 	const FLureSaleResult Result = Progression->SellAllFish(GetSellMultiplier());
-	UE_LOG(LogLureProgression, Log, TEXT("%s sold %d fish at %s for %d coins"), *GetNameSafe(Seller), Result.FishSold, *GetName(), Result.MoneyEarned);
+	if (Result.FishSold > 0)
+	{
+		UE_LOG(LogLureProgression, Log, TEXT("%s sold %d fish at %s for %d coins"), *GetNameSafe(Seller), Result.FishSold, *GetName(), Result.MoneyEarned);
+	}
+	else
+	{
+		UE_LOG(LogLureProgression, Verbose, TEXT("%s: cooler is empty, nothing to sell at %s"), *GetNameSafe(Seller), *GetName());
+	}
 	return Result;
 }
 
@@ -147,7 +154,7 @@ FText ALureSellPoint::GetInteractionPrompt(const APawn* Pawn) const
 	const int32 Count = Cooler ? Cooler->GetNumFish() : 0;
 	if (Count == 0)
 	{
-		return LOCTEXT("Empty", "Sell fish (your cooler is empty)");
+		return LOCTEXT("Empty", "Cooler is empty: nothing to sell");
 	}
 	return FText::Format(LOCTEXT("SellAll", "Sell {0} fish ({1} coins)"), FText::AsNumber(Count), FText::AsNumber(QuoteAll(Pawn)));
 }

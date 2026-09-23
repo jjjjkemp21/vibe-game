@@ -380,6 +380,19 @@ bool FLureDevTeleportPicksPlayerTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("PlayerId 8 moved"), FVector2D(Guest->GetActorLocation()).Equals(FVector2D(800.f, 0.f), 0.5f));
 	TestTrue(TEXT("PlayerId 3 stayed"), FVector2D(Host->GetActorLocation()).Equals(FVector2D(0.f, 0.f), 0.5f));
 
+	// B4 (T-006/T-010 playtest): the yaw reaches that player's controller, not the host's.
+	const float HostYaw = Host->GetController() ? static_cast<float>(Host->GetController()->GetControlRotation().Yaw) : 0.f;
+	TestTrue(TEXT("Lure.Teleport 800 300 0 180 Player=8 runs"), FLureDevCommands::RunTeleport(Args(TEXT("800 300 0 180 Player=8")), W.World, Null));
+	W.Tick(2);
+	if (TestNotNull(TEXT("PlayerId 8 has a controller"), Guest->GetController()))
+	{
+		TestTrue(TEXT("PlayerId 8 control yaw 180"), FMath::IsNearlyEqual(FMath::Abs(FRotator::NormalizeAxis(Guest->GetController()->GetControlRotation().Yaw)), 180.f, 0.1f));
+	}
+	if (Host->GetController())
+	{
+		TestTrue(TEXT("PlayerId 3 control yaw unchanged"), FMath::IsNearlyEqual(static_cast<float>(Host->GetController()->GetControlRotation().Yaw), HostYaw, 0.1f));
+	}
+
 	FString Error;
 	TestNull(TEXT("an unknown PlayerId finds nobody"), FLureDevCommands::FindPlayer(W.World, TOptional<int32>(42), Error));
 	TestTrue(TEXT("... and lists the PlayerIds"), Error.Contains(TEXT("42")) && Error.Contains(TEXT("3")) && Error.Contains(TEXT("8")));

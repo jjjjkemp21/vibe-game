@@ -198,9 +198,9 @@ struct FLureFishingRow : public FTableRowBase
 
 	// ---- Bobber (cosmetic, every machine) ----
 
-	/** Readability scale of SM_Bobber (ART_STYLE: ~3x; the mesh is real size). */
+	/** Readability scale of SM_Bobber (ART_STYLE: 4.5x; the mesh is real size). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Bobber", meta=(ClampMin="0.1"))
-	float BobberScale = 3.f;
+	float BobberScale = 4.5f;
 
 	/** Idle bob on the water, cm (up and down). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Bobber", meta=(ClampMin="0"))
@@ -220,7 +220,7 @@ struct FLureFishingRow : public FTableRowBase
 
 	/** How far the bite pulls the bobber under, cm (>= its scaled height, so the red top disappears; B-S4). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Bobber", meta=(ClampMin="0"))
-	float BiteDipDepth = 20.f;
+	float BiteDipDepth = 30.f;
 
 	/** Tugs per second while the fish bites. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Bobber", meta=(ClampMin="0"))

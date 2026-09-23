@@ -209,7 +209,7 @@ bool FQAFishDataFishingRowsMeetDesignLimits::RunTest(const FString& Parameters)
 		TestTrue(FString::Printf(TEXT("%s: MaxLineLength %.0f > MaxCastDistance %.0f (else a full cast comes straight back in)"), *Name, Row.MaxLineLength, Row.MaxCastDistance),
 			Row.MaxLineLength > Row.MaxCastDistance);
 		TestTrue(Name + TEXT(": B-S3, the line is at least 2 px wide at 1080p"), Row.LinePixelWidth >= 2.f);
-		TestTrue(FString::Printf(TEXT("%s: ART_STYLE, bobber readability scale ~3x (%.2f)"), *Name, Row.BobberScale), Row.BobberScale >= 2.f && Row.BobberScale <= 4.f);
+		TestTrue(FString::Printf(TEXT("%s: ART_STYLE, bobber readability scale 3-5x (%.2f)"), *Name, Row.BobberScale), Row.BobberScale >= 2.f && Row.BobberScale <= 5.f);
 		TestTrue(FString::Printf(TEXT("%s: B-S4, the bite pulls the whole red top under (%.1f cm >= 4.9 cm x %.1f)"), *Name, Row.BiteDipDepth, Row.BobberScale),
 			Row.BiteDipDepth >= 4.9f * Row.BobberScale);
 		TestTrue(Name + TEXT(": the bite is felt (rumble > 0 for > 0 s)"), Row.BiteRumbleIntensity > 0.f && Row.BiteRumbleIntensity <= 1.f && Row.BiteRumbleDuration > 0.f);
@@ -228,7 +228,7 @@ bool FQAFishDataFishingRowsMeetDesignLimits::RunTest(const FString& Parameters)
 		TestFalse(TEXT("spec default: MissEndsCast = False (the bobber stays after a miss)"), Default->MissEndsCast);
 		TestNearlyEqual(TEXT("spec: HookLatencyGrace 0.15 s"), Default->HookLatencyGrace, 0.15f, 1.0e-4f);
 		TestNearlyEqual(TEXT("spec: NoBiteHintDelay 8 s"), Default->NoBiteHintDelay, 8.f, 1.0e-4f);
-		TestNearlyEqual(TEXT("ART_STYLE: BobberScale 3x"), Default->BobberScale, 3.f, 1.0e-4f);
+		TestNearlyEqual(TEXT("ART_STYLE: BobberScale 4.5x (T-006 playtest, 2026-09-23)"), Default->BobberScale, 4.5f, 1.0e-4f);
 	}
 	return true;
 }

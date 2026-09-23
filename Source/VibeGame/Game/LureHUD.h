@@ -7,8 +7,8 @@
 #include "LureHUD.generated.h"
 
 /**
- *  Draws the local player's status lines (fishing: cast power, bite/hook prompt, results) as plain white text,
- *  centered in the lower part of the screen. No styling on purpose.
+ *  Draws the local player's status lines as plain white text: progression (money, level, XP, cooler, the interact
+ *  prompt) top-left, fishing (cast power, bite/hook prompt, results) centered in the lower part. No styling on purpose.
  */
 UCLASS()
 class ALureHUD : public AHUD

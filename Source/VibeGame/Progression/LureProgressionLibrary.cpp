@@ -7,11 +7,7 @@
 #include "Interaction/LureInteractionComponent.h"
 #include "Fish/FishRoll.h"
 #include "Fish/FishSettings.h"
-#include "Engine/Canvas.h"
-#include "Engine/Engine.h"
-#include "Engine/Font.h"
 #include "GameFramework/Controller.h"
-#include "GameFramework/HUD.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/PlayerState.h"
@@ -107,42 +103,4 @@ TArray<FString> ULureProgressionLibrary::GetPlaceholderStatusLines(const APlayer
 		}
 	}
 	return Lines;
-}
-
-namespace LureProgressionHud
-{
-	/** Plain white text, top-left (placeholder UI: no styling until Jimmy directs the UI). */
-	static void Draw(AHUD* HUD, UCanvas* Canvas)
-	{
-		if (!HUD || !Canvas || !GEngine || !GetDefault<ULureProgressionSettings>()->bShowPlaceholderText)
-		{
-			return;
-		}
-		const TArray<FString> Lines = ULureProgressionLibrary::GetPlaceholderStatusLines(HUD->GetOwningPlayerController());
-		UFont* Font = GEngine->GetMediumFont();
-		if (!Font)
-		{
-			return;
-		}
-		float Y = 24.0f;
-		for (const FString& Line : Lines)
-		{
-			Canvas->SetDrawColor(FColor::White);
-			Canvas->DrawText(Font, Line, 24.0f, Y);
-			float Width = 0.0f;
-			float Height = 0.0f;
-			Canvas->StrLen(Font, Line, Width, Height);
-			Y += Height + 4.0f;
-		}
-	}
-}
-
-void ULureProgressionLibrary::RegisterPlaceholderHud()
-{
-	static bool bRegistered = false;
-	if (!bRegistered)
-	{
-		bRegistered = true;
-		AHUD::OnHUDPostRender.AddStatic(&LureProgressionHud::Draw);
-	}
 }

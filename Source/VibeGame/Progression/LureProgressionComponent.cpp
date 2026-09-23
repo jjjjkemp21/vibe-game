@@ -37,7 +37,6 @@ void ULureProgressionComponent::BeginPlay()
 			SetMoneyInternal(Starting);
 		}
 	}
-	ULureProgressionLibrary::RegisterPlaceholderHud();
 }
 
 bool ULureProgressionComponent::CheckServer(const TCHAR* What) const

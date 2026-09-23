@@ -30,6 +30,7 @@
 #include "Materials/MaterialInterface.h"
 #include "Misc/PackageName.h"
 #include "Net/UnrealNetwork.h"
+#include "Progression/LureProgressionLibrary.h"
 #include "Sound/SoundBase.h"
 
 namespace LureFishingPrivate
@@ -1246,6 +1247,19 @@ void ULureFishingComponent::LandFish(double Now)
 		*LastLandedFish.SpeciesId.ToString(), *LastLandedFish.RarityId.ToString(), LastLandedFish.WeightKg, LastLandedFish.Value, LastLandedFish.Level,
 		Mods.Num() > 0 ? *FString::Printf(TEXT(", [%s]"), *FString::Join(Mods, TEXT(", "))) : TEXT(""),
 		Fight.Elapsed > 0.f && Fight.Outcome == ELureFightOutcome::Landed ? *FString::Printf(TEXT(", fight %.1f s"), Fight.Elapsed) : TEXT(""));
+	// T-010 hand-off: XP + cooler, exactly once per landed fish (LandFish only runs on the server).
+	// A pawn without a player's progression (tests, a bare character) just logs it.
+	if (GetOwner() && GetOwner()->HasAuthority())
+	{
+		if (ULureProgressionLibrary::GetProgression(GetOwner()))
+		{
+			ULureProgressionLibrary::HandleFishLanded(GetOwner(), LastLandedFish);
+		}
+		else
+		{
+			UE_LOG(LogLureFishing, Log, TEXT("%s has no player progression: the landed fish is not stored or counted for XP."), *GetNameSafe(GetOwner()));
+		}
+	}
 	OnFishingEvent.Broadcast(ELureFishingResult::Landed, LastLandedFish);
 	OnFishLanded.Broadcast(this, LastLandedFish);
 	OnFishLandedNative.Broadcast(this, LastLandedFish);
