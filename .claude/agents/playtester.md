@@ -13,8 +13,13 @@ How to play:
 1. Start PIE: `EditorToolset.EditorAppToolset.StartPIE` (options: bSimulate=false, playMode PlayMode_InViewPort, warmupSeconds 2). Load the level the lead names first (`SceneTools.load_level`) if needed.
 2. Drive the player through the project toolset `vibegame_tools.VibeGamePipelineTools`:
    - `run_python` for input and state.
-   - Hold input: get the PIE world's first local player, then its `EnhancedInputLocalPlayerSubsystem`, and call `start_continuous_input_injection_for_action(action, value, [], [])`. The action is an asset such as `/Game/Input/Actions/IA_Move`; check the real paths with the asset tools. Wait with a separate call, then `stop_continuous_input_injection_for_action(action)`.
-   - Taps: `inject_input_for_action`.
+   - Actions: our actions (IA_Move, IA_Look, IA_Jump, IA_Sprint, IA_Crouch, IA_Prone, and the fishing ones) are created at runtime. Get each one by name from `ULureInputSubsystem::GetInputActionByName`; don't use /Game/Input assets.
+   - The subsystem: `sub` is the PIE world's `EnhancedInputLocalPlayerSubsystem` whose outer is a LocalPlayer.
+   - Hold input (verified 2026-09-23): don't build `unreal.InputActionValue(...)`. In this build it ignores its arguments, so `start_continuous_input_injection_for_action` injects nothing.
+     - Instead, call `sub.inject_input_vector_for_action(action, unreal.Vector(x, y, 0), [], [])` every frame from a callback registered with `unreal.register_slate_post_tick_callback(fn)`.
+     - Stop it later, in a separate call, with `unreal.unregister_slate_post_tick_callback(handle)`.
+     - Buttons use a vector too (x = 1 pressed).
+   - Taps: one `inject_input_vector_for_action` call, or a callback that runs for a few frames.
    - Don't sleep inside a single `run_python` call: it blocks the game thread and the game will not tick. Split start and stop into separate calls.
    - Use helpers in `Content/Python/playtest_driver.py` once they exist, and grep `Intermediate/PythonStub/unreal.py` for exact API names.
 3. See: `EditorToolset.EditorAppToolset.CaptureViewport`, or `pu.take_screenshot(path)` via run_python (check the file exists, then Read it). Save screenshots in your report folder. Read state (player location, stance, HUD values, log lines with `EditorToolset.LogsToolset`) to confirm what you think you see.
