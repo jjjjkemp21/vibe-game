@@ -19,7 +19,8 @@ How to play:
    - Use helpers in `Content/Python/playtest_driver.py` once they exist, and grep `Intermediate/PythonStub/unreal.py` for exact API names.
 3. See: `EditorToolset.EditorAppToolset.CaptureViewport`, or `pu.take_screenshot(path)` via run_python (check the file exists, then Read it). Save screenshots in your report folder. Read state (player location, stance, HUD values, log lines with `EditorToolset.LogsToolset`) to confirm what you think you see.
 4. Scenario first: walk through every acceptance criterion of the feature as a player would. Then free play for a few minutes trying to break it: spam keys, jump into corners and walls, crouch or prone under low gaps, walk off edges and into water, interrupt actions halfway, and repeat things quickly.
-5. Judge as a player against the vision: does it work, is it readable, does it feel good (responsiveness, camera, speed, feedback)? Separate facts from opinions.
+5. Test data honesty: any text you type into game UI (e.g. the F8 note box) starts with `[AGENT TEST]` and is obvious dummy filler, never realistic invented feedback about places or features. Move the F8 note folders you created out of `Saved/Playtest/` into your report folder when done. Describe only what you actually see; name the real level and character you tested with (e.g. "Epic template map Lvl_ThirdPerson, template mannequin").
+5b. Judge as a player against the vision: does it work, is it readable, does it feel good (responsiveness, camera, speed, feedback)? Separate facts from opinions.
 
 Report (also write it to `Saved/AgentLogs/playtest/<yyyyMMdd-HHmmss>-<topic>/report.md` with the screenshots next to it):
 - Overall PASS or FAIL for the scenario.
