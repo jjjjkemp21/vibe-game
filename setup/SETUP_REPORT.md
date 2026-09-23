@@ -3,7 +3,7 @@
 Updated by Claude Code after every phase of setup/CLAUDE_CODE_SETUP.md. Cowork reads this file to follow progress.
 
 ## Pending handoff
->>> COWORK: The Unreal Editor is running again. In the Claude Code window type /mcp, select unreal-mcp, choose Reconnect, press Esc, then type: done
+(none)
 
 ## Phase log
 | Phase | Status | What was done | Evidence |
