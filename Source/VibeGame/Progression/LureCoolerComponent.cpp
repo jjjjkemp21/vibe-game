@@ -57,6 +57,26 @@ const UDataTable* ULureCoolerComponent::GetCoolerTable() const
 	return Table;
 }
 
+FName ULureCoolerComponent::ResolveCoolerId(FName InCoolerId) const
+{
+	const FName DefaultId = GetDefault<ULureProgressionSettings>()->DefaultCoolerId;
+	if (InCoolerId.IsNone())
+	{
+		return DefaultId;
+	}
+	const UDataTable* Table = GetCoolerTable();
+	if (!Table || Table->FindRow<FCoolerRow>(InCoolerId, TEXT("Cooler"), false))
+	{
+		return InCoolerId; // no table: nothing to check against (FallbackCoolerSlots applies)
+	}
+	if (DefaultId.IsNone() || !Table->FindRow<FCoolerRow>(DefaultId, TEXT("Cooler"), false))
+	{
+		return InCoolerId; // no default row either: ResolveSlots uses FallbackCoolerSlots
+	}
+	UE_LOG(LogLureProgression, Warning, TEXT("Cooler: DT_Cooler has no row '%s'; using the default cooler row '%s'."), *InCoolerId.ToString(), *DefaultId.ToString());
+	return DefaultId;
+}
+
 int32 ULureCoolerComponent::ResolveSlots(FName InCoolerId) const
 {
 	const ULureProgressionSettings* Settings = GetDefault<ULureProgressionSettings>();
@@ -66,28 +86,40 @@ int32 ULureCoolerComponent::ResolveSlots(FName InCoolerId) const
 	{
 		return Fallback;
 	}
-	const FCoolerRow* Row = Table->FindRow<FCoolerRow>(InCoolerId, TEXT("Cooler"), /*bWarnIfRowMissing*/ false);
+	FName RowId = InCoolerId;
+	const FCoolerRow* Row = Table->FindRow<FCoolerRow>(RowId, TEXT("Cooler"), /*bWarnIfRowMissing*/ false);
+	if (!Row && !Settings->DefaultCoolerId.IsNone())
+	{
+		RowId = Settings->DefaultCoolerId;
+		Row = Table->FindRow<FCoolerRow>(RowId, TEXT("Cooler"), false);
+		if (Row)
+		{
+			UE_LOG(LogLureProgression, Warning, TEXT("Cooler: DT_Cooler has no row '%s'; using the default cooler row '%s'."), *InCoolerId.ToString(), *RowId.ToString());
+		}
+	}
 	if (!Row)
 	{
-		UE_LOG(LogLureProgression, Warning, TEXT("Cooler: DT_Cooler has no row '%s'; using FallbackCoolerSlots %d."), *InCoolerId.ToString(), Fallback);
+		UE_LOG(LogLureProgression, Warning, TEXT("Cooler: DT_Cooler has no row '%s' and no default row '%s'; using FallbackCoolerSlots %d."),
+			*InCoolerId.ToString(), *Settings->DefaultCoolerId.ToString(), Fallback);
 		return Fallback;
 	}
 	if (Row->Slots < 1)
 	{
-		UE_LOG(LogLureProgression, Warning, TEXT("Cooler: DT_Cooler row '%s' has Slots %d; using 1."), *InCoolerId.ToString(), Row->Slots);
+		UE_LOG(LogLureProgression, Warning, TEXT("Cooler: DT_Cooler row '%s' has Slots %d; using 1."), *RowId.ToString(), Row->Slots);
 	}
 	return FMath::Clamp(Row->Slots, 1, FLureProgressionData::MaxCoolerSlots);
 }
 
 void ULureCoolerComponent::EnsureCapacity()
 {
-	if (CoolerId.IsNone())
-	{
-		CoolerId = GetDefault<ULureProgressionSettings>()->DefaultCoolerId;
-	}
 	if (Capacity <= 0)
 	{
+		CoolerId = ResolveCoolerId(CoolerId);
 		Capacity = ResolveSlots(CoolerId);
+	}
+	else if (CoolerId.IsNone())
+	{
+		CoolerId = GetDefault<ULureProgressionSettings>()->DefaultCoolerId;
 	}
 }
 
@@ -97,10 +129,7 @@ void ULureCoolerComponent::SetCoolerTable(const UDataTable* Table)
 	bTableInjected = true;
 	if (GetOwner() && GetOwner()->HasAuthority())
 	{
-		if (CoolerId.IsNone())
-		{
-			CoolerId = GetDefault<ULureProgressionSettings>()->DefaultCoolerId;
-		}
+		CoolerId = ResolveCoolerId(CoolerId);
 		Capacity = ResolveSlots(CoolerId);
 		NotifyChanged();
 	}
@@ -217,7 +246,7 @@ void ULureCoolerComponent::RestoreState(FName InCoolerId, const TArray<FFishInst
 	{
 		return;
 	}
-	CoolerId = InCoolerId.IsNone() ? GetDefault<ULureProgressionSettings>()->DefaultCoolerId : InCoolerId;
+	CoolerId = ResolveCoolerId(InCoolerId); // None or an unknown row (renamed/removed) -> the default row
 	Capacity = ResolveSlots(CoolerId);
 	StoredFish.Reset();
 	for (const FFishInstance& Fish : InFish)

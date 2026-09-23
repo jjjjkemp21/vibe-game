@@ -11,9 +11,9 @@ Implementation decisions by the unreal-engineer, 2026-09-23 (lane eng5). Code: `
 - `DT_PlayerLevel.csv` (`FPlayerLevelRow`): `Level` (1..N, no gaps), `XpToNext` (XP from the start of the level to the next; > 0 below the cap, 0 on the last level; must not decrease). Placeholder curve: 10 levels, 40, 70, 110, 160, 220, 290, 370, 460, 560 XP.
 - `DT_Cooler.csv` (`FCoolerRow`): `DisplayName`, `Slots` (1..100). `Basic` = 8 slots (every new player), `Large` = 14 (upgrade row, not sold yet).
 - `DT_FishMarket.csv` (`FFishMarketRow`): a buyer (dock or NPC): `DisplayName`, `SellMultiplier` (0 < x <= 10). `Default` = 1.0 (sell points without a MarketId), `PalmKeyDock` = 1.0.
-- Settings: Project Settings > Game > Progression (`[/Script/VibeGame.LureProgressionSettings]` in `Config/DefaultGame.ini`): table paths, `DefaultCoolerId`, `DefaultMarketId`, `FallbackCoolerSlots` (only when DT_Cooler is missing), `StartingMoney`, `bShowPlaceholderText`.
+- Settings: Project Settings > Game > Progression (`[/Script/VibeGame.LureProgressionSettings]` in `Config/DefaultGame.ini`): table paths, `DefaultCoolerId`, `DefaultMarketId`, `FallbackCoolerSlots` (C++ default only, used only when DT_Cooler is missing), `StartingMoney`, `bShowPlaceholderText`.
 - Validation: `FLureProgressionData::ValidatePlayerLevelTable / ValidateCoolerTable / ValidateMarketTable` and `ValidateCsvSource` (text in a number cell, a fraction in a whole-number cell, unknown or missing columns, duplicate row names). Reusable on reimport.
-- Missing tables never break the game: no DT_PlayerLevel = XP still counts and the level waits; no DT_Cooler = `FallbackCoolerSlots`; no DT_FishMarket or row = multiplier 1. Each logs a Warning (the market once per sell point).
+- Missing tables never break the game: no DT_PlayerLevel = XP still counts and the level waits; no DT_Cooler (or no default row) = `FallbackCoolerSlots` (set only in C++, `LureProgressionSettings.h`); a cooler id DT_Cooler doesn't have (e.g. a save from before a row was renamed or removed) switches to the `DefaultCoolerId` row, fish kept; no DT_FishMarket or row = multiplier 1. Each logs a Warning (the market once per sell point).
 
 ## Cooler
 - Slots hold `FFishInstance` records (never re-rolled or re-priced), in the order they were added, no gaps (slot = index).

@@ -40,7 +40,9 @@ public:
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category="Cooler")
 	FName DefaultCoolerId;
 
-	/** Cooler size used only when DT_Cooler (or its row) is missing, so the game still works (a Warning is logged) */
+	/** Emergency cooler size, used only when DT_Cooler itself (or its DefaultCoolerId row) is missing, so the game still works (Warning).
+	 *  An unknown row (e.g. an old save) uses the DefaultCoolerId row instead. The one place for this value: not set in DefaultGame.ini,
+	 *  and not a copy of the Basic row (its size lives only in data/tables/DT_Cooler.csv). */
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category="Cooler", meta=(ClampMin="1"))
 	int32 FallbackCoolerSlots = 8;
 

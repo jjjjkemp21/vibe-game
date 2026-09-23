@@ -15,6 +15,8 @@
 #include "Progression/LureProgressionLibrary.h"
 #include "Progression/LureProgressionSettings.h"
 #include "Progression/LureSellPoint.h"
+#include "Misc/FileHelper.h"
+#include "Misc/Paths.h"
 #include "Serialization/MemoryReader.h"
 #include "Serialization/MemoryWriter.h"
 #include "Serialization/ObjectAndNameAsStringProxyArchive.h"
@@ -574,6 +576,64 @@ bool FProgressionSaveRoundTrip::RunTest(const FString& Parameters)
 	NoCooler.CoolerId = NAME_None;
 	Target.Progression->ApplySaveData(NoCooler);
 	TestEqual(TEXT("no saved cooler row = the default cooler"), Target.Cooler->GetCoolerId(), FName(TEXT("Basic")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FProgressionSaveUnknownCoolerUsesDefaultRow, "Project.Progression.Save.UnknownCoolerUsesDefaultRow", LPT::Flags)
+bool FProgressionSaveUnknownCoolerUsesDefaultRow::RunTest(const FString& Parameters)
+{
+	// QA T010-O2/O3: a saved cooler id that DT_Cooler no longer has switches to the DefaultCoolerId row (not FallbackCoolerSlots);
+	// FallbackCoolerSlots is used only when the table itself is missing.
+	using namespace ProgressionComponentTest;
+	FTables Tables(*this);
+	LPT::FWorld World;
+	if (!World.Create(*this))
+	{
+		return false;
+	}
+	const LPT::FPlayer Player = LPT::SpawnPlayer(*this, World, Tables.Levels.Get(), Tables.Coolers.Get());
+	const LPT::FPlayer NoTable = LPT::SpawnPlayer(*this, World, Tables.Levels.Get(), Tables.Coolers.Get());
+	if (!Player.IsValid() || !NoTable.IsValid())
+	{
+		return false;
+	}
+	const ULureProgressionSettings* Settings = GetDefault<ULureProgressionSettings>();
+	TestEqual(TEXT("fixture: the default cooler row is Basic"), Settings->DefaultCoolerId, FName(TEXT("Basic")));
+
+	FLureProgressSaveData Save;
+	Save.CoolerId = TEXT("RemovedCooler");
+	Save.CoolerFish = { LPT::MakeFish(TEXT("A"), 10, 1), LPT::MakeFish(TEXT("B"), 20, 1) };
+	AddExpectedMessage(TEXT("has no row 'RemovedCooler'; using the default cooler row 'Basic'"), ELogVerbosity::Warning, EAutomationExpectedMessageFlags::Contains, 1);
+	AddExpectedMessage(TEXT("has no row 'Nope'; using the default cooler row 'Basic'"), ELogVerbosity::Warning, EAutomationExpectedMessageFlags::Contains, 1);
+	Player.Progression->ApplySaveData(Save);
+	TestEqual(TEXT("an unknown saved cooler id becomes the default row"), Player.Cooler->GetCoolerId(), FName(TEXT("Basic")));
+	TestEqual(TEXT("... with the default row's size (fixture Basic = 3), not FallbackCoolerSlots"), Player.Cooler->GetCapacity(), 3);
+	TestEqual(TEXT("the fish are kept"), Player.Cooler->GetNumFish(), 2);
+	TestEqual(TEXT("the next save stores the default row"), Player.Progression->GetSaveData().CoolerId, FName(TEXT("Basic")));
+	TestEqual(TEXT("ResolveSlots of an unknown row = the default row's slots"), Player.Cooler->ResolveSlots(TEXT("Nope")), 3);
+
+	// Only a missing table uses the C++ fallback size; the id is kept (nothing to check it against).
+	AddExpectedMessage(TEXT("FallbackCoolerSlots"), ELogVerbosity::Warning, EAutomationExpectedMessageFlags::Contains, -1);
+	NoTable.Cooler->SetCoolerTable(nullptr);
+	NoTable.Progression->ApplySaveData(Save);
+	TestEqual(TEXT("no DT_Cooler: FallbackCoolerSlots"), NoTable.Cooler->GetCapacity(), FMath::Max(1, Settings->FallbackCoolerSlots));
+	TestEqual(TEXT("no DT_Cooler: the saved id is kept"), NoTable.Cooler->GetCoolerId(), FName(TEXT("RemovedCooler")));
+	TestEqual(TEXT("no DT_Cooler: the fish are kept"), NoTable.Cooler->GetNumFish(), 2);
+
+	// The fallback size lives in one place (C++): DefaultGame.ini must not set a second copy.
+	FString Ini;
+	const FString IniPath = FPaths::ProjectConfigDir() / TEXT("DefaultGame.ini");
+	if (TestTrue(TEXT("DefaultGame.ini is readable"), FFileHelper::LoadFileToString(Ini, *IniPath)))
+	{
+		TArray<FString> Lines;
+		Ini.ParseIntoArrayLines(Lines);
+		bool bSetInIni = false;
+		for (const FString& Line : Lines)
+		{
+			bSetInIni |= Line.TrimStart().StartsWith(TEXT("FallbackCoolerSlots="));
+		}
+		TestFalse(TEXT("FallbackCoolerSlots is not set in DefaultGame.ini (C++ default only)"), bSetInIni);
+	}
 	return true;
 }
 

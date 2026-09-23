@@ -157,6 +157,38 @@ bool FProgressionInteractSellPointFlow::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FProgressionInteractDestroyedSellPointSellsNothing, "Project.Progression.Interact.DestroyedSellPointSellsNothing", LPT::Flags)
+bool FProgressionInteractDestroyedSellPointSellsNothing::RunTest(const FString& Parameters)
+{
+	// QA T010-O1: a sell point that is being destroyed, passed in directly, must not sell (TryInteract, SellAll, SellOne).
+	using namespace ProgressionInteractionTest;
+	FTables Tables(*this);
+	LPT::FWorld World;
+	if (!World.Create(*this))
+	{
+		return false;
+	}
+	const LPT::FPlayer Player = LPT::SpawnPlayer(*this, World, Tables.Levels.Get(), Tables.Coolers.Get(), /*bWithPawn*/ true, FVector(100.0f, 0.0f, 0.0f));
+	ALureSellPoint* Point = LPT::SpawnSellPoint(*this, World, FVector::ZeroVector, Tables.Markets.Get(), TEXT("Premium"), 300.0f);
+	if (!Player.IsValid() || !Player.Pawn || !Player.Interaction || !Point)
+	{
+		return false;
+	}
+	TestEqual(TEXT("2 fish in the cooler"), LPT::FillCooler(Player.Cooler, { 10, 20 }), 2);
+	TestTrue(TEXT("in range of a live sell point"), Point->IsInInteractionRange(Player.Pawn, 0.0f));
+
+	Point->Destroy();
+	TestFalse(TEXT("the sell point is no longer valid"), IsValid(Point));
+	TestFalse(TEXT("TryInteract refuses a destroyed sell point"), Player.Interaction->TryInteract(Point, INDEX_NONE));
+	TestFalse(TEXT("... also for one slot"), Player.Interaction->TryInteract(Point, 0));
+	TestEqual(TEXT("SellAll on a destroyed sell point sells nothing"), Point->SellAll(Player.Pawn).FishSold, 0);
+	TestEqual(TEXT("SellOne on a destroyed sell point sells nothing"), Point->SellOne(Player.Pawn, 0).FishSold, 0);
+	TestEqual(TEXT("the fish are still in the cooler"), Player.Cooler->GetNumFish(), 2);
+	TestEqual(TEXT("no money paid"), Player.Progression->GetMoney(), 0);
+	TestFalse(TEXT("TryInteract refuses null"), Player.Interaction->TryInteract(nullptr));
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FProgressionInteractCharacterBindsInteract, "Project.Progression.Interact.CharacterBindsInteract", LPT::Flags)
 bool FProgressionInteractCharacterBindsInteract::RunTest(const FString& Parameters)
 {

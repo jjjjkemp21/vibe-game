@@ -95,6 +95,10 @@ bool ULureInteractionComponent::TryInteract(AActor* Target, int32 Option)
 		UE_LOG(LogLureProgression, Warning, TEXT("%s: TryInteract is server-only; ignored on this client."), *GetPathNameSafe(this));
 		return false;
 	}
+	if (!IsValid(Target))
+	{
+		return false; // null or being destroyed
+	}
 	APawn* Pawn = GetPawn();
 	ILureInteractable* Interactable = Cast<ILureInteractable>(Target);
 	if (!Pawn || !Interactable)

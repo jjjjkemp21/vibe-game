@@ -94,8 +94,13 @@ public:
 	/** Uses Table instead of the settings' DT_Cooler (tests, tools). Re-resolves the capacity on the server. */
 	void SetCoolerTable(const UDataTable* Table);
 
-	/** Slots of a DT_Cooler row, or the settings' FallbackCoolerSlots (with a Warning) if the table or row is missing */
+	/** Slots of a DT_Cooler row. An unknown row uses the default row (settings DefaultCoolerId, Warning);
+	 *  FallbackCoolerSlots only if DT_Cooler itself (or its default row) is missing. */
 	int32 ResolveSlots(FName InCoolerId) const;
+
+	/** The row to use for InCoolerId: None, or a row DT_Cooler doesn't have, becomes DefaultCoolerId (if that row exists).
+	 *  Without a table the id is kept as is. */
+	FName ResolveCoolerId(FName InCoolerId) const;
 
 	/** After any change (server) and after replication (client) */
 	UPROPERTY(BlueprintAssignable, Category="Lure|Cooler")

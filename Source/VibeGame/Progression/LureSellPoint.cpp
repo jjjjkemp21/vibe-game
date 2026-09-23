@@ -111,7 +111,7 @@ void ALureSellPoint::WarnMarketOnce(const FString& Message) const
 FLureSaleResult ALureSellPoint::SellAll(APawn* Seller)
 {
 	ULureProgressionComponent* Progression = ULureProgressionLibrary::GetProgression(Seller);
-	if (!HasAuthority() || !Progression || !IsInInteractionRange(Seller, ServerRangeSlack))
+	if (!IsValid(this) || !HasAuthority() || !Progression || !IsInInteractionRange(Seller, ServerRangeSlack))
 	{
 		return FLureSaleResult();
 	}
@@ -123,7 +123,7 @@ FLureSaleResult ALureSellPoint::SellAll(APawn* Seller)
 FLureSaleResult ALureSellPoint::SellOne(APawn* Seller, int32 SlotIndex)
 {
 	ULureProgressionComponent* Progression = ULureProgressionLibrary::GetProgression(Seller);
-	if (!HasAuthority() || !Progression || !IsInInteractionRange(Seller, ServerRangeSlack))
+	if (!IsValid(this) || !HasAuthority() || !Progression || !IsInInteractionRange(Seller, ServerRangeSlack))
 	{
 		return FLureSaleResult();
 	}
