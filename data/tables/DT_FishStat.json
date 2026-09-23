@@ -1,0 +1,62 @@
+[
+	{
+		"Name": "Weight",
+		"Tag": "Fish.Stat.Weight",
+		"DisplayName": "Weight (kg)",
+		"Min": 0.01,
+		"Max": 1000,
+		"Default": 1,
+		"bIsDifficultyStat": false,
+		"DevComment": "The rolled weight. Clamp range for every species; modifiers like Giant may exceed WeightMax up to Max. PLACEHOLDER numbers (T-008)."
+	},
+	{
+		"Name": "Strength",
+		"Tag": "Fish.Stat.Strength",
+		"DisplayName": "Strength",
+		"Min": 0,
+		"Max": 1000,
+		"Default": 0,
+		"bIsDifficultyStat": true,
+		"DevComment": "Pull force in the reel fight (T-007). PLACEHOLDER range."
+	},
+	{
+		"Name": "Stamina",
+		"Tag": "Fish.Stat.Stamina",
+		"DisplayName": "Stamina",
+		"Min": 0,
+		"Max": 1000,
+		"Default": 0,
+		"bIsDifficultyStat": true,
+		"DevComment": "How long it fights (T-007). PLACEHOLDER range."
+	},
+	{
+		"Name": "Speed",
+		"Tag": "Fish.Stat.Speed",
+		"DisplayName": "Speed",
+		"Min": 0,
+		"Max": 1000,
+		"Default": 0,
+		"bIsDifficultyStat": true,
+		"DevComment": "Run and dart speed (T-007). PLACEHOLDER range."
+	},
+	{
+		"Name": "Aggression",
+		"Tag": "Fish.Stat.Aggression",
+		"DisplayName": "Aggression",
+		"Min": 0,
+		"Max": 1000,
+		"Default": 0,
+		"bIsDifficultyStat": true,
+		"DevComment": "How often it makes sudden runs (T-007). PLACEHOLDER range."
+	},
+	{
+		"Name": "Glow",
+		"Tag": "Fish.Stat.Glow",
+		"DisplayName": "Glow",
+		"Min": 0,
+		"Max": 100,
+		"Default": 0,
+		"bIsDifficultyStat": false,
+		"DevComment": "Visual glow strength for glowing fish. No starter modifier uses it yet (shows a stat added as data)."
+	}
+]

@@ -1,0 +1,77 @@
+[
+	{
+		"Name": "Common",
+		"DisplayName": "Common",
+		"Rank": 0,
+		"RollWeight": 70,
+		"ValueMultiplier": 1,
+		"XpMultiplier": 1,
+		"LevelBonus": 0,
+		"StatMods": [],
+		"CueColor": { "R": 1, "G": 1, "B": 1, "A": 0 },
+		"DevComment": "PLACEHOLDER numbers (T-008). No visual cue."
+	},
+	{
+		"Name": "Uncommon",
+		"DisplayName": "Uncommon",
+		"Rank": 1,
+		"RollWeight": 22,
+		"ValueMultiplier": 1.5,
+		"XpMultiplier": 1.25,
+		"LevelBonus": 0,
+		"StatMods": [
+			{ "StatTag": "Fish.Stat.Strength", "Op": "Multiply", "Value": 1.05 },
+			{ "StatTag": "Fish.Stat.Stamina", "Op": "Multiply", "Value": 1.05 }
+		],
+		"CueColor": { "R": 0.35, "G": 0.85, "B": 0.45, "A": 0.5 },
+		"DevComment": "PLACEHOLDER numbers (T-008). Green sheen."
+	},
+	{
+		"Name": "Rare",
+		"DisplayName": "Rare",
+		"Rank": 2,
+		"RollWeight": 8,
+		"ValueMultiplier": 2.5,
+		"XpMultiplier": 1.75,
+		"LevelBonus": 1,
+		"StatMods": [
+			{ "StatTag": "Fish.Stat.Strength", "Op": "Multiply", "Value": 1.15 },
+			{ "StatTag": "Fish.Stat.Stamina", "Op": "Multiply", "Value": 1.15 }
+		],
+		"CueColor": { "R": 0.3, "G": 0.6, "B": 1, "A": 0.75 },
+		"DevComment": "PLACEHOLDER numbers (T-008). Blue sheen."
+	},
+	{
+		"Name": "Epic",
+		"DisplayName": "Epic",
+		"Rank": 3,
+		"RollWeight": 0,
+		"ValueMultiplier": 5,
+		"XpMultiplier": 3,
+		"LevelBonus": 2,
+		"StatMods": [
+			{ "StatTag": "Fish.Stat.Strength", "Op": "Multiply", "Value": 1.3 },
+			{ "StatTag": "Fish.Stat.Stamina", "Op": "Multiply", "Value": 1.3 },
+			{ "StatTag": "Fish.Stat.Aggression", "Op": "Add", "Value": 10 }
+		],
+		"CueColor": { "R": 0.7, "G": 0.4, "B": 1, "A": 0.9 },
+		"DevComment": "Disabled in the beginner zone (RollWeight 0): shows that tiers are just data. PLACEHOLDER numbers. Purple glow."
+	},
+	{
+		"Name": "Legendary",
+		"DisplayName": "Legendary",
+		"Rank": 4,
+		"RollWeight": 0,
+		"ValueMultiplier": 12,
+		"XpMultiplier": 6,
+		"LevelBonus": 3,
+		"StatMods": [
+			{ "StatTag": "Fish.Stat.Strength", "Op": "Multiply", "Value": 1.5 },
+			{ "StatTag": "Fish.Stat.Stamina", "Op": "Multiply", "Value": 1.5 },
+			{ "StatTag": "Fish.Stat.Speed", "Op": "Multiply", "Value": 1.1 },
+			{ "StatTag": "Fish.Stat.Aggression", "Op": "Add", "Value": 20 }
+		],
+		"CueColor": { "R": 1, "G": 0.75, "B": 0.2, "A": 1 },
+		"DevComment": "Disabled in the beginner zone (RollWeight 0). PLACEHOLDER numbers. Gold glow."
+	}
+]

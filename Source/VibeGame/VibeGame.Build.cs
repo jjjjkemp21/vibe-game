@@ -26,6 +26,9 @@ public class VibeGame : ModuleRules
 			"Json"
 		});
 
+		// Fish system (T-008): row structs expose gameplay tags; UFishSettings is a UDeveloperSettings
+		PublicDependencyModuleNames.AddRange(new string[] { "GameplayTags", "DeveloperSettings" });
+
 		PublicIncludePaths.AddRange(new string[] {
 			"VibeGame",
 			"VibeGame/Variant_Platforming",
