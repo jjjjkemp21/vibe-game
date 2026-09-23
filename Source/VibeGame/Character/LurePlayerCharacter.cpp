@@ -73,6 +73,7 @@ ALurePlayerCharacter::ALurePlayerCharacter(const FObjectInitializer& ObjectIniti
 	FirstPersonArmsAnimClass = TSoftClassPtr<UAnimInstance>(FSoftObjectPath(TEXT("/Game/Art/Characters/FPArms/ABP_FPArms.ABP_FPArms_C")));
 	StanceDipAnimation = TSoftObjectPtr<UAnimSequenceBase>(FSoftObjectPath(TEXT("/Game/Art/Characters/FPArms/A_FPArms_StanceDip.A_FPArms_StanceDip")));
 	StanceAdditiveSlot = TEXT("StanceAdditive");
+	SwimStrokeAnimation = TSoftObjectPtr<UAnimSequenceBase>(FSoftObjectPath(TEXT("/Game/Art/Characters/FPArms/A_FPArms_SwimStroke.A_FPArms_SwimStroke"))); // not made yet (T-026)
 
 	// Third-person body slot (empty for now): never visible to its owner, origin at the feet.
 	GetMesh()->SetOwnerNoSee(true);
@@ -238,6 +239,7 @@ void ALurePlayerCharacter::LoadArmsAnimation()
 			LoadedStanceDip = StanceDipAnimation.LoadSynchronous();
 		}
 	}
+	LoadSwimStroke();
 }
 
 void ALurePlayerCharacter::UpdateArmsMotion(float DeltaSeconds)
@@ -262,12 +264,21 @@ void ALurePlayerCharacter::UpdateArmsMotion(float DeltaSeconds)
 	// Walk bob + look sway as an offset on the arms (the camera stays steady).
 	const FLureMovementRow& Row = Movement->GetRow(Movement->GetMovementState());
 	UpdateArmsPose(Row, DeltaSeconds);
-	const FTransform Offset = FLureArmsBob::Step(ArmsBobState, Row, GetDefault<ULureCharacterSettings>()->ArmsMotion,
+	const FLureArmsMotionSettings& ArmsSettings = GetDefault<ULureCharacterSettings>()->ArmsMotion;
+	FTransform Offset = FLureArmsBob::Step(ArmsBobState, Row, ArmsSettings,
 		static_cast<float>(Movement->Velocity.Size2D()), Movement->IsMovingOnGround(), bHoldingRod && ArmsPose != EFPArmsPose::ProneTuck, LookRate, DeltaSeconds);
+
+	// Per-state pull-back toward the eye (DT_Movement ArmsPullBack): prone, the hands stay out of a wall the capsule touches.
+	ArmsPullBackNow = (DeltaSeconds > 0.f && ArmsSettings.StanceOffsetBlendSpeed > 0.f)
+		? FMath::FInterpTo(ArmsPullBackNow, Row.ArmsPullBack, DeltaSeconds, ArmsSettings.StanceOffsetBlendSpeed)
+		: Row.ArmsPullBack;
+	Offset.AddToTranslation(FVector(-ArmsPullBackNow, 0.f, 0.f));
+	// Swimming (T-026): the stroke loop, or the placeholder lowering. The rod is put away in the water (Idle pose, fishing-rules.md).
+	const FTransform ArmsOffset = ApplySwimArms(Offset, DeltaSeconds);
 	// Looking up, the arms follow only ArmsPitchFollowUp of the pitch (prone: 0, so the rod stays under a 60 cm ceiling).
-	FRotator ArmsRotation = Offset.Rotator();
+	FRotator ArmsRotation = ArmsOffset.Rotator();
 	ArmsRotation.Pitch += FLureRodPose::ArmsCounterPitch(RodPoseState.PitchFollowUp, ControlRotation.Pitch);
-	FirstPersonArms->SetRelativeLocationAndRotation(Offset.GetLocation(), ArmsRotation);
+	FirstPersonArms->SetRelativeLocationAndRotation(ArmsOffset.GetLocation(), ArmsRotation);
 
 	// Additive dip whenever the posture changes.
 	const ELureStance Stance = Movement->GetStance();
@@ -373,10 +384,25 @@ float ALurePlayerCharacter::EvaluateEyeBlend(float From, float To, float Elapsed
 	return From + (To - From) * Smooth;
 }
 
+ELureMovementState ALurePlayerCharacter::GetEyeState() const
+{
+	const ULureCharacterMovementComponent* Movement = GetLureMovement();
+	if (!Movement)
+	{
+		return ELureMovementState::Stand;
+	}
+	// Crawled off a ledge: you go prone again on landing, so the camera stays at the prone height through the fall.
+	if (Movement->IsFalling() && Movement->IsProneRequested())
+	{
+		return ELureMovementState::Prone;
+	}
+	return Movement->GetMovementState();
+}
+
 float ALurePlayerCharacter::GetTargetEyeHeight() const
 {
 	const ULureCharacterMovementComponent* Movement = GetLureMovement();
-	return Movement ? Movement->GetRow(Movement->GetMovementState()).EyeHeight : CurrentEyeHeight;
+	return Movement ? Movement->GetRow(GetEyeState()).EyeHeight : CurrentEyeHeight;
 }
 
 void ALurePlayerCharacter::BeginEyeBlend(float TargetEyeHeight, float Duration)
@@ -399,12 +425,16 @@ void ALurePlayerCharacter::UpdateEyeHeight(float DeltaSeconds)
 		return;
 	}
 
-	// The target row's TransitionTime is the time to reach its eye height (lead decision A8).
-	const FLureMovementRow& Row = Movement->GetRow(Movement->GetMovementState());
+	// The target row's TransitionTime is the time to reach its eye height (lead decision A8), unless the row we leave
+	// sets an ExitTransitionTime (getting up from prone takes longer than going down to crouch; T-004 playtest).
+	const ELureMovementState State = GetEyeState();
+	const FLureMovementRow& Row = Movement->GetRow(State);
 	if (!FMath::IsNearlyEqual(Row.EyeHeight, EyeBlendTo, 0.01f))
 	{
-		BeginEyeBlend(Row.EyeHeight, Row.TransitionTime);
+		const float ExitTime = Movement->GetRow(EyeBlendState).ExitTransitionTime;
+		BeginEyeBlend(Row.EyeHeight, ExitTime > 0.f ? ExitTime : Row.TransitionTime);
 	}
+	EyeBlendState = State;
 
 	if (EyeBlendElapsed < EyeBlendDuration && FMath::IsFinite(DeltaSeconds) && DeltaSeconds > 0.f)
 	{
@@ -474,6 +504,7 @@ void ALurePlayerCharacter::ApplyEyeHeight()
 void ALurePlayerCharacter::SnapEyeHeightToStance()
 {
 	const float Target = GetTargetEyeHeight();
+	EyeBlendState = GetEyeState();
 	CurrentEyeHeight = Target;
 	EyeBlendFrom = Target;
 	EyeBlendTo = Target;
@@ -542,6 +573,13 @@ void ALurePlayerCharacter::RequestStance(ELureStance Stance)
 	{
 		return;
 	}
+	// No crouch or prone in the water (T-026), nor where the water is too deep for that stance (B2: the capsule center
+	// would go under). Refused before anything changes, not queued; the movement component refuses the same on the server.
+	if (Stance != ELureStance::Stand && (IsSwimming() || Movement->IsStanceTooDeepForWater(Stance)))
+	{
+		ShowStanceHint(Stance == ELureStance::Crouch ? TEXT("Too deep to crouch here.") : TEXT("Too deep to go prone here."));
+		return;
+	}
 
 	switch (Stance)
 	{
@@ -567,6 +605,22 @@ void ALurePlayerCharacter::RequestStance(ELureStance Stance)
 		}
 		break;
 	}
+}
+
+void ALurePlayerCharacter::ShowStanceHint(const FString& Hint)
+{
+	StanceHint = Hint;
+	StanceHintTime = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0;
+}
+
+FString ALurePlayerCharacter::GetStanceHintText() const
+{
+	const UWorld* World = GetWorld();
+	if (StanceHint.IsEmpty() || !World || World->GetTimeSeconds() - StanceHintTime > StanceHintDuration)
+	{
+		return FString();
+	}
+	return StanceHint;
 }
 
 void ALurePlayerCharacter::ToggleCrouch()

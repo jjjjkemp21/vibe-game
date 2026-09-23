@@ -63,17 +63,25 @@ bool FQAMoveDataAllFourStancesPresent::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
+	// T-026 added the Swim and SwimSprint rows (the test name predates them).
 	TArray<FName> Names = Table->GetRowNames();
-	for (const TCHAR* Required : { TEXT("Stand"), TEXT("Sprint"), TEXT("Crouch"), TEXT("Prone") })
+	for (const TCHAR* Required : { TEXT("Stand"), TEXT("Sprint"), TEXT("Crouch"), TEXT("Prone"), TEXT("Swim"), TEXT("SwimSprint") })
 	{
 		TestTrue(FString::Printf(TEXT("row %s present"), Required), Names.Contains(FName(Required)));
 	}
 	for (const FName& Name : Names)
 	{
-		const bool bKnown = Name == TEXT("Stand") || Name == TEXT("Sprint") || Name == TEXT("Crouch") || Name == TEXT("Prone");
+		const bool bKnown = Name == TEXT("Stand") || Name == TEXT("Sprint") || Name == TEXT("Crouch") || Name == TEXT("Prone")
+			|| Name == TEXT("Swim") || Name == TEXT("SwimSprint");
 		TestTrue(FString::Printf(TEXT("row '%s' is a known stance (typo?)"), *Name.ToString()), bKnown);
 	}
-	TestEqual(TEXT("exactly 4 rows"), Names.Num(), 4);
+	TestEqual(TEXT("exactly 6 rows"), Names.Num(), 6);
+	// QA review of the T-026 fixture edit: the list above must stay in step with the movement states the code resolves.
+	TestEqual(TEXT("one row per ELureMovementState"), Names.Num(), static_cast<int32>(FLureMovementData::NumStates));
+	for (const ELureMovementState State : TEnumRange<ELureMovementState>())
+	{
+		TestTrue(FString::Printf(TEXT("state row %s present"), *FLureMovementData::GetRowName(State).ToString()), Names.Contains(FLureMovementData::GetRowName(State)));
+	}
 	return true;
 }
 
@@ -556,12 +564,14 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FQAMoveFallbackUnknownExtraRowIgnored, "Project
 bool FQAMoveFallbackUnknownExtraRowIgnored::RunTest(const FString& Parameters)
 {
 	TArray<QAM::FRowSpec> Rows = QAM::FixtureARows();
-	Rows.Add({ TEXT("Swim"), 120.f, 1000.f, 40.f, 30.f, 50.f, 0.3f, 0.3f, 0.f, false });
+	Rows.Add({ TEXT("Swimm"), 120.f, 1000.f, 40.f, 30.f, 50.f, 0.3f, 0.3f, 0.f, false }); // a typo row ("Swim" is a real row since T-026)
 	uint8 Mask = 0xFF;
 	const TArray<FLureMovementRow> Resolved = QAM::Resolve(QAM::MakeTable(*this, Rows), &Mask);
 	TestEqual(TEXT("no stance falls back because of an extra row"), static_cast<int32>(Mask), 0);
 	TestNearlyEqual(TEXT("Stand still from the table"), QAM::RowOf(Resolved, ELureMovementState::Stand).MaxSpeed, 311.f, 0.01f);
 	TestNearlyEqual(TEXT("Prone still from the table"), QAM::RowOf(Resolved, ELureMovementState::Prone).MaxSpeed, 89.f, 0.01f);
+	// The typo row sits next to the real "Swim" row: Swim must still come from its own row, not from "Swimm".
+	TestNearlyEqual(TEXT("Swim from its own row, not the typo row"), QAM::RowOf(Resolved, ELureMovementState::Swim).MaxSpeed, 151.f, 0.01f);
 	return true;
 }
 

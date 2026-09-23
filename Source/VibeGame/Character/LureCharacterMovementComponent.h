@@ -5,10 +5,34 @@
 #include "CoreMinimal.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Character/LureMovementTypes.h"
+#include "Character/LureSwimTypes.h"
 #include "LureCharacterMovementComponent.generated.h"
 
+class ALureLadder;
 class ALurePlayerCharacter;
 class UDataTable;
+
+/**
+ *  The server's reply to a client move (FCharacterMoveResponseDataContainer), plus the climb state the next predicted
+ *  moves depend on. Sent only with corrections (acks stay the engine's size): the climb plan while the server climbs,
+ *  and the takeoff feet height of the climb rule. The owning client restores both after the engine applies the
+ *  correction (ULureCharacterMovementComponent::ClientHandleMoveResponse), so its replay continues the server's climb.
+ *  Pattern for new predicted state: rebuild it from the saved move, or add it here.
+ */
+struct FLureMoveResponseDataContainer : public FCharacterMoveResponseDataContainer
+{
+	using Super = FCharacterMoveResponseDataContainer;
+
+	virtual void ServerFillResponseData(const UCharacterMovementComponent& CharacterMovement, const FClientAdjustment& PendingAdjustment) override;
+	virtual bool Serialize(UCharacterMovementComponent& CharacterMovement, FArchive& Ar, UPackageMap* PackageMap) override;
+
+	/** The server was climbing (MOVE_Custom ClimbOut or LedgeClimb) on this plan at the corrected move. */
+	bool bHasClimbPlan = false;
+	FLureClimbPlan ClimbPlan;
+
+	/** The server's climb-rule reference at the corrected move (ULureCharacterMovementComponent::GetTakeoffFeetHeight), cm. */
+	float TakeoffFeetHeight = 0.f;
+};
 
 /**
  *  Character movement for Lure.
@@ -25,6 +49,9 @@ class UDataTable;
  *    while crouched or prone, no jump while prone).
  *  - The resulting posture is replicated to other players through ACharacter::bIsCrouched and
  *    ALurePlayerCharacter::bIsProne (COND_SimulatedOnly, OnRep resizes the proxy capsule).
+ *  - Climbs (T-026 netfix, docs/specs/swimming.md "Networking"): only the saved move's Jump flag travels; the climb
+ *    starts inside the move (never in DoJump) and the server plans its own. Corrections carry the plan and the takeoff
+ *    height (FLureMoveResponseDataContainer). Other players' copies follow the replicated movement during a climb.
  *
  *  Crouch keeps the engine's replicated crouch (bWantsToCrouch, bIsCrouched, OnRep_IsCrouched, IsCrouching()), but
  *  Crouch()/UnCrouch() are overridden so every capsule change goes through ResizeCapsuleForStance: the heights come
@@ -37,6 +64,10 @@ class ULureCharacterMovementComponent : public UCharacterMovementComponent
 	GENERATED_BODY()
 
 	friend class FSavedMove_Lure;
+	friend struct FLureMoveResponseDataContainer;
+
+	/** Automation tests (Source/VibeGame/Tests) reach protected movement internals through this; gameplay code never does. */
+	friend struct FLureMovementTestAccess;
 
 public:
 
@@ -130,16 +161,123 @@ public:
 	virtual void Prone(bool bClientSimulation = false);
 	virtual void UnProne(bool bClientSimulation = false);
 
-	/** Prone is possible only on the ground (it is refused in the air, and ends if you walk off a ledge). */
+	/** Prone is possible only on the ground (it is refused in the air, and ends if you walk off a ledge), and not where the water is too deep for it. */
 	virtual bool CanProneInCurrentState() const;
+
+	/**
+	 *  Wading (T-026 B2): would going into Stance here put the capsule center in water? Then the stance is refused before
+	 *  anything changes (the engine would switch to swimming, stand you up and drop you out again: an in/out blip that
+	 *  cancels fishing). Only on the ground, where a stance change keeps the feet in place (e.g. crouch in 60 cm of water, prone in 30 cm).
+	 */
+	UFUNCTION(BlueprintPure, Category="Lure|Swim")
+	bool IsStanceTooDeepForWater(ELureStance Stance) const;
+
+	/** True if Point is inside the water volume the engine would pick there (the highest-priority physics volume holding it). */
+	bool IsPointInWater(const FVector& Point) const;
 
 	/** Master switch for prone (like the engine's CanEverCrouch). */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Lure|Movement")
 	bool bCanEverProne = true;
 
-	/** Largest sideways push (cm) used to make room for a wider capsule when getting up next to a wall. 0 = never push. */
+	/**
+	 *  Largest sideways push (cm) used to make room for a wider capsule when getting up next to walls. Never less than
+	 *  GetStanceNudgeLimit's automatic minimum (enough for walls on two sides, so a data change can't strand you prone).
+	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Lure|Movement", meta=(ClampMin="0"))
-	float MaxStanceNudge = 8.f;
+	float MaxStanceNudge = 14.f;
+
+	/** The push allowed when a capsule of OldRadius grows to NewRadius: max(MaxStanceNudge, sqrt(2) x (NewRadius - OldRadius) + 1 cm). */
+	float GetStanceNudgeLimit(float NewRadius, float OldRadius) const;
+
+	// ---- Swimming (T-026; defined in LureSwimMovement.cpp, spec docs/specs/swimming.md) ----
+	//  Water = a physics volume with bWaterVolume (ALureWaterVolume); the engine switches to MOVE_Swimming when the capsule
+	//  center enters it. While swimming: the Swim / SwimSprint rows, the Stand capsule, no crouch or prone (wishes are
+	//  cleared), Jump climbs out (MOVE_Custom ClimbOut). All of it runs in the predicted move, like the stances.
+
+	/** Climbing out of the water right now (MOVE_Custom, ELureCustomMovementMode::ClimbOut). */
+	UFUNCTION(BlueprintPure, Category="Lure|Swim")
+	bool IsClimbingOut() const;
+
+	/** Pulling up onto a ledge a jump reached (MOVE_Custom, ELureCustomMovementMode::LedgeClimb). */
+	UFUNCTION(BlueprintPure, Category="Lure|Movement")
+	bool IsLedgeClimbing() const;
+
+	/** Either climb (ClimbOut or LedgeClimb). */
+	bool IsClimbing() const { return IsClimbingOut() || IsLedgeClimbing(); }
+
+	/**
+	 *  Owning client only: true while it applies a server correction and replays its unacknowledged moves. The movement
+	 *  mode can pass through states the server never had then, so OnSwimStateChanged waits until it is over.
+	 */
+	bool IsReconcilingWithServer() const { return bReconcilingWithServer; }
+
+	/** In the water for gameplay: swimming or climbing out. No stances, no fishing. */
+	UFUNCTION(BlueprintPure, Category="Lure|Swim")
+	bool IsSwimmingOrClimbingOut() const { return IsSwimming() || IsClimbingOut(); }
+
+	/** The one surface rule: the row in use has SurfaceFloatDepth > 0 (the Swim rows). Otherwise the engine's free swimming runs (diving, later). */
+	UFUNCTION(BlueprintPure, Category="Lure|Swim")
+	bool ShouldFloatAtSurface() const;
+
+	/** Height of the water surface where the character is (its water volume's top), cm. False when not in water. */
+	UFUNCTION(BlueprintPure, Category="Lure|Swim")
+	bool GetWaterSurfaceHeight(float& OutSurfaceZ) const;
+
+	/** Highest edge (cm above the water) Jump would climb onto from here: the swim row's ClimbMaxHeight, or a ladder's. */
+	UFUNCTION(BlueprintPure, Category="Lure|Swim")
+	float GetClimbOutMaxHeight() const;
+
+	/** Pure query: is there an edge in front (or a ladder here) to climb out of the water onto right now, and how? Changes nothing. */
+	UFUNCTION(BlueprintPure, Category="Lure|Swim")
+	bool FindClimbOutPlan(FLureClimbPlan& OutPlan) const;
+
+	/**
+	 *  Pure query for the jump climb: airborne from a jump, on the way down, moving toward a ledge whose top is above the
+	 *  feet (within the capsule radius) and at most ClimbMaxHeight above the takeoff, with room to stand. Changes nothing.
+	 */
+	UFUNCTION(BlueprintPure, Category="Lure|Movement")
+	bool FindJumpClimbPlan(FLureClimbPlan& OutPlan) const;
+
+	/** Feet height where the current fall or jump started (the climb rule's reference), cm. */
+	UFUNCTION(BlueprintPure, Category="Lure|Movement")
+	float GetTakeoffFeetHeight() const { return TakeoffFeetHeight; }
+
+	/** The ladder whose grab zone holds Location (null if none). */
+	const ALureLadder* FindLadderAt(const FVector& Location) const;
+
+	/**
+	 *  Starts a climb out if FindClimbOutPlan finds one. Call it only inside a move (PerformMovement): Jump in the water
+	 *  queues it (DoJump) and PhysSwimming calls this, so the Jump flag still reaches the server in the saved move.
+	 */
+	bool TryStartClimbOut();
+
+	/** Starts a jump climb if FindJumpClimbPlan finds one (checked every falling update). */
+	bool TryStartJumpClimb();
+
+	/**
+	 *  Pure query for stepping out of the water (T-026 QA B3): surface swimming, pushing toward a submerged edge whose top
+	 *  is above the feet and at most MaxStepHeight up, where you stand with the capsule center out of the water (wading).
+	 *  The step out is a ClimbOut climb, so it is predicted and corrected like one. Changes nothing.
+	 */
+	bool FindStepOutPlan(float SurfaceZ, FLureClimbPlan& OutPlan) const;
+
+	/** Starts a step out if FindStepOutPlan finds one (PhysSurfaceSwimming, when the swimmer runs into an edge). */
+	bool TryStartStepOut(float SurfaceZ);
+
+	/**
+	 *  Vertical speed of the surface float after DeltaTime: a critically damped spring pulling the capsule center to
+	 *  TargetZ (implicit, so any frame time is stable). SettleTime = seconds to settle within about 2%. Pure, for tests.
+	 */
+	static float ComputeSurfaceFloatVelocity(float CenterZ, float VerticalSpeed, float TargetZ, float SettleTime, float DeltaTime);
+
+	// The swim feel (settle time, braking, climb-out reach and lowest edge) is data: DT_Movement Swim rows (T-026 D3/D4).
+
+	/** How close (cm) the body must be to a ledge's face for a jump to pull up onto it. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Lure|Movement", meta=(ClampMin="0"))
+	float JumpClimbReach = 10.f;
+
+	/** CharacterMovement: refuses a landing that would lift the feet onto a ledge higher than the climb rule allows (T-004 B1). */
+	virtual bool IsValidLandingSpot(const FVector& CapsuleLocation, const FHitResult& Hit) const override;
 
 	// ---- UCharacterMovementComponent ----
 
@@ -155,9 +293,90 @@ public:
 	virtual void UpdateCharacterStateAfterMovement(float DeltaSeconds) override;
 	virtual FNetworkPredictionData_Client* GetPredictionData_Client() const override;
 
+	/**
+	 *  A teleport (respawn, Lure.Teleport) ends a climb: the plan is dropped and the engine picks the mode at the new place
+	 *  (swimming in water, else falling/landing). T-026 B1. Runs where TeleportTo runs (the server; the owning client too
+	 *  when it teleports locally); the owning client of a server teleport gets the server's mode and no plan in the correction.
+	 */
+	virtual void OnTeleported() override;
+
+	/** Owning client: applies the server's reply, then restores the climb state a correction carries (FLureMoveResponseDataContainer). */
+	virtual void ClientHandleMoveResponse(const FCharacterMoveResponseDataContainer& MoveResponse) override;
+
 protected:
 
 	virtual bool ClientUpdatePositionAfterServerUpdate() override;
+	virtual void PerformMovement(float DeltaTime) override;
+
+	/** The engine calls this only when it really applies a correction (not for a stale or ignored one). */
+	virtual void OnClientCorrectionReceived(class FNetworkPredictionData_Client_Character& ClientData, float TimeStamp, FVector NewLocation, FVector NewVelocity,
+		FMovementBaseInterfaceData* NewMovementBaseInterfaceData, FName NewBaseBoneName, bool bHasBase, bool bBaseRelativePosition, uint8 ServerMovementMode,
+		FVector ServerGravityDirection) override;
+
+	// ---- Swimming (LureSwimMovement.cpp) ----
+	virtual void PhysSwimming(float DeltaTime, int32 Iterations) override;
+	virtual void PhysFalling(float DeltaTime, int32 Iterations) override;
+	virtual void PhysCustom(float DeltaTime, int32 Iterations) override;
+	virtual void OnMovementModeChanged(EMovementMode PreviousMovementMode, uint8 PreviousCustomMode) override;
+
+	/** What FindLedgePlan looks for. Heights are world Z, cm. */
+	struct FLedgeQuery
+	{
+		FVector Forward = FVector::ForwardVector;	// horizontal, normalized: where to look
+		float ReferenceZ = 0.f;						// the rule's zero (water surface or takeoff feet)
+		float MaxHeight = 0.f;						// highest allowed top above ReferenceZ
+		float LowestTopZ = 0.f;						// tops below this don't count
+		float HighestTopZ = TNumericLimits<float>::Max(); // extra cap on the top (a jump reaches only so far above the feet)
+		float FaceReach = 0.f;						// how far ahead the edge's face may be
+		const ALureLadder* Ladder = nullptr;		// at a ladder: the face is the ladder itself
+		float TargetRadius = 0.f;					// scaled capsule after the climb
+		float TargetHalfHeight = 0.f;
+		float Speed = 0.f;
+	};
+
+	/** The shared edge finder: face, top, room to stand, clear path. */
+	bool FindLedgePlan(const FLedgeQuery& Query, FLureClimbPlan& OutPlan) const;
+
+	/** Enters the climb mode on a plan. */
+	void StartClimb(const FLureClimbPlan& Plan, ELureCustomMovementMode Mode);
+
+	/** Surface swimming: horizontal swim input, vertical float spring to the row's SurfaceFloatDepth. */
+	void PhysSurfaceSwimming(float DeltaTime, int32 Iterations, float SurfaceZ);
+
+	/** Follows ClimbPlan: straight up along the edge, then onto it; walking at the end. Other players' copies follow the replicated movement. */
+	void PhysClimb(float DeltaTime, int32 Iterations);
+
+	/**
+	 *  The plan of the climb in progress. Client and server each plan the climb from the same move; when they disagree,
+	 *  the server's correction carries its plan (FLureMoveResponseDataContainer). Simulated proxies never have one.
+	 */
+	FLureClimbPlan ClimbPlan;
+	bool bHasClimbPlan = false;
+
+	/**
+	 *  Feet height when the character last left the ground or the water (set on entering MOVE_Falling). Carried in
+	 *  corrections. Deliberately NOT restored from saved moves: every replay starts from a correction, and the replay
+	 *  must recompute it wherever the corrected path enters Falling (a saved value would be the old, wrong path's).
+	 */
+	float TakeoffFeetHeight = 0.f;
+
+	/**
+	 *  Jump was pressed in the water with an edge to climb (set in DoJump, which runs before the owning client saves
+	 *  the move). PhysSwimming starts the climb inside the same move; PerformMovement drops a leftover request.
+	 */
+	bool bClimbOutRequested = false;
+
+	/** Server reply storage (registered with SetMoveResponseDataContainer in the constructor). */
+	FLureMoveResponseDataContainer LureMoveResponseData;
+
+	/** Set by OnClientCorrectionReceived while ClientHandleMoveResponse runs: the correction was really applied. */
+	bool bClientCorrectionApplied = false;
+
+	/** See IsReconcilingWithServer. */
+	bool bReconcilingWithServer = false;
+
+	/** After an applied correction: the server's takeoff height, and its plan if the corrected mode is a climb. */
+	void ApplyCorrectionClimbState(const FLureMoveResponseDataContainer& Response);
 
 	/** Resizes the capsule to Stance's row, keeping the feet in place on the ground. Checks for room when growing (not for client simulation or bForce). Returns false if blocked. */
 	bool ResizeCapsuleForStance(ELureStance Stance, bool bClientSimulation, bool bForce = false);

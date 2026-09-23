@@ -13,5 +13,6 @@ void UFPArmsAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 		ArmsPose = Character->GetArmsPose();
 		ArmsPoseBlendTime = Character->GetArmsPoseBlendTime();
 		Stance = Character->GetStance();
+		bSwimming = Character->IsSwimming();
 	}
 }

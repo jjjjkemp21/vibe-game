@@ -25,3 +25,21 @@ Answers to the qa-engineer's T-004 test-design questions (Saved/AgentLogs/qa/eng
 
 ## Seams the tests need (S1-S13 in the QA design, section 2)
 Stance and IsSprinting getters; the public request functions the input handlers call; a public or testable UpdateFromCompressedFlags path; a table-injection function (apply rows) or a settings pointer read at BeginPlay; access to the resolved rows and the fallback rows; camera/arms accessors; the arms mesh as a settable property; the replicated stance property names and OnRep; the fallback log category and warning text.
+
+## T-004 playtest fixes (lead decisions 2026-09-23; report Saved/AgentLogs/playtest/20260923-003511-T004-movement)
+- **B1, one climb rule (DT_Movement `ClimbMaxHeight`, land rows 100 cm):** a jump gets you onto ledges up to 100 cm
+  above where you jumped; 120 cm and higher always stops you (1 m crates are climbable: on Jimmy's playtest list).
+  A landing that lifts the feet onto a ledge's edge is refused (no hanging perched below a ledge top); instead, on the
+  way down, pressing toward a ledge whose top is within the rule and within the capsule radius above the feet pulls you
+  up onto it (`ClimbSpeed`, 400 cm/s; MOVE_Custom LedgeClimb, predicted). Swimming uses the same columns from the water
+  surface (60 cm). Tests: `Project.Movement.Climb.*`.
+  **0 or a missing column = no climb rule** (T-026 review D0): no ledge pull-up and no climb out, and landings are
+  the engine's (never refused), so a row imported before the column existed walks up slopes normally.
+- **B2, getting up next to walls:** `MaxStanceNudge` 14 cm, and never less than sqrt(2) x the radius difference + 1 cm
+  (a corner), so prone flush against a wall or in a corner can always stand or crouch.
+- **B3, prone arms:** DT_Movement `ArmsPullBack` (Prone 12 cm) moves the arms toward the eye so the hands stay out of a
+  wall the prone capsule touches and beyond the near clip.
+- **Feel (data):** Stand bob 1.5 / 1.0, Sprint bob 3.0 / 1.8 / pitch 1.5; `ExitTransitionTime` (Prone 0.42 s) times the
+  camera when leaving a state (getting up from prone). Sprint-into-prone braking unchanged (Jimmy's call).
+- **Crawling off a ledge:** while falling with the prone wish kept, the capsule grows upward from the feet and the camera
+  stays at the prone eye height, then you land prone (no 90 cm rise and 130 cm drop).

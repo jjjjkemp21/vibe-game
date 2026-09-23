@@ -6,6 +6,7 @@
 #include "GameFramework/Character.h"
 #include "Character/LureArmsBob.h"
 #include "Character/LureMovementTypes.h"
+#include "Character/LureSwimTypes.h"
 #include "LurePlayerCharacter.generated.h"
 
 class APlayerController;
@@ -110,6 +111,17 @@ public:
 	UFUNCTION(BlueprintCallable, Category="Lure|Movement")
 	void ToggleSprint();
 
+	/**
+	 *  Plain-text hint after a stance request the water refused (placeholder UI, e.g. "Too deep to crouch here."), for
+	 *  StanceHintDuration seconds; empty otherwise. Local player only (the request comes from its input). T-026 B2.
+	 */
+	UFUNCTION(BlueprintPure, Category="Lure|Movement")
+	FString GetStanceHintText() const;
+
+	/** How long a refused-stance hint stays up, seconds. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Lure|Movement", meta=(ClampMin="0"))
+	float StanceHintDuration = 2.5f;
+
 	/** Movement input (X = right, Y = forward, -1..1). */
 	UFUNCTION(BlueprintCallable, Category="Lure|Input")
 	void DoMove(float Right, float Forward);
@@ -170,6 +182,44 @@ public:
 	UFUNCTION(BlueprintCallable, Category="Lure|First Person")
 	bool PlayStanceDip(float PlayRate);
 
+	// ---- Swimming (T-026; LurePlayerCharacterSwim.cpp) ----
+
+	/**
+	 *  In the water: swimming, or climbing out of it. True from the moment you fall in until you stand on land again.
+	 *  No crouch, prone or fishing while this is true (fishing, T-006: cancel on OnSwimStateChanged or when this is true).
+	 */
+	UFUNCTION(BlueprintPure, Category="Lure|Swim")
+	bool IsSwimming() const;
+
+	/** Fires on every machine (server, owner, other players) when IsSwimming changes. */
+	UPROPERTY(BlueprintAssignable, Category="Lure|Swim")
+	FLureSwimStateChangedSignature OnSwimStateChanged;
+
+	/**
+	 *  Fires OnSwimStateChanged if IsSwimming changed since the last time it fired. Runs on every movement mode change,
+	 *  except while the owning client reconciles with a server correction: the movement component calls it once after that.
+	 */
+	void UpdateSwimState();
+
+	/** Swim-stroke clip for the arms (slot for the animation-artist). Loops in DefaultSlot while swimming; missing = the arms are lowered instead. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Lure|First Person")
+	TSoftObjectPtr<UAnimSequenceBase> SwimStrokeAnimation;
+
+	/** Placeholder while no swim-stroke clip exists: the arms drop this far (cm) and pitch down this much (degrees) in the water. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Lure|First Person", meta=(ClampMin="0"))
+	float SwimArmsDrop = 45.f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Lure|First Person")
+	float SwimArmsPitch = -35.f;
+
+	/** How fast the arms lower and come back (FInterpTo speed, 1/s). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Lure|First Person", meta=(ClampMin="0"))
+	float SwimArmsBlendSpeed = 6.f;
+
+	/** 0 = arms normal, 1 = fully lowered for swimming (local player only). */
+	UFUNCTION(BlueprintPure, Category="Lure|First Person")
+	float GetSwimArmsAlpha() const { return SwimArmsAlpha; }
+
 	/** The arms' current bob/sway offset relative to the camera. */
 	UFUNCTION(BlueprintPure, Category="Lure|First Person")
 	FTransform GetArmsBobOffset() const;
@@ -208,6 +258,7 @@ public:
 	virtual void RecalculateBaseEyeHeight() override;
 	virtual FVector GetPawnViewLocation() const override;
 	virtual void Landed(const FHitResult& Hit) override;
+	virtual void OnMovementModeChanged(EMovementMode PrevMovementMode, uint8 PreviousCustomMode = 0) override;
 
 protected:
 
@@ -259,6 +310,17 @@ private:
 	void UpdateArmsMotion(float DeltaSeconds);
 	void LoadArmsAnimation();
 
+	/** Swimming arms (T-026): the swim-stroke loop if the clip exists, else Offset lowered by SwimArmsAlpha. Returns the arms' offset. */
+	FTransform ApplySwimArms(const FTransform& Offset, float DeltaSeconds);
+	void LoadSwimStroke();
+
+	UPROPERTY(Transient)
+	TObjectPtr<UAnimSequenceBase> LoadedSwimStroke;
+
+	float SwimArmsAlpha = 0.f;
+	bool bSwimStrokePlaying = false;
+	bool bWasSwimming = false;
+
 	// Input handlers.
 	void HandleMove(const FInputActionValue& Value);
 	void HandleLook(const FInputActionValue& Value);
@@ -285,6 +347,15 @@ private:
 	void ApplyBodyMeshOffset();
 	void UpdateSprintToggle();
 
+	/** The DT_Movement row whose eye height the camera follows: the movement state, but Prone while falling with a prone wish. */
+	ELureMovementState GetEyeState() const;
+
+	/** The row the current eye blend targets (its ExitTransitionTime times the next blend). */
+	ELureMovementState EyeBlendState = ELureMovementState::Stand;
+
+	/** The arms' current pull-back toward the eye (eases to the row's ArmsPullBack), cm. */
+	float ArmsPullBackNow = 0.f;
+
 	float CurrentEyeHeight = 0.f;
 	float EyeBlendFrom = 0.f;
 	float EyeBlendTo = 0.f;
@@ -293,6 +364,13 @@ private:
 
 	double LastMoveInputTime = 0.0;
 	bool bSprintToggledOn = false;
+
+	/** The last refused-stance hint and when it was shown (world seconds). */
+	FString StanceHint;
+	double StanceHintTime = 0.0;
+
+	/** Shows Hint (GetStanceHintText) from now on. */
+	void ShowStanceHint(const FString& Hint);
 
 	TWeakObjectPtr<APlayerController> MappedController;
 

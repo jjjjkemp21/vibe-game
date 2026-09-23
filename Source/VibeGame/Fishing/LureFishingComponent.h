@@ -172,8 +172,12 @@ public:
 	UFUNCTION(BlueprintPure, Category="Lure|Fishing")
 	float GetCharge() const { return Charge; }
 
+	/** The rod is out: equipped, and not in the water (swimming or climbing out; the arms show Idle there). */
 	UFUNCTION(BlueprintPure, Category="Lure|Fishing")
 	bool IsRodInHand() const;
+
+	/** In the water: ALurePlayerCharacter::IsSwimming (swimming or climbing out, T-026), else the engine's swimming mode. */
+	bool IsInWater() const;
 
 	/** Why a cast can't start right now (None = it can). The owning client also refuses while its arms show a tucked rod. */
 	UFUNCTION(BlueprintPure, Category="Lure|Fishing")

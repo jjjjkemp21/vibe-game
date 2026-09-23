@@ -217,7 +217,9 @@ namespace LureDevTest
 	}
 }
 
-using namespace LureDevTest;
+// The tests stay inside the namespace (no file-scope using-directive: unity builds merge .cpp files).
+namespace LureDevTest
+{
 
 // ---------------------------------------------------------------------------------------------------------------------
 // Registration
@@ -736,5 +738,7 @@ bool FLureDevClientRefusesTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("back to authority after clearing the URL"), FLureDevCommands::HasAuthority(W.World));
 	return true;
 }
+
+} // namespace LureDevTest
 
 #endif // WITH_DEV_AUTOMATION_TESTS && !UE_BUILD_SHIPPING

@@ -1,4 +1,4 @@
-// Lure: first-person movement with sprint, crouch and prone (T-004).
+// Lure: first-person movement with sprint, crouch and prone (T-004). Swimming (T-026) is in LureSwimMovement.cpp.
 
 #include "Character/LureCharacterMovementComponent.h"
 #include "Character/LureCharacterSettings.h"
@@ -36,6 +36,9 @@ ULureCharacterMovementComponent::ULureCharacterMovementComponent()
 
 	AirControl = 0.35f;
 	BrakingDecelerationFalling = 1500.f;
+
+	// Server replies carry the climb state (see FLureMoveResponseDataContainer).
+	SetMoveResponseDataContainer(LureMoveResponseData);
 
 	SyncEngineFieldsFromRows();
 }
@@ -100,6 +103,9 @@ void ULureCharacterMovementComponent::SyncEngineFieldsFromRows()
 	const FLureMovementRow& Crouched = GetRow(ELureMovementState::Crouch);
 	MaxWalkSpeed = Stand.MaxSpeed;
 	MaxWalkSpeedCrouched = Crouched.MaxSpeed;
+	MaxSwimSpeed = GetRow(ELureMovementState::Swim).MaxSpeed;
+	// Swimming (T-026): coast to a stop in the water instead of gliding on (the engine default is 0).
+	BrakingDecelerationSwimming = GetRow(ELureMovementState::Swim).SwimBrakingDeceleration;
 	MaxAcceleration = Stand.MaxAcceleration;
 	JumpZVelocity = Stand.JumpZVelocity;
 	SetCrouchedHalfHeight(FMath::Max(Crouched.CapsuleHalfHeight, Crouched.CapsuleRadius));
@@ -177,12 +183,16 @@ bool ULureCharacterMovementComponent::IsSprinting() const
 {
 	return bWantsToSprint
 		&& GetStance() == ELureStance::Stand
-		&& (IsMovingOnGround() || IsFalling())
+		&& (IsMovingOnGround() || IsFalling() || IsSwimming())
 		&& !Acceleration.IsNearlyZero();
 }
 
 ELureMovementState ULureCharacterMovementComponent::GetMovementState() const
 {
+	if (IsSwimming())
+	{
+		return IsSprinting() ? ELureMovementState::SwimSprint : ELureMovementState::Swim;
+	}
 	switch (GetStance())
 	{
 	case ELureStance::Prone:
@@ -211,6 +221,11 @@ float ULureCharacterMovementComponent::GetStanceNoiseMultiplier() const
 
 bool ULureCharacterMovementComponent::CanJumpInCurrentStance() const
 {
+	// In the water Jump means "climb out" (T-026): allowed where the row (or a ladder) allows a climb.
+	if (IsSwimming())
+	{
+		return GetClimbOutMaxHeight() > 0.f;
+	}
 	// Hard rule (GAME_DESIGN): never jump while prone or about to go prone, whatever DT_Movement says.
 	if (IsProne() || bWantsToProne)
 	{
@@ -263,10 +278,29 @@ bool ULureCharacterMovementComponent::ClientUpdatePositionAfterServerUpdate()
 	// (the engine does the same for jump and crouch).
 	const bool bRealWantsToSprint = bWantsToSprint;
 	const bool bRealWantsToProne = bWantsToProne;
-	const bool bResult = Super::ClientUpdatePositionAfterServerUpdate();
+	bool bResult = false;
+	{
+		TGuardValue<bool> Reconciling(bReconcilingWithServer, true);
+		bResult = Super::ClientUpdatePositionAfterServerUpdate();
+	}
 	bWantsToSprint = bRealWantsToSprint;
 	bWantsToProne = bRealWantsToProne;
+
+	// The correction and the replay are done: report the settled in-water state once, not every mode in between (a
+	// correction into a climb the client had already finished would otherwise fire "in" then "out" in one frame).
+	if (ALurePlayerCharacter* LureCharacter = GetLureCharacter())
+	{
+		LureCharacter->UpdateSwimState();
+	}
 	return bResult;
+}
+
+void ULureCharacterMovementComponent::PerformMovement(float DeltaSeconds)
+{
+	Super::PerformMovement(DeltaSeconds);
+
+	// A queued climb (DoJump) belongs to this move only: drop it even if the move ended before PhysSwimming ran.
+	bClimbOutRequested = false;
 }
 
 // ---- Engine overrides ----
@@ -289,6 +323,7 @@ float ULureCharacterMovementComponent::GetMaxSpeed() const
 	case MOVE_Walking:
 	case MOVE_NavWalking:
 	case MOVE_Falling:
+	case MOVE_Swimming:
 		return GetRow(GetMovementState()).MaxSpeed;
 	default:
 		return Super::GetMaxSpeed();
@@ -302,6 +337,7 @@ float ULureCharacterMovementComponent::GetMaxAcceleration() const
 	case MOVE_Walking:
 	case MOVE_NavWalking:
 	case MOVE_Falling:
+	case MOVE_Swimming:
 		return GetRow(GetMovementState()).MaxAcceleration;
 	default:
 		return Super::GetMaxAcceleration();
@@ -311,11 +347,24 @@ float ULureCharacterMovementComponent::GetMaxAcceleration() const
 bool ULureCharacterMovementComponent::CanAttemptJump() const
 {
 	// The engine version also refuses while bWantsToCrouch; here DT_Movement's CanJump decides (crouch jumps are allowed by default).
-	return IsJumpAllowed() && CanJumpInCurrentStance() && (IsMovingOnGround() || IsFalling());
+	// Swimming: Jump climbs out (see DoJump).
+	return IsJumpAllowed() && CanJumpInCurrentStance() && (IsMovingOnGround() || IsFalling() || IsSwimming());
 }
 
 bool ULureCharacterMovementComponent::DoJump(bool bReplayingMoves, float DeltaTime)
 {
+	if (IsSwimming())
+	{
+		// No jumping from the water: Jump pulls you out onto a low edge or up a ladder. DoJump runs in CheckJumpInput,
+		// BEFORE the owning client saves the move, so it only queues the climb. Changing the mode here would clear
+		// bPressedJump (ACharacter::OnMovementModeChanged -> ResetJumpState), the move would carry no Jump flag, and the
+		// server would never climb (review N0). PhysSwimming starts the climb inside the move. The server receives only
+		// the Jump flag and plans its own climb, so a client can't force one the server wouldn't allow; replays re-plan
+		// from the same flag. The engine calls DoJump even when CanJump() is false (p.UseLegacyDoJump), so check it here.
+		FLureClimbPlan Unused;
+		bClimbOutRequested = CharacterOwner && CharacterOwner->CanJump() && FindClimbOutPlan(Unused);
+		return bClimbOutRequested;
+	}
 	JumpZVelocity = GetRow(GetMovementState()).JumpZVelocity;
 	return Super::DoJump(bReplayingMoves, DeltaTime);
 }
@@ -323,17 +372,18 @@ bool ULureCharacterMovementComponent::DoJump(bool bReplayingMoves, float DeltaTi
 bool ULureCharacterMovementComponent::CanCrouchInCurrentState() const
 {
 	// While prone, prone owns the capsule; Prone -> Crouch goes through UnProne.
-	return !IsProne() && Super::CanCrouchInCurrentState();
+	return !IsProne() && CanCrouchIgnoringProne();
 }
 
 bool ULureCharacterMovementComponent::CanCrouchIgnoringProne() const
 {
-	return Super::CanCrouchInCurrentState();
+	// Wading too deep for it (T-026 B2): refused here, on the owning client and the server alike, before anything changes.
+	return Super::CanCrouchInCurrentState() && !IsStanceTooDeepForWater(ELureStance::Crouch);
 }
 
 bool ULureCharacterMovementComponent::CanProneInCurrentState() const
 {
-	return bCanEverProne && IsMovingOnGround() && UpdatedComponent && !UpdatedComponent->IsSimulatingPhysics();
+	return bCanEverProne && IsMovingOnGround() && UpdatedComponent && !UpdatedComponent->IsSimulatingPhysics() && !IsStanceTooDeepForWater(ELureStance::Prone);
 }
 
 void ULureCharacterMovementComponent::Crouch(bool bClientSimulation)
@@ -479,6 +529,14 @@ void ULureCharacterMovementComponent::UpdateCharacterStateBeforeMovement(float D
 	// Proxies get the replicated prone state (like crouch). Everyone else acts on the wishes (the server on the client's flags).
 	if (CharacterOwner && CharacterOwner->GetLocalRole() != ROLE_SimulatedProxy && GetLureCharacter())
 	{
+		// No crouch or prone in the water (T-026): the wishes are dropped, so you stand when you get out. The owning client
+		// and the server both do this in the same move, so the next moves carry the cleared flags.
+		if (IsSwimmingOrClimbingOut())
+		{
+			bWantsToCrouch = false;
+			bWantsToProne = false;
+		}
+
 		const bool bIsProneNow = IsProne();
 		if (bIsProneNow && (!bWantsToProne || !CanProneInCurrentState()))
 		{
@@ -663,7 +721,7 @@ bool ULureCharacterMovementComponent::FindCapsuleLocation(float Radius, float Ha
 		}
 
 		// Getting up next to a wall with a wider capsule: a small sideways push.
-		if (NewScaledRadius > OldScaledRadius + UE_KINDA_SMALL_NUMBER && MaxStanceNudge > 0.f)
+		if (NewScaledRadius > OldScaledRadius + UE_KINDA_SMALL_NUMBER)
 		{
 			return FindNudgedCapsuleLocation(FeetKept, NewScaledRadius, NewScaledHalfHeight, OutLocation);
 		}
@@ -676,7 +734,11 @@ bool ULureCharacterMovementComponent::FindCapsuleLocation(float Radius, float Ha
 		OutLocation = PawnLocation;
 		return true;
 	}
-	const FVector Candidates[] = { PawnLocation, FeetKept, PawnLocation - HeightDelta * Up };
+	// Crawled off a ledge (prone again on landing): grow upward from the feet first, so the camera, held at the prone
+	// eye height during the fall, doesn't move (T-004 playtest: it rose 90 cm, then dropped 130 cm).
+	const FVector CenterFirst[] = { PawnLocation, FeetKept, PawnLocation - HeightDelta * Up };
+	const FVector FeetFirst[] = { FeetKept, PawnLocation, PawnLocation - HeightDelta * Up };
+	const FVector (&Candidates)[3] = bWantsToProne ? FeetFirst : CenterFirst;
 	for (const FVector& Candidate : Candidates)
 	{
 		if (!IsCapsuleEncroachedAt(Candidate, NewScaledRadius, NewScaledHalfHeight))
@@ -695,6 +757,13 @@ bool ULureCharacterMovementComponent::IsCapsuleEncroachedAt(const FVector& Locat
 	InitCollisionParams(Params, ResponseParam);
 	const FCollisionShape Shape = FCollisionShape::MakeCapsule(ScaledRadius, ScaledHalfHeight + LureMovementPrivate::SweepInflation);
 	return GetWorld()->OverlapBlockingTestByChannel(Location, GetWorldToGravityTransform(), UpdatedComponent->GetCollisionObjectType(), Shape, Params, ResponseParam);
+}
+
+float ULureCharacterMovementComponent::GetStanceNudgeLimit(float NewRadius, float OldRadius) const
+{
+	// Flush against walls on two sides (a corner), each wall needs the radius difference: sqrt(2) times it, plus 1 cm.
+	const float CornerNeed = UE_SQRT_2 * FMath::Max(NewRadius - OldRadius, 0.f) + 1.f;
+	return FMath::Max(MaxStanceNudge, CornerNeed);
 }
 
 bool ULureCharacterMovementComponent::FindNudgedCapsuleLocation(const FVector& Location, float ScaledRadius, float ScaledHalfHeight, FVector& OutLocation) const
@@ -739,7 +808,7 @@ bool ULureCharacterMovementComponent::FindNudgedCapsuleLocation(const FVector& L
 
 	Push = FVector::VectorPlaneProject(Push, Up);
 	const float Distance = Push.Size();
-	if (Distance <= UE_KINDA_SMALL_NUMBER || Distance > MaxStanceNudge)
+	if (Distance <= UE_KINDA_SMALL_NUMBER || Distance > GetStanceNudgeLimit(ScaledRadius, CharacterOwner->GetCapsuleComponent()->GetScaledCapsuleRadius()))
 	{
 		return false;
 	}
@@ -773,6 +842,101 @@ FNetworkPredictionData_Client* ULureCharacterMovementComponent::GetPredictionDat
 		MutableThis->ClientPredictionData = new FNetworkPredictionData_Client_Lure(*this);
 	}
 	return ClientPredictionData;
+}
+
+// ---- Server corrections (T-026 netfix, review N2/N3) ----
+
+void ULureCharacterMovementComponent::ClientHandleMoveResponse(const FCharacterMoveResponseDataContainer& MoveResponse)
+{
+	TGuardValue<bool> Reconciling(bReconcilingWithServer, true);
+	bClientCorrectionApplied = false;
+
+	// The engine: ack, or correction (location, velocity, mode; the replay follows in the next TickComponent).
+	Super::ClientHandleMoveResponse(MoveResponse);
+
+	// Only for a correction the engine really applied (a stale timestamp or an unresolved base is ignored), and only for
+	// our own container (the one MoveResponsePacked_ClientReceive deserializes into).
+	if (bClientCorrectionApplied && &MoveResponse == &LureMoveResponseData)
+	{
+		ApplyCorrectionClimbState(LureMoveResponseData);
+	}
+	bClientCorrectionApplied = false;
+}
+
+void ULureCharacterMovementComponent::OnClientCorrectionReceived(FNetworkPredictionData_Client_Character& ClientData, float TimeStamp, FVector NewLocation,
+	FVector NewVelocity, FMovementBaseInterfaceData* NewMovementBaseInterfaceData, FName NewBaseBoneName, bool bHasBase, bool bBaseRelativePosition,
+	uint8 ServerMovementMode, FVector ServerGravityDirection)
+{
+	Super::OnClientCorrectionReceived(ClientData, TimeStamp, NewLocation, NewVelocity, NewMovementBaseInterfaceData, NewBaseBoneName, bHasBase,
+		bBaseRelativePosition, ServerMovementMode, ServerGravityDirection);
+	bClientCorrectionApplied = true;
+}
+
+void ULureCharacterMovementComponent::ApplyCorrectionClimbState(const FLureMoveResponseDataContainer& Response)
+{
+	// Runs after the engine applied the corrected mode. Entering Falling reset the takeoff to the corrected mid-air feet
+	// height, and Falling -> Falling kept the client's own; the server's value is the right one either way (N3).
+	TakeoffFeetHeight = Response.TakeoffFeetHeight;
+
+	// Corrected into a climb: continue the server's plan, so the replay climbs instead of holding still (N2).
+	bHasClimbPlan = Response.bHasClimbPlan && IsClimbing();
+	ClimbPlan = bHasClimbPlan ? Response.ClimbPlan : FLureClimbPlan();
+}
+
+void FLureMoveResponseDataContainer::ServerFillResponseData(const UCharacterMovementComponent& CharacterMovement, const FClientAdjustment& PendingAdjustment)
+{
+	Super::ServerFillResponseData(CharacterMovement, PendingAdjustment);
+
+	bHasClimbPlan = false;
+	ClimbPlan = FLureClimbPlan();
+	TakeoffFeetHeight = 0.f;
+
+	const ULureCharacterMovementComponent* Movement = Cast<const ULureCharacterMovementComponent>(&CharacterMovement);
+	if (IsCorrection() && Movement)
+	{
+		// The server's state now is its state after the corrected move: client moves arrive before actors tick, and the
+		// reply is sent when the frame ends (the engine reads its root motion state for corrections the same way).
+		bHasClimbPlan = Movement->bHasClimbPlan && Movement->IsClimbing();
+		ClimbPlan = bHasClimbPlan ? Movement->ClimbPlan : FLureClimbPlan();
+		TakeoffFeetHeight = Movement->TakeoffFeetHeight;
+	}
+}
+
+bool FLureMoveResponseDataContainer::Serialize(UCharacterMovementComponent& CharacterMovement, FArchive& Ar, UPackageMap* PackageMap)
+{
+	const bool bEngineDataOk = Super::Serialize(CharacterMovement, Ar, PackageMap);
+
+	if (!IsCorrection())
+	{
+		// Acks carry nothing extra (they are frequent; keep them the engine's size).
+		if (Ar.IsLoading())
+		{
+			bHasClimbPlan = false;
+			ClimbPlan = FLureClimbPlan();
+			TakeoffFeetHeight = 0.f;
+		}
+		return bEngineDataOk;
+	}
+
+	// Full precision, like the engine's corrected location: the replay must follow the server's path exactly.
+	bool bLocalSuccess = true;
+	Ar.SerializeBits(&bHasClimbPlan, 1);
+	if (bHasClimbPlan)
+	{
+		ClimbPlan.Start.NetSerialize(Ar, PackageMap, bLocalSuccess);
+		ClimbPlan.RiseTo.NetSerialize(Ar, PackageMap, bLocalSuccess);
+		ClimbPlan.Target.NetSerialize(Ar, PackageMap, bLocalSuccess);
+		Ar << ClimbPlan.LedgeHeight;
+		Ar << ClimbPlan.Speed;
+		Ar.SerializeBits(&ClimbPlan.bUsesLadder, 1);
+	}
+	else if (Ar.IsLoading())
+	{
+		ClimbPlan = FLureClimbPlan();
+	}
+	Ar << TakeoffFeetHeight;
+
+	return bEngineDataOk && bLocalSuccess && !Ar.IsError();
 }
 
 FSavedMove_Lure::FSavedMove_Lure()

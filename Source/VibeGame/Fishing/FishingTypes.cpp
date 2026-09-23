@@ -138,6 +138,10 @@ ELureCastBlock FLureFishingRules::GetCastBlock(const FLureCastConditions& Condit
 	{
 		return ELureCastBlock::Swimming;
 	}
+	if (Conditions.bClimbing)
+	{
+		return ELureCastBlock::Climbing;
+	}
 	if (Conditions.bFalling)
 	{
 		return ELureCastBlock::InAir;
@@ -162,6 +166,10 @@ ELureCastBlock FLureFishingRules::GetLineCancel(const FLureCastConditions& Condi
 	if (Conditions.bSwimming)
 	{
 		return ELureCastBlock::Swimming;
+	}
+	if (Conditions.bClimbing)
+	{
+		return ELureCastBlock::Climbing;
 	}
 	if (!Row.CanFish)
 	{

@@ -24,7 +24,7 @@ enum class ELureStance : uint8
 	Prone
 };
 
-/** The active DT_Movement row. One row per value; the row name is the value name (Stand, Sprint, Crouch, Prone). */
+/** The active DT_Movement row. One row per value; the row name is the value name (Stand, Sprint, Crouch, Prone, Swim, SwimSprint). */
 UENUM(BlueprintType)
 enum class ELureMovementState : uint8
 {
@@ -32,6 +32,9 @@ enum class ELureMovementState : uint8
 	Sprint,
 	Crouch,
 	Prone,
+	/** In the water (T-026). Swimming uses the Stand capsule; Sprint maps to SwimSprint. */
+	Swim,
+	SwimSprint,
 	Count UMETA(Hidden)
 };
 ENUM_RANGE_BY_COUNT(ELureMovementState, ELureMovementState::Count)
@@ -40,6 +43,8 @@ ENUM_RANGE_BY_COUNT(ELureMovementState, ELureMovementState::Count)
  *  One row of DT_Movement (source: data/tables/DT_Movement.csv). Units are cm, cm/s, cm/s^2 and seconds.
  *  The column names in the CSV are the property names below.
  *  Sprint uses the Stand capsule; keep its capsule and EyeHeight equal to Stand (a data test checks this).
+ *  Swim and SwimSprint also use the Stand capsule (keep their capsule columns equal to Stand); their EyeHeight is the
+ *  swimming camera height above the feet; SurfaceFloatDepth and ClimbMaxHeight tune floating and climbing out (docs/specs/swimming.md).
  */
 USTRUCT(BlueprintType)
 struct FLureMovementRow : public FTableRowBase
@@ -116,6 +121,66 @@ struct FLureMovementRow : public FTableRowBase
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Arms Bob", meta=(ClampMin="0"))
 	float StanceDipPlayRate = 1.f;
 
+	// ---- Optional CSV columns (missing = 0): the climb rule, water, arms offset, camera exit time ----
+
+	/**
+	 *  The one climb rule: the highest edge Jump gets you onto, cm (0 = no climb rule: no pull-up or climb out, and
+	 *  landings are the engine's, never refused). On land it is measured from your feet
+	 *  where you jumped: a landing on a higher ledge is refused, and a jump that reaches a ledge within it pulls you up.
+	 *  Swimming, it is measured from the water surface (Jump climbs out). A ladder can allow more in the water.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Climb", meta=(ClampMin="0", DataTableImportOptional="true"))
+	float ClimbMaxHeight = 0.f;
+
+	/** Speed of that climb (up the edge, then onto it), cm/s. Needed when ClimbMaxHeight is set. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Climb", meta=(ClampMin="0", DataTableImportOptional="true"))
+	float ClimbSpeed = 0.f;
+
+	/**
+	 *  Surface swimming (Swim rows): the capsule center floats this far below the water surface, cm, so the eyes are
+	 *  EyeHeight - CapsuleHalfHeight - SurfaceFloatDepth above the water. 0 = no surface float (land rows; free 3D
+	 *  swimming such as diving later). This is the only "stay at the surface" rule in the code.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Water", meta=(ClampMin="0", DataTableImportOptional="true"))
+	float SurfaceFloatDepth = 0.f;
+
+	/** The first-person arms sit this much closer to the eye in this state, cm (e.g. prone, so the hands stay out of a wall the capsule touches). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Arms Bob", meta=(ClampMin="0", DataTableImportOptional="true"))
+	float ArmsPullBack = 0.f;
+
+	/** Seconds the camera takes to reach the next state's eye height when LEAVING this state (0 = the next row's TransitionTime). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Movement", meta=(ClampMin="0", DataTableImportOptional="true"))
+	float ExitTransitionTime = 0.f;
+
+	// ---- Optional swim-feel columns (missing = the built-in default below; used on the Swim rows) ----
+
+	/**
+	 *  Climbing out: the lowest edge top Jump climbs onto, cm relative to the water surface (<= 0). Lower tops count as
+	 *  the seabed (walk out there instead). Keep it at or below the height a floating swimmer can step up to, or a shelf
+	 *  between the two becomes a wall from the water.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Climb", meta=(ClampMax="0", DataTableImportOptional="true"))
+	float ClimbOutLowestTop = -20.f;
+
+	/**
+	 *  Climbing out needs you at the surface: the head (capsule top) may be at most this far below the water surface, cm
+	 *  (T-026 D2, for diving rows with SurfaceFloatDepth 0; a floating swimmer's head is always above the water).
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Climb", meta=(ClampMin="0", DataTableImportOptional="true"))
+	float ClimbOutSurfaceTolerance = 30.f;
+
+	/** Climbing out: how far in front of the body an edge may be for Jump to climb onto it, cm. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Climb", meta=(ClampMin="0", DataTableImportOptional="true"))
+	float ClimbOutReach = 45.f;
+
+	/** Surface swimming: seconds the body takes to settle at the float depth after falling in (the plunge and rise). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Water", meta=(ClampMin="0.05", DataTableImportOptional="true"))
+	float SurfaceFloatSettleTime = 0.8f;
+
+	/** Swimming: how hard you coast to a stop with no input, cm/s^2 (0 = glide on). Read from the Swim row. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Water", meta=(ClampMin="0", DataTableImportOptional="true"))
+	float SwimBrakingDeceleration = 600.f;
+
 	// ---- Rod pose and fishing (T-006; spec SK_FPArms.anim.md "Switch rule"). Import-optional: old CSV fixtures keep these defaults. ----
 
 	/** Arms pose while holding the rod and still (HoldRod; ProneHold when prone). */
@@ -167,7 +232,7 @@ struct FLureMovementData
 	/** Substring present in every fallback warning (for AddExpectedMessage in tests). */
 	static const TCHAR* FallbackWarningMarker;
 
-	/** Row name of a state in DT_Movement: "Stand", "Sprint", "Crouch", "Prone". */
+	/** Row name of a state in DT_Movement: "Stand", "Sprint", "Crouch", "Prone", "Swim", "SwimSprint". */
 	static FName GetRowName(ELureMovementState State);
 
 	/** The row used when DT_Movement is missing or a row is invalid (same values as the shipped CSV at the time of writing). */

@@ -66,6 +66,7 @@ namespace LureFishingPrivate
 		case ELureCastBlock::RodTucked: return TEXT("crawling");
 		case ELureCastBlock::Busy: return TEXT("the line is already out");
 		case ELureCastBlock::TooFar: return TEXT("too far from the bobber");
+		case ELureCastBlock::Climbing: return TEXT("climbing");
 		case ELureCastBlock::None:
 		default: return TEXT("");
 		}
@@ -476,18 +477,31 @@ FLureCastConditions ULureFishingComponent::GetConditions() const
 	const ACharacter* Character = GetCharacter();
 	const UCharacterMovementComponent* Movement = Character ? Character->GetCharacterMovement() : nullptr;
 	Conditions.bHasRod = bRodEquipped;
-	Conditions.bSwimming = Movement && Movement->IsSwimming();
+	Conditions.bSwimming = IsInWater();
 	Conditions.bFalling = Movement && Movement->IsFalling();
+	// T-026 climbs (ClimbOut, LedgeClimb) are MOVE_Custom: busy, like any custom mode added later.
+	Conditions.bClimbing = Movement && Movement->MovementMode == MOVE_Custom;
 	Conditions.Speed2D = Movement ? static_cast<float>(Movement->Velocity.Size2D()) : 0.f;
 	Conditions.bLineOut = IsLineOut();
 	return Conditions;
 }
 
-bool ULureFishingComponent::IsRodInHand() const
+bool ULureFishingComponent::IsInWater() const
 {
+	// T-026: the player character is in the water from falling in until it stands on land again (the climb out included).
+	if (const ALurePlayerCharacter* Lure = Cast<ALurePlayerCharacter>(GetOwner()))
+	{
+		return Lure->IsSwimming();
+	}
 	const ACharacter* Character = GetCharacter();
 	const UCharacterMovementComponent* Movement = Character ? Character->GetCharacterMovement() : nullptr;
-	return bRodEquipped && !(Movement && Movement->IsSwimming());
+	return Movement && Movement->IsSwimming();
+}
+
+bool ULureFishingComponent::IsRodInHand() const
+{
+	// The rod is put away in the water (the arms show Idle); it comes back once you stand on land.
+	return bRodEquipped && !IsInWater();
 }
 
 ELureCastBlock ULureFishingComponent::GetCastBlock() const
@@ -928,8 +942,9 @@ void ULureFishingComponent::ServerTick(double Now)
 		return;
 	}
 
-	// Rules that bring the line in: sprinting, swimming, crawling with a tucked rod, too far from the bobber.
-	// While a fish is on, the fight has its own line rules (spool length), so the bobber distance rule does not apply.
+	// Rules that bring the line in: sprinting, swimming (the climb out included), climbing, crawling with a tucked rod,
+	// too far from the bobber. They also end a fight in progress (the fish is lost; reel-fight-rules.md). While a fish is
+	// on, the fight has its own line rules (spool length), so only the bobber distance rule does not apply.
 	const bool bFighting = NetState.State == ELureFishingState::Hooked && FightNet.bActive;
 	const float BobberDistance = (GetOwner() && !bFighting) ? static_cast<float>(FVector::Dist2D(GetOwner()->GetActorLocation(), NetState.BobberRest)) : 0.f;
 	const ELureCastBlock Cancel = FLureFishingRules::GetLineCancel(GetConditions(), GetMovementRow(), GetProfile(), BobberDistance);

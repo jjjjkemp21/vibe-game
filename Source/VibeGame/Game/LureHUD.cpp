@@ -1,9 +1,10 @@
-// Lure: placeholder HUD (T-006).
+// Lure: placeholder HUD (T-006; stance hint T-026).
 
 #include "Game/LureHUD.h"
 #include "Engine/Canvas.h"
 #include "Engine/Engine.h"
 #include "Engine/Font.h"
+#include "Character/LurePlayerCharacter.h"
 #include "Fishing/LureFishingComponent.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
@@ -12,8 +13,26 @@
 
 FString ALureHUD::GetStatusText(const APawn* Pawn)
 {
+	TArray<FString> Lines;
 	const ULureFishingComponent* Fishing = Pawn ? Pawn->FindComponentByClass<ULureFishingComponent>() : nullptr;
-	return Fishing ? Fishing->GetStatusText() : FString();
+	if (Fishing)
+	{
+		const FString FishingText = Fishing->GetStatusText();
+		if (!FishingText.IsEmpty())
+		{
+			Lines.Add(FishingText);
+		}
+	}
+	// A refused crouch/prone (T-026 B2): "Too deep to crouch here."
+	if (const ALurePlayerCharacter* Lure = Cast<ALurePlayerCharacter>(Pawn))
+	{
+		const FString StanceHint = Lure->GetStanceHintText();
+		if (!StanceHint.IsEmpty())
+		{
+			Lines.Add(StanceHint);
+		}
+	}
+	return FString::Join(Lines, TEXT("\n"));
 }
 
 void ALureHUD::DrawHUD()

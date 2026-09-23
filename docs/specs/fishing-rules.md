@@ -22,10 +22,20 @@ The lead may overrule any of these; a change is a data edit unless marked (code)
   2 cm), otherwise on land (a dock, a beach, a rock): the bobber lies there, nothing bites, a press reels in.
 - Water surface: an engine water physics volume (T-026), else the top of an actor tagged `Lure.Water`, else `FallbackWaterZ`
   (0 = the layouts' `water_z`). Level-designer: tagging the water planes `Lure.Water` is optional today.
-- No casting while: no rod in hand, swimming, in the air, in a DT_Movement row with `CanFish = False` (Sprint), or moving
+- No casting while: no rod in hand, swimming, climbing, in the air, in a DT_Movement row with `CanFish = False` (Sprint), or moving
   (speed > RodMoveSpeedIn) in a row whose moving pose is `ProneTuck` (prone crawl). Prone and still casts.
-- A line out comes in on its own (result ReeledIn, or Lost with a hooked fish) when you start sprinting, swim, crawl prone
-  (the rod tucks), or get farther than MaxLineLength from the bobber. Jumping keeps the line.
+- A line out comes in on its own (result ReeledIn, or Lost with a hooked fish, a fight in progress included) when you start sprinting, swim, climb, crawl prone
+  (the rod tucks), or get farther than MaxLineLength from the bobber (not during a fight; reel-fight-rules.md). Jumping keeps the line (a jump that ends in a pull-up does not).
+- Swimming and climbing (T-026 merge, review D1; tests `Project.Fishing.Rules.ClimbingIsBusy`, `Project.Fishing.Swim.*`,
+  `Project.Fishing.Climb.*`):
+  - "Swimming" is `ALurePlayerCharacter::IsSwimming()`: from falling in until standing on land again, the climb out of the
+    water (`ClimbOut`) included. Reason `Swimming`. The rod is put away (`IsRodInHand` false), so the arms show `Idle`.
+  - Any `MOVE_Custom` mode (today the land pull-up `LedgeClimb`, and `ClimbOut`) is busy: no cast, a line out comes in.
+    Reason `Climbing` ("climbing") unless it is the climb out, which reports `Swimming`. The rod stays in hand on a pull-up.
+  - Fishing reads the state every tick on the server; it never listens to `OnSwimStateChanged`. So a cast made right after
+    climbing out stays out even if the owner's settled swim event arrives late (swimming.md, networking contract).
+  - The Swim rows in DT_Movement keep the default rod columns (`CanFish = True`): the swimming rule above blocks fishing in
+    the water whatever the row says (code, not data).
 
 ## Spots
 - Read from marker actors tagged `Lure.FishingSpot` with `Key=Value` tags (L_PalmKey.md section 11; exactly what

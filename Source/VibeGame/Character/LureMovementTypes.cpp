@@ -1,4 +1,4 @@
-// Lure: movement data types (T-004).
+// Lure: movement data types (T-004; swim rows T-026).
 
 #include "Character/LureMovementTypes.h"
 
@@ -9,7 +9,9 @@ const TCHAR* FLureMovementData::FallbackWarningMarker = TEXT("using built-in fal
 bool FLureMovementRow::Validate(FString& OutProblem) const
 {
 	const float Values[] = { MaxSpeed, MaxAcceleration, CapsuleHalfHeight, CapsuleRadius, EyeHeight, TransitionTime, NoiseMultiplier, JumpZVelocity,
-		BobStepRate, BobVertical, BobLateral, BobRoll, BobPitch, BobYaw, BobForward, StanceDipPlayRate };
+		BobStepRate, BobVertical, BobLateral, BobRoll, BobPitch, BobYaw, BobForward, StanceDipPlayRate,
+		ClimbMaxHeight, ClimbSpeed, SurfaceFloatDepth, ArmsPullBack, ExitTransitionTime,
+		ClimbOutLowestTop, ClimbOutSurfaceTolerance, ClimbOutReach, SurfaceFloatSettleTime, SwimBrakingDeceleration };
 	for (const float Value : Values)
 	{
 		if (!FMath::IsFinite(Value))
@@ -67,6 +69,31 @@ bool FLureMovementRow::Validate(FString& OutProblem) const
 		OutProblem = FString::Printf(TEXT("JumpZVelocity %.1f must be >= 0 (and > 0 when CanJump)"), JumpZVelocity);
 		return false;
 	}
+	if (ClimbMaxHeight < 0.f || ClimbSpeed < 0.f || SurfaceFloatDepth < 0.f || ArmsPullBack < 0.f || ExitTransitionTime < 0.f)
+	{
+		OutProblem = TEXT("ClimbMaxHeight, ClimbSpeed, SurfaceFloatDepth, ArmsPullBack and ExitTransitionTime must be >= 0");
+		return false;
+	}
+	if (ClimbMaxHeight > 0.f && ClimbSpeed <= 0.f)
+	{
+		OutProblem = FString::Printf(TEXT("ClimbSpeed must be > 0 when ClimbMaxHeight (%.1f) is set"), ClimbMaxHeight);
+		return false;
+	}
+	if (ClimbOutLowestTop > 0.f)
+	{
+		OutProblem = FString::Printf(TEXT("ClimbOutLowestTop %.1f must be <= 0 (at or below the water surface)"), ClimbOutLowestTop);
+		return false;
+	}
+	if (ClimbOutReach < 0.f || SwimBrakingDeceleration < 0.f || ClimbOutSurfaceTolerance < 0.f)
+	{
+		OutProblem = TEXT("ClimbOutReach, ClimbOutSurfaceTolerance and SwimBrakingDeceleration must be >= 0");
+		return false;
+	}
+	if (SurfaceFloatSettleTime < 0.05f)
+	{
+		OutProblem = FString::Printf(TEXT("SurfaceFloatSettleTime %.2f must be >= 0.05 s"), SurfaceFloatSettleTime);
+		return false;
+	}
 	// Rod pose (T-006).
 	const float RodValues[] = { RodMoveSpeedIn, RodMoveSpeedOut, RodStillDelay, RodPoseBlendTime, ArmsPitchFollowUp, RodHoldClearance };
 	for (const float Value : RodValues)
@@ -92,7 +119,7 @@ bool FLureMovementRow::Validate(FString& OutProblem) const
 
 FName FLureMovementData::GetRowName(ELureMovementState State)
 {
-	static const FName Names[NumStates] = { TEXT("Stand"), TEXT("Sprint"), TEXT("Crouch"), TEXT("Prone") };
+	static const FName Names[NumStates] = { TEXT("Stand"), TEXT("Sprint"), TEXT("Crouch"), TEXT("Prone"), TEXT("Swim"), TEXT("SwimSprint") };
 	const int32 Index = static_cast<int32>(State);
 	return Names[FMath::Clamp(Index, 0, NumStates - 1)];
 }
@@ -129,19 +156,37 @@ FLureMovementRow FLureMovementData::GetFallbackRow(ELureMovementState State)
 		return Row;
 	};
 
+	// The optional columns: the climb rule (land: above the takeoff; swimming: above the water), the surface float,
+	// the arms pull-back and the camera's exit time.
+	auto WithExtras = [](FLureMovementRow Row, float ClimbMax, float ClimbRate, float FloatDepth, float PullBack, float ExitTime)
+	{
+		Row.ClimbMaxHeight = ClimbMax;
+		Row.ClimbSpeed = ClimbRate;
+		Row.SurfaceFloatDepth = FloatDepth;
+		Row.ArmsPullBack = PullBack;
+		Row.ExitTransitionTime = ExitTime;
+		return Row;
+	};
+
 	// Rod pose and fishing (T-006): the struct defaults (HoldRod, 15/5 cm/s, 0.3 s, follow-up 1, no clearance check, CanFish)
 	// except Prone (prone hold / tuck, arms stay down when looking up, 130 cm wall check) and Sprint (no fishing).
+	// The Swim rows keep the defaults: swimming (and climbing) always blocks fishing and puts the rod away, whatever the row says.
 	FLureMovementRow Row;
 	switch (State)
 	{
+	case ELureMovementState::Swim:
+		// T-026: the Stand capsule, eyes 18 cm above the water, no arms bob; Jump climbs out onto edges up to 60 cm.
+		return WithExtras(WithBob(MakeRow(170.f, 700.f, 90.f, 34.f, 118.f, 0.3f, 1.6f, 0.f, false), 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f), 60.f, 300.f, 10.f, 0.f, 0.f);
+	case ELureMovementState::SwimSprint:
+		return WithExtras(WithBob(MakeRow(290.f, 900.f, 90.f, 34.f, 118.f, 0.3f, 3.0f, 0.f, false), 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f), 60.f, 300.f, 10.f, 0.f, 0.f);
 	case ELureMovementState::Sprint:
-		Row = WithBob(MakeRow(600.f, 2048.f, 90.f, 34.f, 165.f, 0.25f, 2.5f, 440.f, true), 1.6f, 1.0f, 1.2f, 0.9f, 0.f, 0.3f, 1.0f);
+		Row = WithExtras(WithBob(MakeRow(600.f, 2048.f, 90.f, 34.f, 165.f, 0.25f, 2.5f, 440.f, true), 3.0f, 1.8f, 1.2f, 1.5f, 0.f, 0.3f, 1.0f), 100.f, 400.f, 0.f, 0.f, 0.f);
 		Row.CanFish = false;
 		return Row;
 	case ELureMovementState::Crouch:
-		return WithBob(MakeRow(180.f, 1600.f, 55.f, 34.f, 95.f, 0.20f, 0.5f, 380.f, true), 0.5f, 0.9f, 0.9f, 0.3f, 0.f, 0.f, 1.0f);
+		return WithExtras(WithBob(MakeRow(180.f, 1600.f, 55.f, 34.f, 95.f, 0.20f, 0.5f, 380.f, true), 0.5f, 0.9f, 0.9f, 0.3f, 0.f, 0.f, 1.0f), 100.f, 400.f, 0.f, 0.f, 0.f);
 	case ELureMovementState::Prone:
-		Row = WithBob(MakeRow(90.f, 1200.f, 26.f, 25.f, 35.f, 0.45f, 0.2f, 0.f, false), 0.4f, 1.6f, 2.0f, 0.3f, 1.5f, 1.2f, 0.85f);
+		Row = WithExtras(WithBob(MakeRow(90.f, 1200.f, 26.f, 25.f, 35.f, 0.45f, 0.2f, 0.f, false), 0.4f, 1.6f, 2.0f, 0.3f, 1.5f, 1.2f, 0.85f), 0.f, 0.f, 0.f, 12.f, 0.42f);
 		Row.RodPoseStill = EFPArmsPose::ProneHold;
 		Row.RodPoseMoving = EFPArmsPose::ProneTuck;
 		Row.ArmsPitchFollowUp = 0.f;
@@ -149,7 +194,7 @@ FLureMovementRow FLureMovementData::GetFallbackRow(ELureMovementState State)
 		return Row;
 	case ELureMovementState::Stand:
 	default:
-		return WithBob(MakeRow(350.f, 2048.f, 90.f, 34.f, 165.f, 0.25f, 1.0f, 420.f, true), 0.8f, 0.6f, 0.6f, 0.4f, 0.f, 0.f, 1.0f);
+		return WithExtras(WithBob(MakeRow(350.f, 2048.f, 90.f, 34.f, 165.f, 0.25f, 1.0f, 420.f, true), 1.5f, 1.0f, 0.6f, 0.4f, 0.f, 0.f, 1.0f), 100.f, 400.f, 0.f, 0.f, 0.f);
 	}
 }
 

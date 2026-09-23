@@ -78,7 +78,9 @@ enum class ELureCastBlock : uint8
 	/** A line is already out. */
 	Busy,
 	/** The bobber is farther than MaxLineLength. */
-	TooFar
+	TooFar,
+	/** Climbing (any MOVE_Custom climb: the pull-up onto a ledge; T-026). The climb out of the water reports Swimming. */
+	Climbing
 };
 
 /** What an early hook (a press while waiting, before a bite) does. */
@@ -409,6 +411,8 @@ struct FLureCastConditions
 	bool bHasRod = true;
 	bool bSwimming = false;
 	bool bFalling = false;
+	/** In a custom movement mode (T-026 climbs: ClimbOut, LedgeClimb): busy, no cast, a line out comes in. */
+	bool bClimbing = false;
 	/** Horizontal speed, cm/s. */
 	float Speed2D = 0.f;
 	/** A line is out (for casting only). */
@@ -436,10 +440,10 @@ struct FLureFishingRules
 	/** True if Now is inside [BiteStart, HookDeadline]. */
 	static bool IsInHookWindow(const FLureFishingRow& Row, double BiteStart, double Now, float Grace);
 
-	/** Why a cast can't start now (None = it can). Order: NoRod, Busy, Swimming, InAir, Sprinting (row CanFish), RodTucked. */
+	/** Why a cast can't start now (None = it can). Order: NoRod, Busy, Swimming, Climbing, InAir, Sprinting (row CanFish), RodTucked. */
 	static ELureCastBlock GetCastBlock(const FLureCastConditions& Conditions, const FLureMovementRow& Row);
 
-	/** Why a line that is out must come in now (None = it stays): NoRod, Swimming, Sprinting, RodTucked, TooFar. Jumping is fine. */
+	/** Why a line that is out must come in now (None = it stays): NoRod, Swimming, Climbing, Sprinting, RodTucked, TooFar. Jumping is fine. */
 	static ELureCastBlock GetLineCancel(const FLureCastConditions& Conditions, const FLureMovementRow& Row, const FLureFishingRow& Fishing, float BobberDistance2D);
 
 	/** Moving (Speed2D > RodMoveSpeedIn) in a row whose moving pose tucks the rod. */

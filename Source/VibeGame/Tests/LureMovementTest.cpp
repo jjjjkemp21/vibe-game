@@ -211,7 +211,9 @@ namespace LureMovementTest
 	}
 }
 
-using namespace LureMovementTest;
+// The tests stay inside the namespace (no file-scope using-directive: unity builds merge .cpp files).
+namespace LureMovementTest
+{
 
 // ---------------------------------------------------------------------------------------------------------------------
 // Data
@@ -228,7 +230,7 @@ bool FLureMovementCsvParsesTest::RunTest(const FString& Parameters)
 	}
 
 	TArray<FName> Names = Table->GetRowNames();
-	TestEqual(TEXT("exactly 4 rows"), Names.Num(), FLureMovementData::NumStates);
+	TestEqual(TEXT("one row per movement state (Stand, Sprint, Crouch, Prone, Swim, SwimSprint)"), Names.Num(), FLureMovementData::NumStates);
 	for (ELureMovementState State : TEnumRange<ELureMovementState>())
 	{
 		const FName Name = FLureMovementData::GetRowName(State);
@@ -255,7 +257,16 @@ bool FLureMovementCsvParsesTest::RunTest(const FString& Parameters)
 
 	// Arms bob columns (SK_FPArms.anim.md defaults; step rate derived from MaxSpeed).
 	TestNearlyEqual(TEXT("Stand.BobStepRate (0 = derive)"), Row(Rows, ELureMovementState::Stand).BobStepRate, 0.f);
-	TestNearlyEqual(TEXT("Stand.BobVertical"), Row(Rows, ELureMovementState::Stand).BobVertical, 0.8f);
+	TestNearlyEqual(TEXT("Stand.BobVertical (playtest feel 2026-09-23)"), Row(Rows, ELureMovementState::Stand).BobVertical, 1.5f);
+	TestNearlyEqual(TEXT("Stand.BobLateral"), Row(Rows, ELureMovementState::Stand).BobLateral, 1.0f);
+	TestNearlyEqual(TEXT("Sprint.BobVertical"), Row(Rows, ELureMovementState::Sprint).BobVertical, 3.0f);
+	TestNearlyEqual(TEXT("Sprint.BobLateral"), Row(Rows, ELureMovementState::Sprint).BobLateral, 1.8f);
+	TestNearlyEqual(TEXT("Sprint.BobPitch"), Row(Rows, ELureMovementState::Sprint).BobPitch, 1.5f);
+
+	// T-004 playtest fixes: the climb rule, the prone arms pull-back and the slower camera when getting up from prone.
+	TestNearlyEqual(TEXT("Stand.ClimbMaxHeight (1 m crates climbable, 1.2 m not)"), Row(Rows, ELureMovementState::Stand).ClimbMaxHeight, 100.f);
+	TestNearlyEqual(TEXT("Prone.ArmsPullBack"), Row(Rows, ELureMovementState::Prone).ArmsPullBack, 12.f);
+	TestNearlyEqual(TEXT("Prone.ExitTransitionTime"), Row(Rows, ELureMovementState::Prone).ExitTransitionTime, 0.42f);
 	TestNearlyEqual(TEXT("Sprint.BobForward"), Row(Rows, ELureMovementState::Sprint).BobForward, 0.3f);
 	TestNearlyEqual(TEXT("Crouch.BobLateral"), Row(Rows, ELureMovementState::Crouch).BobLateral, 0.9f);
 	TestNearlyEqual(TEXT("Prone.BobRoll"), Row(Rows, ELureMovementState::Prone).BobRoll, 2.0f);
@@ -347,7 +358,7 @@ bool FLureMovementFallbackTest::RunTest(const FString& Parameters)
 		TestEqual(TEXT("wrong struct: all rows fall back"), static_cast<int32>(FLureMovementData::ResolveRows(WrongTable, Rows, Problems)), static_cast<int32>(FLureMovementData::AllStatesMask));
 	}
 
-	// 3. Per-row fallback: Prone missing, Crouch invalid (MaxSpeed 0), Stand and Sprint used as given.
+	// 3. Per-row fallback: Prone missing, Crouch invalid (MaxSpeed 0), Stand and Sprint used as given (the swim rows are missing too).
 	{
 		TArray<FString> ImportProblems;
 		UDataTable* Partial = MakeTable(FString(CsvHeader)
@@ -358,7 +369,8 @@ bool FLureMovementFallbackTest::RunTest(const FString& Parameters)
 		TArray<FLureMovementRow> Rows;
 		TArray<FString> Problems;
 		const uint8 Mask = FLureMovementData::ResolveRows(Partial, Rows, Problems);
-		const uint8 Expected = (1u << static_cast<int32>(ELureMovementState::Crouch)) | (1u << static_cast<int32>(ELureMovementState::Prone));
+		const uint8 Expected = (1u << static_cast<int32>(ELureMovementState::Crouch)) | (1u << static_cast<int32>(ELureMovementState::Prone))
+			| (1u << static_cast<int32>(ELureMovementState::Swim)) | (1u << static_cast<int32>(ELureMovementState::SwimSprint));
 		TestEqual(TEXT("partial table: Crouch and Prone fall back"), static_cast<int32>(Mask), static_cast<int32>(Expected));
 		TestNearlyEqual(TEXT("partial table: Stand from the table"), Row(Rows, ELureMovementState::Stand).MaxSpeed, 311.f);
 		TestNearlyEqual(TEXT("partial table: Sprint from the table"), Row(Rows, ELureMovementState::Sprint).MaxSpeed, 577.f);
@@ -530,7 +542,9 @@ bool FLureMovementProneJumpTest::RunTest(const FString& Parameters)
 		+ TEXT("Stand,350,2048,90,34,165,0.25,1.0,420,True") + BobTail
 		+ TEXT("Sprint,600,2048,90,34,165,0.25,2.5,440,True") + BobTail
 		+ TEXT("Crouch,180,1600,55,34,95,0.2,0.5,380,True") + BobTail
-		+ TEXT("Prone,90,1200,26,25,35,0.45,0.2,300,True") + BobTail, ImportProblems);
+		+ TEXT("Prone,90,1200,26,25,35,0.45,0.2,300,True") + BobTail
+		+ TEXT("Swim,170,700,90,34,118,0.3,1.6,0,False") + BobTail
+		+ TEXT("SwimSprint,290,900,90,34,118,0.3,3.0,0,False") + BobTail, ImportProblems);
 	TestEqual(TEXT("fixture imports cleanly"), ImportProblems.Num(), 0);
 
 	FWorld World;
@@ -1208,5 +1222,7 @@ bool FLureMovementSetupTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("third-person mesh slot hidden from its owner"), Character->GetMesh()->bOwnerNoSee);
 	return true;
 }
+
+} // namespace LureMovementTest
 
 #endif // WITH_DEV_AUTOMATION_TESTS

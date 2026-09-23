@@ -8,7 +8,8 @@
 
 /**
  *  Draws the local player's status lines as plain white text: progression (money, level, XP, cooler, the interact
- *  prompt) top-left, fishing (cast power, bite/hook prompt, results) centered in the lower part. No styling on purpose.
+ *  prompt) top-left; fishing (cast power, bite/hook prompt, fight, results) and a refused stance ("Too deep to crouch
+ *  here.") centered in the lower part. No styling on purpose.
  */
 UCLASS()
 class ALureHUD : public AHUD

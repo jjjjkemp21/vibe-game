@@ -26,6 +26,12 @@ All numbers are PLACEHOLDER until Jimmy's playtest A.
   "Longer than" is counted in whole fixed steps: over for exactly the grace holds, one step more ends it (T007-B1).
   Landed fires `OnFishLanded` (+ native delegate; the cooler hook for T-010) and logs `Catch:` on LogLureFish. Snapped,
   Spooled and ThrewHook lose the fish; the line comes in (state back to Idle) with a plain-text HUD message.
+- **Swimming and climbing during a fight (T-007 x T-026 merge, 2026-09-23):** the fishing line rules still apply while a
+  fish is on (fishing-rules.md: sprinting, swimming, climbing, a tucked rod), except the bobber distance rule (the fight
+  has its own: the spool). Falling in (swimming, the climb out included) or a ledge pull-up mid-fight cuts the line: the
+  fish is lost (result `Lost`, reason `Swimming` / `Climbing`), nothing lands (no `OnFishLanded`, no cooler, no XP), the
+  state goes back to Idle. No auto-reel. Tests: `Project.Fishing.Fight.SwimClimb.*`
+  (`Tests/FishFight/FightSwimClimbTest.cpp`).
 - **Gear** (DT_Gear, one row per item, three slots: Rod, Line, Hook-with-bait). Rod: RodPower, ReelSpeed, Drag,
   CastDistanceMultiplier. Line: LineStrength, SpoolLength. Hook: HookSecurity, BaitTag (which species bite), Luck.
   **Balance rule (lead, 2026-09-23):** the reel's effective drag never exceeds what the line holds:

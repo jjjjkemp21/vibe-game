@@ -7,6 +7,7 @@
 
 #if WITH_DEV_AUTOMATION_TESTS
 
+#include "Animation/AnimSequenceBase.h"
 #include "Camera/CameraComponent.h"
 #include "Character/FPArmsAnimInstance.h"
 #include "Character/FPArmsPose.h"
@@ -1094,6 +1095,114 @@ bool FLureFishingArmsPoseByStanceAndMotion::RunTest(const FString& Parameters)
 	{
 		AddInfo(TEXT("ABP_FPArms is not a UFPArmsAnimInstance here (not imported): anim-instance check skipped."));
 	}
+	Controller->UnPossess();
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLureFishingArmsPoseGraphPinOrder, "Project.Fishing.ArmsPose.GraphPinOrderMatchesEnum", LureFishingTest::TestFlags)
+bool FLureFishingArmsPoseGraphPinOrder::RunTest(const FString& Parameters)
+{
+	// ABP_FPArms' Blend Poses (EFPArmsPose) pins follow the order they were exposed in; a reorder would silently show
+	// the wrong clip. For each pose: drive the state, tick past the blend, and check hand_r_rod (component space) is
+	// closest to that pose's own clip (sampled over its loop on a reference mesh with the clip played directly).
+	FWorld World;
+	if (!World.Create(*this))
+	{
+		return false;
+	}
+	ALurePlayerCharacter* Character = World.Spawn(StandAt);
+	APlayerController* Controller = World.World->SpawnActor<APlayerController>();
+	if (!TestNotNull(TEXT("character"), Character) || !TestNotNull(TEXT("controller"), Controller))
+	{
+		return false;
+	}
+	Controller->SetAsLocalPlayerController();
+	Controller->Possess(Character);
+	World.Tick(10);
+	USkeletalMeshComponent* Arms = Character->GetFirstPersonArms();
+	const FName Bone = GetDefault<ULureFishingSettings>()->RodAttachBone;
+	const TCHAR* Folder = TEXT("/Game/Art/Characters/FPArms/");
+	const TCHAR* ClipNames[] = { TEXT("A_FPArms_Idle"), TEXT("A_FPArms_HoldRod_Idle"), TEXT("A_FPArms_Prone_HoldRod_Idle"), TEXT("A_FPArms_Prone_TuckRod") };
+	const EFPArmsPose Poses[] = { EFPArmsPose::Idle, EFPArmsPose::HoldRod, EFPArmsPose::ProneHold, EFPArmsPose::ProneTuck };
+	TArray<UAnimSequenceBase*> Clips;
+	for (const TCHAR* Name : ClipNames)
+	{
+		Clips.Add(LoadObject<UAnimSequenceBase>(nullptr, *FString::Printf(TEXT("%s%s.%s"), Folder, Name, Name), nullptr, LOAD_Quiet | LOAD_NoWarn));
+	}
+	if (!Arms || !Arms->GetSkeletalMeshAsset() || !Cast<UFPArmsAnimInstance>(Arms->GetAnimInstance()) || Clips.Contains(nullptr) || Arms->GetBoneIndex(Bone) == INDEX_NONE)
+	{
+		AddInfo(TEXT("SK_FPArms, ABP_FPArms or an A_FPArms clip is not loadable here: pin-order check skipped."));
+		Controller->UnPossess();
+		return true;
+	}
+	Arms->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
+
+	// Reference poses: each clip sampled over its length on a plain copy of the mesh.
+	USkeletalMeshComponent* Ref = NewObject<USkeletalMeshComponent>(Character);
+	Ref->SetSkeletalMeshAsset(Arms->GetSkeletalMeshAsset());
+	Ref->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
+	Ref->RegisterComponent();
+	Ref->SetAnimationMode(EAnimationMode::AnimationSingleNode);
+	TArray<TArray<FTransform>> Refs;
+	for (UAnimSequenceBase* Clip : Clips)
+	{
+		TArray<FTransform>& Samples = Refs.AddDefaulted_GetRef();
+		Ref->SetAnimation(Clip);
+		const float Length = Clip->GetPlayLength();
+		for (int32 Index = 0; Index < 10; ++Index)
+		{
+			Ref->SetPosition(Length * Index / 10.f, false);
+			Ref->TickAnimation(0.f, false);
+			Ref->RefreshBoneTransforms();
+			Samples.Add(Ref->GetSocketTransform(Bone, RTS_Component));
+		}
+	}
+	auto Error = [](const FTransform& A, const FTransform& B)
+	{
+		// cm + 0.25 x degrees (same scale as the editor probe: < ~1.5 same clip, > ~5 another clip).
+		return static_cast<float>(FVector::Dist(A.GetLocation(), B.GetLocation()) + 0.25 * FMath::RadiansToDegrees(A.GetRotation().AngularDistance(B.GetRotation())));
+	};
+	TestTrue(TEXT("the four clips put hand_r_rod in distinct places"), Error(Refs[1][0], Refs[2][0]) > 1.f && Error(Refs[2][0], Refs[3][0]) > 1.f && Error(Refs[0][0], Refs[1][0]) > 1.f);
+
+	auto Check = [&](EFPArmsPose Expected, TFunctionRef<void()> Drive)
+	{
+		for (int32 Frame = 0; Frame < 90; ++Frame) // 1.5 s: past the 0.3 s blend and any stance dip
+		{
+			Drive();
+			World.Tick(1);
+		}
+		const FString Label = PoseName(Expected);
+		TestEqual(Label + TEXT(": character pose"), PoseName(Character->GetArmsPose()), Label);
+		const FTransform Hand = Arms->GetSocketTransform(Bone, RTS_Component);
+		int32 Best = INDEX_NONE;
+		float BestError = TNumericLimits<float>::Max();
+		FString All;
+		for (int32 Clip = 0; Clip < Refs.Num(); ++Clip)
+		{
+			float ClipError = TNumericLimits<float>::Max();
+			for (const FTransform& Sample : Refs[Clip])
+			{
+				ClipError = FMath::Min(ClipError, Error(Hand, Sample));
+			}
+			All += FString::Printf(TEXT(" %s %.2f"), *PoseName(Poses[Clip]), ClipError);
+			if (ClipError < BestError)
+			{
+				BestError = ClipError;
+				Best = Clip;
+			}
+		}
+		AddInfo(FString::Printf(TEXT("%s: hand_r_rod errors%s"), *Label, *All));
+		TestEqual(Label + TEXT(": arms show its own clip"), Best != INDEX_NONE ? PoseName(Poses[Best]) : FString(), Label);
+	};
+	// Rod put away (the fishing component re-sets it every tick from IsRodInHand, so pause it for this step).
+	Character->GetFishing()->SetComponentTickEnabled(false);
+	Check(EFPArmsPose::Idle, [Character]() { Character->SetHoldingRod(false); });
+	Character->GetFishing()->SetComponentTickEnabled(true);
+	Check(EFPArmsPose::HoldRod, []() {});
+	Character->RequestStance(ELureStance::Prone);
+	Check(EFPArmsPose::ProneHold, []() {});
+	Check(EFPArmsPose::ProneTuck, [Character]() { Character->AddMovementInput(-FVector::ForwardVector, 1.f, true); });
+	Ref->DestroyComponent();
 	Controller->UnPossess();
 	return true;
 }
