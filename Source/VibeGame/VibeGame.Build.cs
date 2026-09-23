@@ -21,7 +21,10 @@ public class VibeGame : ModuleRules
 			"Slate"
 		});
 
-		PrivateDependencyModuleNames.AddRange(new string[] { });
+		PrivateDependencyModuleNames.AddRange(new string[] {
+			"SlateCore",
+			"Json"
+		});
 
 		PublicIncludePaths.AddRange(new string[] {
 			"VibeGame",
