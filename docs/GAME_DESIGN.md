@@ -32,6 +32,7 @@ A first-person, open-world fishing sandbox for 1-4 friends: sail between sunny, 
   - real microphone volume (talking, laughing, yelling)
   - actions: running, jumping into water, splashing, boat speed and wake
   Noise works by proximity: creatures hear noise within a radius, and louder noise reaches farther. The mic can be switched off in settings, and then only actions count.
+- Swim (Jimmy, 2026-09-23): falling or jumping into water means swimming, not getting caught. For now: swim on the surface (slow, splashy and noisy, so it can draw the shark) and climb out at beaches, ladders and low edges. Later: swimming under water too (diving), see "Out of scope for now".
 - Hide and counter: crouch or prone to stay out of a creature's sight line and to dodge certain boss attacks.
 - Prone fishing (Jimmy, 2026-09-22): you can fish while lying prone (e.g. flat at a dock or rock edge while something searches). The rod is tucked while you crawl and comes out when you stop; cast, reel and land all work prone.
 
@@ -85,8 +86,8 @@ Placeholder only (Jimmy's direction, 2026-09-22): plain text and simple boxes sh
 - Boat upgrades and the respawn-point boat; bigger fleets.
 - Story and lore beyond hints; voice chat between players (comes with co-op, proximity-based).
 - Custom character models (first-person arms only for now); a large fish roster; crafting.
+- Underwater swimming and diving (Jimmy wants it later; the slice has surface swimming only). Keep the swim code ready for it: swim state and tuning in data, no "always at the surface" assumptions outside the surface-float rule.
 
 ## Open questions for Jimmy
 - Level cap and pacing: how many hours should the beginner zone last? (Proposal: about 1-2 hours before the next region is comfortable.)
 - Should the fish journal show hints (silhouettes, where and when a fish bites) or stay a mystery until caught?
-- Should dropping into the water let you swim, or does falling in always count as "caught"?
