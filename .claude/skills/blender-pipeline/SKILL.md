@@ -29,7 +29,8 @@ Open the preview PNG after each run. Compare with the request and ART_STYLE.md. 
 - Weak: realistic organic characters, faces, hand-keyed character animation. For characters, prefer the Unreal mannequin with Epic's Game Animation Sample animations (retargeted in Unreal), or an AI-generated or marketplace mesh cleaned up here. Never spend paid credits on external services without Jimmy's OK.
 
 ## Blender MCP server (`blender`, official Blender Lab server)
-- Background-mode Python tool: quick inspection and experiments without a GUI.
+- Background-mode Python tool: `execute_blender_code_for_cli(blend_file, code)`; `code` must assign a dict to `result`. `blend_file` must be a real .blend (an empty string makes Blender try to open the working folder): use `C:/GameDev/_tools/empty.blend` when you have no file.
+- Install: clone `C:/GameDev/_tools/blender_mcp` (uv venv in `mcp/.venv`, server `mcp/.venv/Scripts/blender-mcp.exe`, `BLENDER_PATH` set in `.mcp.json`). It carries a local patch, `setup/patches/blender_mcp_stdin_devnull.patch`: without it every background call hangs 120 s on Windows. Re-apply it (`git apply`) after pulling the clone.
 - Live tools need Blender open with the add-on's server started (ask Cowork via the lead).
 - Use MCP for inspection and debugging; production changes go into recipes so they are reproducible.
 - The PyPI package called `blender-mcp` is a different community project: never install it.

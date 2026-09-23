@@ -1,0 +1,14 @@
+diff --git a/mcp/blmcp/tools_helpers/blender_cli.py b/mcp/blmcp/tools_helpers/blender_cli.py
+index 66a4535..7bec898 100644
+--- a/mcp/blmcp/tools_helpers/blender_cli.py
++++ b/mcp/blmcp/tools_helpers/blender_cli.py
+@@ -69,6 +69,9 @@ def run_blender_cli(
+         proc = subprocess.run(
+             [blender, "--background", blend_file, "--python-expr", wrapper],
+             capture_output=True,
++            # Local patch (VibeGame): do not inherit the MCP stdio pipe; on Windows a child touching
++            # the parent's synchronously-read stdin handle deadlocks until the timeout.
++            stdin=subprocess.DEVNULL,
+             text=True,
+             timeout=timeout,
+             check=False,
