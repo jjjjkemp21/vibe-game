@@ -46,6 +46,7 @@ Form: `powershell -NoProfile -ExecutionPolicy Bypass -File tools/<script>.ps1 [a
 - `tools/run-tests.ps1 -Filter Project`: headless automation tests with a JSON report.
 - `tools/unreal-python.ps1 -Function <fn> -ArgsJson '<json>'`: headless Unreal Python (editor closed).
 - `tools/blender-run.ps1 -Recipe art/recipes/<file>.py`: headless Blender recipe (export + preview + stats).
+- `tools/cleanup.ps1 [-Paths a,b] [-Apply]`: frees disk space (stale screenshots, scratch, old test runs and logs, named superseded Progress photos). Dry run unless -Apply; only touches git-ignored output folders.
 Every script writes `Saved/AgentLogs/status/<script>.json` (state, message, log path).
 
 ## Conventions
@@ -65,6 +66,7 @@ Every script writes `Saved/AgentLogs/status/<script>.json` (state, message, log 
 - `level-designer`: designs maps and play spaces (flow, pacing, fishing spots, cover and sight lines, crawl routes): plan in `docs/levels/`, layout data in `data/levels/*.json` (the source of truth), a generic builder `Content/Python/levels/build_level.py` that the editor-operator runs, and Blender layout previews. It never calls unreal-mcp itself.
 - `qa-engineer`: senior QA. Writes independent unit, data-validation and integration tests (owns `Source/VibeGame/Tests/`, `docs/TEST_PLAN.md`), runs the full suite, reports PASS/FAIL with evidence; never changes production code.
 - `playtester`: plays the game in PIE (injected input + screenshots), runs the feature scenario and free play, reports bugs and feel notes; read-only.
+- `janitor`: housekeeping for Jimmy's disk (Jimmy, 2026-09-23). The lead runs it after each push to GitHub, at milestones, or when Saved/ passes ~500 MB. Deletes only through `tools/cleanup.ps1`.
 - `designer`: reviews playtester screenshots and previews against GAME_DESIGN.md / ART_STYLE.md and the mood boards; verdict + prioritized change requests; changes nothing.
 - Typical flow per task: implementer (unreal-engineer / model-artist / animation-artist / level-designer / editor-operator) -> qa-engineer tests -> playtester plays -> designer reviews -> lead fixes or accepts -> release gate before publishing.
 C++ work and Blender work (model-artist, animation-artist) can run in parallel; two Blender agents can too, as long as they work on different recipes.
@@ -81,5 +83,5 @@ C++ work and Blender work (model-artist, animation-artist) can run in parallel; 
 ## Working with Jimmy
 - He playtests. Feedback notes land in `Saved/Playtest/` once the feedback key exists (see `playtest-feedback` skill). Turn each note into a task in `docs/TASKS.md`.
 - Report in plain language: what changed, what to try next time he plays, and anything you need from him.
-- Progress screenshots for Jimmy: `C:\GameDev\VibeGame\Progress\` (not in git). Whenever something visible is verified (a new asset preview, a level screenshot, a playtest shot, a before/after), the lead copies the best 1-3 images there as `<yyyy-MM-dd>_<NN>_<short_plain_description>.png` (NN continues the day's numbering). Only verified, looked-at images; no logs.
+- Progress screenshots for Jimmy: `C:\GameDev\VibeGame\Progress\` (not in git). Whenever something visible is verified (a new asset preview, a level screenshot, a playtest shot, a before/after), the lead copies the best 1-3 images there as `<yyyy-MM-dd>_<NN>_<short_plain_description>.png` (NN continues the day's numbering). Only verified, looked-at images; no logs. Superseded photos are pruned by the janitor (newest per subject; mood boards and palette stay).
 - Source of truth for what we build: `docs/GAME_DESIGN.md`, `docs/ART_STYLE.md`, `docs/TASKS.md`.

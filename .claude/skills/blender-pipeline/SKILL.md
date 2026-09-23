@@ -38,7 +38,7 @@ Open the preview PNG after each run. Compare with the request and ART_STYLE.md. 
 ## Animation (animation-artist)
 - Rig and animation recipes build ON the model-artist's mesh recipe (import its export or call its build function); never hand-edit the mesh inside an animation recipe.
 - 30 fps. Action names = Unreal asset names (`A_<Subject>_<Action>`, e.g. `A_FishGeneric_Swim`, `A_FPArms_Cast`). One Blender action per clip; push each to its own NLA track before export so all clips export.
-- Export skeletal assets with `apply_scale_options="FBX_SCALE_ALL"`, `add_leaf_bones=False`, `bake_anim=True`, `bake_anim_use_nla_strips=True`, `bake_anim_use_all_actions=False` (see Troubleshooting). Keep the root bone at the origin; use root motion only where the spec says so.
+- Export skeletal assets (mesh + animations) ONLY with `pb.export_skeletal_fbx()` from `art/lib/pipeline_blender.py` (verified 2026-09-23 on SK_FPArms): it writes centimeter FBX (UnitScaleFactor exactly 1.0) with every bone at scale 1.0 and fails if not. Author rigs in meters as usual. Keep the root bone at the origin; no root motion unless a spec asks. Unreal import: Convert Scene Unit OFF, uniform scale 1.0 (see art/export/Characters/SK_FPArms.anim.md).
 - Scale over species: one rig per body type (e.g. a spine bone chain for all fish) with procedural or parameterized motion (amplitude, frequency, speed) that the game drives from data. Don't make per-species clips unless a species truly moves differently.
 - Every animated export gets `art/export/<Category>/<Name>.anim.md`: skeleton, actions (frame range, loop or one-shot, root motion, notify frames), and Unreal import/retarget/montage notes.
 - Preview: render a key-frame strip or contact sheet to `Saved/AgentLogs/previews/<Name>_anim.png` and look at it (pops, sliding, broken weights, interpenetration).
@@ -46,5 +46,5 @@ Open the preview PNG after each run. Compare with the request and ART_STYLE.md. 
 ## Troubleshooting
 - FBX operator missing under `--factory-startup`: `ensure_fbx_exporter()` enables `io_scene_fbx`; or export GLB with `bpy.ops.export_scene.gltf(export_format='GLB')`.
 - Wrong size in Unreal (extent near 0.5 or 5000 instead of 50 for 1 m): check `apply_unit_scale` / scene unit scale.
-- Skeletal meshes (armatures): the default export puts the unit conversion on object transforms, which often causes a 100x armature scale in Unreal. For rigged assets export with `apply_scale_options="FBX_SCALE_ALL"` and `add_leaf_bones=False`, then compare the imported skeleton height with the Unreal mannequin before building on it.
+- Skeletal meshes (armatures): a meter-declared FBX (including `FBX_SCALE_ALL`, which writes UnitScaleFactor 0.99999998) imports into Unreal with a 100x `root` bone scale, and anything attached to a bone inherits it. Always use `pb.export_skeletal_fbx()`.
 - Blender 5.x API differences: check at runtime (`hasattr`, `dir()`), or use the MCP server's API lookup, before assuming older API names.
