@@ -16,10 +16,10 @@ struct FLureInputActionNames
 	static const FName Move;	// Axis2D: X = right, Y = forward
 	static const FName Look;	// Axis2D: degrees this frame, X = yaw right, Y = pitch up
 	static const FName Jump;	// Boolean
+	static const FName Interact;	// Boolean: use the nearest interactable (T-010 sell points; later NPCs)
 	static const FName Sprint;	// Boolean
 	static const FName Crouch;	// Boolean
 	static const FName Prone;	// Boolean
-	static const FName Interact;	// Boolean: use the nearest interactable (T-010 sell points; later NPCs)
 
 	static TArray<FName> All();
 };

@@ -13,10 +13,10 @@
 const FName FLureInputActionNames::Move(TEXT("Move"));
 const FName FLureInputActionNames::Look(TEXT("Look"));
 const FName FLureInputActionNames::Jump(TEXT("Jump"));
+const FName FLureInputActionNames::Interact(TEXT("Interact"));
 const FName FLureInputActionNames::Sprint(TEXT("Sprint"));
 const FName FLureInputActionNames::Crouch(TEXT("Crouch"));
 const FName FLureInputActionNames::Prone(TEXT("Prone"));
-const FName FLureInputActionNames::Interact(TEXT("Interact"));
 
 TArray<FName> FLureInputActionNames::All()
 {
@@ -72,10 +72,10 @@ void ULureInputSubsystem::CreateActions()
 		{ FLureInputActionNames::Move, EInputActionValueType::Axis2D },
 		{ FLureInputActionNames::Look, EInputActionValueType::Axis2D },
 		{ FLureInputActionNames::Jump, EInputActionValueType::Boolean },
+		{ FLureInputActionNames::Interact, EInputActionValueType::Boolean },
 		{ FLureInputActionNames::Sprint, EInputActionValueType::Boolean },
 		{ FLureInputActionNames::Crouch, EInputActionValueType::Boolean },
 		{ FLureInputActionNames::Prone, EInputActionValueType::Boolean },
-		{ FLureInputActionNames::Interact, EInputActionValueType::Boolean },
 	};
 
 	Actions.Reset();
@@ -169,8 +169,8 @@ void ULureInputSubsystem::BuildMappings(UInputMappingContext& Context, const TMa
 	// Buttons.
 	auto NoModifiers = []() { return TArray<UInputModifier*>{}; };
 	Map(FLureInputActionNames::Jump, Settings.JumpKeys, NoModifiers);
+	Map(FLureInputActionNames::Interact, Settings.InteractKeys, NoModifiers); // T-010
 	Map(FLureInputActionNames::Sprint, Settings.SprintKeys, NoModifiers);
 	Map(FLureInputActionNames::Crouch, Settings.CrouchKeys, NoModifiers);
-	Map(FLureInputActionNames::Interact, Settings.InteractKeys, NoModifiers);
 	Map(FLureInputActionNames::Prone, Settings.ProneKeys, NoModifiers);
 }
