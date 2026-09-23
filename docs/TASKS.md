@@ -44,6 +44,19 @@ In progress: unreal-engineer-junior-medium in eng3 (after the T-007 test update 
     - unreal-engineer-senior-max (eng2): the water volume editor crash.
   - Content gap: the DeepDrop spots (point_ledge, islet_drop) have no species until the next fish batch.
   - Deferred cosmetic: the line clips through the dock post when prone.
+- 15:10 status:
+  - MERGED into main:
+    - HUD notices d6b96dc: level-up and "Sold N fish", fight text lower-left
+    - water volume editor-crash fix 26ec2db, with a test that places the volume through the editor factory
+    - fishing-loop fixes 7d09c7d: the LureCast trace channel ignores trigger zones; B4 root cause was FEditorScriptExecutionGuard running RPCs locally; Bonefish Run retune (holding snaps 42-46%, careful play 0% at ~11 s)
+    main 01a7af1 was 708/708 before eng1; the build and tests with eng1 are running now.
+  - Next:
+    1. the editor re-imports DT_FightPattern
+    2. rebuild both levels with water (decline crash-restore; commit the leftover MI_Lvl_*); resave ABP_FPArms
+    3. final full playtest: fishing + swimming, 1P/2P
+    4. designer
+    5. push
+    6. janitor
 - DONE: the T-025 smoke check PASS (Saved/AgentLogs/playtest/20260923-104259-T025-smoke/report.md; about 17 calls for the whole scenario including 2 players). Driver follow-ups (junior, later):
   - clear pd.results() per session
   - a default filter for pd.markers()
