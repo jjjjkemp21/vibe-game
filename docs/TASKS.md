@@ -5,6 +5,14 @@ Done tasks move to "Done" with their commit hash. Read the "In progress" markers
 Last processed playtest folder: (none)
 
 ## Paused 2026-09-23 ~02:30 (Jimmy's night). Resume here
+**Resumed 2026-09-23 10:35.** In progress:
+- unreal-engineer-senior-max: T-026 netfix (eng2)
+- qa-engineer-mid-medium: T-006 QA (eng1)
+- unreal-engineer-mid-high: finishing T-007 (eng3)
+- qa-engineer-mid-medium: T-010 QA (eng5)
+- animation-artist-senior-max: fish rig and clips (main)
+- unreal-engineer-junior-medium: run-tests.ps1 crash detection (main)
+- editor: relaunch, then the L_PalmKey cave rebuild (editor-operator-junior-low), then the T-025 smoke check (playtester-low)
 No agents are running. Each open task has a handoff note in `Saved/AgentLogs/handoff/`. Where a task line says "In progress", the state below overrides it.
 - main: T-025 merged (c021d08, 2ae0c5a). Build green; full suite 401/401 (Saved/AgentLogs/tests/20260923-020238). The editor is closed.
 - T-026 + T-004 fixes (lane eng2, 1ab1dc6), in 3 steps:
