@@ -24,6 +24,10 @@ What gets spawned (all tagged "LureLayout", "LureLayout=<id>", "LureId=<element 
 - markers    -> PlayerStart (player_start, PlayerStartTag), TriggerBox (zone, extent = size / 2) or TargetPoint
                 (everything else). Marker data is written as actor tags "Key=Value" (see marker_tags()). A layout may
                 map a marker type to a gameplay class later: "marker_classes": {"fishing_spot": "/Script/VibeGame.X"}.
+                Any marker may carry "properties": {"PropName": value}; after spawning, each is applied with
+                set_editor_property (CamelCase names are tried as given and as snake_case; strings go to FName
+                properties as unreal.Name, lists of 3 numbers to vector properties). Unknown or rejected properties log
+                a warning and the build continues. Generic: sell points, ladders, water volumes, ...
 - labels     -> TextRenderActor (editor aid; hidden in game unless the layout says "labels_in_game": true)
 
 Materials: /Game/Materials/Level/M_LevelPalette (params Color, Roughness, Emissive) is created once;
@@ -416,6 +420,47 @@ def _marker_class(layout, mtype, default_cls):
     return default_cls
 
 
+def _snake(name):
+    out = []
+    for i, ch in enumerate(name):
+        if ch.isupper() and i and (not name[i - 1].isupper() or (i + 1 < len(name) and name[i + 1].islower())):
+            out.append("_")
+        out.append(ch.lower())
+    return "".join(out)
+
+
+def _convert_prop(current, value):
+    if isinstance(current, unreal.Name) and isinstance(value, str):
+        return unreal.Name(value)
+    if isinstance(current, unreal.Text) and isinstance(value, str):
+        return unreal.Text(value)
+    if isinstance(current, unreal.Vector) and isinstance(value, (list, tuple)) and len(value) == 3:
+        return unreal.Vector(*[float(x) for x in value])
+    if isinstance(current, float) and isinstance(value, (int, float)):
+        return float(value)
+    return value
+
+
+def apply_properties(actor, props, elem_id):
+    """Apply a layout element's "properties" to the spawned actor; warn (never raise) on unknown/rejected ones."""
+    for key, value in (props or {}).items():
+        done = False
+        for name in dict.fromkeys((key, _snake(key))):
+            try:
+                current = actor.get_editor_property(name)
+            except Exception:
+                continue
+            try:
+                actor.set_editor_property(name, _convert_prop(current, value))
+                done = True
+            except Exception as exc:
+                _warn("property %s=%r on %s rejected: %s" % (key, value, elem_id, exc))
+                done = True
+            break
+        if not done:
+            _warn("unknown property %s on %s (%s); skipped" % (key, elem_id, actor.get_class().get_name()))
+
+
 def spawn_label(text, at, layout_id, elem_id, size, yaw, in_game):
     actor = _eas().spawn_actor_from_class(unreal.TextRenderActor, _vec(at), _rot(yaw))
     comp = actor.text_render
@@ -471,6 +516,8 @@ def spawn_marker(mk, layout, layout_id):
         cls = _marker_class(layout, t, unreal.TargetPoint)
         a = _eas().spawn_actor_from_class(cls, _vec(at), _rot(yaw))
         tags = marker_tags(mk)
+    if mk.get("properties"):
+        apply_properties(a, mk["properties"], mk["id"])
     spawned.append(_finish_actor(a, layout_id, mk["id"], mk["id"].replace("/", "."), folder, tags))
     return spawned
 

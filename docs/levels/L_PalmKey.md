@@ -206,6 +206,11 @@ Until gameplay classes exist, markers are TargetPoints / TriggerBoxes / PlayerSt
 - every spawned actor: `LureLayout`, `LureLayout=L_PalmKey`, `LureId=<element id>` (the rebuild key)
 When a class exists (e.g. ALureFishingSpot), map it in the JSON: `"marker_classes": {"fishing_spot": "/Script/VibeGame.LureFishingSpot"}`.
 The builder then spawns that class; the tags stay.
+- **Sell point (T-010):** `sell_dock` is an `ALureSellPoint` (mapped via `marker_classes.sell_point`) at [-3400,-600,100],
+  on the shop apron 130 cm in front of the counter, so a player walking up from the spawn reaches its 300 cm radius at the
+  counter. `"properties": {"MarketId": "PalmKeyDock"}` (DT_FishMarket row). Editor label "SELL (PalmKeyDock)".
+- Any marker may carry `"properties": {"PropName": value}`; the builder sets them with set_editor_property after
+  spawning (FName/Text/Vector converted; unknown names only warn).
 
 ## 12. Performance notes
 About 470 actors (365 basic-shape primitives: 144 of them palm parts; 5 props; 8 lights; about 90 markers and labels).

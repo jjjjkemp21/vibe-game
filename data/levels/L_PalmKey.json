@@ -14,6 +14,7 @@
   ],
   "world": {"game_mode_override": null},
   "labels_in_game": false,
+  "marker_classes": {"sell_point": "/Script/VibeGame.LureSellPoint"},
   "metrics": {
     "source": "DT_Movement.csv (lane eng1 0cac885) + engine defaults (gravity -980, step 45, walkable 44.765 deg)",
     "walk_cm_s": 350,
@@ -208,6 +209,8 @@
     {"id": "ps_3", "type": "player_start", "at": [-3300, 250, 105.5], "yaw": 23, "player_start_tag": "Respawn.Dock", "tags": ["Lure.Respawn", "Respawn=Dock"], "name": "", "label": false},
     {"id": "ps_4", "type": "player_start", "at": [-3300, 400, 107.0], "yaw": 23, "player_start_tag": "Respawn.Dock", "tags": ["Lure.Respawn", "Respawn=Dock"], "name": "", "label": false},
     {"id": "npc_dock", "type": "npc", "at": [-3400, -1000, 100], "yaw": 90, "role": "shop+requests", "name": "Dock NPC (shop, requests, sell)"},
+    {"id": "sell_dock", "type": "sell_point", "at": [-3400, -600, 100], "yaw": 270, "properties": {"MarketId": "PalmKeyDock"}, "tags": ["Lure.SellPoint"], "notes": "On the shop apron, 130 cm in front of the counter (counter front y=-700, apron to y=-450); 300 cm radius covers the whole counter front. Walk-up from the spawn path (ps_1 at y=-50)."},
+    {"id": "label_sell_dock", "type": "label", "text": "SELL (PalmKeyDock)", "at": [-3400, -600, 330]},
     {"id": "boat_mooring", "type": "boat_mooring", "at": [-6450, 300, 0], "yaw": 90, "name": "Boat mooring (T-018)", "floating": true},
     {"type": "fishing_spot", "id": "dock_end", "name": "Dock End", "at": [-7000, 600, 0], "radius": 600, "cast_from": [-6000, 600, 70], "habitat": "Habitat.Shore", "hours": [[0, 24]], "time_label": "any", "level_band": [1, 2], "danger": "none", "species_hint": ["Bonefish (L1, day)", "Sand Grunt (L1, any time; proposed)"], "notes": "First cast of the game: safe, lit by the dock lantern at night, 25 s from spawn.", "region": "Region.Tropical.PalmKey"},
     {"type": "fishing_spot", "id": "palm_beach", "name": "Palm Beach", "at": [-4400, 4300, 0], "radius": 700, "cast_from": [-3600, 3300, 91.2], "habitat": "Habitat.Shore", "hours": [[0, 24]], "time_label": "any", "level_band": [1, 2], "danger": "none", "species_hint": ["Bonefish (L1, day)", "Sand Grunt (L1, any time)"], "notes": "Shore casting from the sand; the Tall Palm is behind you.", "region": "Region.Tropical.PalmKey"},

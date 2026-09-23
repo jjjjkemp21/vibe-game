@@ -36,7 +36,7 @@ ENGINE_SHAPES = {
 ANCHORS = ("bottom", "center", "top")
 MARKER_TYPES = (
     "player_start", "fishing_spot", "patrol", "sight_cone", "zone", "npc", "teleport", "boat_mooring",
-    "cover_test", "clearance_test", "landmark", "label",
+    "cover_test", "clearance_test", "landmark", "label", "sell_point",
 )
 LIGHT_TYPES = ("directional", "sky_atmosphere", "sky_light", "height_fog", "point", "post_process")
 ZONE_TYPES = ("threat", "hazard", "crawl_gap", "quiet", "trigger", "area")

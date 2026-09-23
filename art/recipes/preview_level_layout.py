@@ -667,9 +667,10 @@ def draw_overlays(layout, ex, canvas, legs, covers, view):
             canvas.disc(p, 45, SAFE, 1.0)
             yaw = math.radians(mk.get("yaw", 0.0))
             canvas.segment(p, (p[0] + 150 * math.cos(yaw), p[1] + 150 * math.sin(yaw)), 2.5, SAFE, 1.0)
-        elif t in ("npc", "teleport", "boat_mooring", "landmark"):
+        elif t in ("npc", "teleport", "boat_mooring", "landmark", "sell_point"):
             p = L.v3(mk["at"])
-            hx = {"npc": "#2F5FA0", "teleport": "#1E5E28", "boat_mooring": "#8A5A3B", "landmark": INK}[t]
+            hx = {"npc": "#2F5FA0", "teleport": "#1E5E28", "boat_mooring": "#8A5A3B", "landmark": INK,
+                  "sell_point": "#C8961E"}[t]
             canvas.disc(p, 60, hx, 1.0)
             canvas.disc(p, 60, PARCHMENT, 1.0, ring_px=2.0)
     for c in covers:
