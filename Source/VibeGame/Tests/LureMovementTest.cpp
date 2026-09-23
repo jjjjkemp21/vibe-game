@@ -920,8 +920,9 @@ bool FLureMovementArmsBobWorldTest::RunTest(const FString& Parameters)
 	}
 	TestTrue(FString::Printf(TEXT("stopped: arms back at rest (%.3f cm)"), Player->GetArmsBobOffset().GetLocation().Size()), Player->GetArmsBobOffset().GetLocation().IsNearlyZero(0.05));
 
-	// Stance changes and landings with no arms animation imported are safe no-ops.
-	TestFalse(TEXT("no anim instance: the stance dip is skipped"), Player->PlayStanceDip(1.f));
+	// Stance changes and landings are safe with or without the arms animation imported (lanes have no assets; main has them).
+	const bool bArmsAnimated = Player->GetFirstPersonArms() && Player->GetFirstPersonArms()->GetAnimInstance() && !Player->StanceDipAnimation.IsNull();
+	TestEqual(TEXT("the stance dip plays only when the arms are animated"), Player->PlayStanceDip(1.f), bArmsAnimated);
 	Player->RequestStance(ELureStance::Crouch);
 	World.Tick(20);
 	Player->RequestStance(ELureStance::Stand);
