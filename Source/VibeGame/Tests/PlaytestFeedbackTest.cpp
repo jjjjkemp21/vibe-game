@@ -10,6 +10,7 @@
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 #include "Playtest/PlaytestNoteWriter.h"
+#include "Playtest/PlaytestFeedbackRules.h"
 #include "Playtest/PlaytestFeedbackSubsystem.h"
 #include <limits>
 
@@ -21,6 +22,70 @@ namespace PlaytestFeedbackTest
 	static FString MakeTempDir()
 	{
 		return FPaths::ConvertRelativePathToFull(FPaths::AutomationTransientDir() / TEXT("PlaytestFeedback") / FGuid::NewGuid().ToString(EGuidFormats::Digits));
+	}
+
+	/** Writes the note without a screenshot and returns the parsed note.json (null on failure) */
+	static TSharedPtr<FJsonObject> WriteAndParse(FAutomationTestBase& Test, const FString& RootDir, const FPlaytestNoteData& Note, FString* OutFolder = nullptr, FString* OutWarning = nullptr)
+	{
+		FString Folder, Error, Warning;
+		const bool bWritten = FPlaytestNoteWriter::WriteNote(RootDir, Note, 0, 0, TArray<FColor>(), Folder, Error, &Warning);
+		if (!Test.TestTrue(FString::Printf(TEXT("WriteNote succeeds (%s)"), *Error), bWritten))
+		{
+			return nullptr;
+		}
+		if (OutFolder)
+		{
+			*OutFolder = Folder;
+		}
+		if (OutWarning)
+		{
+			*OutWarning = Warning;
+		}
+		FString Json;
+		TSharedPtr<FJsonObject> Root;
+		if (!FFileHelper::LoadFileToString(Json, *(Folder / TEXT("note.json"))) || !FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Json), Root))
+		{
+			Test.AddError(TEXT("note.json could not be read back or parsed"));
+			return nullptr;
+		}
+		return Root;
+	}
+
+	static bool NearlyEqualTime(const FDateTime& A, const FDateTime& B, const double ToleranceSeconds)
+	{
+		return FMath::Abs((A - B).GetTotalSeconds()) <= ToleranceSeconds;
+	}
+
+	/** A running PIE/standalone candidate with the given PIE instance number */
+	static FPlaytestFeedbackCandidate Running(const int32 PIEInstance)
+	{
+		FPlaytestFeedbackCandidate Candidate;
+		Candidate.bSessionRunning = true;
+		Candidate.PIEInstance = PIEInstance;
+		return Candidate;
+	}
+
+	static const TCHAR* ToText(const EPlaytestFeedbackKeyAction Action)
+	{
+		switch (Action)
+		{
+		case EPlaytestFeedbackKeyAction::PassThrough: return TEXT("PassThrough");
+		case EPlaytestFeedbackKeyAction::Consume: return TEXT("Consume");
+		case EPlaytestFeedbackKeyAction::OpenNote: return TEXT("OpenNote");
+		}
+		return TEXT("?");
+	}
+
+	static const TCHAR* ToText(const EPlaytestNoteBoxKeyAction Action)
+	{
+		switch (Action)
+		{
+		case EPlaytestNoteBoxKeyAction::PassThrough: return TEXT("PassThrough");
+		case EPlaytestNoteBoxKeyAction::Submit: return TEXT("Submit");
+		case EPlaytestNoteBoxKeyAction::Cancel: return TEXT("Cancel");
+		case EPlaytestNoteBoxKeyAction::Consume: return TEXT("Consume");
+		}
+		return TEXT("?");
 	}
 }
 
@@ -373,6 +438,423 @@ bool FPlaytestSubsystemDefaultsTest::RunTest(const FString& Parameters)
 	const UPlaytestFeedbackSubsystem* Defaults = GetDefault<UPlaytestFeedbackSubsystem>();
 	TestTrue(TEXT("Feedback key is F8"), Defaults->FeedbackKey == EKeys::F8);
 	TestTrue(TEXT("FPS window is 5 s"), FMath::IsNearlyEqual(Defaults->FpsWindowSeconds, 5.0f));
+	TestTrue(TEXT("Saved toast shows 7 s"), FMath::IsNearlyEqual(Defaults->ToastSeconds, 7.0f));
+	TestTrue(TEXT("Failure toast shows 12 s"), FMath::IsNearlyEqual(Defaults->FailureToastSeconds, 12.0f));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPlaytestUtcTimestampTest,
+	"Project.Playtest.UtcTimestamp",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FPlaytestUtcTimestampTest::RunTest(const FString& Parameters)
+{
+	// round 2: note.json "timestamp" is real UTC (ISO 8601 with Z); the folder name stays local time
+	const FString RootDir = PlaytestFeedbackTest::MakeTempDir();
+
+	// format
+	TestEqual(TEXT("ISO 8601 UTC with milliseconds and Z"), FPlaytestNoteWriter::MakeUtcTimestamp(FDateTime(2026, 9, 23, 2, 5, 9, 250)), FString(TEXT("2026-09-23T02:05:09.250Z")));
+	TestEqual(TEXT("Leading zeros are kept"), FPlaytestNoteWriter::MakeUtcTimestamp(FDateTime(2026, 1, 2, 3, 4, 5, 6)), FString(TEXT("2026-01-02T03:04:05.006Z")));
+
+	// the machine's offset: whole minutes, within the real time zone range
+	const FTimespan Offset = FPlaytestNoteWriter::GetLocalUtcOffset();
+	TestEqual(TEXT("Offset is whole minutes"), Offset.GetTicks() % ETimespan::TicksPerMinute, static_cast<int64>(0));
+	TestTrue(FString::Printf(TEXT("Offset %s is within UTC-12:00..UTC+14:00"), *Offset.ToString()), Offset >= FTimespan::FromHours(-12.0) && Offset <= FTimespan::FromHours(14.0));
+	TestTrue(TEXT("Offset matches Now - UtcNow"), FMath::Abs((FDateTime::Now() - FDateTime::UtcNow() - Offset).GetTotalSeconds()) < 1.0);
+	AddInfo(FString::Printf(TEXT("Local UTC offset on this machine: %s"), *Offset.ToString()));
+
+	// StampNow: one instant, UTC and local exactly the offset apart
+	FPlaytestNoteData Live;
+	const FDateTime Before = FDateTime::UtcNow();
+	FPlaytestNoteWriter::StampNow(Live);
+	const FDateTime After = FDateTime::UtcNow();
+	TestTrue(TEXT("TimestampUtc is UtcNow"), Live.TimestampUtc >= Before && Live.TimestampUtc <= After);
+	TestTrue(TEXT("Timestamp is local time (Now)"), PlaytestFeedbackTest::NearlyEqualTime(Live.Timestamp, FDateTime::Now(), 5.0));
+	TestEqual(TEXT("Local - UTC is exactly the offset"), (Live.Timestamp - Live.TimestampUtc).GetTicks(), FPlaytestNoteWriter::GetLocalUtcOffset().GetTicks());
+
+	// a live-stamped note: the folder is local, the json timestamp is UTC (parsed back, it is the offset away from local)
+	Live.Text = TEXT("utc check");
+	FString LiveFolder;
+	if (const TSharedPtr<FJsonObject> Root = PlaytestFeedbackTest::WriteAndParse(*this, RootDir, Live, &LiveFolder))
+	{
+		const FString Stamp = Root->GetStringField(TEXT("timestamp"));
+		TestTrue(FString::Printf(TEXT("timestamp ends with Z (%s)"), *Stamp), Stamp.EndsWith(TEXT("Z")));
+		FDateTime Parsed;
+		if (TestTrue(FString::Printf(TEXT("timestamp parses as ISO 8601 (%s)"), *Stamp), FDateTime::ParseIso8601(*Stamp, Parsed)))
+		{
+			TestTrue(TEXT("Parsed timestamp is the UTC instant (ms precision)"), PlaytestFeedbackTest::NearlyEqualTime(Parsed, Live.TimestampUtc, 0.001));
+			TestTrue(TEXT("Local (folder) time - json timestamp = the offset"), FMath::Abs((Live.Timestamp - Parsed - Offset).GetTotalSeconds()) <= 0.001);
+		}
+		TestTrue(FString::Printf(TEXT("Folder name is local time (%s)"), *FPaths::GetCleanFilename(LiveFolder)), FPaths::GetCleanFilename(LiveFolder).StartsWith(FPlaytestNoteWriter::MakeFolderName(Live.Timestamp)));
+	}
+
+	// explicit values: folder from the local time, json from the UTC time (5 h apart, across midnight)
+	FPlaytestNoteData Fixed;
+	Fixed.Text = TEXT("fixed times");
+	Fixed.Timestamp = FDateTime(2026, 9, 22, 21, 5, 9);
+	Fixed.TimestampUtc = FDateTime(2026, 9, 23, 2, 5, 9, 250);
+	FString FixedFolder;
+	if (const TSharedPtr<FJsonObject> Root = PlaytestFeedbackTest::WriteAndParse(*this, RootDir, Fixed, &FixedFolder))
+	{
+		TestEqual(TEXT("Folder name uses the local time"), FPaths::GetCleanFilename(FixedFolder), FString(TEXT("20260922-210509")));
+		TestEqual(TEXT("json timestamp uses the UTC time"), Root->GetStringField(TEXT("timestamp")), FString(TEXT("2026-09-23T02:05:09.250Z")));
+	}
+
+	// only the local time set (older callers): the UTC value is derived with the current offset
+	FPlaytestNoteData LocalOnly;
+	LocalOnly.Timestamp = FDateTime(2026, 9, 22, 21, 5, 9);
+	TestEqual(TEXT("Derived UTC timestamp"), FPlaytestNoteWriter::GetUtcTimestampText(LocalOnly), FPlaytestNoteWriter::MakeUtcTimestamp(LocalOnly.Timestamp - Offset));
+
+	// nothing set: empty (never a fake year-1 date, never an out-of-range FDateTime)
+	TestEqual(TEXT("No timestamps gives an empty timestamp"), FPlaytestNoteWriter::GetUtcTimestampText(FPlaytestNoteData()), FString());
+
+	IFileManager::Get().DeleteDirectory(*RootDir, /*RequireExists*/ false, /*Tree*/ true);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPlaytestCameraInNoteTest,
+	"Project.Playtest.CameraInNote",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FPlaytestCameraInNoteTest::RunTest(const FString& Parameters)
+{
+	// designer A-S2: note.json records the view (camera location and rotation, pitch included) next to the pawn fields
+	const FString RootDir = PlaytestFeedbackTest::MakeTempDir();
+
+	FPlaytestNoteData Note;
+	Note.Text = TEXT("I couldn't see the bobber");
+	Note.Timestamp = FDateTime(2026, 9, 22, 21, 5, 9);
+	Note.Location = FVector(100.0, 200.0, 90.0);
+	Note.Rotation = FRotator(0.0, 45.0, 0.0);
+	Note.CameraLocation = FVector(110.5, 205.25, 160.0);
+	Note.CameraRotation = FRotator(-22.5, 47.0, 1.5);
+
+	if (const TSharedPtr<FJsonObject> Root = PlaytestFeedbackTest::WriteAndParse(*this, RootDir, Note))
+	{
+		const TSharedPtr<FJsonObject>* Camera = nullptr;
+		if (TestTrue(TEXT("camera object"), Root->TryGetObjectField(TEXT("camera"), Camera)))
+		{
+			const TSharedPtr<FJsonObject>* Location = nullptr;
+			if (TestTrue(TEXT("camera.location object"), (*Camera)->TryGetObjectField(TEXT("location"), Location)))
+			{
+				TestTrue(TEXT("camera.location.x"), FMath::IsNearlyEqual((*Location)->GetNumberField(TEXT("x")), 110.5));
+				TestTrue(TEXT("camera.location.y"), FMath::IsNearlyEqual((*Location)->GetNumberField(TEXT("y")), 205.25));
+				TestTrue(TEXT("camera.location.z"), FMath::IsNearlyEqual((*Location)->GetNumberField(TEXT("z")), 160.0));
+			}
+			const TSharedPtr<FJsonObject>* Rotation = nullptr;
+			if (TestTrue(TEXT("camera.rotation object"), (*Camera)->TryGetObjectField(TEXT("rotation"), Rotation)))
+			{
+				TestTrue(TEXT("camera.rotation.pitch (looking down)"), FMath::IsNearlyEqual((*Rotation)->GetNumberField(TEXT("pitch")), -22.5));
+				TestTrue(TEXT("camera.rotation.yaw"), FMath::IsNearlyEqual((*Rotation)->GetNumberField(TEXT("yaw")), 47.0));
+				TestTrue(TEXT("camera.rotation.roll"), FMath::IsNearlyEqual((*Rotation)->GetNumberField(TEXT("roll")), 1.5));
+			}
+		}
+
+		// the pawn fields stay as they were
+		const TSharedPtr<FJsonObject>* PawnLocation = nullptr;
+		if (TestTrue(TEXT("location object kept"), Root->TryGetObjectField(TEXT("location"), PawnLocation)))
+		{
+			TestTrue(TEXT("location.z is the pawn's"), FMath::IsNearlyEqual((*PawnLocation)->GetNumberField(TEXT("z")), 90.0));
+		}
+		const TSharedPtr<FJsonObject>* PawnRotation = nullptr;
+		if (TestTrue(TEXT("rotation object kept"), Root->TryGetObjectField(TEXT("rotation"), PawnRotation)))
+		{
+			TestTrue(TEXT("rotation.yaw is the pawn's"), FMath::IsNearlyEqual((*PawnRotation)->GetNumberField(TEXT("yaw")), 45.0));
+		}
+	}
+
+	// a non-finite camera value is written as null and named in the warning (like the other numbers)
+	FPlaytestNoteData Broken = Note;
+	Broken.CameraRotation.Pitch = std::numeric_limits<double>::quiet_NaN();
+	FString Warning;
+	if (const TSharedPtr<FJsonObject> Root = PlaytestFeedbackTest::WriteAndParse(*this, RootDir, Broken, nullptr, &Warning))
+	{
+		TestTrue(FString::Printf(TEXT("Warning names camera.rotation.pitch (got '%s')"), *Warning), Warning.Contains(TEXT("camera.rotation.pitch")));
+		const TSharedPtr<FJsonObject> Camera = Root->GetObjectField(TEXT("camera"));
+		const TSharedPtr<FJsonObject> Rotation = Camera.IsValid() ? Camera->GetObjectField(TEXT("rotation")) : nullptr;
+		const TSharedPtr<FJsonValue> Pitch = Rotation.IsValid() ? Rotation->TryGetField(TEXT("pitch")) : nullptr;
+		TestTrue(TEXT("camera.rotation.pitch (NaN) is null"), Pitch.IsValid() && Pitch->Type == EJson::Null);
+	}
+
+	IFileManager::Get().DeleteDirectory(*RootDir, /*RequireExists*/ false, /*Tree*/ true);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPlaytestGitWorktreeTest,
+	"Project.Playtest.GitWorktree",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FPlaytestGitWorktreeTest::RunTest(const FString& Parameters)
+{
+	// B5: a lane is a git worktree: <lane>/.git is a FILE "gitdir: <main>/.git/worktrees/<name>"; HEAD is there,
+	// branch refs and packed-refs are in the common dir named by "commondir" (usually "../..")
+	const FString RootDir = PlaytestFeedbackTest::MakeTempDir();
+	const FString Unknown = TEXT("unknown");
+	const FString HashLane = FString::ChrN(40, TEXT('a'));
+	const FString HashPacked = FString::ChrN(40, TEXT('b'));
+	const FString HashDetached = FString::ChrN(40, TEXT('c'));
+	const FString HashBisectWorktree = FString::ChrN(40, TEXT('d'));
+	const FString HashBisectCommon = FString::ChrN(40, TEXT('e'));
+	const FString HashSha256 = FString::ChrN(64, TEXT('f'));
+
+	const auto Write = [](const FString& Path, const FString& Content)
+	{
+		FFileHelper::SaveStringToFile(Content, *Path, FFileHelper::EEncodingOptions::ForceAnsi);
+	};
+
+	// the main repository (common dir)
+	const FString MainGit = RootDir / TEXT("Main/.git");
+	Write(MainGit / TEXT("HEAD"), TEXT("ref: refs/heads/main\n"));
+	Write(MainGit / TEXT("refs/heads/lane/eng2"), HashLane + TEXT("\n"));
+	Write(MainGit / TEXT("refs/heads/lane/broken"), TEXT("not-a-hash\n"));
+	Write(MainGit / TEXT("refs/heads/lane/sha256"), HashSha256 + TEXT("\n"));
+	Write(MainGit / TEXT("refs/bisect/bad"), HashBisectCommon + TEXT("\n"));
+	Write(MainGit / TEXT("packed-refs"), TEXT("# pack-refs with: peeled fully-peeled sorted\n")
+		+ HashPacked + TEXT(" refs/heads/lane/packed\n")
+		+ HashPacked + TEXT(" refs/heads/lane/broken\n"));
+
+	// makes <RootDir>/<Name> a worktree: .git file -> GitFileTarget, and <main>/.git/worktrees/<Name>/{HEAD, commondir}
+	const auto MakeWorktree = [&](const TCHAR* Name, const FString& GitFileLine, const FString& Head, const TCHAR* CommonDirLine)
+	{
+		const FString Repo = RootDir / Name;
+		const FString WorktreeGitDir = MainGit / TEXT("worktrees") / Name;
+		Write(Repo / TEXT(".git"), GitFileLine);
+		Write(WorktreeGitDir / TEXT("HEAD"), Head);
+		if (CommonDirLine)
+		{
+			Write(WorktreeGitDir / TEXT("commondir"), CommonDirLine);
+		}
+		return Repo;
+	};
+	const auto AbsoluteGitFile = [&](const TCHAR* Name) { return FString::Printf(TEXT("gitdir: %s\n"), *(MainGit / TEXT("worktrees") / Name)); };
+
+	// branch checked out (like lane/eng2): loose ref in the common dir, absolute gitdir, relative commondir
+	TestEqual(TEXT("Worktree, loose branch ref via commondir"),
+		FPlaytestNoteWriter::ReadGitCommit(MakeWorktree(TEXT("Loose"), AbsoluteGitFile(TEXT("Loose")), TEXT("ref: refs/heads/lane/eng2\n"), TEXT("../..\n"))), HashLane);
+
+	// packed branch, RELATIVE gitdir (relative to the worktree root), CRLF everywhere
+	TestEqual(TEXT("Worktree, packed branch ref, relative gitdir, CRLF"),
+		FPlaytestNoteWriter::ReadGitCommit(MakeWorktree(TEXT("Packed"), TEXT("gitdir: ../Main/.git/worktrees/Packed\r\n"), TEXT("ref: refs/heads/lane/packed\r\n"), TEXT("../..\r\n"))), HashPacked);
+
+	// detached HEAD in the worktree's own git dir
+	TestEqual(TEXT("Worktree, detached HEAD"),
+		FPlaytestNoteWriter::ReadGitCommit(MakeWorktree(TEXT("Detached"), AbsoluteGitFile(TEXT("Detached")), HashDetached + TEXT("\n"), TEXT("../..\n"))), HashDetached);
+
+	// ABSOLUTE commondir, written with backslashes (Windows style)
+	const FString AbsoluteCommon = FPaths::ConvertRelativePathToFull(MainGit).Replace(TEXT("/"), TEXT("\\")) + TEXT("\n");
+	TestEqual(TEXT("Worktree, absolute commondir with backslashes"),
+		FPlaytestNoteWriter::ReadGitCommit(MakeWorktree(TEXT("AbsCommon"), AbsoluteGitFile(TEXT("AbsCommon")), TEXT("ref: refs/heads/lane/eng2\n"), *AbsoluteCommon)), HashLane);
+
+	// SHA-256 repositories work through a worktree too
+	TestEqual(TEXT("Worktree, SHA-256 branch"),
+		FPlaytestNoteWriter::ReadGitCommit(MakeWorktree(TEXT("Sha256"), AbsoluteGitFile(TEXT("Sha256")), TEXT("ref: refs/heads/lane/sha256\n"), TEXT("../..\n"))), HashSha256);
+
+	// per-worktree refs (refs/bisect/...) are read from the worktree's git dir, not the common dir
+	const FString BisectRepo = MakeWorktree(TEXT("Bisect"), AbsoluteGitFile(TEXT("Bisect")), TEXT("ref: refs/bisect/bad\n"), TEXT("../..\n"));
+	Write(MainGit / TEXT("worktrees/Bisect/refs/bisect/bad"), HashBisectWorktree + TEXT("\n"));
+	TestEqual(TEXT("Worktree, per-worktree ref stays in the worktree git dir"), FPlaytestNoteWriter::ReadGitCommit(BisectRepo), HashBisectWorktree);
+
+	// B4 validation still holds through a worktree
+	TestEqual(TEXT("Worktree, broken loose ref does not fall back to a stale packed id"),
+		FPlaytestNoteWriter::ReadGitCommit(MakeWorktree(TEXT("Broken"), AbsoluteGitFile(TEXT("Broken")), TEXT("ref: refs/heads/lane/broken\n"), TEXT("../..\n"))), Unknown);
+	TestEqual(TEXT("Worktree, commondir pointing nowhere"),
+		FPlaytestNoteWriter::ReadGitCommit(MakeWorktree(TEXT("NoCommon"), AbsoluteGitFile(TEXT("NoCommon")), TEXT("ref: refs/heads/lane/eng2\n"), TEXT("../../nowhere\n"))), Unknown);
+	TestEqual(TEXT("Worktree, HEAD ref escaping with .."),
+		FPlaytestNoteWriter::ReadGitCommit(MakeWorktree(TEXT("Escape"), AbsoluteGitFile(TEXT("Escape")), TEXT("ref: refs/../../HEAD\n"), TEXT("../..\n"))), Unknown);
+	TestEqual(TEXT("Worktree, garbage HEAD"),
+		FPlaytestNoteWriter::ReadGitCommit(MakeWorktree(TEXT("Garbage"), AbsoluteGitFile(TEXT("Garbage")), TEXT("not a commit\n"), TEXT("../..\n"))), Unknown);
+	TestEqual(TEXT(".git file without a gitdir line"),
+		FPlaytestNoteWriter::ReadGitCommit(MakeWorktree(TEXT("NoGitdir"), TEXT("hello\n"), TEXT("ref: refs/heads/lane/eng2\n"), TEXT("../..\n"))), Unknown);
+	TestEqual(TEXT(".git file with an empty gitdir"),
+		FPlaytestNoteWriter::ReadGitCommit(MakeWorktree(TEXT("EmptyGitdir"), TEXT("gitdir:   \n"), TEXT("ref: refs/heads/lane/eng2\n"), TEXT("../..\n"))), Unknown);
+	TestEqual(TEXT(".git file pointing at a missing git dir"),
+		FPlaytestNoteWriter::ReadGitCommit(MakeWorktree(TEXT("Missing"), FString::Printf(TEXT("gitdir: %s\n"), *(RootDir / TEXT("does/not/exist"))), TEXT("ref: refs/heads/lane/eng2\n"), TEXT("../..\n"))), Unknown);
+
+	// a normal repository (no commondir) is unchanged
+	TestEqual(TEXT("Main repository without commondir"), FPlaytestNoteWriter::ReadGitCommit(RootDir / TEXT("Main")), Unknown); // refs/heads/main was never written
+	Write(MainGit / TEXT("refs/heads/main"), HashLane + TEXT("\n"));
+	TestEqual(TEXT("Main repository loose ref"), FPlaytestNoteWriter::ReadGitCommit(RootDir / TEXT("Main")), HashLane);
+
+	IFileManager::Get().DeleteDirectory(*RootDir, /*RequireExists*/ false, /*Tree*/ true);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPlaytestFeedbackKeyCaptureTest,
+	"Project.Playtest.FeedbackKeyCapture",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FPlaytestFeedbackKeyCaptureTest::RunTest(const FString& Parameters)
+{
+	using PlaytestFeedbackTest::ToText;
+
+	// round 2 bug 1: F8 opens the note whenever the session runs, with or without viewport focus; never reaches the editor
+	FPlaytestFeedbackKeyContext Base;
+	Base.bIsFeedbackKey = true;
+	Base.bSessionRunning = true;
+
+	struct FCase
+	{
+		const TCHAR* Name;
+		FPlaytestFeedbackKeyContext Context;
+		EPlaytestFeedbackKeyAction Expected;
+	};
+	auto With = [&Base](TFunctionRef<void(FPlaytestFeedbackKeyContext&)> Change)
+	{
+		FPlaytestFeedbackKeyContext Context = Base;
+		Change(Context);
+		return Context;
+	};
+	const FCase Cases[] = {
+		{ TEXT("F8 while playing opens the note (viewport focus is not a condition)"), Base, EPlaytestFeedbackKeyAction::OpenNote },
+		{ TEXT("Held F8 repeating is swallowed, opens nothing"), With([](FPlaytestFeedbackKeyContext& C) { C.bIsRepeat = true; }), EPlaytestFeedbackKeyAction::Consume },
+		{ TEXT("Other keys pass through"), With([](FPlaytestFeedbackKeyContext& C) { C.bIsFeedbackKey = false; }), EPlaytestFeedbackKeyAction::PassThrough },
+		{ TEXT("No running session: F8 passes through"), With([](FPlaytestFeedbackKeyContext& C) { C.bSessionRunning = false; }), EPlaytestFeedbackKeyAction::PassThrough },
+		{ TEXT("Ejected (simulating): F8 goes back to the editor to possess"), With([](FPlaytestFeedbackKeyContext& C) { C.bEjected = true; }), EPlaytestFeedbackKeyAction::PassThrough },
+		{ TEXT("Typing in a text field: F8 passes through"), With([](FPlaytestFeedbackKeyContext& C) { C.bTypingInText = true; }), EPlaytestFeedbackKeyAction::PassThrough },
+		{ TEXT("Typing + repeat: passes through"), With([](FPlaytestFeedbackKeyContext& C) { C.bTypingInText = true; C.bIsRepeat = true; }), EPlaytestFeedbackKeyAction::PassThrough },
+		{ TEXT("Ejected + repeat: passes through"), With([](FPlaytestFeedbackKeyContext& C) { C.bEjected = true; C.bIsRepeat = true; }), EPlaytestFeedbackKeyAction::PassThrough },
+	};
+	for (const FCase& Case : Cases)
+	{
+		const EPlaytestFeedbackKeyAction Actual = FPlaytestFeedbackRules::DecideFeedbackKey(Case.Context);
+		TestTrue(FString::Printf(TEXT("%s (expected %s, got %s)"), Case.Name, ToText(Case.Expected), ToText(Actual)), Actual == Case.Expected);
+	}
+
+	// note box keys: Enter saves (never a new line), Shift+Enter is a new line, Esc cancels, F8 is swallowed
+	const FKey F8 = EKeys::F8;
+	struct FBoxCase
+	{
+		const TCHAR* Name;
+		FKey Key;
+		bool bShift;
+		EPlaytestNoteBoxKeyAction Expected;
+	};
+	const FBoxCase BoxCases[] = {
+		{ TEXT("Enter saves"), EKeys::Enter, false, EPlaytestNoteBoxKeyAction::Submit },
+		{ TEXT("Shift+Enter goes to the field (new line)"), EKeys::Enter, true, EPlaytestNoteBoxKeyAction::PassThrough },
+		{ TEXT("Escape cancels"), EKeys::Escape, false, EPlaytestNoteBoxKeyAction::Cancel },
+		{ TEXT("Shift+Escape cancels"), EKeys::Escape, true, EPlaytestNoteBoxKeyAction::Cancel },
+		{ TEXT("F8 is swallowed"), EKeys::F8, false, EPlaytestNoteBoxKeyAction::Consume },
+		{ TEXT("Letters go to the field"), EKeys::A, false, EPlaytestNoteBoxKeyAction::PassThrough },
+		{ TEXT("Arrows go to the field"), EKeys::Up, false, EPlaytestNoteBoxKeyAction::PassThrough },
+	};
+	for (const FBoxCase& Case : BoxCases)
+	{
+		const EPlaytestNoteBoxKeyAction Actual = FPlaytestFeedbackRules::DecideNoteBoxKey(Case.Key, Case.bShift, F8);
+		TestTrue(FString::Printf(TEXT("%s (expected %s, got %s)"), Case.Name, ToText(Case.Expected), ToText(Actual)), Actual == Case.Expected);
+	}
+	TestTrue(TEXT("An invalid key with an invalid feedback key is not swallowed"), FPlaytestFeedbackRules::DecideNoteBoxKey(EKeys::Invalid, false, EKeys::Invalid) == EPlaytestNoteBoxKeyAction::PassThrough);
+
+	// "typing in text" detection by focused widget type
+	for (const TCHAR* Type : { TEXT("SEditableText"), TEXT("SMultiLineEditableText"), TEXT("SEditableTextBox"), TEXT("SMultiLineEditableTextBox") })
+	{
+		TestTrue(FString::Printf(TEXT("%s is a text entry widget"), Type), FPlaytestFeedbackRules::IsTextEntryWidgetType(FName(Type)));
+	}
+	for (const TCHAR* Type : { TEXT("SViewport"), TEXT("SButton"), TEXT("SLevelViewport"), TEXT("STextBlock"), TEXT("None") })
+	{
+		TestFalse(FString::Printf(TEXT("%s is not a text entry widget"), Type), FPlaytestFeedbackRules::IsTextEntryWidgetType(FName(Type)));
+	}
+	TestFalse(TEXT("NAME_None is not a text entry widget"), FPlaytestFeedbackRules::IsTextEntryWidgetType(NAME_None));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPlaytestFeedbackKeyHandlerTest,
+	"Project.Playtest.FeedbackKeyHandler",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FPlaytestFeedbackKeyHandlerTest::RunTest(const FString& Parameters)
+{
+	using PlaytestFeedbackTest::Running;
+
+	// several PIE instances (server + clients): exactly one handles F8
+	TestEqual(TEXT("No instances: nobody"), FPlaytestFeedbackRules::ChooseHandler({}), static_cast<int32>(INDEX_NONE));
+
+	{
+		FPlaytestFeedbackCandidate Stopped;
+		TestEqual(TEXT("No running instance: nobody"), FPlaytestFeedbackRules::ChooseHandler({ Stopped, Stopped }), static_cast<int32>(INDEX_NONE));
+	}
+	TestEqual(TEXT("Standalone game: itself"), FPlaytestFeedbackRules::ChooseHandler({ Running(INDEX_NONE) }), 0);
+
+	{
+		FPlaytestFeedbackCandidate A = Running(0), B = Running(1), C = Running(2);
+		B.bViewportFocused = true;
+		A.LastFocusSerial = 50;
+		TestEqual(TEXT("The focused viewport wins over one focused more recently in the past"), FPlaytestFeedbackRules::ChooseHandler({ A, B, C }), 1);
+	}
+	{
+		FPlaytestFeedbackCandidate A = Running(0), B = Running(1), C = Running(2);
+		A.LastFocusSerial = 5;
+		C.LastFocusSerial = 9;
+		B.bIsPrimaryPIE = true;
+		TestEqual(TEXT("Nobody focused: the most recently focused wins over the primary"), FPlaytestFeedbackRules::ChooseHandler({ A, B, C }), 2);
+	}
+	{
+		FPlaytestFeedbackCandidate A = Running(0), B = Running(1);
+		B.bIsPrimaryPIE = true;
+		TestEqual(TEXT("Never focused: the primary PIE instance"), FPlaytestFeedbackRules::ChooseHandler({ A, B }), 1);
+	}
+	{
+		FPlaytestFeedbackCandidate A = Running(2), B = Running(1), C = Running(3);
+		TestEqual(TEXT("No primary: the lowest PIE instance number"), FPlaytestFeedbackRules::ChooseHandler({ A, B, C }), 1);
+	}
+	{
+		FPlaytestFeedbackCandidate A = Running(1), B = Running(1);
+		TestEqual(TEXT("Tie: the first in the list"), FPlaytestFeedbackRules::ChooseHandler({ A, B }), 0);
+	}
+	{
+		FPlaytestFeedbackCandidate A = Running(0), B = Running(1);
+		A.bFeedbackActive = true;
+		B.bViewportFocused = true;
+		TestEqual(TEXT("An instance with its note box open keeps the key"), FPlaytestFeedbackRules::ChooseHandler({ A, B }), 0);
+	}
+	{
+		FPlaytestFeedbackCandidate A = Running(0), B = Running(1);
+		A.bSessionRunning = false;
+		A.bViewportFocused = true;
+		A.LastFocusSerial = 100;
+		A.bIsPrimaryPIE = true;
+		TestEqual(TEXT("A stopped instance is never chosen, even focused or primary"), FPlaytestFeedbackRules::ChooseHandler({ A, B }), 1);
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPlaytestNoteTextAndConfirmationTest,
+	"Project.Playtest.NoteTextAndConfirmation",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FPlaytestNoteTextAndConfirmationTest::RunTest(const FString& Parameters)
+{
+	// the 3-line field: Slate joins lines with "\r\n" on Windows; notes are saved with "\n" and trimmed
+	TestEqual(TEXT("CRLF and CR become LF, outer whitespace trimmed"), FPlaytestFeedbackRules::NormalizeNoteText(TEXT("  line one\r\nline two\rline three\n  ")), FString(TEXT("line one\nline two\nline three")));
+	TestEqual(TEXT("Inner blank lines are kept"), FPlaytestFeedbackRules::NormalizeNoteText(TEXT("a\r\n\r\nb")), FString(TEXT("a\n\nb")));
+	TestEqual(TEXT("Only whitespace becomes empty"), FPlaytestFeedbackRules::NormalizeNoteText(TEXT(" \r\n\t ")), FString());
+
+	// teardown: save only an open box with real text
+	TestTrue(TEXT("Open box with text is saved on teardown"), FPlaytestFeedbackRules::ShouldSaveOnTeardown(true, TEXT("the dock wobbles")));
+	TestFalse(TEXT("Open box with only whitespace is not saved on teardown"), FPlaytestFeedbackRules::ShouldSaveOnTeardown(true, TEXT("  \r\n ")));
+	TestFalse(TEXT("Closed box is not saved on teardown"), FPlaytestFeedbackRules::ShouldSaveOnTeardown(false, TEXT("text")));
+
+	// confirmation toast wording (designer A-M3)
+	const FPlaytestConfirmation Saved = FPlaytestFeedbackRules::MakeConfirmation(true, TEXT("hello"), true, TEXT("20260922-210509"), FString(), FString());
+	TestEqual(TEXT("Saved title"), Saved.Title, FString(TEXT("Note saved. Thanks!")));
+	TestEqual(TEXT("Saved detail is the folder"), Saved.Detail, FString(TEXT("20260922-210509")));
+	TestFalse(TEXT("Saved is not a failure"), Saved.bFailure);
+
+	const FPlaytestConfirmation Bookmark = FPlaytestFeedbackRules::MakeConfirmation(true, FString(), true, TEXT("20260922-210509"), FString(), FString());
+	TestEqual(TEXT("Empty text: screenshot bookmark"), Bookmark.Title, FString(TEXT("Screenshot saved (no text)")));
+	TestFalse(TEXT("Bookmark is not a failure"), Bookmark.bFailure);
+
+	const FPlaytestConfirmation Bare = FPlaytestFeedbackRules::MakeConfirmation(true, FString(), false, TEXT("20260922-210509"), TEXT("screenshot dropped"), FString());
+	TestEqual(TEXT("Empty text and no screenshot"), Bare.Title, FString(TEXT("Note saved (no text, no screenshot)")));
+	TestTrue(TEXT("Warnings are mentioned in the detail"), Bare.Detail.StartsWith(TEXT("20260922-210509")) && Bare.Detail.Contains(TEXT("warnings")));
+
+	const FPlaytestConfirmation Failed = FPlaytestFeedbackRules::MakeConfirmation(false, TEXT("hello"), false, FString(), FString(), TEXT("Could not write C:/x/note.json."));
+	TestEqual(TEXT("Failure title with the reason"), Failed.Title, FString(TEXT("Note NOT saved: Could not write C:/x/note.json. Your text is in the log.")));
+	TestTrue(TEXT("Failure style"), Failed.bFailure);
+	TestTrue(TEXT("Failure has no folder line"), Failed.Detail.IsEmpty());
+
+	const FPlaytestConfirmation Unknown = FPlaytestFeedbackRules::MakeConfirmation(false, TEXT("hello"), false, FString(), FString(), FString());
+	TestEqual(TEXT("Failure without a reason"), Unknown.Title, FString(TEXT("Note NOT saved: unknown error. Your text is in the log.")));
 	return true;
 }
 

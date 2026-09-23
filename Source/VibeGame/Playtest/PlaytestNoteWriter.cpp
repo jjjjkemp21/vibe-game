@@ -50,13 +50,27 @@ namespace PlaytestNoteWriterPrivate
 		SetNumberOrNull(*Rotation, TEXT("roll"), Note.Rotation.Roll, TEXT("rotation.roll"), OutNonFinite);
 		Root->SetObjectField(TEXT("rotation"), Rotation);
 
+		// the view: what the player was looking at (pitch included), next to the pawn fields above
+		TSharedRef<FJsonObject> CameraLocation = MakeShared<FJsonObject>();
+		SetNumberOrNull(*CameraLocation, TEXT("x"), Note.CameraLocation.X, TEXT("camera.location.x"), OutNonFinite);
+		SetNumberOrNull(*CameraLocation, TEXT("y"), Note.CameraLocation.Y, TEXT("camera.location.y"), OutNonFinite);
+		SetNumberOrNull(*CameraLocation, TEXT("z"), Note.CameraLocation.Z, TEXT("camera.location.z"), OutNonFinite);
+		TSharedRef<FJsonObject> CameraRotation = MakeShared<FJsonObject>();
+		SetNumberOrNull(*CameraRotation, TEXT("pitch"), Note.CameraRotation.Pitch, TEXT("camera.rotation.pitch"), OutNonFinite);
+		SetNumberOrNull(*CameraRotation, TEXT("yaw"), Note.CameraRotation.Yaw, TEXT("camera.rotation.yaw"), OutNonFinite);
+		SetNumberOrNull(*CameraRotation, TEXT("roll"), Note.CameraRotation.Roll, TEXT("camera.rotation.roll"), OutNonFinite);
+		TSharedRef<FJsonObject> Camera = MakeShared<FJsonObject>();
+		Camera->SetObjectField(TEXT("location"), CameraLocation);
+		Camera->SetObjectField(TEXT("rotation"), CameraRotation);
+		Root->SetObjectField(TEXT("camera"), Camera);
+
 		SetNumberOrNull(*Root, TEXT("gameTime"), Note.GameTimeSeconds, TEXT("gameTime"), OutNonFinite);
 		SetNumberOrNull(*Root, TEXT("realTime"), Note.RealTimeSeconds, TEXT("realTime"), OutNonFinite);
 		SetNumberOrNull(*Root, TEXT("avgFps"), Note.AverageFps, TEXT("avgFps"), OutNonFinite);
 		Root->SetStringField(TEXT("commit"), Note.Commit);
 		Root->SetStringField(TEXT("buildConfiguration"), Note.BuildConfiguration);
 		Root->SetStringField(TEXT("netMode"), Note.NetMode);
-		Root->SetStringField(TEXT("timestamp"), Note.Timestamp.ToIso8601());
+		Root->SetStringField(TEXT("timestamp"), FPlaytestNoteWriter::GetUtcTimestampText(Note));
 		Root->SetStringField(TEXT("screenshot"), bHasScreenshot ? TEXT("screenshot.png") : TEXT(""));
 
 		FString Out;
@@ -93,6 +107,30 @@ namespace PlaytestNoteWriterPrivate
 			FileManager.DeleteDirectory(*Dir, /*RequireExists*/ false, /*Tree*/ false);
 		}
 	}
+
+	/** Loads a small text file, trimmed; false if it cannot be read */
+	static bool LoadTrimmed(const FString& Path, FString& OutText)
+	{
+		OutText.Reset();
+		if (!FFileHelper::LoadFileToString(OutText, *Path))
+		{
+			return false;
+		}
+		OutText.TrimStartAndEndInline();
+		return true;
+	}
+
+	/** A path written inside a git file ("gitdir: ...", "commondir"): absolute as is, relative against BaseDir; normalized */
+	static FString ResolveGitPath(const FString& BaseDir, const FString& PathInFile)
+	{
+		return FPaths::ConvertRelativePathToFull(FPaths::ConvertRelativePathToFull(BaseDir), PathInFile);
+	}
+
+	/** Refs git keeps per worktree (in the worktree's own git dir); all other refs live in the common dir */
+	static bool IsPerWorktreeRef(const FString& Ref)
+	{
+		return Ref.StartsWith(TEXT("refs/worktree/")) || Ref.StartsWith(TEXT("refs/bisect/")) || Ref.StartsWith(TEXT("refs/rewritten/"));
+	}
 }
 
 FString FPlaytestNoteWriter::GetDefaultRootDir()
@@ -103,6 +141,43 @@ FString FPlaytestNoteWriter::GetDefaultRootDir()
 FString FPlaytestNoteWriter::MakeFolderName(const FDateTime& Timestamp)
 {
 	return Timestamp.ToString(TEXT("%Y%m%d-%H%M%S"));
+}
+
+FString FPlaytestNoteWriter::MakeUtcTimestamp(const FDateTime& Utc)
+{
+	// FDateTime::ToIso8601 is "%Y-%m-%dT%H:%M:%S.%sZ" and assumes the value is already UTC
+	return Utc.ToIso8601();
+}
+
+FTimespan FPlaytestNoteWriter::GetLocalUtcOffset()
+{
+	// two clock reads a few microseconds apart; real offsets are whole minutes (UTC-12:00 ... UTC+14:00, some :30/:45)
+	const FTimespan Raw = FDateTime::Now() - FDateTime::UtcNow();
+	return FTimespan::FromMinutes(FMath::RoundToDouble(Raw.GetTotalMinutes()));
+}
+
+void FPlaytestNoteWriter::StampNow(FPlaytestNoteData& Note)
+{
+	Note.TimestampUtc = FDateTime::UtcNow();
+	Note.Timestamp = Note.TimestampUtc + GetLocalUtcOffset();
+}
+
+FString FPlaytestNoteWriter::GetUtcTimestampText(const FPlaytestNoteData& Note)
+{
+	if (Note.TimestampUtc.GetTicks() > 0)
+	{
+		return MakeUtcTimestamp(Note.TimestampUtc);
+	}
+	if (Note.Timestamp.GetTicks() > 0)
+	{
+		const FTimespan Offset = GetLocalUtcOffset();
+		// stay inside FDateTime's valid range (a year-1 or year-9999 local time plus the offset)
+		if (Note.Timestamp - FDateTime::MinValue() >= Offset && FDateTime::MaxValue() - Note.Timestamp >= -Offset)
+		{
+			return MakeUtcTimestamp(Note.Timestamp - Offset);
+		}
+	}
+	return FString();
 }
 
 FString FPlaytestNoteWriter::ToJsonString(const FPlaytestNoteData& Note, bool bHasScreenshot)
@@ -224,33 +299,41 @@ bool FPlaytestNoteWriter::IsCommitHash(const FString& Value)
 
 FString FPlaytestNoteWriter::ReadGitCommit(const FString& RepoRoot)
 {
+	using namespace PlaytestNoteWriterPrivate;
 	const FString Unknown = TEXT("unknown");
 	FString GitDir = RepoRoot / TEXT(".git");
 
+	// 1. the git dir: <repo>/.git is a directory, or (worktrees, submodules) a file "gitdir: <path>"
 	IFileManager& FileManager = IFileManager::Get();
 	if (!FileManager.DirectoryExists(*GitDir))
 	{
-		// worktrees and submodules use a ".git" file containing "gitdir: <path>"
 		FString GitFile;
-		if (!FFileHelper::LoadFileToString(GitFile, *GitDir))
+		if (!LoadTrimmed(GitDir, GitFile) || !GitFile.RemoveFromStart(TEXT("gitdir:")))
 		{
 			return Unknown;
 		}
 		GitFile.TrimStartAndEndInline();
-		if (!GitFile.RemoveFromStart(TEXT("gitdir:")))
+		if (GitFile.IsEmpty())
 		{
 			return Unknown;
 		}
-		GitFile.TrimStartAndEndInline();
-		GitDir = FPaths::IsRelative(GitFile) ? RepoRoot / GitFile : GitFile;
+		GitDir = ResolveGitPath(RepoRoot, GitFile);
 	}
 
+	// 2. the common dir: a worktree's git dir names the main .git in "commondir"; shared refs and packed-refs live there
+	FString CommonDir = GitDir;
+	FString CommonDirFile;
+	if (LoadTrimmed(GitDir / TEXT("commondir"), CommonDirFile) && !CommonDirFile.IsEmpty())
+	{
+		CommonDir = ResolveGitPath(GitDir, CommonDirFile);
+	}
+
+	// 3. HEAD always lives in the (worktree's own) git dir
 	FString Head;
-	if (!FFileHelper::LoadFileToString(Head, *(GitDir / TEXT("HEAD"))))
+	if (!LoadTrimmed(GitDir / TEXT("HEAD"), Head))
 	{
 		return Unknown;
 	}
-	Head.TrimStartAndEndInline();
 
 	// detached HEAD holds the hash directly; anything else that is not "ref: ..." is garbage
 	if (!Head.StartsWith(TEXT("ref:")))
@@ -258,7 +341,7 @@ FString FPlaytestNoteWriter::ReadGitCommit(const FString& RepoRoot)
 		return IsCommitHash(Head) ? Head : Unknown;
 	}
 
-	// symbolic HEAD: only follow real refs inside the git dir
+	// symbolic HEAD: only follow real refs inside the git dirs
 	FString Ref = Head.RightChop(4);
 	Ref.TrimStartAndEndInline();
 	if (!Ref.StartsWith(TEXT("refs/")) || Ref.Contains(TEXT("..")) || Ref.Contains(TEXT("\\")))
@@ -266,17 +349,22 @@ FString FPlaytestNoteWriter::ReadGitCommit(const FString& RepoRoot)
 		return Unknown;
 	}
 
-	// a loose ref wins over packed-refs; if it exists but holds no valid hash the ref is broken (never report a stale packed id)
+	// 4. a loose ref wins over packed-refs; if it exists but holds no valid hash the ref is broken (never report a stale packed id)
+	const bool bPerWorktree = IsPerWorktreeRef(Ref);
 	FString Hash;
-	if (FFileHelper::LoadFileToString(Hash, *(GitDir / Ref)))
+	if (LoadTrimmed((bPerWorktree ? GitDir : CommonDir) / Ref, Hash))
 	{
-		Hash.TrimStartAndEndInline();
 		return IsCommitHash(Hash) ? Hash : Unknown;
 	}
+	if (bPerWorktree)
+	{
+		// per-worktree refs are never in the shared packed-refs
+		return Unknown;
+	}
 
-	// fall back to packed refs: lines of "<hash> <ref>" (peeled "^<hash>" lines and "#" comments never match)
+	// 5. fall back to packed refs in the common dir: lines of "<hash> <ref>" (peeled "^<hash>" lines and "#" comments never match)
 	TArray<FString> Lines;
-	if (FFileHelper::LoadFileToStringArray(Lines, *(GitDir / TEXT("packed-refs"))))
+	if (FFileHelper::LoadFileToStringArray(Lines, *(CommonDir / TEXT("packed-refs"))))
 	{
 		for (const FString& Line : Lines)
 		{
