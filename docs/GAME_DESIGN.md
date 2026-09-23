@@ -76,6 +76,9 @@ What one short, polished, playable level must contain to prove the game is fun (
 - **Boat unlock** at the end of the slice: a basic boat (unlocked at a player level) to reach one second fishing spot or islet in the beginner zone.
 - **Save/load** of progress, a pause menu with settings (mic on/off, mic sensitivity), and the F8 feedback key for playtests.
 
+## UI (first version)
+Placeholder only (Jimmy's direction, 2026-09-22): plain text and simple boxes showing the needed information (tension, noise, cooler, money, level, clock, journal list, shop list, prompts). Jimmy will direct the real UI after playing the gameplay.
+
 ## Out of scope for now
 - Online co-op (first milestone after the slice; code is built ready for it).
 - The foggy, frozen and murky regions; the real Kraken fight and other bosses.

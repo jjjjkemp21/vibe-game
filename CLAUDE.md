@@ -8,6 +8,7 @@ You are building a game for Jimmy. Jimmy does not read or write code: he plays b
 - **Data-driven and extensible**: content and tuning are DataTable/DataAsset rows (fish species, rarity tiers, modifiers, gear, XP, noise, creatures). Ask "can a new X be added without code?" If not, redesign. Fish catches are FFishInstance records produced by one tested roll pipeline.
 - **Multiplayer-ready**: server-authoritative, replicated gameplay code from day one (co-op 2-4 comes right after the vertical slice).
 - **Look**: stylized low-poly, atmosphere-first, inspired by Dredge but never copying it; palette and budgets in ART_STYLE.md (`art/lib/style.py` in recipes).
+- **UI = placeholder only (Jimmy, 2026-09-22):** until Jimmy directs the UI himself, every UI (HUD, meters, journal, shop, menus, prompts) is minimal plain text/boxes that just shows the needed info. No styling, layout polish or UI design reviews. Gameplay first.
 - Current goal: vertical slice "Palm Key" (docs/TASKS.md). Don't build out-of-scope features (see "Out of scope for now" in GAME_DESIGN.md) without Jimmy's OK.
 
 ## Stack (pinned; do not upgrade without asking Jimmy)
