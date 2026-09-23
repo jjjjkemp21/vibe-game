@@ -78,6 +78,14 @@ C++ work and Blender work (model-artist, animation-artist) can run in parallel; 
 - Agents write their full report to a file (`Saved/AgentLogs/<area>/<yyyyMMdd-HHmmss>-<topic>.md`, e.g. `qa/`, `playtest/`, `build/`) and RETURN only a short summary: at most ~25 lines. That means verdict, key numbers, commit hash, blockers, the report path. No full test lists, no pasted file contents, no long tables unless asked. If writing the report file is refused, return the report as text; the lead saves it to the report path.
 - Tool output: filter it (`tail`, `grep`, `head`, `--stat`) instead of dumping whole logs; Read big files with offset/limit; never paste base64 images; read only the images you must judge.
 - Lead: brief agents concisely and point to files (specs, reports) instead of restating them. Resume an agent (SendMessage) only for short follow-ups where its context really helps; otherwise start a fresh agent with pointers to the relevant files. Delegate broad searches. Suggest `/compact` to Jimmy at milestones (e.g. after a push).
+- Effort per agent (Jimmy, 2026-09-23: spend effort where it pays). It's set in each agent's frontmatter (`model`, `effort`):
+  - unreal-engineer: top model, high
+  - qa-engineer: top model, medium
+  - model-artist, animation-artist: sonnet, high
+  - level-designer, editor-operator: sonnet, medium
+  - playtester, designer: sonnet, low
+  - janitor: haiku, low
+  Escalate one task with the Agent tool's `model` override only when that agent failed on it or the task is unusually hard, and say why in the brief.
 - Subagent conversations end with their task; nothing to compact there. Keeping reports short is what saves tokens.
 
 ## Working with Jimmy
