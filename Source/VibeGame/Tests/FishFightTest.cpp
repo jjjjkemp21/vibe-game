@@ -367,10 +367,10 @@ namespace LureFishFightTest
 		Client->ProcessEvent(Client->FindFunction(TEXT("OnRep_Loadout")), nullptr);
 	}
 
-	/** A pattern table from JSON text (for data-only additions in tests). */
-	UDataTable* PatternTableFromJson(FAutomationTestBase& Test, const FString& Json)
+	/** A pattern table from JSON text (for data-only additions in tests). Strong pointer: world ticks can run GC mid-test. */
+	TStrongObjectPtr<UDataTable> PatternTableFromJson(FAutomationTestBase& Test, const FString& Json)
 	{
-		UDataTable* Table = NewObject<UDataTable>(GetTransientPackage(), NAME_None, RF_Transient);
+		TStrongObjectPtr<UDataTable> Table(NewObject<UDataTable>(GetTransientPackage(), NAME_None, RF_Transient));
 		Table->RowStruct = FLureFightPatternRow::StaticStruct();
 		const TArray<FString> Problems = Table->CreateTableFromJSONString(Json);
 		Test.TestEqual(FString::Printf(TEXT("fixture pattern JSON imports (%s)"), *FString::Join(Problems, TEXT(" | "))), Problems.Num(), 0);
@@ -820,7 +820,7 @@ bool FLureFightPatternsDrivePull::RunTest(const FString& Parameters)
 	// A new pattern is a data row: a species pointing at it fights with it, no code.
 	{
 		const FString Json = FString::Printf(TEXT("[ %s ]"), *PatternJson(TEXT("Test_Thrash"), { MoveJson(TEXT("Thrash"), 2.2f, 0.5f, 0.3f, 1.f), MoveJson(TEXT("Rest"), 0.3f, 0.f, 0.f, 1.f, true) }, TEXT("Thrash")));
-		UDataTable* NewPatterns = PatternTableFromJson(*this, Json);
+		const TStrongObjectPtr<UDataTable> NewPatterns = PatternTableFromJson(*this, Json);
 		const FLureFightPatternRow* Thrash = NewPatterns->FindRow<FLureFightPatternRow>(TEXT("Test_Thrash"), TEXT("test"), false);
 		FString Problem;
 		if (!TestNotNull(TEXT("new pattern row"), Thrash) || !TestTrue(TEXT("new pattern validates: ") + Problem, Thrash->Validate(Problem)))
@@ -840,7 +840,7 @@ bool FLureFightPatternsDrivePull::RunTest(const FString& Parameters)
 			return false;
 		}
 		ULureFishingComponent* Fishing = SetUp(World.Spawn(StandAt), Tables, Data);
-		Fishing->SetFightTables(Data.Gear.Get(), NewPatterns, Data.Fight.Get());
+		Fishing->SetFightTables(Data.Gear.Get(), NewPatterns.Get(), Data.Fight.Get());
 		if (!CastAndLand(*this, World, Fishing) || !TestTrue(TEXT("hook"), Fishing->AuthorityHookFish(Bonefish)))
 		{
 			return false;
@@ -920,7 +920,8 @@ bool FLureFightSlackThrowsHook::RunTest(const FString& Parameters)
 	}
 	ULureFishingComponent* Fishing = SetUp(World.Spawn(StandAt), Tables, Data);
 	const FString Json = FString::Printf(TEXT("[ %s ]"), *PatternJson(TEXT("Run"), { MoveJson(TEXT("Charge"), 0.f, 1.f, -0.1f) }, TEXT("Charge")));
-	Fishing->SetFightTables(Data.Gear.Get(), PatternTableFromJson(*this, Json), Data.Fight.Get());
+	const TStrongObjectPtr<UDataTable> Patterns = PatternTableFromJson(*this, Json);
+	Fishing->SetFightTables(Data.Gear.Get(), Patterns.Get(), Data.Fight.Get());
 	if (!CastAndLand(*this, World, Fishing) || !TestTrue(TEXT("hook"), Fishing->AuthorityHookFish(Bonefish)))
 	{
 		return false;

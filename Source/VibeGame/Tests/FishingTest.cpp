@@ -39,6 +39,7 @@
 #include "Tests/AutomationCommon.h"
 #include "Tests/FishQATestHelpers.h"
 #include "UObject/EnumProperty.h"
+#include "UObject/StrongObjectPtr.h"
 #include "UObject/UnrealType.h"
 #include <limits>
 
@@ -121,11 +122,11 @@ namespace LureFishingTest
 	{
 		FTestWorldWrapper Wrapper;
 		UWorld* World = nullptr;
-		UDataTable* Movement = nullptr;
+		TStrongObjectPtr<UDataTable> Movement; // strong: world ticks can run GC mid-test
 
 		bool Create(FAutomationTestBase& Test, bool bWater = true)
 		{
-			Movement = MovementTable(Test);
+			Movement.Reset(MovementTable(Test));
 			if (!Wrapper.CreateTestWorld(EWorldType::Game) || !Wrapper.BeginPlayInTestWorld())
 			{
 				Wrapper.ForwardErrorMessages(&Test);
@@ -138,7 +139,7 @@ namespace LureFishingTest
 			{
 				AddWater(0.f);
 			}
-			return World != nullptr && Movement != nullptr;
+			return World != nullptr && Movement.IsValid();
 		}
 
 		AActor* AddBox(const FVector& Center, const FVector& Extent)
@@ -186,7 +187,7 @@ namespace LureFishingTest
 
 		ALurePlayerCharacter* Spawn(const FVector& Feet, TFunction<void(ALurePlayerCharacter&)> PreFinish = nullptr)
 		{
-			const float HalfHeight = RowOf(MovementRows(Movement), ELureMovementState::Stand).CapsuleHalfHeight;
+			const float HalfHeight = RowOf(MovementRows(Movement.Get()), ELureMovementState::Stand).CapsuleHalfHeight;
 			const FTransform Transform(FRotator::ZeroRotator, Feet + FVector(0.f, 0.f, HalfHeight + 2.15f));
 			ALurePlayerCharacter* Character = World->SpawnActorDeferred<ALurePlayerCharacter>(ALurePlayerCharacter::StaticClass(), Transform, nullptr, nullptr,
 				ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
@@ -194,7 +195,7 @@ namespace LureFishingTest
 			{
 				return nullptr;
 			}
-			Character->GetLureMovement()->ApplyMovementTable(Movement);
+			Character->GetLureMovement()->ApplyMovementTable(Movement.Get());
 			Character->GetLureMovement()->bRunPhysicsWithNoController = true;
 			if (PreFinish)
 			{
