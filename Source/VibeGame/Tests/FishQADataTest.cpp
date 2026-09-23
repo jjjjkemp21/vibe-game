@@ -25,9 +25,13 @@ namespace FishQA_Data
 
 	static UScriptStruct* RowStructFor(const FString& TableName)
 	{
-		// CLAUDE.md convention: data/tables/DT_<Name>.* <-> row struct F<Name>Row
-		const FString StructPath = FString::Printf(TEXT("/Script/VibeGame.%sRow"), *TableName.RightChop(3));
-		return FindObject<UScriptStruct>(nullptr, *StructPath);
+		// CLAUDE.md convention: data/tables/DT_<Name>.* <-> row struct F<Name>Row or FLure<Name>Row
+		const FString Name = TableName.RightChop(3);
+		if (UScriptStruct* Found = FindObject<UScriptStruct>(nullptr, *FString::Printf(TEXT("/Script/VibeGame.%sRow"), *Name)))
+		{
+			return Found;
+		}
+		return FindObject<UScriptStruct>(nullptr, *FString::Printf(TEXT("/Script/VibeGame.Lure%sRow"), *Name));
 	}
 
 	static bool ParseJsonArray(const FString& Text, TArray<TSharedPtr<FJsonValue>>& Out)
@@ -211,7 +215,7 @@ namespace FishQA_Data
 			UScriptStruct* RowStruct = RowStructFor(Name);
 			if (!RowStruct)
 			{
-				AddError(FString::Printf(TEXT("%s: no row struct F%sRow (CLAUDE.md DataTable naming convention)"), *File, *Name.RightChop(3)));
+				AddError(FString::Printf(TEXT("%s: no row struct F%sRow or FLure%sRow (CLAUDE.md DataTable naming convention)"), *File, *Name.RightChop(3), *Name.RightChop(3)));
 				continue;
 			}
 			FString Text;
