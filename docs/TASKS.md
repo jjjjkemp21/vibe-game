@@ -13,7 +13,7 @@ Last processed playtest folder: (none)
   2. losing a fish costs only the fish, or bait and line too?
   3. is one hold-to-reel button enough?
   4. are 8-15 s fights right?
-- T-010 MERGED into main 5f94b18 (QA PASS 48ffec2, fixes O1-O3 40c547b). Main build green, 470 discovered/470 passed (Saved/AgentLogs/tests/20260923-105918). In progress: level-designer-junior-low adds the dock sell point to the L_PalmKey layout (plus builder marker properties). Then editor-operator-junior-low imports DT_PlayerLevel, DT_Cooler and DT_FishMarket and rebuilds L_PalmKey. Then playtester 2-player: sell at the dock, HUD text.
+- T-010 MERGED into main 5f94b18 (470/470). Editor 6fc4629: 3 tables imported, dock sell point sell_dock built from the layout (ac06446), PIE sell smoke PASS: prompt "[E] Sell 1 fish (48 coins)", Money 0->48 (Saved/AgentLogs/editor/20260923-180000-t010-editor/report.md). In progress: unreal-engineer-junior-medium in eng4 is doing Lure.GiveFish into the cooler, pd.screenshot with UI (PIE shots showed no HUD) and the 3 driver follow-ups. Left: playtester 2-player (sell, HUD text, owner-only fish list).
 - animation-artist-senior-max: fish rig and clips (main)
 - DONE 5137a5c: run-tests.ps1 now fails on a crash or an incomplete run (unreal-engineer-junior-medium)
 - DONE 3e7e3a5: the L_PalmKey cave rebuild (crawl walls #35434A, in target; outer mouth faces slightly dark and blue; left for the designer at the gate). Evidence Saved/AgentLogs/editor/20260923-104106-palmkey-cave/
