@@ -3,7 +3,7 @@
   "id": "L_Dev_Movement",
   "level_path": "/Game/Maps/Dev/L_Dev_Movement",
   "title": "Movement test course (T-004 A28 / T-005)",
-  "units": "cm; X north (into each test), Y east (along the course), Z up; floor top Z = 0, pool water Z = -60",
+  "units": "cm; X north (into each test), Y east (along the course), Z up; floor top Z = 0, pool water Z = -60 (ALureWaterVolume pool/water_volume)",
   "water_z": -60,
   "pier_height_range": [50, 80],
   "notes": [
@@ -14,6 +14,7 @@
   ],
   "world": {"game_mode_override": null},
   "labels_in_game": true,
+  "marker_classes": {"water_volume": "/Script/VibeGame.LureWaterVolume", "ladder": "/Script/VibeGame.LureLadder"},
   "label_size": 45,
   "label_lift": 320,
   "metrics": {
@@ -35,7 +36,12 @@
     "max_step": 45,
     "stair_step_max": 20,
     "jump_apex_stand": 90,
-    "walkable_deg": 44.765
+    "walkable_deg": 44.765,
+    "swim_source": "T-026 DT_Movement Swim row (SurfaceFloatDepth 10, ClimbMaxHeight 60, speed 170) + docs/specs/swimming.md (steps from -91)",
+    "swim_cm_s": 170,
+    "swim_float_depth": 10,
+    "climb_out_max": 60,
+    "swim_step_lowest": -91
   },
   "materials": {
     "floor": {"color": "#8A9A9C", "roughness": 0.85, "notes": "FOGGY.FOG neutral floor"},
@@ -76,6 +82,9 @@
     {"id": "pool/bottom", "shape": "box", "at": [1000, 3300, -250], "anchor": "top", "size": [1200, 800, 50], "mat": "pool", "group": "pool"},
     {"id": "pool/water", "shape": "plane", "at": [1000, 3300, -60], "anchor": "center", "size": [1200, 800, 0], "mat": "water_shallow", "collision": "none", "shadow": false, "group": "pool"},
     {"id": "pool/dock", "kind": "pier", "to": [1000, 3300], "width": 300, "top": 0, "deck": 20, "posts": {"spacing": 350, "size": 30, "bottom": -250, "above": 20, "mat": "wood_dark"}, "mat": "wood", "group": "pool", "from": [300, 3300]},
+    {"id": "pool/edge_70", "shape": "box", "at": [1700, 3150, 0], "size": [200, 500, 10], "mat": "wood", "group": "pool", "notes": "T-026: raises the north edge to 70 cm above the water for y 2900-3400 (a 10 cm step on land). Jump is refused here (limit 60); the ladder at y 3300 climbs it."},
+    {"id": "pool/shelf_60", "shape": "box", "at": [650, 3600, -120], "anchor": "top", "size": [500, 200, 130], "mat": "safe", "group": "pool", "notes": "T-026: submerged shelf 60 cm under the water (like the Palm Key reef flat): swim into it and step out (no launch), then wade."},
+    {"id": "pool/shelf_20", "shape": "box", "at": [650, 3660, -80], "anchor": "top", "size": [500, 80, 170], "mat": "safe", "group": "pool", "notes": "T-026: second step, 20 cm under the water, 40 cm above shelf_60; the floor is 80 cm above it (a land climb)."},
     {"id": "pool/exit_ramp", "kind": "ramp", "from": [1000, 3600, -250], "to": [1600, 3600, 0], "width": 180, "thickness": 40, "mat": "floor", "group": "pool"},
     {"id": "lane/line_00", "shape": "box", "at": [0, 0, 0], "size": [6, 300, 0.6], "mat": "line_5m", "collision": "none", "shadow": false, "group": "speed_lane"},
     {"id": "lane/line_01", "shape": "box", "at": [100, 0, 0], "size": [3, 300, 0.6], "mat": "line", "collision": "none", "shadow": false, "group": "speed_lane"},
@@ -172,12 +181,17 @@
     {"id": "label_ledge_100", "type": "label", "text": "100", "at": [450, 6550, 240], "size": 35, "yaw": 180},
     {"id": "label_ledge_120", "type": "label", "text": "120", "at": [450, 6750, 240], "size": 35, "yaw": 180},
     {"id": "label_pillar", "type": "label", "text": "pillar 180", "at": [300, -600, 240], "size": 35, "yaw": 180},
+    {"id": "pool/water_volume", "type": "water_volume", "at": [1000, 3300, -60], "surface_half_size": [600, 400], "water_depth": 250, "exit_check": {"cell": 25, "max_swim_cm": 1200}, "notes": "T-026: the pool (x 400-1600, y 2900-3700), surface -60, bottom -250."},
+    {"id": "pool/ladder_70", "type": "ladder", "at": [1600, 3300, -60], "yaw": 180, "notes": "T-026: on the 70 cm edge; grab zone y 3240-3360. The same edge at y 2900-3200 has no ladder (Jump refused)."},
+    {"id": "label_pool_60", "type": "label", "text": "60 cm edge: Jump out", "at": [1000, 2860, 240], "size": 35, "yaw": 180},
+    {"id": "label_pool_70", "type": "label", "text": "70 cm: ladder only", "at": [1700, 3150, 250], "size": 35, "yaw": 180},
+    {"id": "label_pool_shelf", "type": "label", "text": "shelf -60 / -20", "at": [650, 3600, 180], "size": 35, "yaw": 180},
     {"id": "ps_start", "type": "player_start", "at": [-200, 0, 0], "yaw": 0, "name": "PlayerStart", "label": false},
     {"id": "tp_T0", "type": "teleport", "at": [0, 0, 0], "yaw": 0, "name": "T0 Speed lane 20 m, crate, pillar 180", "label_at": [400, 0, 0]},
     {"id": "tp_T1", "type": "teleport", "at": [0, 800, 0], "yaw": 0, "name": "T1 Crawl gaps 50 / 59 / 60 / 61", "label_at": [400, 710, 0]},
     {"id": "tp_T2", "type": "teleport", "at": [0, 1700, 0], "yaw": 0, "name": "T2 Stand ceilings 181.4 / 185.4", "label_at": [400, 1700, 0]},
     {"id": "tp_T3", "type": "teleport", "at": [0, 2500, 0], "yaw": 0, "name": "T3 Crouch ceilings 111.4 / 115.4", "label_at": [400, 2500, 0]},
-    {"id": "tp_T4", "type": "teleport", "at": [100, 3300, 0], "yaw": 0, "name": "T4 Dock edge 60 cm above water", "label_at": [700, 3300, 0]},
+    {"id": "tp_T4", "type": "teleport", "at": [100, 3300, 0], "yaw": 0, "name": "T4 Pool: 60 edge, 70 + ladder, shelf, ramp", "label_at": [700, 3300, 0]},
     {"id": "tp_T5", "type": "teleport", "at": [0, 4100, 0], "yaw": 0, "name": "T5 Stairs 18 cm + ledge 180", "label_at": [400, 4100, 0]},
     {"id": "tp_T6", "type": "teleport", "at": [0, 4900, 0], "yaw": 0, "name": "T6 Ramps 15 / 30 / 46 deg", "label_at": [400, 4900, 0]},
     {"id": "tp_T7", "type": "teleport", "at": [0, 6250, 0], "yaw": 0, "name": "T7 Ledges 45-120 (jump apex 90)", "label_at": [400, 6250, 0]},
@@ -187,6 +201,8 @@
     {"id": "overview", "eye_abs": [-2400, 3300, 1900], "look_at": [800, 3300, 0], "fov": 100, "caption": "Test course from the south, 19 m up"},
     {"id": "t1_station", "eye": [0, 800, 0], "stance": "stand", "look_at": [800, 800, 165], "fov": 90, "caption": "T1 station (stand): gap values at 240 cm over the tunnels, station name at 320 cm, 50 cm gap red"},
     {"id": "crawl_prone", "eye": [250, 800, 0], "stance": "prone", "look_at": [800, 800, 30], "fov": 90, "caption": "T1 prone at the 60 cm gap mouth (eye 35): no label in the frame"},
+    {"id": "pool_exits", "eye_abs": [300, 2950, 200], "look_at": [1500, 3450, -60], "fov": 90, "caption": "T4 pool from the SW corner (eye 2 m): 70 cm slab + ladder (far), shelf -60/-20 (right), ramp, dock"},
+    {"id": "swim_ladder", "eye_abs": [1250, 3250, -42], "look_at": [1600, 3300, -30], "fov": 90, "caption": "Swimming (eyes 18 cm over the water) at the 70 cm edge: the ladder ahead"},
     {"id": "dock_prone", "eye": [930, 3300, 0], "stance": "prone", "look_at": [1600, 3300, -60], "fov": 90, "caption": "T4 prone at the dock edge (60 cm above the water)"}
   ],
   "route": {

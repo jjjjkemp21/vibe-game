@@ -10,11 +10,11 @@
     "Plan and reasoning: docs/levels/L_PalmKey.md. Build: Content/Python/levels/build_level.py. Preview: art/recipes/preview_level_layout.py.",
     "Greybox: engine basic shapes + SM_GoldenCrate, palette material instances. The art pass (T-020) replaces blocks by id/group.",
     "Terrain = overlapping flattened cones (soft mounds, ~4-8 deg slopes, all walkable) + boxes for rock, ridge, cave and docks.",
-    "Water planes never collide. Deep water (seabed -800) is a hazard: until T-017 decides swimming/falling in, the playtester teleports out."
+    "Water planes never collide. The water itself is one ALureWaterVolume (marker sea_water, T-026): falling in = surface swimming. Every edge you can fall from has a way out within 12 m of swimming (beach, shelf, edge <= 60 cm or a ladder); the preview checks it (levels.layout.water_exit_report)."
   ],
   "world": {"game_mode_override": null},
   "labels_in_game": false,
-  "marker_classes": {"sell_point": "/Script/VibeGame.LureSellPoint"},
+  "marker_classes": {"sell_point": "/Script/VibeGame.LureSellPoint", "water_volume": "/Script/VibeGame.LureWaterVolume", "ladder": "/Script/VibeGame.LureLadder"},
   "metrics": {
     "source": "DT_Movement.csv (lane eng1 0cac885) + engine defaults (gravity -980, step 45, walkable 44.765 deg)",
     "walk_cm_s": 350,
@@ -34,7 +34,12 @@
     "max_step": 45,
     "stair_step_max": 20,
     "jump_apex_stand": 90,
-    "walkable_deg": 44.765
+    "walkable_deg": 44.765,
+    "swim_source": "T-026 DT_Movement Swim row (SurfaceFloatDepth 10, ClimbMaxHeight 60, speed 170) + docs/specs/swimming.md (steps from -91)",
+    "swim_cm_s": 170,
+    "swim_float_depth": 10,
+    "climb_out_max": 60,
+    "swim_step_lowest": -91
   },
   "materials": {
     "sand": {"color": "#F2D6A2", "roughness": 0.9, "notes": "TROPICAL.SAND"},
@@ -135,7 +140,8 @@
     {"id": "point/ledge", "shape": "box", "rel": {"to": "point/head", "offset": [1300, 400, 0]}, "size": [1000, 1400, 870], "mat": "rock", "group": "rocky_point"},
     {"id": "beacon", "kind": "beacon", "rel": {"to": "point/base", "offset": [150, -100, 1100]}, "height": 1100, "group": "rocky_point", "light": {"intensity": 60, "radius": 8000, "color": "#E8C46A"}},
     {"id": "mouth/arm", "shape": "box", "at": [1410, -4060, 80], "anchor": "top", "size": [3187, 500, 380], "yaw": -104.9, "mat": "rock", "group": "mouth_rocks"},
-    {"id": "mouth/lip", "shape": "box", "rel": {"to": "mouth/arm", "offset": [446, 210, 0]}, "size": [2293, 80, 80], "mat": "rock", "group": "mouth_rocks", "tags": ["Lure.Cover", "Cover=Low"]},
+    {"id": "mouth/lip", "shape": "box", "rel": {"to": "mouth/arm", "offset": [1001.25, 210, 0]}, "size": [1182.5, 80, 80], "mat": "rock", "group": "mouth_rocks", "tags": ["Lure.Cover", "Cover=Low"], "notes": "T-026: the lip is split at arm x 230..410 for the ladder (mouth_ladder); this part covers the tip (cover tests)."},
+    {"id": "mouth/lip_w", "shape": "box", "rel": {"to": "mouth/arm", "offset": [-235.25, 210, 0]}, "size": [930.5, 80, 80], "mat": "rock", "group": "mouth_rocks", "tags": ["Lure.Cover", "Cover=Low"]},
     {"id": "mouth/lip_end", "shape": "box", "rel": {"to": "mouth/arm", "offset": [1553, 65, 0]}, "size": [80, 370, 80], "mat": "rock", "group": "mouth_rocks", "tags": ["Lure.Cover", "Cover=Low"]},
     {"id": "dock", "kind": "pier", "to": [-5800, 600], "width": 400, "top": 70, "deck": 20, "posts": {"spacing": 300, "size": 35, "bottom": -300, "above": 35, "mat": "wood_dark"}, "mat": "wood", "group": "dock", "from": [-3800, 600]},
     {"id": "dock_head", "kind": "pier", "to": [-6000, 1400], "width": 400, "top": 70, "deck": 20, "posts": {"spacing": 400, "size": 35, "bottom": -300, "above": 35, "mat": "wood_dark"}, "mat": "wood", "group": "dock", "from": [-6000, -200]},
@@ -212,7 +218,7 @@
     {"id": "sell_dock", "type": "sell_point", "at": [-3400, -600, 100], "yaw": 270, "properties": {"MarketId": "PalmKeyDock"}, "tags": ["Lure.SellPoint"], "notes": "On the shop apron, 130 cm in front of the counter (counter front y=-700, apron to y=-450); 300 cm radius covers the whole counter front. Walk-up from the spawn path (ps_1 at y=-50)."},
     {"id": "label_sell_dock", "type": "label", "text": "SELL (PalmKeyDock)", "at": [-3400, -600, 330]},
     {"id": "boat_mooring", "type": "boat_mooring", "at": [-6450, 300, 0], "yaw": 90, "name": "Boat mooring (T-018)", "floating": true},
-    {"type": "fishing_spot", "id": "dock_end", "name": "Dock End", "at": [-7000, 600, 0], "radius": 600, "cast_from": [-6000, 600, 70], "habitat": "Habitat.Shore", "hours": [[0, 24]], "time_label": "any", "level_band": [1, 2], "danger": "none", "species_hint": ["Bonefish (L1, day)", "Sand Grunt (L1, any time; proposed)"], "notes": "First cast of the game: safe, lit by the dock lantern at night, 25 s from spawn.", "region": "Region.Tropical.PalmKey"},
+    {"type": "fishing_spot", "id": "dock_end", "name": "Dock End", "at": [-7000, 600, 0], "radius": 650, "cast_from": [-6000, 600, 70], "habitat": "Habitat.Shore", "hours": [[0, 24]], "time_label": "any", "level_band": [1, 2], "danger": "none", "species_hint": ["Bonefish (L1, day)", "Sand Grunt (L1, any time; proposed)"], "notes": "First cast of the game: safe, lit by the dock lantern at night, 25 s from spawn. Radius 650 (T-026 playtest B3, was 600): the ring starts 3.5 m off the dock face, so the shortest cast from the dock still lands in it.", "region": "Region.Tropical.PalmKey"},
     {"type": "fishing_spot", "id": "palm_beach", "name": "Palm Beach", "at": [-4400, 4300, 0], "radius": 700, "cast_from": [-3600, 3300, 91.2], "habitat": "Habitat.Shore", "hours": [[0, 24]], "time_label": "any", "level_band": [1, 2], "danger": "none", "species_hint": ["Bonefish (L1, day)", "Sand Grunt (L1, any time)"], "notes": "Shore casting from the sand; the Tall Palm is behind you.", "region": "Region.Tropical.PalmKey"},
     {"type": "fishing_spot", "id": "reef_flats", "name": "Reef Flats", "at": [-1500, 5400, 0], "radius": 700, "cast_from": [-1500, 3900, 19.8], "habitat": "Habitat.Reef", "hours": [[0, 24]], "time_label": "any (snapper 15-09)", "level_band": [2, 3], "danger": "none", "species_hint": ["Coral Snapper (L3, 15:00-09:00)"], "notes": "Safe reef fishing from the shore: the shark cannot enter the flats (-60).", "region": "Region.Tropical.PalmKey"},
     {"type": "fishing_spot", "id": "jetty_end", "name": "Jetty End", "at": [-100, 8800, 0], "radius": 800, "cast_from": [-100, 7450, 60], "habitat": "Habitat.Reef.Edge", "hours": [[0, 24]], "time_label": "any; shark alert dusk/night", "level_band": [3, 5], "danger": "shark", "species_hint": ["Coral Snapper (L3)", "Blue Trevally (L5, day; proposed, DeepDrop + Reef.Edge)"], "notes": "Best reef fish, but the shark loop passes 2 m off the platform: walk, do not run, on the planks.", "region": "Region.Tropical.PalmKey"},
@@ -243,7 +249,13 @@
     {"id": "lm_cave", "type": "landmark", "name": "Cave mouth + bent palm", "at": [2600, -1500, 160]},
     {"id": "lm_islet", "type": "landmark", "name": "Gull Key islet", "at": [-19000, 17000, 150]},
     {"id": "label_islet", "type": "label", "text": "Gull Key islet: 210 m SE, boat only (T-018)", "at": [-7200, 8600, 0], "map_px": 15},
-    {"id": "label_hazard", "type": "label", "text": "Deep water = hazard (T-017)", "at": [-7200, -6000, 0], "map_px": 15}
+    {"id": "label_hazard", "type": "label", "text": "Sea = swimming (T-026): out at beaches, low edges, ladders", "at": [-7200, -6000, 0], "map_px": 15},
+    {"id": "dock_ladder", "type": "ladder", "at": [-6200, 800, 0], "yaw": 180, "notes": "T-026: sea face of the dock head (deck 70 over the water, seabed -120 in front), between the posts at y 600 and 1000, 2 m right of the dock_end cast point and 5 m from the boat mooring (T-018)."},
+    {"id": "ledge_ladder_n", "type": "ladder", "rel": {"to": "point/ledge", "offset": [500, 300, 800]}, "yaw": 0, "notes": "T-026: Point Ledge (top 70) seaward face, 3 m right of the cast point; deep water (-800) in front."},
+    {"id": "ledge_ladder_e", "type": "ladder", "rel": {"to": "point/ledge", "offset": [0, 700, 800]}, "yaw": 90, "notes": "T-026: Point Ledge east face."},
+    {"id": "ledge_ladder_w", "type": "ladder", "rel": {"to": "point/ledge", "offset": [-200, -700, 800]}, "yaw": -90, "notes": "T-026: Point Ledge west face, near the head corner (covers the head's exposed 3.2 m face too)."},
+    {"id": "mouth_ladder", "type": "ladder", "rel": {"to": "mouth/arm", "offset": [320, 250, -80]}, "yaw": 90, "notes": "T-026: Mouth Rocks (top 80) sea side, in the 1.8 m gap of the lip, 13 m before the tip; seabed -134 in front. At the tip itself the lagoon side is a -90 wading shelf (walk out through the lagoon)."},
+    {"id": "sea_water", "type": "water_volume", "at": [0, 0, 0], "surface_half_size": [40000, 40000], "water_depth": 1000, "exit_check": {"cell": 100, "max_swim_cm": 1200, "land_min_m2": 60, "regions": [{"center": [-800, 1200], "size": [16000, 20000]}, {"center": [-18500, 16000], "size": [6000, 6000]}], "no_fall_in": [{"center": [4300, -4200], "size": [3800, 2400], "why": "west ridge (w2, w3) and cove/arm_w: 4.5-6 m cliffs whose tops no one can reach on foot, so no one falls in here"}, {"center": [5300, 300], "size": [1400, 1200], "why": "cove/arm_e and ridge/e2 outer faces: 6 m cliffs, tops unreachable"}]}, "notes": "T-026: one ALureWaterVolume for the whole sea (same 800 m square as sea/seabed), surface z 0, 10 m deep (seabed top -800). exit_check = the preview's 'every fall-in edge has a way out within 12 m' check."}
   ],
   "views": [
     {"id": "spawn", "eye": [-3300, 250, 105.5], "stance": "stand", "look_at": [5905.0, 4157.3, 270.5], "fov": 90, "caption": "Spawn first frame (stand 165, yaw 23, level): Beacon ahead, Tall Palm and jetty water right, cave mouth left"},
@@ -253,6 +265,8 @@
     {"id": "mouth_prone", "eye": [905.0, -5219.1, 80], "stance": "prone", "look_at": [500, -5750, 0], "fov": 90, "caption": "Prone at the arm tip (eye 35): lip on the right, cast into the inner mouth"},
     {"id": "shadow_s2", "eye_abs": [1800, -7000, 120], "look_at": [1100, -4900, 110], "fov": 50, "proxies": [{"at": [905.0, -5219.1, 80], "stance": "prone"}, {"at": [1159.1, -4614.1, 80.0], "stance": "crouch"}, {"at": [1339.1, -3937.6, 80.0], "stance": "stand"}], "caption": "Shadow eye S2 (120 cm, 50 deg lens): prone at the tip hidden; crouch and stand on the arm visible"},
     {"id": "cave_crawl", "eye": [3350, -1500, 180], "stance": "prone", "look_at": [4600, -1500, 200], "fov": 90, "caption": "Prone in the 60 cm crawl (eye 35): cove light ahead"},
+    {"id": "swim_dock", "eye_abs": [-6600, 650, 18], "look_at": [-6200, 820, 40], "fov": 90, "caption": "Swimming off the dock head (eyes 18 cm over the water): the ladder on the 70 cm face"},
+    {"id": "swim_ledge", "eye_abs": [5250, 5500, 18], "look_at": [4835, 5395, 40], "fov": 90, "caption": "Swimming below Point Ledge (70 cm): the seaward ladder, Beacon behind"},
     {"id": "jetty", "eye": [-100, 3600, 60], "stance": "stand", "look_at": [-100, 9000, 0], "fov": 90, "caption": "Jetty root looking east: reef heads, the end platform, the shark water"}
   ],
   "route": {
@@ -275,7 +289,9 @@
   "preview": {
     "maps": [
       {"id": "overview", "title": "overview", "center": [-500, 1300, 0], "width": 19000, "height": 15000, "px_per_m": 12},
-      {"id": "north", "title": "cave, cove and Lagoon Mouth", "center": [2500, -3700, 0], "width": 7600, "height": 6400, "px_per_m": 20}
+      {"id": "north", "title": "cave, cove and Lagoon Mouth", "center": [2500, -3700, 0], "width": 7600, "height": 6400, "px_per_m": 20},
+      {"id": "point", "title": "Rocky Point, Point Ledge and ladders", "center": [4000, 4300, 0], "width": 5600, "height": 5000, "px_per_m": 20},
+      {"id": "dock", "title": "Dock head, ladders and dock_end", "center": [-6300, 600, 0], "width": 3600, "height": 3200, "px_per_m": 24}
     ],
     "map_water_alpha": 0.55,
     "sky": ["#CFEFF8", "#8FD3F0"],

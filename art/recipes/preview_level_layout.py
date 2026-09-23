@@ -21,6 +21,12 @@ It builds the scene from Content/Python/levels/layout.py expand() (the same prim
 - checks:         cover tests (a ray from a creature's eye to the player's eye point per stance, against colliding
                   geometry only; water never blocks) and clearance tests (ray up from a floor point). Results go to
                   RESULT_JSON and onto the map.
+- water exits:    (T-026) levels.layout.water_exit_report with a ray-cast top height: every deep-water cell next to a
+                  high edge (dock, jetty, rock) must reach an exit (a low edge <= 60 cm, a shelf, a beach or a ladder)
+                  within the volume's max_swim_cm. On the map: water volume outline (blue), ladders (orange bars, arrow =
+                  +X over the water), fall-in cells (green = exit in reach, red = too far, amber = exempt: a face nobody can fall from). Ladder boards are drawn in
+                  the eye shots too (no collision, like the actor's board).
+Checks only, no renders (fast iteration): $env:LURE_CHECKS_ONLY = "1". Maps only (no eye shots): $env:LURE_MAPS_ONLY = "1".
 Outputs: Saved/AgentLogs/previews/levels/<Level>/ and a contact sheet Saved/AgentLogs/previews/levels/<Level>.png.
 """
 import argparse
@@ -51,7 +57,9 @@ DANGER = "#C0392B"
 SAFE = "#3FA34D"
 ACCENT = style.TROPICAL.ACCENT
 LANTERN = style.FOGGY.LANTERN
-ROUTE = "#6A3FA0"  # route line on the map only (not a game color): purple reads on sand, grass and water
+ROUTE = "#6A3FA0"
+WATER_LINE = "#1F5FAF"  # water volume outline (map only)
+LADDER = "#E07A1F"      # ladders (map only)  # route line on the map only (not a game color): purple reads on sand, grass and water
 
 
 def parse_args():
@@ -154,7 +162,9 @@ def build_scene(layout, ex):
     coll = bpy.data.collections.new("Layout")
     scene.collection.children.link(coll)
     objs = {}
-    for p in ex["prims"]:
+    board_mat = "wood_dark" if "wood_dark" in layout["materials"] else "default"
+    boards = [L.ladder_visual(mk, board_mat) for mk in ex["markers"] if mk["type"] == "ladder"]
+    for p in ex["prims"] + boards:
         if not p.get("visible", True):
             continue
         # One mesh datablock per object so each gets its own material slot.
@@ -256,6 +266,14 @@ def clearance_tests(layout, bvh):
                     "floor_z": None if floor_z is None else round(floor_z, 2), "expect_min": lo, "expect_max": hi,
                     "pass": ok, "note": mk.get("note", "")})
     return out
+
+
+def top_height_fn(bvh, from_z_cm=5000.0):
+    """top_fn for levels.layout.water_exit_report: highest colliding surface z (cm) under (x, y), or None."""
+    def top(x, y):
+        hit = bvh.ray_cast(to_b((x, y, from_z_cm)), Vector((0, 0, -1)), from_z_cm / 100.0 + 2000.0)
+        return None if hit[0] is None else hit[0].z * 100.0
+    return top
 
 
 def ground_checks(layout, ex, bvh, tolerance=8.0):
@@ -547,6 +565,9 @@ def map_labels(layout, ex, legs, covers, clears):
             labels.append((mk["name"], L.v3(mk.get("label_at", mk["at"])), 15, "#7A1F12", True))
         elif t == "label":
             labels.append((mk["text"], L.v3(mk["at"]), int(mk.get("map_px", 15)), INK, True))
+        elif t == "ladder" and mk.get("map_label", True):
+            at = L.add(L.v3(mk["at"]), L.rotate(L.rot_rows(float(mk.get("yaw", 0.0))), (320.0, 0.0, 0.0)))
+            labels.append(("ladder", at, 13, "#8A4A10", True))
     groups = {}
     for c in covers:  # one multi-line label per test location
         groups.setdefault(tuple(round(v) for v in c["at"]), []).append(c)
@@ -618,7 +639,7 @@ def render_labels_pass(scene, cam, labels, canvas, res, path):
     return load_rgba(path)
 
 
-def draw_overlays(layout, ex, canvas, legs, covers, view):
+def draw_overlays(layout, ex, canvas, legs, covers, view, water=None):
     m = L.metrics(layout)
     px_per_m = 100.0 / canvas.s
     if px_per_m >= 3.0:
@@ -632,6 +653,21 @@ def draw_overlays(layout, ex, canvas, legs, covers, view):
             fill = {"threat": 0.08, "hazard": 0.10, "crawl_gap": 0.45, "quiet": 0.08}.get(zt, 0.06)
             canvas.rect(L.v3(mk["at"]), size[:2], mk.get("yaw", 0.0), hx, fill)
             canvas.rect(L.v3(mk["at"]), size[:2], mk.get("yaw", 0.0), hx, 0.9, outline_px=2.0)
+    for mk in ex["markers"]:
+        if mk["type"] == "water_volume":
+            hs = mk["surface_half_size"]
+            canvas.rect(L.v3(mk["at"]), (2 * hs[0], 2 * hs[1]), mk.get("yaw", 0.0), WATER_LINE, 0.9, outline_px=2.5)
+    for vol in (water or {}).get("volumes", []):
+        r = vol["cell_cm"] * 0.32
+        for x, y, d, status in vol["fall_in"]:
+            hx = {"ok": SAFE, "far": DANGER, "exempt": "#C8961E"}[status]
+            canvas.disc((x, y, 0), r * (0.7 if status == "exempt" else 1.0), hx, 1.0 if status == "far" else 0.8)
+    for lad in (water or {}).get("ladders", []):
+        at = L.v3(lad["at"])
+        canvas.rect(L.add(at, L.rotate(L.rot_rows(lad["yaw"]), (20.0, 0.0, 0.0))), (40.0, 120.0), lad["yaw"], LADDER,
+                    1.0)
+        tip = L.add(at, L.rotate(L.rot_rows(lad["yaw"]), (160.0, 0.0, 0.0)))
+        canvas.segment(at, tip, 2.5, LADDER, 1.0)
     for mk in ex["markers"]:
         if mk["type"] == "sight_cone":
             c = L.v3(mk["at"])
@@ -683,7 +719,7 @@ def draw_overlays(layout, ex, canvas, legs, covers, view):
     canvas.screen_rect(u0 + bar_px / 2, v0, bar_px, 6, INK, 1.0)
 
 
-def render_map(layout, ex, scene, view, legs, covers, clears, out_dir, quick):
+def render_map(layout, ex, scene, view, legs, covers, clears, out_dir, quick, water=None):
     center = L.v3(view["center"])
     w_cm, h_cm = float(view["width"]), float(view["height"])
     ppm = float(view.get("px_per_m", 10.0)) * (0.5 if quick else 1.0)
@@ -704,7 +740,7 @@ def render_map(layout, ex, scene, view, legs, covers, clears, out_dir, quick):
     raw = out_dir / ("_raw_map_%s.png" % view["id"])
     _render(scene, raw, res)
     canvas = Canvas(load_rgba(raw), center, w_cm, h_cm)
-    draw_overlays(layout, ex, canvas, legs, covers, view)
+    draw_overlays(layout, ex, canvas, legs, covers, view, water)
     labels = map_labels(layout, ex, legs, covers, clears)
     title = "%s  |  %s  |  grid 1 m / 10 m, north up  |  see-through water" % (layout["id"], view.get("title", view["id"]))
     tl_world = canvas.world(24 + len(title) * 5.2, 24)
@@ -1212,25 +1248,32 @@ def run_layout(path, args):
     covers = cover_tests(layout, bvh)
     clears = clearance_tests(layout, bvh)
     grounds = ground_checks(layout, ex, bvh)
+    water = L.water_exit_report(layout, top_height_fn(bvh), ex)
+    base = {
+        "layout": str(path), "level_path": layout["level_path"], "primitives": len(ex["prims"]),
+        "lights": len(ex["lights"]), "markers": len(ex["markers"]), "problems": problems + water["problems"],
+        "cover_tests": covers, "clearance_tests": clears, "ground_issues": grounds,
+        "water": {"ladders": water["ladders"],
+                  "volumes": [dict({k: v for k, v in vol.items() if k != "fall_in"}, n_fall_in=len(vol["fall_in"]))
+                              for vol in water["volumes"]]},
+        "route": [{k: leg[k] for k in ("from", "to", "move", "distance_m", "seconds", "optional")} for leg in legs],
+    }
+    if os.environ.get("LURE_CHECKS_ONLY", "").strip() in ("1", "true", "yes"):
+        return dict(base, maps=[], eyes=[], sheet=None)
     samples = 8 if args.quick else 24
     _eevee(scene, samples)
     sun_spec = layout.get("preview", {}).get("map_sun", {"azimuth": 150.0, "elevation": 62.0, "strength": 3.5})
     map_sun = _sun(scene, sun_spec["azimuth"], sun_spec["elevation"], sun_spec["strength"])
-    maps = [render_map(layout, ex, scene, v, legs, covers, clears, out_dir, args.quick)
+    maps = [render_map(layout, ex, scene, v, legs, covers, clears, out_dir, args.quick, water)
             for v in layout.get("preview", {}).get("maps", [])]
     bpy.data.objects.remove(map_sun, do_unlink=True)
-    eyes = [render_eye(layout, scene, mats, v, out_dir, args.quick) for v in layout.get("views", [])]
+    maps_only = os.environ.get("LURE_MAPS_ONLY", "").strip() in ("1", "true", "yes")
+    eyes = [] if maps_only else [render_eye(layout, scene, mats, v, out_dir, args.quick) for v in layout.get("views", [])]
     sheet_path = Path(args.preview) if (args.preview and len(args.layout) == 1) else OUT_ROOT / (layout["id"] + ".png")
     sheet = contact_sheet(maps + eyes, sheet_path) if (maps or eyes) else None
     if args.save_blend:
         bpy.ops.wm.save_as_mainfile(filepath=str(out_dir / (layout["id"] + "_preview.blend")))
-    return {
-        "layout": str(path), "level_path": layout["level_path"], "primitives": len(ex["prims"]),
-        "lights": len(ex["lights"]), "markers": len(ex["markers"]), "problems": problems,
-        "maps": maps, "eyes": eyes, "sheet": sheet, "cover_tests": covers, "clearance_tests": clears,
-        "ground_issues": grounds,
-        "route": [{k: leg[k] for k in ("from", "to", "move", "distance_m", "seconds", "optional")} for leg in legs],
-    }
+    return dict(base, maps=maps, eyes=eyes, sheet=sheet)
 
 
 def main():
@@ -1250,6 +1293,14 @@ def main():
         for t in res["clearance_tests"]:
             print("[clear] %s: %s cm (%s..%s) %s" % (t["id"], t["clearance_cm"], t["expect_min"], t["expect_max"],
                                                       "PASS" if t["pass"] else "FAIL"))
+        for vol in res["water"]["volumes"]:
+            print("[water] %s: %d fall-in cells, %d exit cells, worst swim to an exit %s cm (limit %s), %d stranded, "
+                  "%d too far, %d exempt %s" % (vol["id"], vol["n_fall_in"], vol["exits"], vol["worst_cm"],
+                                                vol["max_swim_cm"], vol["stranded"], len(vol["fails"]), vol["exempt"],
+                                                "PASS" if not vol["fails"] else "FAIL"))
+        for lad in res["water"]["ladders"]:
+            print("[ladder] %s: edge %s cm over the water (max %s) %s" % (lad["id"], lad["edge_cm"], lad["max_climb"],
+                                                                        "PASS" if lad["ok"] else "FAIL"))
         for g in res["ground_issues"]:
             print("[ground] WARN %s: layout z %s, ground z %s (delta %s cm)" % (g["id"], g["layout_z"], g["ground_z"],
                                                                          g["delta_cm"]))

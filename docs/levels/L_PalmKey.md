@@ -85,7 +85,7 @@ each species' time windows. A teleport `tp_<spot>` is created automatically at e
 
 | Spot | Habitat tag | Levels | When it matters | Danger | Species it should serve (proposal for T-009) |
 |---|---|---|---|---|---|
-| Dock End | Habitat.Shore | 1-2 | any (lit at night) | none | Bonefish, Sand Grunt |
+| Dock End (radius 650, T-026 B3: the ring starts 3.5 m off the dock face so the shortest cast counts) | Habitat.Shore | 1-2 | any (lit at night) | none | Bonefish, Sand Grunt |
 | Palm Beach | Habitat.Shore | 1-2 | any | none | Bonefish, Sand Grunt |
 | Reef Flats | Habitat.Reef | 2-3 | any; snapper 15-09 | none (shark can't enter -60) | Coral Snapper |
 | Jetty End | Habitat.Reef.Edge | 3-5 | any; shark alert at dusk and night | shark | Coral Snapper, Blue Trevally |
@@ -170,11 +170,37 @@ Four PlayerStarts at the dock root (1.5 m apart, co-op 2-4), `PlayerStartTag = R
 `Respawn=Dock`. Spawn and respawn are the same place, facing north-north-east, yaw 23 (Beacon ahead, Tall Palm and
 jetty water right, shop 11 m left). No other respawn in the slice.
 
-## 10. Water and hazards
-The water planes never collide. Shallow shelves (-60 to -200, turquoise overlay discs) can be waded; the seabed
-elsewhere is -800 with no way out. Until T-017 decides whether falling into the water means swimming or getting caught,
-a player in deep water is stuck; the playtester uses teleports (`Lure.Teleport <id>`). Suggested T-017 rule: water
-deeper than 1.5 m under the capsule counts as fallen in, so you respawn at the dock.
+## 10. Water and hazards (T-026: surface swimming)
+The water planes never collide (they are only the look). The water itself is ONE `ALureWaterVolume` (marker
+`sea_water`): surface z 0, the same 800 x 800 m square as the seabed, 10 m deep (seabed top -800). Falling in = swimming
+at the surface (docs/specs/swimming.md): swim 170 cm/s, eyes 18 cm over the water, feet at -100.
+
+Ways out (rule: from every place you can fall in, an exit within 12 m of swimming, about 7 s):
+- beaches and the sand cones (walk out where the seabed rises), the -60 reef flat and the -90 lagoon floor (step out,
+  then wade; tops from -91 up are steps per the spec);
+- edges at most 60 cm over the water (Jump climb): jetty and jetty end (60), Gull Key pier (60);
+- ladders (`ALureLadder`, +X over the water, default MaxClimbHeight 300) where the edge is higher:
+
+| Ladder | Where | Edge | Water in front | Why |
+|---|---|---|---|---|
+| `dock_ladder` | dock head sea face, y 800 (between posts 600/1000), 2 m right of the Dock End cast point | 70 | -122 | falling off the first fishing spot; 5 m from the boat mooring |
+| `ledge_ladder_n` | Point Ledge seaward face, 3 m right of the cast point | 70 | -800 | the ledge drops straight into deep water |
+| `ledge_ladder_e` | Point Ledge east face | 70 | -800 | |
+| `ledge_ladder_w` | Point Ledge west face, near the head corner | 70 | -800 | also covers the head's exposed 3.2 m face |
+| `mouth_ladder` | Mouth Rocks sea (north) side, in a 1.8 m gap of the lip (arm x 230-410), 13 m before the tip | 80 | -137 | the north side is deep; at the tip itself the lagoon side is a -90 wading shelf |
+
+The Mouth Rocks lip is now two boxes (`mouth/lip_w`, `mouth/lip`) with the ladder gap between them; the part that hides
+the prone fisher at the tip is unchanged (all 6 cover tests pass).
+
+No fall-in (exempt in the check, drawn amber): the outer faces of the west ridge (w2, w3), cove/arm_w, cove/arm_e and
+ridge/e2. They are 4.5-6 m cliffs whose tops no one can reach on foot; a swimmer there came from the cove beach or the
+Mouth Rocks and can swim back.
+
+Check: `levels.layout.water_exit_report` (run by the preview; exit_check on the `sea_water` marker: 1 m cells over the
+island and Gull Key). Result: 234 fall-in cells, worst swim to an exit 12.0 m (the 1 m slot between ridge/w2 and
+cove/arm_w), 0 too far, 0 stranded; all 5 ladders measure their edge (70-80) under MaxClimbHeight with swimming depth in
+front. Underwater vertical edges: the reef flat (-60) and lagoon floor (-90) rims are step-out tops; the sand cones
+end at -200 (swum over). None sits in the avoided -55..-20 band at an exit.
 
 ## 10b. Light, exposure and palette (designer S1-S3, ART_STYLE 2026-09-23)
 The layout's `time_of_day` names the active preset in `time_of_day_presets` (T-013 will drive presets from data;
@@ -228,6 +254,9 @@ pass. Performance budget capture: T-023.
 - Shark: loop distance to the jetty (2 m), speed 250 cm/s, which surfaces are loud
 - Crawl length 6 m; cave width 1.6 m
 - Dock 70 / jetty 60 cm above the water (prone view of the bobber)
+- Swimming exits: is 12 m to the nearest exit OK? Ladder places (dock y 800, three on Point Ledge, Mouth Rocks gap);
+  does the Mouth Rocks lip gap weaken the tip's cover feel?
+- Dock End radius 650 (was 600): the shortest cast from the dock should count
 - Islet distance 210 m (boat trip about 20 s at 10 m/s)
 - Grass hill height (+4 m): it hides the lagoon from spawn on purpose. Is the reveal good or confusing?
 - Exposure EV (1.0), fog density (0.03), sky luminance factor and sky light intensity: sample the zenith, sand and
@@ -237,9 +266,10 @@ pass. Performance budget capture: T-023.
 ## 14. Build and preview
 - Preview (Blender, headless): `powershell -NoProfile -ExecutionPolicy Bypass -File tools/blender-run.ps1 -Recipe
   art/recipes/preview_level_layout.py`. It writes `Saved/AgentLogs/previews/levels/L_PalmKey/` (map_overview,
-  map_north, eye_spawn, eye_cave_mouth, eye_cave_crouch, eye_dock_head, eye_mouth_prone, eye_shadow_s2, eye_cave_crawl,
-  eye_jetty) and a contact sheet `Saved/AgentLogs/previews/levels/L_PalmKey.png`. It fails if any cover or clearance
-  test fails. Eye shots use the "engine look" (Cycles, the preset's exposure, Unreal's fog formula and filmic
+  map_north, map_point, map_dock, eye_spawn, eye_cave_mouth, eye_cave_crouch, eye_dock_head, eye_mouth_prone, eye_shadow_s2, eye_cave_crawl,
+  eye_jetty, eye_swim_dock, eye_swim_ledge) and a contact sheet `Saved/AgentLogs/previews/levels/L_PalmKey.png`. It fails if any cover or clearance
+  test fails, or if the water exit check finds a fall-in place without an exit within 12 m (T-026). Faster:
+  `$env:LURE_CHECKS_ONLY = "1"` (checks only) or `$env:LURE_MAPS_ONLY = "1"` (no eye shots). Eye shots use the "engine look" (Cycles, the preset's exposure, Unreal's fog formula and filmic
   tonemapper, the cave fill lights). It can't show the SkyAtmosphere (the sky is the palette gradient), Lumen or local
   exposure, so the in-engine zenith and shade values need the rebuild screenshot.
 - Build (editor-operator, run_python):
@@ -247,6 +277,6 @@ pass. Performance budget capture: T-023.
   then `bl.frame_view("data/levels/L_PalmKey.json", "<view id>")` for screenshots matching the preview shots.
 
 ## 15. Open questions (for the lead / Jimmy)
-- Water: swim or "caught" when you fall in? (GAME_DESIGN open question; decides the deep-water hazard.)
+- Water: decided (T-026): falling in means surface swimming; exits as in section 10.
 - Jump apex 90 cm: should you be able to hop onto a 1 m crate?
 - Grass hill blocking the lagoon from spawn: is the reveal good, or should the lagoon be visible from spawn?
