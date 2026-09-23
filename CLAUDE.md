@@ -71,6 +71,12 @@ C++ work and Blender work (model-artist, animation-artist) can run in parallel; 
 - The lead is the project manager: assigns tasks, briefs agents with the relevant vision and rules, verifies results, and keeps `docs/TASKS.md` current.
 - Work log: when a task starts, the lead adds `In progress: <owner agent>, started <date>` to that task line in `docs/TASKS.md`; when it's done, the task moves to "Done" with its commit hash. Before starting work, every agent reads the task lines marked "In progress" so it knows what the others are doing and stays off their files.
 
+## Token budget (Jimmy asked to keep usage down)
+- Agents write their full report to a file (`Saved/AgentLogs/<area>/<yyyyMMdd-HHmmss>-<topic>.md`, e.g. `qa/`, `playtest/`, `build/`) and RETURN only a short summary: at most ~25 lines. That means verdict, key numbers, commit hash, blockers, the report path. No full test lists, no pasted file contents, no long tables unless asked.
+- Tool output: filter it (`tail`, `grep`, `head`, `--stat`) instead of dumping whole logs; Read big files with offset/limit; never paste base64 images; read only the images you must judge.
+- Lead: brief agents concisely and point to files (specs, reports) instead of restating them. Resume an agent (SendMessage) only for short follow-ups where its context really helps; otherwise start a fresh agent with pointers to the relevant files. Delegate broad searches. Suggest `/compact` to Jimmy at milestones (e.g. after a push).
+- Subagent conversations end with their task; nothing to compact there. Keeping reports short is what saves tokens.
+
 ## Working with Jimmy
 - He playtests. Feedback notes land in `Saved/Playtest/` once the feedback key exists (see `playtest-feedback` skill). Turn each note into a task in `docs/TASKS.md`.
 - Report in plain language: what changed, what to try next time he plays, and anything you need from him.
