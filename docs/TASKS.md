@@ -14,7 +14,7 @@ Last processed playtest folder: (none)
   3. is one hold-to-reel button enough?
   4. are 8-15 s fights right?
 - T-010 MERGED into main 5f94b18 (470/470). Editor 6fc4629: 3 tables imported, dock sell point sell_dock built from the layout (ac06446), PIE sell smoke PASS: prompt "[E] Sell 1 fish (48 coins)", Money 0->48 (Saved/AgentLogs/editor/20260923-180000-t010-editor/report.md). In progress: unreal-engineer-junior-medium in eng4 is doing Lure.GiveFish into the cooler, pd.screenshot with UI (PIE shots showed no HUD) and the 3 driver follow-ups. Left: playtester 2-player (sell, HUD text, owner-only fish list).
-- animation-artist-senior-max: fish rig and clips (main)
+- T-008 fish rig and animations DONE d5a9d4f: SKEL_Fish, SK_Bonefish/SK_CoralSnapper, A_Fish_Rest plus 7 additive clips, spec art/export/Fish/SK_Fish.anim.md (report Saved/AgentLogs/anim/20260923-111847-fish.md; Progress 11). In progress: editor-operator-mid-medium importing to /Game/Art/Fish. Then unreal-engineer-junior-medium: scale by weight, and play the clips for the fight states (T-007 mapping; Rest plays Swim_Idle; Landed_Flop alpha 1).
 - DONE 5137a5c: run-tests.ps1 now fails on a crash or an incomplete run (unreal-engineer-junior-medium)
 - DONE 3e7e3a5: the L_PalmKey cave rebuild (crawl walls #35434A, in target; outer mouth faces slightly dark and blue; left for the designer at the gate). Evidence Saved/AgentLogs/editor/20260923-104106-palmkey-cave/
 - DONE: the T-025 smoke check PASS (Saved/AgentLogs/playtest/20260923-104259-T025-smoke/report.md; about 17 calls for the whole scenario including 2 players). Driver follow-ups (junior, later):
