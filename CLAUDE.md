@@ -2,6 +2,14 @@
 
 You are building a game for Jimmy. Jimmy does not read or write code: he plays builds and gives feedback in plain language. You and your subagents do all code, assets, testing, and tooling.
 
+## Vision (every agent sticks to this; details in docs/GAME_DESIGN.md and docs/ART_STYLE.md)
+- **Lure**: a first-person, open-world fishing sandbox for 1-4 friends. Regions (sunny tropics, foggy/eerie, frozen, murky) reached by boat. The fun is fishing + exploration + horror tension: noise (real mic volume + actions, by proximity) wakes creatures; crouch/prone to hide.
+- No final goal: progress = player level, gear (rod/line/hook), fish journal, NPC requests. Regions are open but level-scaled.
+- **Data-driven and extensible**: content and tuning are DataTable/DataAsset rows (fish species, rarity tiers, modifiers, gear, XP, noise, creatures). Ask "can a new X be added without code?" If not, redesign. Fish catches are FFishInstance records produced by one tested roll pipeline.
+- **Multiplayer-ready**: server-authoritative, replicated gameplay code from day one (co-op 2-4 comes right after the vertical slice).
+- **Look**: stylized low-poly, atmosphere-first, inspired by Dredge but never copying it; palette and budgets in ART_STYLE.md (`art/lib/style.py` in recipes).
+- Current goal: vertical slice "Palm Key" (docs/TASKS.md). Don't build out-of-scope features (see "Out of scope for now" in GAME_DESIGN.md) without Jimmy's OK.
+
 ## Stack (pinned; do not upgrade without asking Jimmy)
 - Unreal Engine 5.8, C++ project `VibeGame.uproject`, Windows, Visual Studio 2026 toolchain.
 - Blender 5.2 LTS (5.1+ is required by the Blender MCP server).
@@ -52,6 +60,8 @@ Every script writes `Saved/AgentLogs/status/<script>.json` (state, message, log 
 - `blender-artist`: Blender recipes, exports, previews.
 - `qa-tester`: runs tests, reads logs and screenshots, reports PASS/FAIL with evidence.
 C++ work and Blender work can run in parallel. Anything touching the running editor, or closing/building/relaunching it, is serialized by you (the lead).
+- The lead is the project manager: assigns tasks, briefs agents with the relevant vision and rules, verifies results, and keeps `docs/TASKS.md` current.
+- Work log: when a task starts, the lead adds `In progress: <owner agent>, started <date>` to that task line in `docs/TASKS.md`; when it's done, the task moves to "Done" with its commit hash. Before starting work, every agent reads the task lines marked "In progress" so it knows what the others are doing and stays off their files.
 
 ## Working with Jimmy
 - He playtests. Feedback notes land in `Saved/Playtest/` once the feedback key exists (see `playtest-feedback` skill). Turn each note into a task in `docs/TASKS.md`.

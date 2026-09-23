@@ -1,17 +1,18 @@
 # Tasks
 
-Format: `- [ ] T-### Title (owner) - acceptance: ...`  Owners: lead, unreal-engineer, blender-artist, editor-operator, qa-tester.
+Format: `- [ ] T-### Title (owner) - acceptance: ... In progress: <agent>, started <date>`  Owners: lead, unreal-engineer, blender-artist, editor-operator, qa-tester.
+Done tasks move to "Done" with their commit hash. Read the "In progress" markers before starting work.
 Last processed playtest folder: (none)
 
 ## Now: foundation (after setup)
-- [ ] T-002 Fill docs/ART_STYLE.md with Jimmy (lead + blender-artist) - acceptance: palette, budgets, 3+ reference images, art/lib/style.py created. Status: direction, palette and budgets drafted; still to do: our own mood-board renders in art/reference/ (no copied Dredge art) and art/lib/style.py (palette + material presets for recipes).
+- [ ] T-002 Fill docs/ART_STYLE.md with Jimmy (lead + blender-artist) - acceptance: palette, budgets, 3+ reference images, art/lib/style.py created. Status: direction, palette and budgets drafted; still to do: our own mood-board renders in art/reference/ (no copied Dredge art) and art/lib/style.py (palette + material presets for recipes). In progress: blender-artist, started 2026-09-22.
 
 ## Next: vertical slice "Palm Key" (Lure, tropical beginner zone, solo, multiplayer-ready code)
 Goal: 15-25 minutes of polished solo play proving fishing + exploration + tension is fun (see "Vertical slice definition" in GAME_DESIGN.md).
 All tuning (movement speeds, gear stats, fish, XP curve, noise radii, shark behavior, time of day) lives in DataTables with CSV/JSON sources in the repo. All gameplay code is server-authoritative and replicated, so co-op can follow the slice without rewrites.
 
 ### Milestone A: "I can move and fish off a dock" (first Jimmy playtest)
-- [ ] T-003 Playtest feedback key F8 (unreal-engineer + editor-operator) - acceptance: spec in the playtest-feedback skill met (screenshot, pause, one-line note, Saved/Playtest/<timestamp>/ with screenshot.png + note.json with level, location, rotation, game time, avg FPS over 5 s, commit id; Esc cancels; compiled out of Shipping); automation test for note writing passes.
+- [ ] T-003 Playtest feedback key F8 (unreal-engineer + editor-operator) - acceptance: spec in the playtest-feedback skill met (screenshot, pause, one-line note, Saved/Playtest/<timestamp>/ with screenshot.png + note.json with level, location, rotation, game time, avg FPS over 5 s, commit id; Esc cancels; compiled out of Shipping); automation test for note writing passes. In progress: unreal-engineer, started 2026-09-22 (in-editor check by editor-operator afterwards).
 - [ ] T-004 First-person character (unreal-engineer + editor-operator) - acceptance: first-person camera with placeholder arms; walk, run, jump, crouch and prone with smooth camera height and capsule changes; prone blocks jumping and fits under a 60 cm gap; speeds and heights in DT_Movement; replicated; automation tests for stance heights and speeds; screenshot of each stance checked.
 - [ ] T-005 Palm Key greybox (editor-operator + blender-artist) - acceptance: L_PalmKey in /Game/Maps with island, dock, beach, reef shallows, jetty, rocky point, a crawl-only cave to a hidden cove, a water plane and a respawn point at the dock; walkable end to end in PIE; overview screenshot checked.
 - [ ] T-006 Casting, bobber, bite and hook (unreal-engineer) - acceptance: hold to charge and aim a cast; bobber floats and bobs; fishing spots decide which fish can bite; the bite is readable (bobber dips, sound, controller rumble); hook window timing in data; a miss loses the bite; automation tests for cast distance and hook window.
