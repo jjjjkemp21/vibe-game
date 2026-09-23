@@ -36,7 +36,7 @@ ENGINE_SHAPES = {
 ANCHORS = ("bottom", "center", "top")
 MARKER_TYPES = (
     "player_start", "fishing_spot", "patrol", "sight_cone", "zone", "npc", "teleport", "boat_mooring",
-    "cover_test", "clearance_test", "landmark", "label", "sell_point",
+    "cover_test", "clearance_test", "landmark", "label", "sell_point", "water_volume", "ladder",
 )
 LIGHT_TYPES = ("directional", "sky_atmosphere", "sky_light", "height_fog", "point", "post_process")
 ZONE_TYPES = ("threat", "hazard", "crawl_gap", "quiet", "trigger", "area")
@@ -50,7 +50,13 @@ DEFAULT_METRICS = {
     "clear_stand": 182.4, "clear_crouch": 112.4, "clear_prone": 54.4,
     "crawl_gap": 60.0, "max_step": 45.0, "stair_step_max": 20.0, "jump_apex_stand": 90.0,
     "walkable_deg": 44.765,
+    # Swimming (T-026, docs/specs/swimming.md; DT_Movement rows Swim/SwimSprint): capsule center SurfaceFloatDepth under
+    # the surface, feet 100 cm under it; edges up to ClimbMaxHeight above the water are Jump climbs; submerged tops from
+    # swim_step_lowest (feet + 9) up are steps or climbs; ladders climb higher (their MaxClimbHeight).
+    "swim_cm_s": 170.0, "swim_float_depth": 10.0, "climb_out_max": 60.0, "swim_step_lowest": -91.0,
 }
+LADDER_DEFAULTS = {"MaxClimbHeight": 300.0, "GrabZoneHalfSize": [40.0, 60.0, 120.0], "VisualHeightAboveWater": 80.0,
+                   "VisualDepthBelowWater": 120.0}
 
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -688,6 +694,210 @@ def route_table(layout):
 
 
 # ---------------------------------------------------------------------------------------------------------------------
+# Water (T-026): water volumes, ladders and the "every water edge has a way out" check
+# ---------------------------------------------------------------------------------------------------------------------
+def ladder_props(mk):
+    """A ladder marker's ALureLadder values: LADDER_DEFAULTS overridden by its "properties"."""
+    out = dict(LADDER_DEFAULTS)
+    out.update(mk.get("properties") or {})
+    return out
+
+
+def ladder_visual(mk, mat="default"):
+    """The greybox board ALureLadder draws itself (LureLadder.cpp UpdateVisual: 6 cm x 50 cm, 3 cm off the face), as a
+    non-colliding primitive for previews only (the builder spawns the actor, which makes its own board)."""
+    p = ladder_props(mk)
+    up, down = float(p["VisualHeightAboveWater"]), float(p["VisualDepthBelowWater"])
+    rows = rot_rows(float(mk.get("yaw", 0.0)))
+    c = add(v3(mk["at"]), rotate(rows, (3.0, 0.0, 0.5 * (up - down))))
+    return _prim(mk["id"] + "/board", "box", c, (6.0, 50.0, max(up + down, 1.0)), float(mk.get("yaw", 0.0)), mat=mat,
+                 collision="none")
+
+
+def _local_xy(mk, x, y):
+    at = v3(mk["at"])
+    a = math.radians(-float(mk.get("yaw", 0.0)))
+    dx, dy = x - at[0], y - at[1]
+    return dx * math.cos(a) - dy * math.sin(a), dx * math.sin(a) + dy * math.cos(a)
+
+
+def in_water_volume(wv, x, y):
+    hx, hy = (float(v) for v in wv["surface_half_size"])
+    lx, ly = _local_xy(wv, x, y)
+    return abs(lx) <= hx and abs(ly) <= hy
+
+
+def in_grab_zone(mk, x, y):
+    """Same box as ALureLadder::IsInGrabZone, in plan (X from -5 to 2 * half X out from the face, |Y| <= half Y)."""
+    p = ladder_props(mk)
+    hx, hy = float(p["GrabZoneHalfSize"][0]), float(p["GrabZoneHalfSize"][1])
+    lx, ly = _local_xy(mk, x, y)
+    return -5.0 <= lx <= 2.0 * hx and abs(ly) <= hy
+
+
+def water_exit_report(layout, top_fn, expanded=None):
+    """Checks that every place a player can fall or step into the water has a way out within reach.
+
+    top_fn(x, y) -> the highest colliding surface z (cm) at that point, or None (no ground). The Blender preview passes
+    a ray cast against the collision geometry; the check itself is pure Python.
+
+    Per water volume, over its "exit_check" regions (default: the volume grown by 4 m), on a grid of "cell" cm:
+    - a cell inside the volume whose top is lower than swim_step_lowest (-91 cm under the surface) is DEEP (you swim);
+    - any other cell is LOW (top at most climb_out_max = 60 cm above the water: wade, step or Jump-climb out) or HIGH;
+    - EXITS: deep cells next to a LOW cell that belongs to land (a connected non-deep area of at least land_min_m2, so
+      a lone reef head or rock you can climb onto does not count), and deep cells in a ladder's grab zone;
+    - FALL-IN cells: deep cells next to a HIGH land cell (a dock, a jetty, a rock face: where you land when you fall).
+    The swim distance from every fall-in cell to the nearest exit (8-way grid path through deep cells) must be at most
+    max_swim_cm (default 1200 = 7 s at 170 cm/s). "no_fall_in": [{"center", "size", "yaw", "why"}] marks faces nobody
+    can fall from (cliffs whose tops a player cannot reach); their cells are reported ("exempt") but do not fail. Ladders also check that the edge above them (30 cm behind the face) is
+    at most their MaxClimbHeight above the water (and warn when it is low enough for a plain Jump climb).
+    Returns {"volumes": [...], "ladders": [...], "problems": [...]} (problems start with ERROR or WARN)."""
+    import heapq
+    expanded = expanded or expand(layout)
+    m = metrics(layout)
+    lowest, climb = m["swim_step_lowest"], m["climb_out_max"]
+    markers = expanded["markers"]
+    volumes = [mk for mk in markers if mk["type"] == "water_volume"]
+    ladders = [mk for mk in markers if mk["type"] == "ladder"]
+    problems, vol_out, lad_out = [], [], []
+    for lad in ladders:
+        at = v3(lad["at"])
+        behind = add(at, rotate(rot_rows(float(lad.get("yaw", 0.0))), (-30.0, 0.0, 0.0)))
+        top = top_fn(behind[0], behind[1])
+        edge = None if top is None else top - at[2]
+        mx = float(ladder_props(lad)["MaxClimbHeight"])
+        ok = edge is not None and edge <= mx
+        lad_out.append({"id": lad["id"], "edge_cm": None if edge is None else round(edge, 1), "max_climb": mx, "ok": ok,
+                        "at": list(at), "yaw": float(lad.get("yaw", 0.0))})
+        if not ok:
+            problems.append("ERROR ladder %s: edge above it is %s cm over the water, MaxClimbHeight %.0f"
+                            % (lad["id"], "missing" if edge is None else "%.0f" % edge, mx))
+        elif edge <= climb:
+            problems.append("WARN ladder %s: edge is only %.0f cm over the water (a Jump climb already works there)"
+                            % (lad["id"], edge))
+        front = add(at, rotate(rot_rows(float(lad.get("yaw", 0.0))), (60.0, 0.0, 0.0)))
+        ftop = top_fn(front[0], front[1])
+        lad_out[-1]["front_top_cm"] = None if ftop is None else round(ftop - at[2], 1)
+        if ftop is not None and ftop - at[2] >= lowest:
+            problems.append("WARN ladder %s: the bottom 60 cm in front is at %.0f cm, wading depth (only swimmers use "
+                            "ladders)" % (lad["id"], ftop - at[2]))
+    n4 = [(1, 0), (-1, 0), (0, 1), (0, -1)]
+    n8 = n4 + [(1, 1), (1, -1), (-1, 1), (-1, -1)]
+    for wv in volumes:
+        wat = v3(wv["at"])
+        surf = wat[2]
+        chk = dict(wv.get("exit_check") or {})
+        cell = float(chk.get("cell", 100.0))
+        max_swim = float(chk.get("max_swim_cm", 1200.0))
+        land_min = float(chk.get("land_min_m2", 60.0))
+        regions = chk.get("regions")
+        if not regions:
+            hx, hy = (float(v) for v in wv["surface_half_size"])
+            regions = [{"center": [wat[0], wat[1]], "size": [2 * hx + 800.0, 2 * hy + 800.0]}]
+        exempt_rects = [dict(r, at=[r["center"][0], r["center"][1], 0.0]) for r in chk.get("no_fall_in", [])]
+        rep = {"id": wv["id"], "cell_cm": cell, "max_swim_cm": max_swim, "regions": [], "fall_in": [], "exits": 0,
+               "fails": [], "worst_cm": 0.0, "worst_at": None, "stranded": 0, "exempt": 0}
+        wet_ladders = [l for l in ladders if abs(v3(l["at"])[2] - surf) < 1.0]
+        for reg in regions:
+            cx, cy = float(reg["center"][0]), float(reg["center"][1])
+            nx, ny = int(math.ceil(float(reg["size"][0]) / cell)), int(math.ceil(float(reg["size"][1]) / cell))
+            x0, y0 = cx - nx * cell / 2.0 + cell / 2.0, cy - ny * cell / 2.0 + cell / 2.0
+            kind = {}  # (i, j) -> "deep" | "low" | "high"; cells outside the water with no ground are left out
+            for i in range(nx):
+                for j in range(ny):
+                    x, y = x0 + i * cell, y0 + j * cell
+                    top = top_fn(x, y)
+                    wet = in_water_volume(wv, x, y)
+                    if top is None:
+                        if wet:
+                            kind[(i, j)] = "deep"
+                        continue
+                    h = top - surf
+                    if wet and h < lowest:
+                        kind[(i, j)] = "deep"
+                    else:
+                        kind[(i, j)] = "low" if h <= climb else "high"
+            comp, sizes = {}, []  # land = connected non-deep areas of at least land_min m2 (4-way)
+            for start, k in kind.items():
+                if k == "deep" or start in comp:
+                    continue
+                cid = len(sizes)
+                stack, n = [start], 0
+                comp[start] = cid
+                while stack:
+                    ci, cj = stack.pop()
+                    n += 1
+                    for d in n4:
+                        nb = (ci + d[0], cj + d[1])
+                        if nb in kind and kind[nb] != "deep" and nb not in comp:
+                            comp[nb] = cid
+                            stack.append(nb)
+                sizes.append(n)
+            is_land = [n * cell * cell / 10000.0 >= land_min for n in sizes]
+
+            def next_to(c, what):
+                for d in n4:
+                    nb = (c[0] + d[0], c[1] + d[1])
+                    if kind.get(nb) == what and is_land[comp[nb]]:
+                        return True
+                return False
+
+            dist, heap = {}, []
+            for c, k in kind.items():
+                if k != "deep":
+                    continue
+                x, y = x0 + c[0] * cell, y0 + c[1] * cell
+                if next_to(c, "low") or any(in_grab_zone(l, x, y) for l in wet_ladders):
+                    dist[c] = 0.0
+                    heap.append((0.0, c))
+                    rep["exits"] += 1
+            heapq.heapify(heap)
+            while heap:
+                dc, c = heapq.heappop(heap)
+                if dc > dist.get(c, 1e18):
+                    continue
+                for d in n8:
+                    nb = (c[0] + d[0], c[1] + d[1])
+                    if kind.get(nb) != "deep":
+                        continue
+                    if d[0] and d[1] and (kind.get((c[0] + d[0], c[1])) != "deep"
+                                          or kind.get((c[0], c[1] + d[1])) != "deep"):
+                        continue  # no squeezing diagonally past a corner
+                    nd = dc + cell * (1.41421356 if (d[0] and d[1]) else 1.0)
+                    if nd < dist.get(nb, 1e18):
+                        dist[nb] = nd
+                        heapq.heappush(heap, (nd, nb))
+            for c, k in kind.items():
+                if k != "deep" or not next_to(c, "high"):
+                    continue
+                x, y = x0 + c[0] * cell, y0 + c[1] * cell
+                dd = dist.get(c)
+                ok = dd is not None and dd <= max_swim
+                exempt = any(abs(_local_xy(r, x, y)[0]) <= float(r["size"][0]) / 2.0
+                             and abs(_local_xy(r, x, y)[1]) <= float(r["size"][1]) / 2.0 for r in exempt_rects)
+                status = "ok" if ok else ("exempt" if exempt else "far")
+                rep["fall_in"].append([round(x), round(y), None if dd is None else round(dd), status])
+                if status == "exempt":
+                    rep["exempt"] += 1
+                    continue
+                if dd is None:
+                    rep["stranded"] += 1
+                elif round(dd) >= rep["worst_cm"]:
+                    rep["worst_cm"], rep["worst_at"] = round(dd), [round(x), round(y)]
+                if not ok:
+                    rep["fails"].append([round(x), round(y), None if dd is None else round(dd)])
+            rep["regions"].append({"center": [cx, cy], "size": [nx * cell, ny * cell], "cells": len(kind)})
+        if rep["fails"]:
+            worst = sorted(rep["fails"], key=lambda f: -(f[2] if f[2] is not None else 1e18))[:6]
+            problems.append("ERROR water %s: %d fall-in cell(s) without an exit within %.0f cm (worst: %s)"
+                            % (wv["id"], len(rep["fails"]), max_swim,
+                               "; ".join("(%d, %d) %s" % (f[0], f[1], "no exit" if f[2] is None else "%d cm" % f[2])
+                                         for f in worst)))
+        vol_out.append(rep)
+    return {"volumes": vol_out, "ladders": lad_out, "problems": problems}
+
+
+# ---------------------------------------------------------------------------------------------------------------------
 # Validation
 # ---------------------------------------------------------------------------------------------------------------------
 def validate(layout, expanded=None):
@@ -753,6 +963,25 @@ def validate(layout, expanded=None):
             if not (m["clear_prone"] < clear < m["clear_crouch"]):
                 problems.append("ERROR crawl gap %s: clearance %.1f is not between prone %.1f and crouch %.1f"
                                 % (mk["id"], clear, m["clear_prone"], m["clear_crouch"]))
+        if t == "water_volume":
+            hs = mk.get("surface_half_size")
+            if not (isinstance(hs, (list, tuple)) and len(hs) == 2 and all(float(v) > 0 for v in hs)):
+                problems.append("ERROR water %s: surface_half_size must be [half_x, half_y] > 0" % mk["id"])
+                continue
+            if float(mk.get("water_depth", 0)) <= 0:
+                problems.append("ERROR water %s: water_depth must be > 0" % mk["id"])
+            if mk.get("pitch") or mk.get("roll"):
+                problems.append("ERROR water %s: keep pitch and roll 0 (the surface is flat)" % mk["id"])
+            if abs(v3(mk["at"])[2] - float(layout.get("water_z", 0.0))) > 0.5:
+                problems.append("WARN water %s: surface z %.1f is not the layout's water_z %.1f"
+                                % (mk["id"], v3(mk["at"])[2], float(layout.get("water_z", 0.0))))
+        if t == "ladder":
+            wet = [w for w in expanded["markers"] if w["type"] == "water_volume"
+                   and in_water_volume(w, v3(mk["at"])[0], v3(mk["at"])[1])]
+            if not wet:
+                problems.append("ERROR ladder %s: not over a water volume" % mk["id"])
+            elif all(abs(v3(w["at"])[2] - v3(mk["at"])[2]) > 0.5 for w in wet):
+                problems.append("ERROR ladder %s: origin z must be the water surface" % mk["id"])
         if t == "cover_test" and mk.get("stance") not in STANCES:
             problems.append("ERROR cover test %s: stance must be one of %s" % (mk["id"], STANCES))
         if t == "cover_test" and mk.get("vs") not in marker_ids:

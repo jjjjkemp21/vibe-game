@@ -28,6 +28,11 @@ What gets spawned (all tagged "LureLayout", "LureLayout=<id>", "LureId=<element 
                 set_editor_property (CamelCase names are tried as given and as snake_case; strings go to FName
                 properties as unreal.Name, lists of 3 numbers to vector properties). Unknown or rejected properties log
                 a warning and the build continues. Generic: sell points, ladders, water volumes, ...
+- water      -> (T-026, docs/specs/swimming.md) "water_volume" markers spawn ALureWaterVolume: location = the center of the
+                water surface ("at"), yaw from the marker, then SetWaterSize(surface_half_size, water_depth) so the
+                overlap box is rebuilt at once. "ladder" markers spawn ALureLadder (origin on the dock/rock face at the
+                water line, +X out over the water), with "properties" such as MaxClimbHeight. Both classes are the
+                defaults below and can be overridden in the layout's "marker_classes".
 - labels     -> TextRenderActor (editor aid; hidden in game unless the layout says "labels_in_game": true)
 
 Materials: /Game/Materials/Level/M_LevelPalette (params Color, Roughness, Emissive) is created once;
@@ -44,6 +49,10 @@ from levels import layout as L
 PALETTE_DIR = "/Game/Materials/Level"
 PALETTE_PARENT = PALETTE_DIR + "/M_LevelPalette"
 TAG_ALL = "LureLayout"
+DEFAULT_MARKER_CLASSES = {
+    "water_volume": "/Script/VibeGame.LureWaterVolume",
+    "ladder": "/Script/VibeGame.LureLadder",
+}
 PLAYER_START_Z = 100.0  # PlayerStart is placed this far above the floor point (capsule center + a little)
 
 
@@ -397,6 +406,10 @@ def marker_tags(mk):
         tags += ["Lure.BoatMooring"]
     elif t == "landmark":
         tags += ["Lure.Landmark"]
+    elif t == "water_volume":
+        tags += ["Lure.Water", "Surface=" + _fmt(float(mk["at"][2])), "Depth=" + _fmt(float(mk["water_depth"]))]
+    elif t == "ladder":
+        tags += ["Lure.Ladder"]
     elif t in ("cover_test", "clearance_test"):
         tags += ["Lure.DesignTest", "Test=" + t]
         for k in ("stance", "vs", "expect", "expect_min", "expect_max"):
@@ -408,7 +421,7 @@ def marker_tags(mk):
 
 
 def _marker_class(layout, mtype, default_cls):
-    path = (layout.get("marker_classes") or {}).get(mtype)
+    path = (layout.get("marker_classes") or {}).get(mtype) or DEFAULT_MARKER_CLASSES.get(mtype)
     if path:
         try:
             cls = unreal.load_class(None, path)
@@ -434,6 +447,8 @@ def _convert_prop(current, value):
         return unreal.Name(value)
     if isinstance(current, unreal.Text) and isinstance(value, str):
         return unreal.Text(value)
+    if isinstance(current, unreal.Vector2D) and isinstance(value, (list, tuple)) and len(value) == 2:
+        return unreal.Vector2D(float(value[0]), float(value[1]))
     if isinstance(current, unreal.Vector) and isinstance(value, (list, tuple)) and len(value) == 3:
         return unreal.Vector(*[float(x) for x in value])
     if isinstance(current, float) and isinstance(value, (int, float)):
@@ -459,6 +474,20 @@ def apply_properties(actor, props, elem_id):
             break
         if not done:
             _warn("unknown property %s on %s (%s); skipped" % (key, elem_id, actor.get_class().get_name()))
+
+
+def _size_water(actor, mk):
+    """ALureWaterVolume: half size in X/Y and depth below the surface (the actor sits at the surface center)."""
+    hs = mk["surface_half_size"]
+    half = unreal.Vector2D(float(hs[0]), float(hs[1]))
+    depth = float(mk["water_depth"])
+    if hasattr(actor, "set_water_size"):
+        actor.set_editor_property("surface_half_size", half)
+        actor.set_editor_property("water_depth", depth)
+        actor.set_water_size(half, depth)  # rebuilds the collision box now
+    else:
+        _warn("water %s: %s is not an ALureWaterVolume (no set_water_size); size not set"
+              % (mk["id"], actor.get_class().get_name()))
 
 
 def spawn_label(text, at, layout_id, elem_id, size, yaw, in_game):
@@ -516,6 +545,8 @@ def spawn_marker(mk, layout, layout_id):
         cls = _marker_class(layout, t, unreal.TargetPoint)
         a = _eas().spawn_actor_from_class(cls, _vec(at), _rot(yaw))
         tags = marker_tags(mk)
+    if t == "water_volume":
+        _size_water(a, mk)
     if mk.get("properties"):
         apply_properties(a, mk["properties"], mk["id"])
     spawned.append(_finish_actor(a, layout_id, mk["id"], mk["id"].replace("/", "."), folder, tags))

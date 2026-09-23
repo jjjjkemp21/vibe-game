@@ -26,7 +26,7 @@ The course runs west to east along +Y, 8 m apart. You face north (+X) into each 
 | T1 Crawl gaps | (0, 800) | four 3 m tunnels, 1.4 m wide, clearance **50** (red, west) / **59 / 60 / 61 cm** | Prone passes 59/60/61 and is blocked at 50 (under prone's 54.4); crouch and stand blocked; standing up inside is blocked and queued, then completes on exit |
 | T2 Stand ceilings | (0, 1700) | 4 m bays with ceilings at **181.4** (red, 1 cm under stand) and **185.4** (green, 3 cm over) | Can't walk into 181.4 standing (crouch in, stand-up stays queued until you leave); walk freely under 185.4 |
 | T3 Crouch ceilings | (0, 2500) | bays at **111.4** (red, 1 cm under crouch) and **115.4** (green, 3 cm over) | 111.4 needs prone; 115.4 fits crouch; uncrouch under both is blocked |
-| T4 Dock edge | (100, 3300) | 7 m dock over a 12 x 8 m pool; deck at 0, water at **-60** (dock 60 cm above the water), pool floor -250, 23 deg exit ramp at the north-east corner | Walk and crouch off the edge (allowed); prone at the edge shows the water (prone fishing); climb out by the ramp |
+| T4 Pool (T-026) | (100, 3300) | 7 m dock over a 12 x 8 m pool, an `ALureWaterVolume` (`pool/water_volume`: surface **-60**, half 600 x 400, depth 250); pool floor -250. Edges: west wall and dock deck **60** cm over the water; north edge y 2900-3400 raised to **70** (`pool/edge_70`) with a ladder (`pool/ladder_70`, y 3300, +X over the water) on it; submerged shelf **-60** (`pool/shelf_60`, x 400-900, y 3500-3700, like the reef flat) with a **-20** step behind it (`pool/shelf_20`, floor 80 above); 23 deg exit ramp at the north-east corner | Walk and crouch off the edge (allowed); prone at the edge shows the water (prone fishing). Swim: Jump at the 60 edge climbs out; Jump at the 70 edge away from the ladder (y 2900-3200) is refused; at the ladder it climbs; swim into the shelf and step out (no launch), wade, step to -20, climb the floor; walk out on the ramp |
 | T5 Stairs + ledge | (0, 4100) | 10 steps of **18 cm** (tread 30) to a 180 cm platform | Walk up without jumping; walk off the platform crouched (allowed) |
 | T6 Ramps | (0, 4900) | 15 deg and 30 deg (green) and 46 deg (red, over 44.8) up to a 150 cm platform | Walk up 15 and 30; slide off 46 |
 | T7 Ledges | (0, 6250) | blocks 45 (step), 50, 80, 90, 100, 120 cm | Walk onto 45; jump onto 50 and 80; 90 is marginal (apex 90); 100 and 120 fail |
@@ -50,7 +50,10 @@ stance and arms shots look the same on both maps; almost no fog.
 - Teleport with `Lure.Teleport tp_T1` etc. (T-025), or read each marker's location (tags `Lure.Teleport`, `Teleport=tp_Tn`).
 - Shots to take: T1 prone at the 60 cm mouth (rod tucked while moving, B-M2), T4 prone at the dock edge with the rod
   over the water (B-M3), and T2 and T3 crouched under the red ceilings.
-- Falling into the pool: climb out by the ramp at the north-east corner.
+- Falling into the pool: you swim (T-026). Exits: 60 cm walls and dock (Jump), the ladder on the 70 cm edge, the shelf, the
+  ramp. Labels: "60 cm edge: Jump out", "70 cm: ladder only", "shelf -60 / -20". Views `pool_exits` and `swim_ladder`.
+- The preview's water exit check (levels.layout.water_exit_report, 25 cm cells): 38 fall-in cells, worst 1.75 m to an
+  exit; the ladder measures a 70 cm edge with -190 water in front.
 
 ## Performance
 78 primitives, 2 props, 5 lights (incl. the PostProcessVolume), about 50 markers and labels. Trivial.
