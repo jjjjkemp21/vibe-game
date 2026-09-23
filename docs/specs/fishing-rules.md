@@ -20,6 +20,12 @@ The lead may overrule any of these; a change is a data edit unless marked (code)
   CastArcHeightRatio * distance.
 - Landing: in front of anything solid on the way; on the water surface if the ground there is not above it (LandTolerance
   2 cm), otherwise on land (a dock, a beach, a rock): the bobber lies there, nothing bites, a press reels in.
+- "Solid" (fishing-loop playtest fix, 2026-09-23): the cast traces use the `LureCast` trace channel
+  (`ECC_GameTraceChannel1`, Config/DefaultEngine.ini, default Block; the Trigger/OverlapAll/Pawn profiles ignore it) and
+  `FLureFishingSpots::TraceCast`, which passes through anything that isn't solid level geometry: every volume and
+  trigger actor (AVolume, ATriggerBase, e.g. the design zones shark_zone and shadow_zone, whatever their collision
+  profile), pawns, and overlap-only components (they block none of WorldStatic/WorldDynamic/Pawn/PhysicsBody/Vehicle).
+  To let casts pass a solid prop, set its LureCast response to Ignore. Tests: `Project.Fishing.CastTrace.*`.
 - Water surface: an engine water physics volume (T-026), else the top of an actor tagged `Lure.Water`, else `FallbackWaterZ`
   (0 = the layouts' `water_z`). Level-designer: tagging the water planes `Lure.Water` is optional today.
 - No casting while: no rod in hand, swimming, climbing, in the air, in a DT_Movement row with `CanFish = False` (Sprint), or moving

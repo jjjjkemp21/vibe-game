@@ -1737,6 +1737,167 @@ bool FLureFightDragNeverExceedsLine::RunTest(const FString& Parameters)
 	return true;
 }
 
+// =====================================================================================================================
+// Fishing-loop playtest tune (2026-09-23): the bonefish's Run punishes holding reel; careful play is clearly safer
+// =====================================================================================================================
+
+/** A starter-kit fight played to the end; PeakTension01 = the highest tension / line strength seen. */
+struct FBalanceRun
+{
+	ELureFightOutcome Outcome = ELureFightOutcome::None;
+	float Elapsed = 0.f;
+	float PeakTension01 = 0.f;
+};
+
+/**
+ *  Hold, Careful (the tension-bar watcher of RunPlayer), or with bRunAware: lets every aggressive move (the HUD's "running!")
+ *  run and reels the rest, reacting 0.3 s after each move change.
+ */
+FBalanceRun PlayBalance(FLureFightState State, EPlayer Player, bool bRunAware = false)
+{
+	FBalanceRun Out;
+	bool bReel = Player == EPlayer::Hold;
+	const float Step = FLureFight::StepSeconds(State.Tuning);
+	float SinceDecision = 1000.f;
+	int32 SeenMove = -2;
+	while (!State.IsOver() && State.Elapsed < 180.f)
+	{
+		if (bRunAware)
+		{
+			const int32 MoveIndex = State.bExhausted ? INDEX_NONE : State.MoveIndex;
+			const FLureFightMove* Move = State.bExhausted ? nullptr : State.GetMove();
+			SinceDecision = MoveIndex != SeenMove ? 0.f : SinceDecision + Step;
+			SeenMove = MoveIndex;
+			if (SinceDecision >= 0.3f - 1.0e-4f)
+			{
+				bReel = !(Move && Move->AggressionWeight > 0.f);
+			}
+		}
+		else if (Player == EPlayer::Careful)
+		{
+			SinceDecision += Step;
+			if (SinceDecision >= 0.3f - 1.0e-4f)
+			{
+				SinceDecision = 0.f;
+				bReel = CarefulDecision(State.Tension / State.Gear.LineStrength, bReel);
+			}
+		}
+		FLureFightInput Input;
+		Input.bReeling = bReel;
+		FLureFight::Step(State, Input);
+		Out.PeakTension01 = FMath::Max(Out.PeakTension01, State.Tension / State.Gear.LineStrength);
+	}
+	Out.Outcome = State.Outcome;
+	Out.Elapsed = State.Elapsed;
+	return Out;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLureFightBonefishRunBalance, "Project.Fishing.Fight.BonefishRunPunishesHoldReel", LureFishFightTest::TestFlags)
+bool FLureFightBonefishRunBalance::RunTest(const FString& Parameters)
+{
+	FFightData Data;
+	FishQA::FTables Tables;
+	if (!Data.Load(*this) || !FishQA::LoadReal(*this, Tables))
+	{
+		return false;
+	}
+	const FLureGearStats Starter = Data.Starter();
+	const FName Run(TEXT("Run"));
+	const FName Dive(TEXT("Dive"));
+	// Weight fractions are positions in the species range (0 = WeightMin, 1 = WeightMax): Bonefish 0.5..4.5 kg.
+	auto Fraction = [](float Kg) { return (Kg - 0.5f) / 4.f; };
+
+	// 1. The playtest's fish (Rare, 2.04 kg) and a 3 kg Common: holding reel through the opening Run snaps the starter line;
+	//    the careful player (eases off above 90 % of the line) lands them within the 8-16 s fight length.
+	struct FCase { const TCHAR* Rarity; float Kg; int32 Seed; };
+	for (const FCase& Case : { FCase{ TEXT("Rare"), 2.04f, 31 }, FCase{ TEXT("Common"), 3.f, 32 } })
+	{
+		FFishInstance Fish;
+		if (!RollFish(*this, Tables, TEXT("Bonefish"), Case.Rarity, Fraction(Case.Kg), Case.Seed, Fish))
+		{
+			return false;
+		}
+		for (int32 Seed = 1; Seed <= 6; ++Seed)
+		{
+			const FBalanceRun Hold = PlayBalance(BeginFight(Data, Fish, Run, Starter, Seed), EPlayer::Hold);
+			const FBalanceRun Careful = PlayBalance(BeginFight(Data, Fish, Run, Starter, Seed), EPlayer::Careful);
+			const FString Label = FString::Printf(TEXT("%s %.2f kg bonefish, seed %d"), Case.Rarity, Fish.WeightKg, Seed);
+			TestEqual(FString::Printf(TEXT("%s: holding reel through the Run snaps the starter line (peak %.0f %%, %.1f s)"), *Label, 100.f * Hold.PeakTension01, Hold.Elapsed),
+				OutcomeName(Hold.Outcome), OutcomeName(ELureFightOutcome::Snapped));
+			TestEqual(FString::Printf(TEXT("%s: careful play lands it (%.1f s)"), *Label, Careful.Elapsed), OutcomeName(Careful.Outcome), OutcomeName(ELureFightOutcome::Landed));
+			TestTrue(FString::Printf(TEXT("%s: ... in 8-16 s (%.1f s)"), *Label, Careful.Elapsed), Careful.Elapsed >= 8.f && Careful.Elapsed <= 16.f);
+		}
+	}
+
+	// 2. A typical Common (1.5 kg): holding reel takes the tension near the snap mark (>= 80 %) without snapping it.
+	FFishInstance TypicalBonefish;
+	if (!RollFish(*this, Tables, TEXT("Bonefish"), TEXT("Common"), Fraction(1.5f), 33, TypicalBonefish))
+	{
+		return false;
+	}
+	{
+		const FBalanceRun Hold = PlayBalance(BeginFight(Data, TypicalBonefish, Run, Starter, 1), EPlayer::Hold);
+		TestTrue(FString::Printf(TEXT("typical 1.5 kg bonefish: holding reel peaks near the snap mark (%.0f %% of the line)"), 100.f * Hold.PeakTension01),
+			Hold.PeakTension01 >= 0.8f && Hold.PeakTension01 <= 1.f);
+		TestEqual(TEXT("... and lands it"), OutcomeName(Hold.Outcome), OutcomeName(ELureFightOutcome::Landed));
+	}
+
+	// 3. Bonefish as the roll pipeline gives them (random rarity, weight and modifiers; noon at Palm Key), starter kit:
+	//    holding reel loses a real share to snaps, careful play loses (almost) none, careful fights take 8-16 s.
+	int32 Rolled = 0, HoldSnaps = 0, CarefulLosses = 0, AwareLosses = 0;
+	TArray<float> CarefulTimes, AwareTimes, HoldTimes;
+	for (int32 Seed = 1; Seed <= 200; ++Seed)
+	{
+		FFishRollContext Context;
+		Context.SpeciesId = TEXT("Bonefish");
+		Context.Seed = 5000 + Seed;
+		Context.RegionTag = Tag(TEXT("Region.Tropical.PalmKey"));
+		Context.TimeOfDayHours = 12.f;
+		FFishInstance Fish;
+		if (!FFishRoll::Roll(Tables.Get(), Context, Fish))
+		{
+			continue;
+		}
+		++Rolled;
+		const FBalanceRun Hold = PlayBalance(BeginFight(Data, Fish, Run, Starter, Seed), EPlayer::Hold);
+		const FBalanceRun Careful = PlayBalance(BeginFight(Data, Fish, Run, Starter, Seed), EPlayer::Careful);
+		const FBalanceRun Aware = PlayBalance(BeginFight(Data, Fish, Run, Starter, Seed), EPlayer::Careful, /*bRunAware*/ true);
+		HoldSnaps += Hold.Outcome == ELureFightOutcome::Snapped ? 1 : 0;
+		if (Hold.Outcome == ELureFightOutcome::Landed) { HoldTimes.Add(Hold.Elapsed); }
+		if (Careful.Outcome == ELureFightOutcome::Landed) { CarefulTimes.Add(Careful.Elapsed); } else { ++CarefulLosses; }
+		if (Aware.Outcome == ELureFightOutcome::Landed) { AwareTimes.Add(Aware.Elapsed); } else { ++AwareLosses; }
+	}
+	auto Percentile = [](TArray<float> Times, float P) { Times.Sort(); return Times.Num() ? Times[FMath::Clamp(FMath::FloorToInt(P * Times.Num()), 0, Times.Num() - 1)] : 0.f; };
+	AddInfo(FString::Printf(TEXT("%d rolled bonefish, starter kit: hold snaps %d (landed median %.1f s); careful loses %d (median %.1f s, p10 %.1f s, p90 %.1f s); run-aware loses %d (median %.1f s, p90 %.1f s)"),
+		Rolled, HoldSnaps, Percentile(HoldTimes, 0.5f), CarefulLosses, Percentile(CarefulTimes, 0.5f), Percentile(CarefulTimes, 0.1f), Percentile(CarefulTimes, 0.9f),
+		AwareLosses, Percentile(AwareTimes, 0.5f), Percentile(AwareTimes, 0.9f)));
+	TestTrue(TEXT("fixture: the roll pipeline gave bonefish"), Rolled >= 190);
+	TestTrue(FString::Printf(TEXT("holding reel snaps a real share of bonefish (%d of %d, want 25-60 %%)"), HoldSnaps, Rolled), HoldSnaps >= Rolled / 4 && HoldSnaps <= Rolled * 3 / 5);
+	TestTrue(FString::Printf(TEXT("careful play is clearly safer (loses %d of %d)"), CarefulLosses, Rolled), CarefulLosses <= Rolled / 50);
+	TestTrue(FString::Printf(TEXT("easing off during every run is safe too (loses %d of %d)"), AwareLosses, Rolled), AwareLosses <= Rolled / 50);
+	TestTrue(FString::Printf(TEXT("careful fights take about 8-16 s (p10 %.1f s >= 7.5, p90 %.1f s <= 16)"), Percentile(CarefulTimes, 0.1f), Percentile(CarefulTimes, 0.9f)),
+		Percentile(CarefulTimes, 0.1f) >= 7.5f && Percentile(CarefulTimes, 0.9f) <= 16.f);
+	TestTrue(FString::Printf(TEXT("easing off during every run: median within 16 s (%.1f s)"), Percentile(AwareTimes, 0.5f)), Percentile(AwareTimes, 0.5f) <= 16.f);
+
+	// 4. The Coral Snapper stays the harder fish: the reference snapper snaps a held line every time and a careful fight is longer.
+	FFishInstance Snapper;
+	if (!RollFish(*this, Tables, TEXT("CoralSnapper"), TEXT("Common"), SnapperReferenceFraction, 21, Snapper))
+	{
+		return false;
+	}
+	double SnapperCareful = 0.0, BonefishCareful = 0.0;
+	for (int32 Seed = 1; Seed <= 6; ++Seed)
+	{
+		const FBalanceRun SnapHold = PlayBalance(BeginFight(Data, Snapper, Dive, Starter, Seed), EPlayer::Hold);
+		TestEqual(FString::Printf(TEXT("reference snapper, seed %d: holding reel snaps the starter line"), Seed), OutcomeName(SnapHold.Outcome), OutcomeName(ELureFightOutcome::Snapped));
+		SnapperCareful += PlayBalance(BeginFight(Data, Snapper, Dive, Starter, Seed), EPlayer::Careful).Elapsed;
+		BonefishCareful += PlayBalance(BeginFight(Data, TypicalBonefish, Run, Starter, Seed), EPlayer::Careful).Elapsed;
+	}
+	TestTrue(FString::Printf(TEXT("a careful snapper fight takes longer than a careful bonefish fight (%.1f s vs %.1f s)"), SnapperCareful / 6.0, BonefishCareful / 6.0),
+		SnapperCareful > BonefishCareful);
+	return true;
+}
+
 } // namespace LureFishFightTest
 
 #endif // WITH_DEV_AUTOMATION_TESTS

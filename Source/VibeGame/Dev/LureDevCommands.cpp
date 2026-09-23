@@ -28,6 +28,8 @@ DEFINE_LOG_CATEGORY(LogLureDev);
 #include "HAL/IConsoleManager.h"
 #include "Progression/LureProgressionLibrary.h"
 #include "Misc/OutputDevice.h"
+
+#include "Templates/UnrealTemplate.h"
 #include "UObject/Class.h"
 #include "Widgets/SViewport.h"
 
@@ -38,6 +40,20 @@ const TCHAR* const FLureDevCommands::ScreenshotCommand = TEXT("Lure.Screenshot")
 
 namespace LureDevCommandsPrivate
 {
+	/**
+	 *  B4 (fishing-loop playtest): editor Python (unreal.SystemLibrary.execute_console_command, i.e. the playtest driver) runs
+	 *  every call inside an FEditorScriptExecutionGuard, which sets GAllowActorScriptExecutionInEditor. While that is set,
+	 *  AActor::GetFunctionCallspace returns Local for EVERY function, RPCs included: a Client RPC such as ClientSetRotation
+	 *  then runs on the server's copy of the controller and is never sent, so a PIE client's view never turned. Dev commands
+	 *  clear the flag for their duration so their RPCs go over the network like in the game (the engine's cheat path refuses
+	 *  to run with it set for the same reason: CheatManager.cpp "must be false when executing commands").
+	 */
+	struct FSendRpcsScope
+	{
+		TGuardValue<bool> Guard;
+		FSendRpcsScope() : Guard(GAllowActorScriptExecutionInEditor, false) {}
+	};
+
 	/** Feedback goes to the log (Python reads it) and to the console that ran the command. */
 	void Report(FOutputDevice& Ar, bool bOk, const FString& Text)
 	{
@@ -458,6 +474,7 @@ bool FLureDevCommands::TeleportPawn(APawn* Pawn, const FVector& FeetLocation, co
 	{
 		if (AController* Controller = Pawn->GetController())
 		{
+			const LureDevCommandsPrivate::FSendRpcsScope SendRpcs; // called from editor Python the RPC would otherwise run locally (B4)
 			// The server's copy first (server-side aim and checks see the new yaw at once), then the owning client's view:
 			// ClientSetRotation runs locally for the host / standalone player and is a reliable RPC to a remote client.
 			Controller->SetControlRotation(ViewRotation.GetValue());
@@ -899,6 +916,7 @@ namespace LureDevCommandsPrivate
 		TEXT("a tag equal to <id>, a tag <Key>=<id>, or an actor name. Fishing spots put you at their CastFrom. Server/standalone only."),
 		FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateLambda([](const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
 		{
+			const FSendRpcsScope SendRpcs;
 			FLureDevCommands::RunTeleport(Args, World, Ar);
 		}),
 		ECVF_Cheat);
@@ -908,6 +926,7 @@ namespace LureDevCommandsPrivate
 		TEXT("Dev: ask the local player for a stance, like the stance keys. Lure.SetStance <Stand|Crouch|Prone> [Player=<PlayerId>]."),
 		FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateLambda([](const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
 		{
+			const FSendRpcsScope SendRpcs;
 			FLureDevCommands::RunSetStance(Args, World, Ar);
 		}),
 		ECVF_Cheat);
@@ -918,6 +937,7 @@ namespace LureDevCommandsPrivate
 		TEXT("Lure.GiveFish <SpeciesId> [Rarity|-] [Seed] [Mods=A,B] [Weight=0..1] [Player=<PlayerId>]. Server/standalone only."),
 		FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateLambda([](const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
 		{
+			const FSendRpcsScope SendRpcs;
 			FLureDevCommands::RunGiveFish(Args, World, Ar);
 		}),
 		ECVF_Cheat);
@@ -928,6 +948,7 @@ namespace LureDevCommandsPrivate
 		TEXT("Run it in the player's own world (a client's PIE window for a client)."),
 		FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateLambda([](const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
 		{
+			const FSendRpcsScope SendRpcs;
 			FLureDevCommands::RunScreenshot(Args, World, Ar);
 		}),
 		ECVF_Cheat);

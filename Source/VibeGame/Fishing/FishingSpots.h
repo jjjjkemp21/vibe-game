@@ -3,9 +3,12 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Engine/EngineTypes.h"
 #include "Fishing/FishingTypes.h"
 
 class AActor;
+struct FCollisionQueryParams;
+struct FHitResult;
 class ULureFishingSettings;
 class UWorld;
 
@@ -53,8 +56,27 @@ struct FLureFishingSpots
 	/**
 	 *  Where a cast from Origin toward the horizontal Direction lands after Distance cm (measured from StartXY):
 	 *  pulled back in front of anything solid on the way, then on the water surface if the ground there is not above it,
-	 *  else on the ground (land). Ignores IgnoreActor (the caster).
+	 *  else on the ground (land). Ignores IgnoreActor (the caster). Traces use TraceCast (zones and triggers never block).
 	 */
+	/**
+	 *  The trace channel of cast flights and landings: "LureCast" in Config/DefaultEngine.ini ([/Script/Engine.CollisionProfile],
+	 *  default Block; the Trigger/OverlapAll profiles ignore it). Set an asset's LureCast response to Ignore to let casts pass it.
+	 */
+	static constexpr ECollisionChannel CastChannel = ECC_GameTraceChannel1;
+
+	/**
+	 *  Does this hit stop a cast (flight or landing)? Only solid level geometry does. Never: design zones and other volumes
+	 *  (AVolume, ATriggerBase), pawns, components that don't block CastChannel, and overlap-only components (they block none of
+	 *  WorldStatic, WorldDynamic, Pawn, PhysicsBody, Vehicle), whatever collision profile they were given.
+	 */
+	static bool BlocksCast(const FHitResult& Hit);
+
+	/**
+	 *  Line trace on CastChannel that passes through everything BlocksCast rejects (they are ignored and the trace goes on).
+	 *  True with OutHit = the first solid hit. Params' ignore lists are kept (a copy is extended).
+	 */
+	static bool TraceCast(const UWorld* World, FHitResult& OutHit, const FVector& Start, const FVector& End, const FCollisionQueryParams& Params);
+
 	static FLureCastLanding ResolveLanding(const UWorld* World, const AActor* IgnoreActor, const FVector& Origin, const FVector2D& StartXY,
 		const FVector2D& Direction, float Distance, const ULureFishingSettings& Settings);
 };

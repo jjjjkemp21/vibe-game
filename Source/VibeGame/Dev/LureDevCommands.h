@@ -136,7 +136,8 @@ struct FLureDevCommands
 
 	/**
 	 *  Moves Pawn so its feet stand on the floor at FeetLocation (authority only), stops its movement and, if
-	 *  ViewRotation is set, turns its controller (ClientSetRotation, so a remote client's view follows).
+	 *  ViewRotation is set, turns its controller (ClientSetRotation, so a remote client's view follows). The RPC is sent even
+	 *  when called from editor Python (FEditorScriptExecutionGuard would make it run locally on the server; see B4 in the .cpp).
 	 *  OutFeet = where the feet ended up.
 	 */
 	static bool TeleportPawn(APawn* Pawn, const FVector& FeetLocation, const TOptional<FRotator>& ViewRotation, FString& OutError, FVector* OutFeet = nullptr);

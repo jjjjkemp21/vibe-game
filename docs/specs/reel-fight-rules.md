@@ -74,10 +74,46 @@ All numbers are PLACEHOLDER until Jimmy's playtest A.
   Rod_Reef (16, 150, 12, cast x1.15, 250 coins), Line_Mono (strength 10, spool 40 m), Line_Braid (22, 60 m, 180 coins),
   Hook_Shrimp (security 1.0, shrimp), Hook_Squid (1.6, squid, luck 0.5, 60 coins).
 - **DT_FightPattern** (`data/tables/DT_FightPattern.json`, struct `LureFightPatternRow`): Run, Dive, Dart (moves above).
+  Run's `Run` move after the fishing-loop tune: Weight 1.2, AggressionWeight 0.08, 0.8-1.5 s, Pull 2.4, Speed 0.7.
 - Table pointers: `ULureFishingSettings` (GearTable, FightPatternTable, FishFightTable, FishFightRow, DefaultLoadout).
 
+## Fishing-loop tune (2026-09-23, unreal-engineer): holding reel through a Run is a real risk
+Playtest (Saved/AgentLogs/playtest/20260923-141005-fishing-loop): holding reel the whole time landed a Rare 2.04 kg
+Bonefish in 9.1 s with no risk, while careful play (release during runs) took 15.6 s. That taught the wrong lesson.
+
+**The model.** The time to land is mostly the line to reel back (about 850 cm at 80-110 cm/s) plus line lost to runs;
+stamina drains by tension x time, so a held line (high tension) always tires a fish fastest. Data can't make careful
+play faster than a hold that survives, so the tune makes careful play *clearly safer* and keeps it inside the fight
+length. Only the Run pattern's `Run` move changed: a short, hard burst (Pull 1.6 -> 2.4 of the base pull, Speed 1.8 ->
+0.7, 1.5-3 s -> 0.8-1.5 s, Weight 2 -> 1.2). Reeling during a Run: tension = 2.4 x BasePull x StaminaFactor x
+ReelStrain 1.3 + RodPower 8 x ReelLoad 0.15. The starter line (10) is crossed when BasePull x StaminaFactor > 2.8, so a
+typical Common (1.5 kg, BasePull 2.5) peaks at ~85 % of the line and lands, while a Rare (level 2 = pull x1.35) or a
+2.5 kg+ bonefish stays over the line longer than SnapGraceTime (0.6 s) and snaps it. Easing off caps the tension at the
+drag (5), and the slower, shorter Run takes only ~0.5-1.5 m of line. DT_FishFight, DT_Gear, the species stats and the
+Dive/Dart patterns are unchanged, so every Coral Snapper number is unchanged.
+
+**Targets and results** (Python transcription of FLureFight::Step with the same data; 300 roll-like bonefish with
+rarity, weight skew and modifiers; starter kit; the fight starts 10 m out; "careful" = the tests' tension watcher:
+reel below 70 %, ease off above 90 %, 0.3 s reactions; "run-aware" = eases off for every "running!", reels the rest,
+0.3 s reactions):
+
+| Target | Before | After |
+|---|---|---|
+| Holding reel through a Run gets near or over the snap mark (starter gear) | 5 % of bonefish snapped; median peak 69 % | 42 % snap; median peak 97 %; a typical 1.5 kg Common peaks at 85 % and lands; the Rare 2.04 kg and any 3 kg+ always snap |
+| Careful play is faster OR clearly safer | careful 0 % lost; run-aware 0.7 % lost but 2.2x slower (median 21.7 s vs 9.7 s held) | clearly safer: careful 0 % and run-aware 0 % lost vs 42 % for holding reel |
+| Fights about 8-16 s | careful median 10.0 s (p90 14.5); run-aware median 21.7 s (p90 39.1) | careful median 10.6 s (p10 8.4, p90 14.9); run-aware median 15.1 s (p90 22.4: the 3-4.5 kg fish); held and landed 9.0 s |
+| The playtest's Rare 2.04 kg bonefish | held: lands in 11.6 s; careful 14.4 s | held: snaps (100 %); careful lands in 13.3 s; run-aware 16.5 s |
+| The snapper stays harder | - | unchanged: starter kit, holding snaps 81 % (reference 2.5 kg: 100 %); careful median 17.3 s (reference 15.7 s) vs 10.6 s for bonefish |
+| Bonefish on the reef kit (braid 22) | lands, held 6.7 s | lands, held 6.7 s; the heaviest Rare Feisty bonefish peaks at ~100 % of the braid without snapping |
+
+Pinned by `Project.Fishing.Fight.BonefishRunPunishesHoldReel` (real data and roll pipeline: the Rare 2.04 kg and a 3 kg
+Common snap when held and land carefully in 8-16 s; a 1.5 kg Common peaks at 80-100 % and lands; 200 rolled bonefish:
+hold snaps 25-60 %, careful and run-aware lose at most 2 %, careful p10 >= 7.5 s and p90 <= 16 s, run-aware median
+<= 16 s; the reference snapper snaps when held and a careful snapper fight takes longer than a careful bonefish fight).
+
 ## What the numbers do today (Python prototype + tests)
-- Bonefish (0.5-4.5 kg) lands on the starter kit even when you just hold reel (8-12 s).
+- Bonefish (0.5-4.5 kg) on the starter kit: small ones (under ~2 kg Common) land even when you hold reel (8-10 s);
+  bigger or rarer ones snap it if you hold reel through a Run (see the fishing-loop tune above).
 - A reference Coral Snapper snaps the starter line in under a second if you hold reel from the hook; easing off during
   dives lands it (~15 s). The reef kit (Rod_Reef + Line_Braid + Hook_Squid) lands it just holding reel (~8 s).
 - A 7 kg snapper snaps the starter line even for a careful player (0.3 s reactions); the reef kit lands it (~12 s).

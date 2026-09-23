@@ -810,10 +810,9 @@ bool ULureFishingComponent::AuthorityCast(float Charge01, float AimYawDegrees)
 	const FVector Eye = GetEyeLocation();
 	FVector Origin = Eye + Aim.RotateVector(Settings->RodTipOffsetFromEye);
 	{
-		FCollisionQueryParams Params(SCENE_QUERY_STAT(LureCastOrigin), false, Owner);
-		const FCollisionObjectQueryParams Objects(ECC_TO_BITFIELD(ECC_WorldStatic) | ECC_TO_BITFIELD(ECC_WorldDynamic));
+		const FCollisionQueryParams Params(SCENE_QUERY_STAT(LureCastOrigin), false, Owner);
 		FHitResult Hit;
-		if (World->LineTraceSingleByObjectType(Hit, Eye, Origin, Objects, Params))
+		if (FLureFishingSpots::TraceCast(World, Hit, Eye, Origin, Params))
 		{
 			Origin = Hit.Location - (Origin - Eye).GetSafeNormal() * 5.f;
 		}

@@ -4,11 +4,11 @@
 		"DisplayName": "Runner",
 		"OpeningMove": "Run",
 		"Moves": [
-			{ "Id": "Run", "Label": "running!", "Weight": 2, "AggressionWeight": 0.08, "DurationMin": 1.5, "DurationMax": 3.0, "Pull": 1.6, "Speed": 1.8, "Away": 1.0, "Side": 0.3, "RandomSide": true, "Down": 0, "Rest": false },
+			{ "Id": "Run", "Label": "running!", "Weight": 1.2, "AggressionWeight": 0.08, "DurationMin": 0.8, "DurationMax": 1.5, "Pull": 2.4, "Speed": 0.7, "Away": 1.0, "Side": 0.3, "RandomSide": true, "Down": 0, "Rest": false },
 			{ "Id": "Swim", "Label": "swimming", "Weight": 3, "AggressionWeight": 0, "DurationMin": 1.5, "DurationMax": 3.0, "Pull": 1.0, "Speed": 0.7, "Away": 0.7, "Side": 0.5, "RandomSide": true, "Down": 0, "Rest": false },
 			{ "Id": "Rest", "Label": "resting", "Weight": 2, "AggressionWeight": 0, "DurationMin": 1.0, "DurationMax": 2.5, "Pull": 0.3, "Speed": 0, "Away": 0, "Side": 0, "RandomSide": false, "Down": 0, "Rest": true }
 		],
-		"DevComment": "Sudden long runs straight away from you (Bonefish). Ease off during a run, reel while it rests. PLACEHOLDER numbers (T-007)."
+		"DevComment": "Sudden hard runs straight away from you (Bonefish). Run = a short burst of 2.4x pull (0.8-1.5 s): holding reel through it takes the starter line to about its limit and snaps it on bigger or rarer bonefish; ease off during a run, reel while it swims or rests. Balance model: docs/specs/reel-fight-rules.md (fishing-loop tune, 2026-09-23). PLACEHOLDER numbers."
 	},
 	{
 		"Name": "Dive",
