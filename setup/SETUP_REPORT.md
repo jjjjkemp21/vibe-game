@@ -3,7 +3,7 @@
 Updated by Claude Code after every phase of setup/CLAUDE_CODE_SETUP.md. Cowork reads this file to follow progress.
 
 ## Pending handoff
-(none)
+>>> COWORK: Open a new PowerShell window and run: & "C:\Program Files\GitHub CLI\gh.exe" auth login --hostname github.com --git-protocol https --web  (press Enter to open the browser, have Jimmy sign in to GitHub and enter the one-time code shown, approve). When the window says "Logged in as <name>", type: done
 
 ## Phase log
 | Phase | Status | What was done | Evidence |
