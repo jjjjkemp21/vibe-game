@@ -45,6 +45,14 @@ public:
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category="Data")
 	FName DefaultProfileRow;
 
+	/** How the physics fishing line moves (row struct LureFishingLineRow; source data/tables/DT_FishingLine.csv; T-032). Missing = built-in tuning, logged once. */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category="Data", meta=(RequiredAssetDataTags="RowStructure=/Script/VibeGame.LureFishingLineRow"))
+	TSoftObjectPtr<UDataTable> FishingLineTable;
+
+	/** DT_FishingLine row the line uses (a line gear item can name its own later). */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category="Data")
+	FName FishingLineRow;
+
 	// ---- Assets ----
 
 	/** Rod held by the first-person arms (attached to RodAttachBone, world scale kept). */

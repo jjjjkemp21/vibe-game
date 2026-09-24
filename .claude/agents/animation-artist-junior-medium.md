@@ -1,6 +1,6 @@
 ---
 name: animation-artist-junior-medium
-description: Junior animation-artist (effort medium). Use for small edits to existing clips (timing, a loop fix, a re-export), simple idles and bobs. Same role, rules and deliverables as `animation-artist-mid-high` (the mid level, effort high); only the experience level differs.
+description: Junior animation-artist (effort medium). Use only for small edits to existing, approved clips (timing, a loop fix, a re-export). New clips, including first-person arm poses, fish and creature motion, go to mid or senior (Jimmy, 2026-09-23). Same role, rules and deliverables as `animation-artist-mid-high` (the mid level, effort high); only the experience level differs.
 model: claude-opus-5-5
 effort: medium
 ---

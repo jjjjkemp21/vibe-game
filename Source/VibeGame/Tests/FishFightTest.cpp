@@ -1524,13 +1524,15 @@ bool FLureFightVisuals::RunTest(const FString& Parameters)
 	{
 		AddInfo(TEXT("SK_FPArms or SM_Rod_Basic is not imported here: the rod bend check is skipped."));
 	}
-	if (const ULureFishingLineComponent* Line = Fishing->GetLine(); Line && Line->GetPoints().Num() >= 3)
+	if (const ULureFishingLineComponent* Line = Fishing->GetLine(); Line && Line->IsLineVisible() && Line->GetPoints().Num() >= 3)
 	{
+		// T-032: the physics line's length follows the fight's tension (docs/specs/fishing-line.md): fully straight at the line's strength.
 		const TArray<FVector>& Points = Line->GetPoints();
-		const FVector Mid = Points[Points.Num() / 2];
-		const FVector Straight = FMath::Lerp(Points[0], Points.Last(), 0.5f);
-		const float ExpectedSag = FLureFight::LineSag(QuickProfile().LineSag, Net.GetTension01(), T) * static_cast<float>(FVector::Dist(Points[0], Points.Last()));
-		TestNearlyEqual(TEXT("the line sags by the tension rule"), static_cast<float>(Straight.Z - Mid.Z), ExpectedSag, FMath::Max(2.f, 0.1f * ExpectedSag));
+		const float Chord = static_cast<float>(FVector::Dist(Points[0], Points.Last()));
+		TestNearlyEqual(TEXT("the line shows the fight's tension"), Line->GetTension(), FMath::Clamp(Net.GetTension01(), 0.f, 1.f), 1.0e-4f);
+		TestNearlyEqual(TEXT("the line's length target follows the tension rule"), Line->GetTargetRestLength(),
+			FLureFishingLineRules::TargetRestLength(Chord, Net.GetTension01(), -1.f, Line->GetTuning()), 0.5f);
+		TestTrue(TEXT("the line is never shorter than the straight distance"), Line->GetRestLength() >= Chord - 0.5f);
 	}
 	else
 	{
