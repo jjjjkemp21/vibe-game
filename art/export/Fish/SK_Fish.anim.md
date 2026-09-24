@@ -126,10 +126,11 @@ for name in ["A_Fish_Rest"] + CLIPS:                                # 3. animati
 rest = unreal.load_asset(DEST + "/A_Fish_Rest")                     # 4. additive on A_Fish_Rest frame 0
 for name in CLIPS:
     a = unreal.load_asset(DEST + "/" + name)
+    # Order matters: setting the type properties clears ref_pose_seq, so set the base clip LAST.
+    a.set_editor_property("additive_anim_type", unreal.AdditiveAnimationType.AAT_LOCAL_SPACE_BASE)
+    a.set_editor_property("ref_pose_type", unreal.AdditiveBasePoseType.ABPT_ANIM_FRAME)
     a.set_editor_property("ref_pose_seq", rest)
     a.set_editor_property("ref_frame_index", 0)
-    a.set_editor_property("ref_pose_type", unreal.AdditiveBasePoseType.ABPT_ANIM_FRAME)
-    a.set_editor_property("additive_anim_type", unreal.AdditiveAnimationType.AAT_LOCAL_SPACE_BASE)
     pu._save(a)
     print(pu.anim_report(a.get_path_name()))
 ```
