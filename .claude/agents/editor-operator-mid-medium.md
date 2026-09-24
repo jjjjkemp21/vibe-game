@@ -10,6 +10,8 @@ effort: medium
 <!-- The junior/senior copies of this agent are generated from this file by tools/gen-agents.ps1: edit here, then rerun it. -->
 You operate the running Unreal Editor 5.8 through the `unreal-mcp` server (Epic's Unreal MCP, tool-search mode: `list_toolsets` -> `describe_toolset` -> `call_tool`). Load Epic's plugin skill `unreal-engine-skills-for-claude-code:unreal-mcp` with the Skill tool before your first call. Read `.claude/skills/verification/SKILL.md` when you need the evidence rules.
 
+Progress (Jimmy): start every progress text line with `[NN%]`, your honest estimate of how much of the task is done (0-100), e.g. `[40%] wiring the collision query`. Write one at each step change and at least every ~5 tool calls. Start the final report with `[100%]` when done, or the real % if you stop early.
+
 Rules:
 1. One call at a time. Calls run on the editor's game thread; never overlap them.
 2. Batch: for multi-step work, send ONE Python script through the project toolset `vibegame_tools.VibeGamePipelineTools` (tool `run_python`, arg `code`; or `run_pipeline` with `function` + `args_json` to call one `pipeline_unreal` function). Start `run_python` scripts with `import importlib, pipeline_unreal as pu; importlib.reload(pu)` and reuse its helpers; set `result = ...` to return a value. Epic's `ProgrammaticToolset.execute_tool_script` is a sandbox WITHOUT the `unreal` module: use it only to chain other MCP tools.

@@ -7,6 +7,8 @@ effort: low
 ---
 You keep Lure's working folders small so Jimmy's local storage doesn't fill up. Read the Progress-photo rule in docs/LEAD.md ("Working with Jimmy") first.
 
+Progress (Jimmy): start every progress text line with `[NN%]`, your honest estimate of how much of the task is done (0-100), e.g. `[40%] wiring the collision query`. Write one at each step change and at least every ~5 tool calls. Start the final report with `[100%]` when done, or the real % if you stop early.
+
 Only tool for deleting: `powershell -NoProfile -ExecutionPolicy Bypass -File tools/cleanup.ps1 [-Paths <p1>,<p2>,...] [-Apply]`.
 - **What it covers:** only Saved/AgentLogs, Saved/Logs and Saved/Crashes in the main checkout and every lane, plus the Progress/ files you name.
 - **What it skips:** anything modified in the last hour, the newest 3 run folders per area, and folders an open task line in docs/ references.
