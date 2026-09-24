@@ -196,7 +196,7 @@ void ULureFishingLineComponent::SetEndpoints(const FVector& RodTip, const FVecto
 
 void ULureFishingLineComponent::SetTension(float Tension01)
 {
-	Tension = FMath::IsFinite(Tension01) ? FMath::Clamp(Tension01, 0.f, 1.f) : 0.f;
+	Tension = FMath::IsNaN(Tension01) ? 0.f : FMath::Clamp(Tension01, 0.f, 1.f); // NaN = slack; +Inf = fully taut
 }
 
 void ULureFishingLineComponent::SetSlack(float SlackShare)
@@ -477,7 +477,7 @@ void ULureFishingLineComponent::Simulate(float DeltaTime)
 		In.End = EndInput;
 		const float Chord = static_cast<float>(FVector::Dist(In.Start, In.End));
 		TargetRestLength = FLureFishingLineRules::TargetRestLength(Chord, Tension, Slack, Row);
-		RestLength = FLureFishingLineRules::FollowRestLength(RestLength, TargetRestLength, Chord, DeltaTime, Row);
+		RestLength = FLureFishingLineRules::TightenRestLength(RestLength, TargetRestLength, Chord, DeltaTime, Row);
 		In.Float = FLureFishingLineRules::FloatAmount(Tension, Row);
 		break;
 	}

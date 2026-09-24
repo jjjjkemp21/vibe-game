@@ -38,12 +38,15 @@ struct FLureLineSimInput
  *  A fishing line as Segments + 1 points (point 0 = the rod tip, the last = the end).
  *
  *  Each sub-step: Verlet integration (gravity; air drag, or water drag on and under the water), the pinned ends move along
- *  their frame path, then Iterations passes of
+ *  their frame path, the float rule (points under the water rise toward the surface (+ FloatHeight) without bouncing, at
+ *  most 240 cm/s), then
+ *  Iterations passes of
  *   (a) one-sided distance constraints: a segment may go slack but never stretch (a line is not a stick), and
  *   (b) tethers: no point farther from a pinned end than the line between them. With both ends pinned each point is moved
  *       exactly into the lens where the two balls overlap (one step, not ball after ball), so the line stays inextensible
- *       with few passes and a line exactly as long as the straight distance lies exactly straight (fully taut),
- *  then the float rule: points under the water rise toward the surface (+ FloatHeight) without bouncing.
+ *       with few passes and a line exactly as long as the straight distance lies exactly straight (fully taut; a pinned
+ *       line within 1e-6 of the straight distance counts as exactly that long).
+ *  The constraints run last, so floating never stretches the line: a slack line to a deep end is pulled under near the end.
  *
  *  Init allocates; nothing else does: Reset, Step, the impulses and the queries never allocate.
  *  Robustness: non-finite inputs are replaced by the last good ones, coordinates and lengths are clamped, a frame longer
@@ -135,7 +138,8 @@ private:
 	/** Input with every value finite and in range (the last good values for bad ones). */
 	FLureLineSimInput Sanitize(const FLureLineSimInput& In) const;
 	void SolveConstraints(int32 Iterations);
-	void ApplyFloat(double SurfaceZ, double Float, bool bFloatFreeEnd);
+	/** Float rule for one sub-step; no point rises more than MaxLift, cm. */
+	void ApplyFloat(double SurfaceZ, double Float, bool bFloatFreeEnd, double MaxLift);
 	/** Velocity of point Index after the last sub-step (cm/s). */
 	FVector VelocityOf(int32 Index) const;
 };

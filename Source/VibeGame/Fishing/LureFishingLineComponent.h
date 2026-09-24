@@ -98,7 +98,7 @@ public:
 	/** Where the line leaves the rod and where it ends (bobber, fish). The first call starts the line. While an actor hangs, End waits. */
 	void SetEndpoints(const FVector& RodTip, const FVector& End);
 
-	/** Line tension, 0..1 of the line's strength (1 = the snap threshold: fully straight). Out-of-range values are clamped. */
+	/** Line tension, 0..1 of the line's strength (1 = the snap threshold: fully straight). Out-of-range values are clamped (+Inf = 1); NaN = 0. */
 	void SetTension(float Tension01);
 
 	/** Extra line with no tension, as a share of the straight distance (< 0 = the tuning's SlackShare). */

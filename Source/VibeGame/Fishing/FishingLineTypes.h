@@ -58,9 +58,19 @@ struct FLureFishingLineRow : public FTableRowBase
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Tension", meta=(ClampMin="0.1", ClampMax="10"))
 	float TautExponent = 3.f;
 
-	/** Per second, how fast the line's length shrinks toward a tighter target (it straightens smoothly). Slack appears at once. */
+	/**
+	 *  Per second, how fast the line's length shrinks toward a tighter target (63 % of the way each 1 / LengthResponse s): a
+	 *  line tightening to a still-slack shape, a hanging line reeling up. Slack appears at once.
+	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Tension", meta=(ClampMin="0.1"))
 	float LengthResponse = 6.f;
+
+	/**
+	 *  Seconds a line with the full SlackShare takes to go straight when pulled to the snap threshold (tension 1). Its sag
+	 *  falls at a steady rate and stops at the straight line, so it doesn't whip past it. Smaller = snappier.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Tension", meta=(ClampMin="0.05", ClampMax="10"))
+	float StraightenTime = 0.4f;
 
 	/** Tension the line shows per fishing state (0..1). During a reel fight the fight's own tension is used. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Tension", meta=(ClampMin="0", ClampMax="1"))
@@ -138,9 +148,18 @@ struct FLureFishingLineRules
 
 	/**
 	 *  The line length after DeltaTime: grows to a longer Target at once (slack appears as fast as the fish swims at you);
-	 *  shrinks toward a shorter one smoothly (LengthResponse per second); never below MinLength.
+	 *  shrinks toward a shorter one smoothly (LengthResponse per second), and is exactly the target once within 1e-5 of it
+	 *  (so a line pulled to the snap threshold ends exactly straight); never below MinLength.
 	 */
 	static float FollowRestLength(float Current, float Target, float MinLength, float DeltaTime, const FLureFishingLineRow& Row);
+
+	/**
+	 *  A pinned line's length after DeltaTime (Chord = the straight distance between its ends): grows to a longer Target at
+	 *  once; shrinks like FollowRestLength, and toward a (nearly) straight target at least so fast that its sag falls at a
+	 *  steady rate: a line with the full SlackShare goes straight in StraightenTime s and stops there without whipping past.
+	 *  Exactly the target once within 1e-5 of it; never below Chord.
+	 */
+	static float TightenRestLength(float Current, float Target, float Chord, float DeltaTime, const FLureFishingLineRow& Row);
 
 	/**
 	 *  The tension the line shows in a fishing state: CastTension while the bobber flies, WaitTension while it floats,

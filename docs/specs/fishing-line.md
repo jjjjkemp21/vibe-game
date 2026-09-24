@@ -45,16 +45,19 @@ exploding). Each sub-step:
 1. **Verlet integration** (time-corrected for changing sub-step lengths): gravity, and air drag or water drag (on and under
    the water).
 2. **Pinned ends** move linearly from last frame's position to this frame's, so a fast rod never tears the line.
-3. **Iterations passes (6)** of:
+3. **Float**: points under `WaterZ + FloatHeight` rise toward it by `Float` (0..1) per sub-step and lose their vertical speed
+   in proportion (no bounce). Float = FloatStrength x (1 - tautness), so a taut line cuts straight into the water. A hanging
+   fish (heavy free end) does not float; a snapped end does. Float runs before the constraints and lifts at most
+   240 cm/s, so floating never stretches the line: a slack line to a deep end (a diving fish) is pulled under near the end
+   (T032-O2: segments stay within 0.5 % of their length at 4 m deep; before, 89 %).
+4. **Iterations passes (6)** of:
    - one-sided distance constraints: a segment can go slack but never stretch (a line can't push, so a slack line can bunch
      up on the water);
    - **tethers**: no point farther from a pinned end than the line between them. With both ends pinned, each point is
      projected **exactly into the lens** where the two balls overlap, in one step. That is what makes a taut line exactly
      straight: projecting onto one ball and then the other (the naive way) converges so slowly when the balls only touch
      that gravity leaves a ~15 cm sag on a "fully taut" line. A free end only has the ball around the tip.
-4. **Float**: points under `WaterZ + FloatHeight` rise toward it by `Float` (0..1) per sub-step and lose their vertical speed
-   in proportion (no bounce). Float = FloatStrength x (1 - tautness), so a taut line cuts straight into the water. A hanging
-   fish (heavy free end) does not float; a snapped end does.
+   A pinned line within 1e-6 of the straight distance counts as exactly that long (T032-B1).
 
 Robustness: non-finite inputs are replaced by the last good ones; coordinates are clamped to +-1000 km and lengths to 1 km;
 a pinned line is never shorter than the straight distance at either end of the frame; a tip or end that jumps farther than
@@ -62,10 +65,16 @@ TeleportDistance (15 m) in one frame resets the line; a non-finite state (never 
 
 ## Tension, slack and length
 
-- `tautness = 1 - (1 - Tension01)^TautExponent` (Tension01 clamped 0..1; exponent 3).
+- `tautness = 1 - (1 - Tension01)^TautExponent` (Tension01 clamped 0..1, +Inf = 1, NaN = 0; exponent 3).
 - Target length = `chord x (1 + Slack x (1 - tautness))`; Slack = DT_FishingLine SlackShare (0.05) unless `SetSlack`.
 - The line's length follows the target: **longer at once** (slack appears as fast as a fish swims at you), **shorter
-  smoothly** (LengthResponse 6/s: it straightens over ~0.3-0.5 s), never shorter than the chord.
+  smoothly** (LengthResponse 6/s, exponential), never shorter than the chord. Toward a (nearly) straight target the
+  line also straightens at least at a steady sag rate (`TightenRestLength`): with the full SlackShare it goes straight in
+  **StraightenTime 0.4 s** (a 15 m line: 216 cm of sag -> straight at 0.38 s) and stops at the straight line without
+  whipping past it. (An exponential alone slows down while the line is still slack, so a fast one whips up past the chord
+  and sags back; the steady rate fades out by a target sag of 3 cm and eases in no harder than gravity, T032-O3.) Within
+  1e-5 of the target the length is exactly the target, and a shrinking length always moves at least one float step
+  (float steps would otherwise stall just above it and leave a visible sag at the snap threshold, T032-B1).
 - Sag grows with the square root of the slack, so the line reads slack at low tension and snaps straight near the threshold.
 
 ## The rod tip (the line never lags or cuts through the rod)
@@ -132,7 +141,7 @@ FVector Up = Line->GetEndDirection();                     // unit vector from th
 ## Data (DT_FishingLine)
 
 One row per kind of line; "Default" today. Columns: SubstepRate, MaxSubsteps, Iterations, GravityScale, AirDrag, WaterDrag
-(simulation); SlackShare, TautExponent, LengthResponse, Cast/Wait/Bite/HookedTension (tension); FloatStrength, FloatHeight,
+(simulation); SlackShare, TautExponent, LengthResponse, StraightenTime, Cast/Wait/Bite/HookedTension (tension); FloatStrength, FloatHeight,
 WaterRefreshDistance (water); RecoilSpeed, RecoilTime, RecoilLengthShare (snap); HangEndMass, HangDrag (hanging);
 TeleportDistance. Units and ranges: the header comments; `Validate` enforces them. The struct defaults are the "Default"
 row (a test compares them). Missing asset (lanes, until the editor-operator imports it): the built-in row, logged once at
@@ -145,7 +154,10 @@ Rules.TensionStraightensTheLine, Data.SourceRowsValid, Data.ValidateRejectsBadRo
 15 %), Sim.StraightWhenTaut, Sim.FloatsOnTheWater, Sim.LengthConserved, Sim.NoNaNAtExtremeInputs,
 Sim.SubstepsAndTeleports, Sim.RecoilAndSwing, Sim.AllocationFreeSteadyState, Sim.Cost, Component.EndpointApi,
 Component.HangingActorSwings, Component.SnapRecoil, Component.AllocationsAndCost, Fishing.CastWaitFightSnap (cast, wait,
-fight on a weak line, snap and recoil in a real character), plus the T-006 Line.AtLeastTwoPixels.
+fight on a weak line, snap and recoil in a real character), plus the T-006 Line.AtLeastTwoPixels. After QA (T032-B1, O1-O3):
+Fixes.FollowEndsExactlyOnTarget, Fixes.SolverTautAFloatStepAboveTheChord, Fixes.StraightensWithinHalfASecond,
+Fixes.InfiniteTensionIsTaut, Fixes.DeepEndDoesNotStretch (1 m and 4 m deep, and a fish diving to 4 m through the component).
+QA's own suite: Project.Fishing.Line.QA.*.
 
 ## Known limits and follow-ups
 

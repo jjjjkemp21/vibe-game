@@ -14,6 +14,24 @@ namespace LureLineSimPrivate
 	/** Sub-step used for velocity impulses before the first sub-step ran. */
 	constexpr double DefaultSubstep = 1.0 / 120.0;
 
+	/**
+	 *  A pinned line at most this share longer than the straight distance is exactly as long (fully taut). A rest length a
+	 *  float step above the chord would otherwise show as ~0.3 cm of sag on a 15 m line (T032-B1).
+	 */
+	constexpr double TautShare = 1.0e-6;
+
+	/**
+	 *  Line under the water rises to the surface at most this fast, cm/s. A stronger lift would fight the no-stretch
+	 *  constraints each sub-step: a slack line to a deep end (a diving fish) would stretch its last segments (T032-O2).
+	 */
+	constexpr double MaxFloatRiseSpeed = 240.0;
+
+	/** A pinned line's length: at least Chord, and exactly Chord when within TautShare of it. */
+	double PinnedLength(double RestLength, double Chord)
+	{
+		return RestLength <= Chord * (1.0 + TautShare) ? Chord : RestLength;
+	}
+
 	FVector ClampCoordinates(const FVector& Point)
 	{
 		const double Max = FLureLineSim::MaxCoordinate;
@@ -178,7 +196,7 @@ void FLureLineSim::Reset(const FLureLineSimInput& InRaw)
 	}
 	else
 	{
-		SegmentLength = FMath::Max(static_cast<double>(In.RestLength), Distance) / N;
+		SegmentLength = LureLineSimPrivate::PinnedLength(In.RestLength, Distance) / N;
 		for (int32 Index = 0; Index <= N; ++Index)
 		{
 			Positions[Index] = FMath::Lerp(In.Start, In.End, static_cast<double>(Index) / N);
@@ -222,7 +240,7 @@ void FLureLineSim::Step(float DeltaTime, const FLureLineSimInput& InRaw, const F
 	if (!bFreeEnd)
 	{
 		// A pinned line can't be shorter than the straight distance at either end of this frame (it would have to stretch).
-		RestLength = FMath::Max(RestLength, FMath::Max(FVector::Dist(In.Start, In.End), FVector::Dist(LastStart, LastEnd)));
+		RestLength = PinnedLength(RestLength, FMath::Max(FVector::Dist(In.Start, In.End), FVector::Dist(LastStart, LastEnd)));
 	}
 	SegmentLength = FMath::Min(RestLength, MaxLength) / N;
 
@@ -279,11 +297,13 @@ void FLureLineSim::Step(float DeltaTime, const FLureLineSimInput& InRaw, const F
 			Previous[N] = Positions[N];
 			Positions[N] = FMath::Lerp(FromEnd, In.End, Alpha);
 		}
-		SolveConstraints(Iterations);
+		// Float before the constraints: the line never stretches to stay on the water. A slack line to a deep end (a diving
+		// fish) is pulled under near the end instead of stretching its last segments (T032-O2).
 		if (Float > 0.0)
 		{
-			ApplyFloat(SurfaceZ, Float, bFloatFreeEnd);
+			ApplyFloat(SurfaceZ, Float, bFloatFreeEnd, MaxFloatRiseSpeed * H);
 		}
+		SolveConstraints(Iterations);
 		LastSubstep = H;
 	}
 	LastSubsteps = Substeps;
@@ -349,7 +369,7 @@ void FLureLineSim::SolveConstraints(int32 Iterations)
 	}
 }
 
-void FLureLineSim::ApplyFloat(double SurfaceZ, double Float, bool bFloatFreeEnd)
+void FLureLineSim::ApplyFloat(double SurfaceZ, double Float, bool bFloatFreeEnd, double MaxLift)
 {
 	const int32 N = GetNumSegments();
 	const int32 Last = (bFreeEnd && bFloatFreeEnd) ? N : N - 1;
@@ -358,7 +378,7 @@ void FLureLineSim::ApplyFloat(double SurfaceZ, double Float, bool bFloatFreeEnd)
 		FVector& Point = Positions[Index];
 		if (Point.Z < SurfaceZ)
 		{
-			const double Lift = (SurfaceZ - Point.Z) * Float;
+			const double Lift = FMath::Min((SurfaceZ - Point.Z) * Float, MaxLift);
 			Point.Z += Lift;
 			// It rises without gaining speed from the lift, and loses its vertical speed in proportion (no bounce off the surface).
 			Previous[Index].Z = FMath::Lerp(Previous[Index].Z + Lift, Point.Z, Float);
