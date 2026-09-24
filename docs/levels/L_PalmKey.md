@@ -78,7 +78,12 @@ from spawn: Dock End 28 m, Palm Beach 32 m, Lagoon Flats 35 m, Reef Flats 42 m, 
 Paths are 3 m or wider for 2-4 players: dock 4 m, jetty 3 m, arm 5 m, point stairs 4 m, ledge stairs 3 m. The only narrow
 part is the deliberate crawl: 1.6 m wide, room for two prone players side by side.
 
-## 5. Fishing spots
+## 5. Fishing spots (named casting places since T-027)
+Since T-027 the **water areas** (section 5b) decide the fish everywhere; the spot markers below no longer affect bites.
+They stay as named casting places: each gives a teleport `tp_<spot>` at its cast-from point (`Lure.Teleport dock_end`
+etc. resolve through the tag `Teleport=tp_<spot>`, unchanged), and the map shows them as a dot "spot: <name>". Each
+spot's habitat matches the area it lies in (the layout validator warns otherwise).
+
 Every spot is a marker with a habitat tag, region `Region.Tropical.PalmKey`, a radius on the water and a cast-from point
 (2.5 m radius, room for 2-4 players). `hours` means when the spot matters (for info only); bites are still decided by
 each species' time windows. A teleport `tp_<spot>` is created automatically at each cast-from point.
@@ -108,7 +113,51 @@ fish plus mouth-only fish. New tags for `Config/Tags/FishTags.ini`: `Habitat.Lag
 stage 3) when a bite comes from that spot (T-006).
 **DeepDrop spots have no species yet (playtest 2026-09-23):** Point Ledge and Gull Key Drop (`point_ledge`, `islet_drop`,
 `Habitat.DeepDrop`) have no fish in DT_Fish yet; they wait for the next fish batch, and until then a cast there says
-"Nothing is biting here". Their habitat stays as is.
+"Nothing is biting here". Their habitat stays as is. Since T-027 that water uses the gap fallback (Shore fish) until
+T-009 adds deep fish, so no water is dead.
+
+## 5b. Water areas and hot spots (T-027, docs/specs/fishing-water-rules.md)
+Every body of water is fishable. The `water_area` markers paint the island's water (X north, Y east, metres); where
+several contain a point, the higher priority wins. Checked against the seabed heights (a 2 m depth grid ray-cast from
+the colliding geometry).
+
+| Area id | HUD name | Habitat | P | Shape (m) | Depth there | Hot spots it can hold |
+|---|---|---|---|---|---|---|
+| `cove_water` | Hidden Cove | Shore.Cove, luck +0.5 | 30 | box X 43..63, Y -31..-3 | 0.2-3 m | Bubbles |
+| `lagoon_mouth_water` | Lagoon Mouth | Lagoon.Mouth | 20 | circle (8, -59) r 6.5 | 0.9 m channel | Bubbles (rare: a tight channel) |
+| `reef_edge` | Reef Edge | Reef.Edge | 20 | box X -25..23, Y 70..99 (the shark's loop) | 8 m | Bubbles, Ripples |
+| `point_drop` | Point Ledge Drop | DeepDrop | 20 | circle (60, 56) r 12 | 8 m | Bubbles, Ripples |
+| `gull_key_drop` | Gull Key Drop | DeepDrop, Region.Tropical | 20 | circle (-168, 142) r 12 | 8 m | Bubbles, Ripples |
+| `dock_water` | Dock Water | Shore | 10 | box X -78..-54, Y -13..31 | 1-8 m | Bubbles |
+| `palm_beach_water` | Palm Beach | Shore | 10 | box X -53..-30, Y 20..60 | 0.2-3 m | Bubbles |
+| `reef_flats_water` | Reef Flats | Reef | 10 | box X -29..15, Y 41..70 (jetty included) | 0.6 m flat | Bubbles (Ripples need 0.9 m: only a few deeper cells) |
+| `lagoon` | Lagoon | Lagoon | 10 | box X -21..12, Y -61..-30 | 0.9 m | Bubbles, Ripples |
+| `gull_key_shallows` | Gull Key Shallows | Shore, Region.Tropical | 10 | circle (-189, 170) r 25 | 0-3 m | Bubbles |
+| `gull_key_waters` | Gull Key Waters | DeepDrop, Region.Tropical | 0 | circle (-189, 170) r 50 | 8 m | Bubbles, Ripples |
+| `sea_shallows` | Shallows | Shore | -100 | everywhere, depth 0-3 m | the shelf ring, the south flats | Bubbles (within 30 m of a player) |
+| `sea_deep` | Deep water | DeepDrop | -100 | everywhere, depth 3 m+ | the open sea (-8 m) | Bubbles, Ripples (within 30 m of a player) |
+
+All areas carry `Region.Tropical.PalmKey` except the three Gull Key ones (`Region.Tropical`). Area ids differ from the
+spot ids (marker ids are unique); the HUD shows the name.
+
+**Hot spots:** one `hot_spots` marker (Bubbles + Ripples, max 12 live, seed 0 = random). There is no per-area switch:
+each area holds at most 1 of each type that its habitat and depth allow (DT_HotSpot: Bubbles any water >= 60 cm,
+Ripples reef/lagoon/deep >= 90 cm), and a spawn needs its whole wander circle (5.25 m Bubbles, 7.75 m Ripples) in
+allowed water. The areas were sized so hot spots land where players are:
+- Near the start: `dock_water` (the nearest valid point is 10 m off the Dock End cast point; 98% of its valid points are
+  within an 18 m cast of the dock or the shore), `palm_beach_water` (92%), `sea_shallows` (100%) and `sea_deep` (spawns
+  within 30 m of a player; about 20% land within cast reach from shore: seen, not always reachable). With the 45 s
+  prewarm, the dock area has bubbles about 2 times in 3 at the first minute, and nearly always within 2 minutes.
+- Reward places: `reef_edge` (Ripples next to the shark; 75% within a cast of the jetty), the lagoon (Ripples, safe
+  south shore), `point_drop` (90%) and the cove (Bubbles; with the cove's +0.5 luck).
+- The Gull Key areas can hold up to 5 of the 12 while nobody is there (boat not in the slice yet); tune `max` if the
+  island feels empty.
+
+## 5c. Water-area map
+`map_overview.png` (and `map_north`, `map_point`, `map_dock`) draw each water area as a dashed outline colored by
+habitat (Shore yellow, Shore.Cove orange, Lagoon blue, Lagoon.Mouth magenta, Reef coral, Reef.Edge crimson, DeepDrop
+white), a label "Name: Habitat  P<priority>  luck", the `everywhere` areas as a legend line under the title, and the
+fishing spots as small dots "spot: <name>".
 
 ## 6. Threats, cover and sight lines
 ### Reef shark (T-015)
@@ -224,6 +273,9 @@ dusk and night hold proposals only). `tropical_day`:
 - **Sky**: SkyAtmosphere luminance x1.8 / 2.1 / 2.4 lifts the steel-blue zenith (~#3E607C in the v1 PIE shot) toward
   #8FD3F0 (estimated ~#6095B9); the real-time sky light captures that too, so its intensity 0.45 keeps the shadow
   fill about where it was. First guesses, to check in the rebuild screenshot.
+- **Shop fill** (`shop/fill`): z 270 (90 cm under the stall roof; was 310), intensity 8, #FFD9A0. Lowered 40 cm so the
+  red awning edge above it no longer washes to cream up close (designer 2026-09-23), with the full intensity kept so
+  the interior stays warm.
 - **Palette**: `rock` #6B7275 (M2), `grass` #3F7A42 (S3, fronds keep `palm_green`), `water_deep` #0A5560 and both
   waters at roughness 0.3 (S2: less sky reflection, deep reads different from shallow).
 
@@ -268,6 +320,9 @@ pass. Performance budget capture: T-023.
 - Grass hill height (+4 m): it hides the lagoon from spawn on purpose. Is the reveal good or confusing?
 - Exposure EV (1.0), fog density (0.03), sky luminance factor and sky light intensity: sample the zenith, sand and
   Gull Key in the rebuild screenshots
+- Water areas (T-027): do the HUD names match what players call the places? Hot spot cap 12 and how many land out of
+  cast reach (sea_deep, far corners of dock_water / palm_beach_water); the Gull Key share of the cap
+- Shop fill `shop/fill` (lowered 310 -> 270, intensity 8, 2026-09-23): the red awning edge should stay red up close
 - Cave fill intensity (18 / 14 / 18, radius 750/550/750) and color #B8D8E6 (tuned after rebuild b974f4d)
 
 ## 14. Build and preview
