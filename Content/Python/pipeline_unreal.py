@@ -681,12 +681,17 @@ def compile_anim_blueprint(abp):
 
 
 def _fparms_players(ed):
-    """{clip name: Sequence Player node} for the FP arms clips already in the graph."""
+    """{clip name: Sequence Player node} for the clips already in the graph. A player whose Sequence pin is shown
+    (ABP_Fish Curled) keeps its clip as that pin's default value, not in the node struct."""
     out = {}
     for n in _nodes_of(ed, "AnimGraphNode_SequencePlayer"):
         seq = n.get_editor_property("node").get_editor_property("sequence")
         if seq is not None:
             out.setdefault(seq.get_name(), n)
+            continue
+        for p in n.list_all_pins():
+            if str(p.get_pin_name()) == "Sequence" and p.get_pin_value():
+                out.setdefault(p.get_pin_value().rsplit(".", 1)[-1], n)
     return out
 
 
@@ -1303,8 +1308,10 @@ FISH_ROLES = [
     ("Dive", "Dive", "A_Fish_Fight_Dive"),
     ("Dart", "Dart", "A_Fish_Fight_Dart"),
     ("Flop", "Flop", "A_Fish_Landed_Flop"),
+    ("Curled", "Curled", "A_Fish_Curled"),
 ]
 FISH_DART_CLIP = "A_Fish_Fight_Dart"            # its Start Position <- DartStartTime
+FISH_CURLED_CLIP = "A_Fish_Curled"              # T-030f pose slot: Sequence <- DisplayPose, Start Position <- DisplayPoseTime
 FISH_NODES = [  # (key, Tag, class, action-menu entry)
     ("ref", "FishRefPose", "AnimGraphNode_LocalRefPose", "Animation|Poses|LocalSpaceRefPose"),
     ("add", "FishAdditive", "AnimGraphNode_ApplyAdditive", "Animation|Blends|ApplyAdditive"),
@@ -1317,6 +1324,8 @@ FISH_NOTE = (
     "Amplitude) of Blend Poses (EFishAnimRole). Default pin = SwimIdle (enum 0, and any role without a pin). Clips = Local "
     "Space additives on A_Fish_Rest frame 0, all looping, Play Rate <- PlayRate, Dart Start Position <- DartStartTime, "
     "Child Update Mode = Reset Child On Activate (Thrash shakes first, Dart starts on its side).\n"
+    "Curled (T-030f) is a pose slot for the cooler display: its player's Sequence <- DisplayPose, Start Position <- "
+    "DisplayPoseTime (C++ SetHeldPose sets PlayRate 0, Amplitude 1, RoleBlendTime 0).\n"
     "New role: append it to EFishAnimRole in C++, right-click the blend > Add pin for element, add (entry, label, clip) to "
     "FISH_ROLES in Content/Python/pipeline_unreal.py, run fish_abp_prepare() then fish_abp_wire().")
 
@@ -1346,8 +1355,9 @@ def _fish_layout(ed, players, nodes, get=None):
     nodes["add"].set_node_pos(unreal.IntPoint(1100, -400))
     for root in _nodes_of(ed, "AnimGraphNode_Root"):
         root.set_node_pos(unreal.IntPoint(1420, -400))
-    for name, (x, y) in (("PlayRate", (-300, -60)), ("DartStartTime", (-300, 330)), ("Role", (230, 640)),
-                         ("RoleBlendTime", (230, 720)), ("Amplitude", (860, -240))):
+    for name, (x, y) in (("PlayRate", (-300, -60)), ("DartStartTime", (-300, 330)), ("Role", (230, 820)),
+                         ("RoleBlendTime", (230, 900)), ("Amplitude", (860, -240)),
+                         ("DisplayPose", (-300, 580)), ("DisplayPoseTime", (-300, 660))):
         if get and name in get:
             get[name].set_node_pos(unreal.IntPoint(x, y))
 
@@ -1359,7 +1369,7 @@ def fish_abp_prepare(abp_path=FISH_ABP):
     (Standard Blend, Linear, Child Update Mode = Reset Child On Activate: UE 5.8's replacement for the deprecated
     "Reset Child on Activation" flag), lays them out (_fish_layout), compiles and opens the editor.
 
-    Step 2 (UI, as for ABP_FPArms, see fparms_abp_prepare): expose the enum pins Swim Fast, Thrash, Run, Dive, Dart, Flop on
+    Step 2 (UI, as for ABP_FPArms, see fparms_abp_prepare): expose the enum pins Swim Fast, Thrash, Run, Dive, Dart, Flop, Curled on
     the blend (right-click > Add pin for element; any order, fish_abp_wire maps them by name). Step 3: fish_abp_wire().
     """
     created = []
@@ -1380,8 +1390,10 @@ def fish_abp_prepare(abp_path=FISH_ABP):
         if node is None:
             node = _new_player(ed, clip)
             created.append(node.get_name())
-        set_anim_node(node, sequence=unreal.load_asset("%s/%s" % (FISH_DIR, clip)), loop_animation=True, play_rate=1.0)
-        pins = ("PlayRate", "StartPosition") if clip == FISH_DART_CLIP else ("PlayRate",)
+        set_anim_node(node, sequence=unreal.load_asset("%s/%s" % (FISH_DIR, clip)),
+                      loop_animation=(clip != FISH_CURLED_CLIP), play_rate=1.0)
+        pins = {FISH_DART_CLIP: ("PlayRate", "StartPosition"),
+                FISH_CURLED_CLIP: ("PlayRate", "StartPosition", "Sequence")}.get(clip, ("PlayRate",))
         shown[clip] = show_anim_pins(node, *pins)
     nodes = {}
     for key, tag, cls, type_id in FISH_NODES:
@@ -1431,12 +1443,15 @@ def fish_abp_wire(abp_path=FISH_ABP, save=True):
     if len(roots) != 1:
         raise RuntimeError("Expected one Output Pose node, found %d" % len(roots))
 
-    get = {name: _getter(ed, name) for name in ("Role", "RoleBlendTime", "PlayRate", "DartStartTime", "Amplitude")}
+    get = {name: _getter(ed, name) for name in ("Role", "RoleBlendTime", "PlayRate", "DartStartTime", "Amplitude",
+                                                "DisplayPose", "DisplayPoseTime")}
     links = 0
     for entry, _, clip in FISH_ROLES:
         links += _connect(players[clip], "Pose", blend, pins[entry])
         links += _connect(get["PlayRate"], "PlayRate", players[clip], "PlayRate")
     links += _connect(get["DartStartTime"], "DartStartTime", players[FISH_DART_CLIP], "StartPosition")
+    links += _connect(get["DisplayPose"], "DisplayPose", players[FISH_CURLED_CLIP], "Sequence")
+    links += _connect(get["DisplayPoseTime"], "DisplayPoseTime", players[FISH_CURLED_CLIP], "StartPosition")
     links += _connect(get["Role"], "Role", blend, "ActiveEnumValue")
     for pose_pin in pins.values():
         links += _connect(get["RoleBlendTime"], "RoleBlendTime", blend, pose_pin.replace("BlendPose_", "BlendTime_"))
