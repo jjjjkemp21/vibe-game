@@ -254,3 +254,55 @@ object, read into the copy, RepNotifies called on change), not a property copy.
 - `Project.Dev.*` (8, implementer): teleport by marker/tag/spot id/XYZ, PlayerId, stance, GiveFish args + rolls, driver API.
 - `Project.Dev.QA.ClientConsoleRefuses` (QA): on an NM_Client world Teleport and GiveFish refuse, nothing moves or rolls.
 - Gap: a real networked client console (no replicated relay yet) is untested.
+
+## T-028 mouse-steered rod fight + reel speed (lane eng2, FULL gate)
+Implementer: `Project.Fishing.Fight.Rod.*` (11, RodFightTest.cpp). Independent QA (41): `Project.Fishing.Fight.Rod.QA.*` in
+`Tests/FishFight/RodQA{Math,Data,World,Net,Balance}Test.cpp`; shared fixtures in `RodQATestUtils.h` (namespace LureRodQA: owner pawn in a
+test world, hook-and-fight, fixture tables, HUD line lookup, input firing, water volume).
+- Math (13): `Sim.StepMatchesSpecWithRodInput` is an independent oracle of FishFight.h steps 1-6 with the rod factors: 162 fixtures, ~119k
+  steps compared exactly, random rod input incl. NaN/Inf/out of range, random rod tuning inside the validated ranges, every outcome reached.
+  Edges: pitch -1/0/+1, yaw +-1 and the run direction at SideMinShare / an exhausted run, side pressure for every pitch x yaw x run
+  combination (factors and in a running fight), a random-side run flips and the side score follows, reel steps (spacing, clamp, load
+  floor), the drag cap for every rod input, snap and slack timers in whole steps when the rod crosses the threshold, the wire byte packing
+  for all 256 values (127 = exactly 0), hostile input clamped inside the step, HUD words at the zone edges (nextafter on both sides).
+- Data (3): the rod/reel columns in the shipped CSVs are numeric and in playable ranges; every rod column is optional (defaults apply);
+  bad cells are rejected by Validate and the fishing component falls back to the built-in tuning with a warning.
+- World (19): look vs rod input - the mouse steers the rod only while the owner fights a hooked fish; look is the view again after every
+  ending (landed, snapped, spooled, threw the hook, reeled in, falling in, pulling up a ledge), when the pawn is destroyed or another pawn
+  is possessed mid-fight, and after a teleport on land; only the owner steers; ReelFaster/ReelSlower are mapped and bound; wheel spam
+  clamps and sends the last step; the step is kept for the next fight; the aim send is rate-limited at 30/60/144 fps and a lost aim is
+  repaired by the resend; the camera follows the fish plus a share of the rod and lets go; HUD lines follow the fight; the run side
+  matches the view.
+- Net (3, dedicated server + 2 clients in process): the owner steers over the wire and the other client sees the rod; dropped and delayed
+  aim is repaired; foreign-fight, stale and hostile packets are ignored or clamped (the RPC carries 4 bytes; tension and outcome stay on
+  the server).
+- Balance (3, scripted players with a 0.3 s reaction): the design advice (rod back, against a seen run, ease off at 90 %) loses 0 of 200
+  bonefish vs 70 when holding reel and is faster (more with the wheel); the rod with the run loses ground; the snapper is harder than the
+  bonefish for every player (holding: 87 vs 45 lost of 100; advice: 5 vs 0, about twice as long).
+
+### T-028 review of the implementer-changed tests (all legitimate contract updates)
+- `ServerAuthority` (FishFightTest.cpp): 4 -> 5 RPCs and ServerSetFightInput must be unreliable; ServerSetReeling stays reliable with one
+  bool (stronger than before).
+- `OnlyChargeAndYawCrossTheWire` (QAFishingNetTest.cpp): plain uint8 parameters are now allowed (enum bytes still rejected); the name is
+  stale. The 4-byte signature is pinned by the implementer's `ServerAuthorityOverTheRod` and by `Rod.QA.Net2P.*`.
+- `AllSixActionsResolveByName` (QAMovementNetInputTest.cpp): ReelFaster/ReelSlower added to the exact list; their keys and bindings are
+  checked by `Rod.QA.Input.ReelKeysMappedAndBound`, key clashes by `Movement.QA.Input.NoKeyBoundToTwoActions`.
+
+### T-028 observations (no failing test; for the lead)
+- T028-O1 (balance): a fixed posture (rod fully dipped + fastest reel + hold reel + steer against the run) is as good as the advice on the
+  bonefish (0 of 200 lost, faster than holding) without watching the bar: the dip cost and the reel-speed cost cancel.
+- T028-O2 (feel): reeling with the rod dipped at the slowest step counts as slack, so the fish throws the hook while the player cranks
+  (160 of 200 bonefish); the HUD then shows "Reeling. Release to let it run." and the slack warning together.
+- T028-O3 (cosmetic, T-029): a turned fish swings past the middle (-12 -> +16 deg in 4 s) while the HUD still says "Fish runs LEFT: pull right".
+- T028-O4: a teleport on land mid-fight keeps the fight (no distance rule; the fish follows the player); only swimming and climbing cut the line.
+- T028-O5: possessing another pawn leaves the old pawn's fight running with nobody steering (matters for a future boat).
+- T028-O6: a twitching wheel sends up to 60 step updates/s (step changes go at once by spec); the server has no rate limit (O(1), low risk).
+- T028-O7 (data): text in number cells imports silently and passes Validate (SideDrain 'fast' -> 0, PitchBackPressure '0.3x' -> 0.3,
+  RodAimSideDeg '45deg' -> 45, ReelSteps 'three' -> 2); only the QA raw CSV scan catches it.
+- T028-O8: Validate doesn't require the default reel step's speed to be 1 (only the shipped data keeps the neutral reel equal to T-007).
+- After a respawn the reel step goes back to the default (the spec is silent).
+
+### T-028 gaps (not covered by automation)
+- Listen-server host, 2-player PIE with latency, a real gamepad stick, the ABP_FPArms aim offset and rod visuals (not imported in lanes): playtester.
+- Random packet loss (PktLoss emulation) is not used; drop and delay are deterministic.
+- The HUD slack wording (unspecified).
