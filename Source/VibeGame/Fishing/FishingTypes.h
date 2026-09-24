@@ -81,7 +81,11 @@ enum class ELureCastBlock : uint8
 	/** The bobber is farther than MaxLineLength. */
 	TooFar,
 	/** Climbing (any MOVE_Custom climb: the pull-up onto a ledge; T-026). The climb out of the water reports Swimming. */
-	Climbing
+	Climbing,
+	/** T-028b: the player was teleported (TeleportTo: Lure.Teleport, a respawn spot) while a fish was on. */
+	Teleported,
+	/** T-028b: the player's controller left this pawn (another pawn possessed, a respawn) while a fish was on. */
+	Unpossessed
 };
 
 /** What an early hook (a press while waiting, before a bite) does. */

@@ -770,6 +770,24 @@ void ALurePlayerCharacter::NotifyControllerChanged()
 	AddMappingContextTo(NewController);
 }
 
+void ALurePlayerCharacter::TeleportSucceeded(bool bIsATest)
+{
+	Super::TeleportSucceeded(bIsATest);
+	if (!bIsATest && Fishing)
+	{
+		Fishing->AuthorityOwnerTeleported(); // server only inside: a fish on is lost (T-028b)
+	}
+}
+
+void ALurePlayerCharacter::UnPossessed()
+{
+	Super::UnPossessed();
+	if (Fishing)
+	{
+		Fishing->AuthorityOwnerUnpossessed(); // server only inside: the old pawn's fight ends (T-028b)
+	}
+}
+
 void ALurePlayerCharacter::PawnClientRestart()
 {
 	Super::PawnClientRestart(); // creates the input component and calls SetupPlayerInputComponent for the local player
@@ -896,6 +914,11 @@ void ALurePlayerCharacter::DoLook(float YawDegrees, float PitchDegrees)
 	// Degrees straight into the controller's rotation input, independent of the legacy input scales in DefaultInput.ini.
 	APlayerController* PlayerController = Cast<APlayerController>(Controller);
 	if (!PlayerController || PlayerController->IsLookInputIgnored())
+	{
+		return;
+	}
+	// T-028: while a fish is on, the mouse / right stick steers the rod instead of the view (the camera follows the fish).
+	if (Fishing && Fishing->ConsumeLookInput(YawDegrees, PitchDegrees))
 	{
 		return;
 	}

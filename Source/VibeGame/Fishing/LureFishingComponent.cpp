@@ -68,6 +68,8 @@ namespace LureFishingPrivate
 		case ELureCastBlock::Busy: return TEXT("the line is already out");
 		case ELureCastBlock::TooFar: return TEXT("too far from the bobber");
 		case ELureCastBlock::Climbing: return TEXT("climbing");
+		case ELureCastBlock::Teleported: return TEXT("teleported");
+		case ELureCastBlock::Unpossessed: return TEXT("the player left");
 		case ELureCastBlock::None:
 		default: return TEXT("");
 		}
@@ -553,6 +555,7 @@ float ULureFishingComponent::GetHookGrace() const
 
 void ULureFishingComponent::BindInput(UEnhancedInputComponent& Input)
 {
+	BindRodInput(Input); // T-028: reel speed steps (the look input reaches the rod through ALurePlayerCharacter::DoLook)
 	UInputAction* CastAction = ULureInputSubsystem::GetInputActionByName(FLureInputActionNames::Cast);
 	UInputAction* HookAction = ULureInputSubsystem::GetInputActionByName(FLureInputActionNames::Hook);
 	if (!CastAction || !HookAction)
@@ -934,6 +937,25 @@ void ULureFishingComponent::AuthorityReelIn(ELureCastBlock Reason)
 	OnFishingEvent.Broadcast(New.LastResult, Lost);
 }
 
+void ULureFishingComponent::AuthorityOwnerTeleported()
+{
+	// T-028b (O4): a teleport ends a fight in progress (the line can't follow); the fish is lost. A line without a fish is left to
+	// the normal rules (the bobber distance rule brings it in if the teleport went far).
+	if (GetOwner() && GetOwner()->HasAuthority() && NetState.State == ELureFishingState::Hooked)
+	{
+		AuthorityReelIn(ELureCastBlock::Teleported);
+	}
+}
+
+void ULureFishingComponent::AuthorityOwnerUnpossessed()
+{
+	// T-028b (O5): nobody holds this rod any more, so its fight ends (a fight nobody steers must not run on).
+	if (GetOwner() && GetOwner()->HasAuthority() && NetState.State == ELureFishingState::Hooked)
+	{
+		AuthorityReelIn(ELureCastBlock::Unpossessed);
+	}
+}
+
 void ULureFishingComponent::ServerTick(double Now)
 {
 	if (NetState.State == ELureFishingState::Idle)
@@ -1150,6 +1172,15 @@ void ULureFishingComponent::BeginFight(double Now)
 	const float Start = GetOwner() ? static_cast<float>(FVector::Dist2D(GetOwner()->GetActorLocation(), NetState.BobberRest)) : 0.f;
 	FLureFight::Begin(Fight, FishStats, Pattern, PatternId, Gear, FightTuning, FLureFight::FightSeed(HookedFish.Seed), Start);
 	FightLastTime = Now;
+	// T-028: a new fight starts with the rod level and centered (the owner resets its aim too); the reel step carries over.
+	ServerRodPitch = 0.f;
+	ServerRodYaw = 0.f;
+	if (ServerPendingReelStep != INDEX_NONE)
+	{
+		ServerReelStep = ServerPendingReelStep; // the owner's last wheel pick, held back by the step rate limit, is the new fight's step
+		ServerPendingReelStep = INDEX_NONE;
+	}
+	Fight.ReelStep = FLureFight::ClampReelStep(ServerReelStep, FightTuning);
 
 	const uint8 NextId = static_cast<uint8>(FightNet.FightId + 1);
 	FightNet = FLureFightNetState();
@@ -1166,8 +1197,8 @@ void ULureFishingComponent::UpdateFight(double Now)
 {
 	const float Delta = static_cast<float>(FMath::Clamp(Now - FightLastTime, 0.0, 0.5));
 	FightLastTime = Now;
-	FLureFightInput Input;
-	Input.bReeling = bServerReeling;
+	ApplyPendingReelStep(Now); // T-028b: a reel-step change held back by the server's rate limit
+	const FLureFightInput Input = GetServerFightInput(); // the reel button + the rod aim and reel step (T-028)
 	const ELureFightOutcome Outcome = FLureFight::Advance(Fight, Input, Delta);
 	PublishFight();
 	if (Outcome != ELureFightOutcome::None)
@@ -1194,6 +1225,11 @@ void ULureFishingComponent::PublishFight()
 	FightNet.SideDeg = Fight.SideDeg;
 	FightNet.SnapProgress = FMath::Clamp(Fight.OverTime / FMath::Max(1.0e-3f, Tuning.SnapGraceTime), 0.f, 1.f);
 	FightNet.SlackProgress = FMath::Clamp(Fight.SlackTime / FMath::Max(1.0e-3f, FLureFight::SlackGrace(Fight.Gear, Tuning)), 0.f, 1.f);
+	// T-028: the rod input the fight ran with (other players draw this rod and line) and the fish's sideways run (HUD hint).
+	FightNet.RodPitch = Fight.RodPitch;
+	FightNet.RodYaw = Fight.RodYaw;
+	FightNet.ReelStep = static_cast<uint8>(FMath::Clamp(Fight.ReelStep, 0, 255));
+	FightNet.RunSide = FLureRodControl::RunSideFromDirection(Fight.RunDir);
 }
 
 void ULureFishingComponent::EndFight(ELureFightOutcome Outcome, double Now)
@@ -1319,6 +1355,7 @@ void ULureFishingComponent::TickComponent(float DeltaTime, ELevelTick TickType, 
 			bAwaitingCast = false; // the server never answered (lost connection); let the player try again
 		}
 		UpdateReelInput();
+		UpdateRodSteering(DeltaTime); // T-028: new-fight reset, the rod input to the server, the camera following the fish
 	}
 
 	if (ALurePlayerCharacter* Lure = Cast<ALurePlayerCharacter>(GetOwner()))
@@ -1328,6 +1365,7 @@ void ULureFishingComponent::TickComponent(float DeltaTime, ELevelTick TickType, 
 
 	if (GetNetMode() != NM_DedicatedServer)
 	{
+		UpdateRodAimVisual(DeltaTime); // T-028: the eased rod aim (arms aim offset, other players' rod and line)
 		UpdateVisuals(DeltaTime);
 	}
 }
@@ -1391,6 +1429,10 @@ void ULureFishingComponent::HandleStateChanged(const FLureFishingNetState& Previ
 	if (NetState.ResultId != Previous.ResultId && NetState.LastResult == ELureFishingResult::Landed)
 	{
 		PlayArmsMontage(Settings->LandMontage);
+	}
+	if (NetState.ResultId != Previous.ResultId && NetState.LastResult == ELureFishingResult::Snapped && Line)
+	{
+		Line->Snap(); // T-032: the broken line whips back toward the rod, then is gone
 	}
 }
 
@@ -1473,25 +1515,24 @@ void ULureFishingComponent::UpdateVisuals(float DeltaTime)
 	{
 		if (Row)
 		{
+			// T-032: the line simulates itself (docs/specs/fishing-line.md); it only needs its ends, tension, water and viewer.
 			const FName Socket = GetDefault<ULureFishingSettings>()->BobberLineSocket;
 			const FVector End = (BobberMesh && BobberMesh->DoesSocketExist(Socket)) ? BobberMesh->GetSocketLocation(Socket) : BobberLocation + FVector::UpVector * BobberTop;
-			float Sag = Row->LineSag;
-			if (NetState.State == ELureFishingState::Casting)
-			{
-				Sag *= 0.3f;
-			}
-			else if (NetState.State == ELureFishingState::Hooked && FightNet.bActive)
-			{
-				Sag = FLureFight::LineSag(Row->LineSag, FightNet.GetTension01(), GetFightTuning()); // taut under load, sags when slack
-			}
-			else if (NetState.State == ELureFishingState::Biting || NetState.State == ELureFishingState::Hooked)
-			{
-				Sag = 0.f; // taut: something pulls
-			}
 			FVector ViewLocation;
 			float Fov = 90.f;
 			GetViewer(ViewLocation, Fov);
-			Line->SetLine(GetLineStart(), End, Sag, ViewLocation, Fov, Row->LinePixelWidth, GetDefault<ULureFishingSettings>()->LineReferenceScreenWidth, Row->LineMinWidth);
+			Line->SetViewer(ViewLocation, Fov);
+			Line->SetWidthRule(Row->LinePixelWidth, GetDefault<ULureFishingSettings>()->LineReferenceScreenWidth, Row->LineMinWidth);
+			Line->SetTension(FLureFishingLineRules::StateTension(NetState.State, FightNet.bActive, FightNet.GetTension01(), Line->GetTuning()));
+			if (NetState.bOnWater)
+			{
+				Line->SetWaterSurfaceZ(static_cast<float>(NetState.BobberRest.Z)); // the bobber rests on the surface
+			}
+			else
+			{
+				Line->ClearWaterSurfaceZ();
+			}
+			Line->SetEndpoints(GetLineStart(), End);
 		}
 		else
 		{
@@ -1585,7 +1626,9 @@ void ULureFishingComponent::UpdateRod()
 		// Placeholder rod bend (T-007): the tip dips toward the fish with the tension and shakes over the line's strength.
 		Pitch += FLureFight::RodPitch(FightNet.GetTension01(), static_cast<float>(GetLocalTime()), GetFightTuning());
 	}
-	RodMesh->SetRelativeRotation(FRotator(Pitch, 0.f, 0.f));
+	// T-028: the rod follows the player's aim (placeholder turn, until the arms play the rod-aim aim offset and carry it).
+	const FRotator Aim = ArmsPlayRodAim() ? FRotator::ZeroRotator : FLureRodControl::RodLook(RodAimVisual.Y, RodAimVisual.X, GetFightTuning());
+	RodMesh->SetRelativeRotation(FRotator(Pitch + Aim.Pitch, Aim.Yaw, 0.f));
 }
 
 void ULureFishingComponent::EnsureBobberAndLine()
@@ -1638,6 +1681,8 @@ void ULureFishingComponent::EnsureBobberAndLine()
 		Line->SetupAttachment(Owner->GetRootComponent());
 		Line->RegisterComponent();
 		Line->Setup(Mesh, LureFishingPrivate::LoadIfExists(Settings->LineMaterial), Settings->LineColor, Row.LineSegments);
+		// T-032: the line reads the drawn rod tip when it simulates (after the camera and arms moved), so it never lags the rod.
+		Line->SetStartProvider(FLureLinePointProvider::CreateUObject(this, &ULureFishingComponent::GetLineStart));
 	}
 }
 
@@ -1745,13 +1790,14 @@ FVector ULureFishingComponent::GetLineStart() const
 		}
 		return Tip;
 	}
-	// Other players (no visible rod yet) and the fallback: an estimate from the eye.
+	// Other players (no visible rod yet) and the fallback: an estimate from the eye, turned by the rod's aim in a fight (T-028).
 	FRotator Aim = GetOwner() ? GetOwner()->GetActorRotation() : FRotator::ZeroRotator;
 	if (const APawn* Pawn = GetPawn())
 	{
 		Aim = Pawn->GetBaseAimRotation();
 	}
-	return GetEyeLocation() + FRotator(0.f, Aim.Yaw, 0.f).RotateVector(Settings->RodTipOffsetFromEye);
+	const FRotator RodAimTurn = FLureRodControl::RodLook(RodAimVisual.Y, RodAimVisual.X, GetFightTuning());
+	return GetEyeLocation() + FRotator(RodAimTurn.Pitch, Aim.Yaw + RodAimTurn.Yaw, 0.f).RotateVector(Settings->RodTipOffsetFromEye);
 }
 
 void ULureFishingComponent::GetViewer(FVector& OutLocation, float& OutFovDeg) const
@@ -1842,12 +1888,14 @@ FString ULureFishingComponent::GetStatusText() const
 			Lines.Add(FString::Printf(TEXT("Fish: %s   stamina %d%%"), *FishState, FMath::RoundToInt(FightNet.Stamina * 100.f)));
 			Lines.Add(FString::Printf(TEXT("Tension %s %d%%"), *TensionBar(Tension01), FMath::RoundToInt(Tension01 * 100.f)));
 			Lines.Add(FString::Printf(TEXT("Line out %.1f m of %.0f m"), FightNet.LineOut / 100.f, FightNet.SpoolLength / 100.f));
-			Lines.Add(FightNet.bReeling || WantsToReel() ? TEXT("Reeling. Release to let it run.") : TEXT("Hold Click/RT to reel."));
+			AppendRodHudLines(Lines); // T-028: "Rod: back-right", "Reel 2/3", "Fish runs LEFT: pull right"
+			const bool bReelingNow = FightNet.bReeling || WantsToReel();
+			Lines.Add(bReelingNow ? TEXT("Reeling. Release to let it run.") : TEXT("Hold Click/RT to reel."));
 			if (FightNet.SnapProgress > 0.f)
 			{
 				Lines.Add(TEXT("!! The line is about to snap: ease off !!"));
 			}
-			else if (FightNet.SlackProgress > 0.4f)
+			else if (!bReelingNow && FightNet.SlackProgress > 0.4f) // T-028b: one slack rule: reeling is never slack (FLureFight::IsSlack)
 			{
 				Lines.Add(TEXT("!! Slack line: reel or it throws the hook !!"));
 			}

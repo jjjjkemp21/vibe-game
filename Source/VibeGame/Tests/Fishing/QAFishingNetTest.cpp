@@ -170,8 +170,8 @@ namespace NetLocal
 // What crosses the wire
 // =====================================================================================================================
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FQAFishNetOnlyChargeAndYawCrossTheWire, "Project.Fishing.QA.Net.OnlyChargeAndYawCrossTheWire", QAFishing::Flags)
-bool FQAFishNetOnlyChargeAndYawCrossTheWire::RunTest(const FString& Parameters)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FQAFishNetServerRpcsTakeOnlyPlainNumbers, "Project.Fishing.QA.Net.ServerRpcsTakeOnlyPlainNumbers", QAFishing::Flags)
+bool FQAFishNetServerRpcsTakeOnlyPlainNumbers::RunTest(const FString& Parameters)
 {
 	// Spec: the client only asks - ServerCast(charge, aim yaw), a hook press, a reel-in. No client RPC can carry a fish, a species,
 	// a spot, a landing point or a time.
@@ -189,8 +189,10 @@ bool FQAFishNetOnlyChargeAndYawCrossTheWire::RunTest(const FString& Parameters)
 			for (TFieldIterator<FProperty> Param(Function); Param && Param->HasAnyPropertyFlags(CPF_Parm); ++Param)
 			{
 				Params.Add(Param->GetCPPType() + TEXT(" ") + Param->GetName());
+				// T-028: ServerSetFightInput sends its rod aim and reel step as bytes (plain numbers too; an enum byte would not be).
+				const FByteProperty* Byte = CastField<FByteProperty>(*Param);
 				TestTrue(FString::Printf(TEXT("%s::%s(%s): parameters are plain numbers (no fish, name, vector, struct or object)"), *Class->GetName(), *Function->GetName(), *Param->GetName()),
-					Param->IsA<FFloatProperty>() || Param->IsA<FBoolProperty>());
+					Param->IsA<FFloatProperty>() || Param->IsA<FBoolProperty>() || (Byte && !Byte->Enum));
 			}
 			Rpcs.Add(FString::Printf(TEXT("%s::%s(%s)"), *Class->GetName(), *Function->GetName(), *FString::Join(Params, TEXT(", "))));
 		}

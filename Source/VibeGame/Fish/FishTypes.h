@@ -8,6 +8,7 @@
 #include "FishTypes.generated.h"
 
 class UStreamableRenderAsset;
+class USkeletalMesh;
 
 /** Fish system log. Data problems are Warnings (never check/ensure); "nothing bites here" is not logged. */
 DECLARE_LOG_CATEGORY_EXTERN(LogLureFish, Log, All);
@@ -229,6 +230,21 @@ struct FFishSpeciesRow : public FTableRowBase
 	/** Mesh (static or skeletal) for the fish in hand and in the journal */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Look")
 	TSoftObjectPtr<UStreamableRenderAsset> Mesh;
+
+	/**
+	 *  Skinned fish on SKEL_Fish (T-029): the fish you see fighting in the water, playing ABP_Fish. None = Mesh if that is a
+	 *  skeletal mesh, else ULureFishVisualSettings::FallbackMesh. Optional column.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Look", meta=(DataTableImportOptional))
+	TSoftObjectPtr<USkeletalMesh> SkeletalMesh;
+
+	/** Additive alpha of the swim/fight clips, 0..1 (1 = the clips as authored; Landed_Flop always plays at 1). Optional column. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Look", meta=(ClampMin="0", ClampMax="1", DataTableImportOptional))
+	float AnimAmplitude = 1.0f;
+
+	/** Play-rate multiplier of the swim/fight clips (> 0; 1 = as authored). Optional column. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Look", meta=(ClampMin="0.01", DataTableImportOptional))
+	float AnimRate = 1.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Species", meta=(MultiLine=true, DataTableImportOptional))
 	FString DevComment;

@@ -13,7 +13,8 @@ bend), `A_Fish_<Clip>_anim.png` (8 frames x Bonefish top/side, CoralSnapper top/
 `SK_Fish_strobe.png` (midlines per clip + the ambient WPO wave), `SK_Fish_flop_dock.png` (Landed_Flop lying on dock
 planks), `SK_Fish_tuck.png`, `SK_Fish_pec.png` (pectoral close-ups), `SK_Fish_weights.png`,
 `A_Fish_Curled_anim.png` (the cooler pose, both species) and `A_Fish_Curled_cooler*.png` (4 fish in the starter cooler:
-top view, first person at the counter and on the floor, the slot diagram, the 1.3x fish unclamped; recipe
+top view, first person with the cooler on the floor (the design view) and on a counter, 1-4 fish fills, the slot
+diagram, the 1.3x fish unclamped; recipe
 `art/recipes/anim_fish_cooler.py`, section "Cooler display" below).
 
 ## Files (art/export/Fish/)
@@ -76,7 +77,7 @@ Bounds at rest: Bonefish 53.5 x 11.4 x 21.1 cm, CoralSnapper 56.3 x 12.5 x 28.9 
 | `A_Fish_Fight_Dive` | 0-60 | 2.0 s | 2.0 Hz | digging strokes, head 12-14 deg nose-down, body arched, slow flank-flashing roll, head shakes f36-50 |
 | `A_Fish_Fight_Dart` | 0-36 | 1.2 s | - | C-start dart to the fish's LEFT (coil f0-4, power stroke f8, beats to f18), then to its RIGHT (f18-36) |
 | `A_Fish_Landed_Flop` | 0-90 | 3.0 s | - | out of water: curls up (f0-10), slaps flat (f13), rebound, tail flicks (f24-36), second flop (f44-66). Curls only toward the fish's LEFT |
-| `A_Fish_Curled` | 0-1 | pose | - | **not a loop**: 1-frame pose, dead still. The iced catch in a cooler: lying on its side, back-arched C in the flank plane (head 24 deg + tail 106 deg toward the back), pectorals flat. Bonefish 43.6 x 24.7 cm, CoralSnapper 46.4 x 29.3 cm footprint (from 53.5 / 56.3 cm straight), thickness unchanged (8.5 cm) |
+| `A_Fish_Curled` | 0-1 | pose | - | **not a loop**: 1-frame pose, dead still. The iced catch in a cooler: lying on its side, back-arched in the flank plane, the curl in the tail half (head 20 deg at the neck, Spine_02 straight, Spine_03/Spine_04/Tail 36/44/36 deg toward the back = 116 deg), pectorals flat; the snapper crest stays straight and reads as a clean saw-tooth. Bonefish 42.6 x 22.0 cm, CoralSnapper 44.6 x 29.6 cm footprint (from 53.5 / 56.3 cm straight), thickness unchanged (8.5 cm) |
 
 Loops: frame N equals frame 0 exactly and the motion is continuous across the seam (the seam's second difference is
 below each clip's median). Suggested notifies (audio/VFX, optional): Landed_Flop `FishSlap` at f13 and f55 (light at
@@ -224,12 +225,14 @@ A reference fish (53.5 / 56.3 cm) can't lie straight in the starter cooler (line
 Source of truth: `art/recipes/anim_fish_cooler.py` (RESULT_JSON `Saved/AgentLogs/blender/anim_fish_cooler.result.json`,
 `slots_ue`); it is deterministic (fixed seed) and reruns to the same table.
 
-**The pose.** A back-arched C in the flank plane (pitch, not the lateral yaw of Dart/Flop): head 24 deg and tail
-106 deg toward the fish's back, pectorals flat. Lying on its side the fish stays flat, so its thickness (8.5 cm) and
+**The pose.** A back-arched curl in the flank plane (pitch, not the lateral yaw of Dart/Flop), pectorals flat. The
+neck takes 20 deg, Spine_02 none, and the tail half the rest (Spine_03/Spine_04/Tail 36/44/36 deg toward the back), so
+the snapper's crest (over the neck and Spine_02) stays straight and reads as a clean saw-tooth (designer review
+2026-09-23; with the old 24 deg neck + 25 deg Spine_02 its spines crossed and read as broken shards). Lying on its side the fish stays flat, so its thickness (8.5 cm) and
 its lie offset are those of the straight fish (`LieOffsetCm` 4.24 Bonefish / 4.26 CoralSnapper, either side down).
 A lateral C lying on its side would lift head and tail ~12 cm like a bowl, and 4 of them don't fit under the lid.
-Verify in Unreal (component space, alpha 1): Bonefish `Mouth` (25.62, 0, 4.33), `Tail` (-5.52, 0, 14.69);
-CoralSnapper `Mouth` (27.50, 0, 3.50), `Tail` (-6.29, 0, 15.66). The two species must differ (additive base check).
+Verify in Unreal (component space, alpha 1): Bonefish `Mouth` (25.89, 0, 3.45), `Tail` (-8.38, 0, 9.81);
+CoralSnapper `Mouth` (27.71, 0, 2.52), `Tail` (-9.34, 0, 10.45). The two species must differ (additive base check).
 
 **The rule (unreal-engineer).** Per fish shown in the cooler, in the cooler's space:
 - shown scale `s = min((Weight / ReferenceWeight)^(1/3), MaxDisplayScale)`, `MaxDisplayScale` = **1.0** for the
@@ -241,48 +244,61 @@ CoralSnapper `Mouth` (27.50, 0, 3.50), `Tail` (-6.29, 0, 15.66). The two species
   can tick its animation rarely or pause after the first pose (engineer's choice of mechanism);
 - fill order slot 0, 1, 2, 3 (each slot rests on the ones below it). After a fish is taken out, re-seat the rest into
   slots 0..n-1, so there is never a gap under a fish. The slots move with the cooler (carry, lid closed: the top fish
-  stays 14.8 mm under the closed lid).
+  stays 7.5 mm under the closed lid).
 
 | Slot | X | Y | BedZ | Pitch | Yaw | Roll | Side down |
 |---|---|---|---|---|---|---|---|
-| 0 | -10.0 | 0.0 | 0.00 | 0 | -70 | 90 | right |
-| 1 | -10.0 | -0.5 | 6.42 | 0 | 75 | -90 | left |
-| 2 | -5.5 | -2.5 | 12.12 | 0 | -50 | 90 | right |
-| 3 | -6.5 | 3.0 | 18.00 | 0 | 45 | -90 | left |
+| 0 | 7.5 | -2.5 | 0.00 | 0 | 95 | 90 | right |
+| 1 | 5.5 | -2.0 | 6.28 | 0 | -125 | -90 | left |
+| 2 | 6.5 | 1.0 | 12.35 | 0 | 140 | 90 | right |
+| 3 | 10.0 | 2.5 | 18.72 | 0 | -100 | -90 | left |
 
 Units cm and degrees, Unreal axes, relative to the `Contents` socket (the liner floor center, 5 cm above the cooler's
-pivot; +X = the cooler's front, the latch side). X, Y locate the fish's origin (its body center); X is negative
-because a back-arched fish's origin sits off the middle of its C. Example: a CoralSnapper at s = 1.0 in slot 2 goes
-to (-5.5, -2.5, 12.12 + 4.26) = (-5.5, -2.5, 16.38).
+pivot; +X = the cooler's front, the latch side). X, Y locate the fish's origin (its body center); the origin sits off
+the middle of a back-arched fish's curl, so the slot X values are not centered. Example: a CoralSnapper at s = 1.0 in
+slot 2 goes to (6.5, 1.0, 12.35 + 4.26) = (6.5, 1.0, 16.61).
+
+Slots alternate sides (right, left, right, left), and same-side slots lie at least 20 deg apart (nose-to-tail chords
+-65 / 95 / -110 / 70 deg). Crests (dorsal fins) of neighbouring fish can still lie over each other in places: that is
+accepted (lead, 2026-09-23), because the straight snapper crest is what keeps the pile from reading as a jumble.
+
+**How the player sees it (T-030, unreal-engineer).** The slots are designed for the "shop" view: the player **puts the
+cooler down on the floor with its front (latch, +X) toward the player**, then opens it (the lid hinges at the back,
+so it opens away from the player), and looks in standing (eye 1.65 m) about 0.6 m from the cooler's center. From
+there every fish's eye and tail tip is visible in all 64 checked mixes (ray-cast check `view_checks.shop`), for 1, 2,
+3 or 4 fish. So when the cooler is set down, yaw it so +X faces the player. Seen from a 0.9 m countertop 0.55 m away
+(`view_checks.countertop`), only 12 of 64 mixes show every eye and tail: the 28 cm deep liner's front wall hides
+everything low in the front half, for any layout of 4 flat fish. Don't put an open cooler on a counter for display.
 
 Suggested data (so a new cooler needs no code): a `DT_CoolerSlot` table, one row per slot, e.g.
 `Name,CoolerId,SlotIndex,Location,Rotation,MaxDisplayScale` with rows like
-`Starter_2,Starter,2,"(X=-5.5,Y=-2.5,Z=12.12)","(Pitch=0,Yaw=-50,Roll=90)",1.0`
+`Starter_2,Starter,2,"(X=6.5,Y=1.0,Z=12.35)","(Pitch=0,Yaw=140,Roll=90)",1.0`
 (Location Z = BedZ). A cooler shows at most as many fish as it has slot rows. A new cooler model gets its rows by
 rerunning `anim_fish_cooler.py` against its liner (the `Large` placeholder row reuses the starter mesh, so it can only
 show 4 of its 8 fish until it has its own model and slots).
 
 **Why a display cap of 1.0 and what happens to bigger fish.** Fish scale with weight (a 1.3x fish is 2.2x the
-reference weight: 57-60 cm long even curled). The geometric limit for 4 fish is **1.05**: at 1.1 the stack top reaches 32.2 cm
-(the closed lid's underside is at 33.0, with a 4 mm margin) and the fish cut 8 mm into the liner. At 1.05 they fit, but two of the lower fish are almost
-fully buried (6-17 % visible from above) and the cooler reads as 2-3 fish. At 1.0 every fish shows 20-31 % of its
-footprint from above (the top one all of it), so the cap is 1.0. Bigger fish are **shown at 1.0 in the cooler**
-(the display only; the instance keeps its weight and value). Unclamped, the 1.3x fish in slot 3 sticks 46 mm through
-the liner wall and 10 mm above the lid (preview `_big`). Smaller fish (tested down to 0.7) sit in the same slot on
+reference weight: 57-60 cm long even curled). The geometric limit for 4 fish is **1.0**: at 1.05 the stack top reaches
+32.64 cm, just over the 32.6 cm limit (the closed lid's underside is at 33.0, with a 4 mm margin), and at 1.1 it
+reaches 34.4 cm and the fish cut 12 mm into the liner. At 1.0 the stack top is 32.2 cm and every fish shows 15-30 % of
+its footprint from above (the top one all of it), so the cap is 1.0. Bigger fish are **shown at 1.0 in the cooler**
+(the display only; the instance keeps its weight and value). Unclamped, the 1.3x fish in slot 3 sticks 24 mm through
+the liner wall and 18 mm above the lid (preview `_big`). Smaller fish (tested down to 0.7) sit in the same slot on
 the same bed; where a small fish lies under a slot, the fish above rests up to (1 - s) x 8.5 cm higher than it needs
 to, a gap you could only see from the side, which the cooler wall hides.
 
 **Checked (RESULT_JSON `exact_checks`, 64 cases: all 16 species mixes at s = 1.0 and at 0.7, and 32 random mixes
-with each fish at its own scale in 0.7..1.0):** 0 triangle intersections between fish, every vertex at least 4.3 mm
-inside the liner wall, the top fish at least 14.8 mm under the closed lid, nothing below the floor. Pose metrics
-(anim_fish RESULT_JSON): cross-section >= 0.967 of rest, concave-side fold >= 0.365 (CoralSnapper, the crest root at
-the neck; limit 0.30), pectorals 0.0 mm into the flank.
+with each fish at its own scale in 0.7..1.0):** 0 triangle intersections between fish, every vertex at least 4.0 mm
+inside the liner wall, the top fish at least 7.5 mm under the closed lid, nothing below the floor. Pose metrics
+(anim_fish RESULT_JSON): cross-section >= 0.928 of rest (limit 0.80), concave-side fold >= 0.466 (CoralSnapper;
+limit 0.30), pectorals 0.0 mm into the flank.
 
 Previews (`Saved/AgentLogs/previews/`): `A_Fish_Curled_anim.png` (the pose, both species, on each side over the pale
-straight fish, from the back, 3/4); `A_Fish_Curled_cooler.png` (contact sheet) with `_fp_counter` (first person at
-the shop counter, the open cooler on the 0.9 m counter 0.55 m ahead, game FP camera 90 deg, 1920x1080), `_fp_floor`
-(the cooler on the floor 0.6 m ahead of a standing player), `_top` (straight down), `_big` (the 1.3x fish unclamped)
-and `_slots` (slot diagram with the Unreal axes). Shown mix: slot 0 Bonefish, 1 and 2 CoralSnapper, 3 a 1.3x
+straight fish, from the back, 3/4); `A_Fish_Curled_cooler.png` (contact sheet) with `_fp_shop` (the design view: cooler on the floor, front toward
+a standing player 0.6 m away, game FP camera 90 deg, 1920x1080), `_fp_countertop` (the open cooler on a 0.9 m counter
+0.55 m ahead, for comparison), `_top` (straight down), `_big` (the 1.3x fish unclamped), `_slots` (slot diagram with
+the Unreal axes) and `_fills` (shop view, 600 px crops at game pixels: 1, 2, 3, 4 fish; top row Bonefish,
+CoralSnapper, Bonefish, CoralSnapper, bottom row the other order). Shown mix: slot 0 Bonefish, 1 and 2 CoralSnapper, 3 a 1.3x
 Bonefish shown at the cap.
 
 ## Ambient swim: MF_FishSwim (static SM_ fish, world position offset)
@@ -308,7 +324,7 @@ against Swim_Idle in `SK_Fish_strobe.png`, and the reference implementation is `
 | weights | sum error 0.0, max 2 influences, 0 unweighted | sum 1, <= 3 |
 | skinned rest vs static mesh | 0.0 mm | 0.01 |
 | body cross-section (LBS pinch), worst frame of any clip | area >= 0.938 of rest | >= 0.80 |
-| concave-side fold (longitudinal compression) | >= 0.69 of rest in the motion clips; 0.365 in A_Fish_Curled (CoralSnapper crest root at the neck) | >= 0.30 |
+| concave-side fold (longitudinal compression) | >= 0.69 of rest in the motion clips; 0.466 in A_Fish_Curled (CoralSnapper) | >= 0.30 |
 | pectoral blade inside the flank | <= 0.06 mm | <= 1.0 |
 | Landed_Flop below the dock plane (alpha 1) | 0.0 mm, both species | <= 1.0 |
 | loop seams | 0.0 mm; seam second difference below each clip's median | 0 |
@@ -316,7 +332,7 @@ against Swim_Idle in `SK_Fish_strobe.png`, and the reference implementation is `
 | FBX units / scale | UnitScaleFactor 1.0, node and key scale 1.0 (<= 2.4e-7) | cm, 1.0 |
 | re-import (bones, mesh, clip poses) | <= 0.0001 mm / 0.0 deg | 0.05 mm |
 | additive emulation, both species x 8 clips | <= 0.0002 mm | 0.05 mm |
-| A_Fish_Curled in the starter cooler (anim_fish_cooler RESULT_JSON, 64 mixes) | 0 fish-fish intersections, >= 4.3 mm inside the liner, >= 14.8 mm under the closed lid | 0, > 0, > 0 |
+| A_Fish_Curled in the starter cooler (anim_fish_cooler RESULT_JSON, 64 mixes) | 0 fish-fish intersections, >= 4.0 mm inside the liner, >= 7.5 mm under the closed lid; shop view: every eye and tail visible in 64/64 | 0, > 0, > 0, 64/64 |
 
 ## Compromises (known, measured)
 
@@ -332,9 +348,9 @@ against Swim_Idle in `SK_Fish_strobe.png`, and the reference implementation is `
   and along the tail (-64 deg at the tip). It reads as a C-start from above and as a tail-led flop on the dock.
 - The Flop must play at alpha 1 (dock clearance, above).
 - **A_Fish_Curled is more J than C.** The head can only bend at the neck (the one joint in front of the anchored
-  chest), and past ~25 deg the CoralSnapper's crest root folds (fold 0.29 at 27 deg). So the head takes 24 deg and
-  the tail 106 deg: from above it reads as a stiff, back-arched fish with its tail curled up, not a round C. Getting
-  the 53-56 cm fish under ~45 cm needs the full 130 deg; a gentler curl doesn't fit 4 fish in the starter cooler.
+  chest), and any bend at the neck or Spine_02 squeezes the CoralSnapper's crest spines together until they cross.
+  So the neck takes 20 deg, Spine_02 none, and the tail half 116 deg: it reads as a stiff, straight-backed fish with
+  its tail curled up, not a round C. A gentler curl doesn't fit 4 fish in the starter cooler.
 - **Cooler display cap 1.0.** Fish bigger than the reference are shown at reference size in the cooler (details in
   "Cooler display"). Adding a species changes the slot envelope: rerun `anim_fish_cooler.py` and update the slot
   table (the recipe fails loudly if 4 fish no longer fit at 1.0).

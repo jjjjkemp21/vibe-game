@@ -1,0 +1,4 @@
+# UE template leftovers (unused by Lure); see docs/CODEMAP.md "Ignore".
+Source/VibeGame/Variant_*/
+# Unanchored too: rg matches parent ignore files relative to the search root, so the line above misses `rg X Source`.
+Variant_*/

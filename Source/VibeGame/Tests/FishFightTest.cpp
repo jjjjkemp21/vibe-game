@@ -952,7 +952,8 @@ bool FLureFightSlackThrowsHook::RunTest(const FString& Parameters)
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLureFightServerAuthority, "Project.Fishing.Fight.ServerAuthority", LureFishFightTest::TestFlags)
 bool FLureFightServerAuthority::RunTest(const FString& Parameters)
 {
-	// What a client can send: the three T-006 requests plus its reel button, nothing about the fish or the outcome.
+	// What a client can send: the three T-006 requests, its reel button and (T-028) its rod aim + reel step, nothing about the fish
+	// or the outcome. The rod input's own checks: Project.Fishing.Fight.Rod.ServerAuthorityOverTheRod.
 	UClass* Class = ULureFishingComponent::StaticClass();
 	TSet<FString> ServerRpcs;
 	for (TFieldIterator<UFunction> It(Class, EFieldIteratorFlags::ExcludeSuper); It; ++It)
@@ -962,10 +963,14 @@ bool FLureFightServerAuthority::RunTest(const FString& Parameters)
 			ServerRpcs.Add(It->GetName());
 		}
 	}
-	TestEqual(TEXT("server RPCs = ServerCast, ServerHook, ServerReelIn, ServerSetReeling"), ServerRpcs.Num(), 4);
-	for (const TCHAR* Name : { TEXT("ServerCast"), TEXT("ServerHook"), TEXT("ServerReelIn"), TEXT("ServerSetReeling") })
+	TestEqual(TEXT("server RPCs = ServerCast, ServerHook, ServerReelIn, ServerSetReeling, ServerSetFightInput"), ServerRpcs.Num(), 5);
+	for (const TCHAR* Name : { TEXT("ServerCast"), TEXT("ServerHook"), TEXT("ServerReelIn"), TEXT("ServerSetReeling"), TEXT("ServerSetFightInput") })
 	{
 		TestTrue(FString::Printf(TEXT("%s is a server RPC"), Name), ServerRpcs.Contains(Name));
+	}
+	if (const UFunction* FightInput = Class->FindFunctionByName(TEXT("ServerSetFightInput")))
+	{
+		TestFalse(TEXT("ServerSetFightInput is unreliable (a stream of aim updates; the reel button stays reliable)"), FightInput->HasAnyFunctionFlags(FUNC_NetReliable));
 	}
 	const UFunction* SetReeling = Class->FindFunctionByName(TEXT("ServerSetReeling"));
 	if (TestNotNull(TEXT("ServerSetReeling"), SetReeling))
@@ -1519,13 +1524,15 @@ bool FLureFightVisuals::RunTest(const FString& Parameters)
 	{
 		AddInfo(TEXT("SK_FPArms or SM_Rod_Basic is not imported here: the rod bend check is skipped."));
 	}
-	if (const ULureFishingLineComponent* Line = Fishing->GetLine(); Line && Line->GetPoints().Num() >= 3)
+	if (const ULureFishingLineComponent* Line = Fishing->GetLine(); Line && Line->IsLineVisible() && Line->GetPoints().Num() >= 3)
 	{
+		// T-032: the physics line's length follows the fight's tension (docs/specs/fishing-line.md): fully straight at the line's strength.
 		const TArray<FVector>& Points = Line->GetPoints();
-		const FVector Mid = Points[Points.Num() / 2];
-		const FVector Straight = FMath::Lerp(Points[0], Points.Last(), 0.5f);
-		const float ExpectedSag = FLureFight::LineSag(QuickProfile().LineSag, Net.GetTension01(), T) * static_cast<float>(FVector::Dist(Points[0], Points.Last()));
-		TestNearlyEqual(TEXT("the line sags by the tension rule"), static_cast<float>(Straight.Z - Mid.Z), ExpectedSag, FMath::Max(2.f, 0.1f * ExpectedSag));
+		const float Chord = static_cast<float>(FVector::Dist(Points[0], Points.Last()));
+		TestNearlyEqual(TEXT("the line shows the fight's tension"), Line->GetTension(), FMath::Clamp(Net.GetTension01(), 0.f, 1.f), 1.0e-4f);
+		TestNearlyEqual(TEXT("the line's length target follows the tension rule"), Line->GetTargetRestLength(),
+			FLureFishingLineRules::TargetRestLength(Chord, Net.GetTension01(), -1.f, Line->GetTuning()), 0.5f);
+		TestTrue(TEXT("the line is never shorter than the straight distance"), Line->GetRestLength() >= Chord - 0.5f);
 	}
 	else
 	{

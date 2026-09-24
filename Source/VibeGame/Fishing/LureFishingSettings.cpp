@@ -13,6 +13,8 @@ ULureFishingSettings::ULureFishingSettings()
 	// Defaults mirror Config/DefaultGame.ini.
 	FishingTable = TSoftObjectPtr<UDataTable>(FSoftObjectPath(TEXT("/Game/Data/DT_Fishing.DT_Fishing")));
 	DefaultProfileRow = TEXT("Default");
+	FishingLineTable = TSoftObjectPtr<UDataTable>(FSoftObjectPath(TEXT("/Game/Data/DT_FishingLine.DT_FishingLine")));
+	FishingLineRow = TEXT("Default");
 
 	RodMesh = TSoftObjectPtr<UStaticMesh>(FSoftObjectPath(TEXT("/Game/Art/Props/SM_Rod_Basic.SM_Rod_Basic")));
 	BobberMesh = TSoftObjectPtr<UStaticMesh>(FSoftObjectPath(TEXT("/Game/Art/Props/SM_Bobber.SM_Bobber")));
@@ -31,6 +33,8 @@ ULureFishingSettings::ULureFishingSettings()
 	DefaultRegion = TEXT("Region.Tropical");
 
 	CastKeys = { EKeys::LeftMouseButton, EKeys::Gamepad_RightTrigger };
+	ReelFasterKeys = { EKeys::MouseScrollUp, EKeys::Gamepad_RightShoulder }; // T-028
+	ReelSlowerKeys = { EKeys::MouseScrollDown, EKeys::Gamepad_LeftShoulder };
 
 	// Reel fight and gear (T-007).
 	GearTable = TSoftObjectPtr<UDataTable>(FSoftObjectPath(TEXT("/Game/Data/DT_Gear.DT_Gear")));

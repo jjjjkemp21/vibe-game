@@ -39,4 +39,12 @@ struct FFishDataValidator
 	 *  field is already an import problem). TableName names the table in problems (e.g. "DT_FishRarity").
 	 */
 	static TArray<FString> ValidateJsonSource(const FString& Json, const UScriptStruct* RowStruct, const FString& TableName);
+
+	/**
+	 *  The same raw check for a CSV table source (data/tables/DT_*.csv; T-028b O7): every int or float column (enums excepted)
+	 *  must hold a plain number (ints: no fraction), every bool column True/False, and every column must be a field of RowStruct
+	 *  (the first column is the row name). Why: the engine's CSV import reads the number at the start of a cell and drops the
+	 *  rest without a problem ("0.3x" -> 0.3, "45deg" -> 45, "fast" -> 0, an int "three" -> garbage), so Validate can't see it.
+	 */
+	static TArray<FString> ValidateCsvSource(const FString& Csv, const UScriptStruct* RowStruct, const FString& TableName);
 };

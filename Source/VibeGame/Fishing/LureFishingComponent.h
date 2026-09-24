@@ -9,6 +9,7 @@
 #include "Fishing/FishFight.h"
 #include "Fishing/FishFightTypes.h"
 #include "Fishing/FishingTypes.h"
+#include "Fishing/LureRodControl.h"
 #include "LureFishingComponent.generated.h"
 
 class ACharacter;
@@ -51,6 +52,11 @@ DECLARE_MULTICAST_DELEGATE_TwoParams(FLureFishingLandedNative, ULureFishingCompo
  *  species' DT_FightPattern row, DT_FishFight tuning and the equipped gear (DT_Gear, replicated Loadout). The owning client only
  *  sends its reel input (ServerSetReeling: the Cast button held while a fish is on). Clients get FightNet (tension, fish
  *  state, line out) for the placeholder HUD, the rod bend and the line. Landing hands the instance to OnFishLanded (server).
+ *
+ *  Rod steering (T-028): while a fish is on, the owner's look input steers the rod instead of the view (ConsumeLookInput,
+ *  called by ALurePlayerCharacter::DoLook) and the camera eases toward the fish and the rod; the wheel/bumpers step the reel
+ *  speed. The owner sends the aim and step compactly (ServerSetFightInput, unreliable, FightInputSendSeconds); the server
+ *  clamps them and simulates; FightNet carries the rod angle back for other players' rod and line. Helpers: LureRodControl.h.
  */
 UCLASS(ClassGroup=(Lure), meta=(BlueprintSpawnableComponent))
 class ULureFishingComponent : public UActorComponent
@@ -229,6 +235,12 @@ public:
 	/** Brings the line in; Reason None = the player's choice. A hooked fish is lost. */
 	void AuthorityReelIn(ELureCastBlock Reason = ELureCastBlock::None);
 
+	/** Server: the owner was teleported (ALurePlayerCharacter::TeleportSucceeded). A hooked fish is lost (reason Teleported). T-028b. */
+	void AuthorityOwnerTeleported();
+
+	/** Server: the owner's controller left the pawn (ALurePlayerCharacter::UnPossessed). A hooked fish is lost (reason Unpossessed). T-028b. */
+	void AuthorityOwnerUnpossessed();
+
 	/** Fish tables for bites (tests). Default: UFishSettings::LoadTables on the first bite. */
 	void SetFishTables(const FFishTables& InTables);
 
@@ -270,6 +282,44 @@ public:
 
 	/** Tables for the fight (tests). Null = the built-in data for that table. Default: the settings' tables. */
 	void SetFightTables(const UDataTable* InGearTable, const UDataTable* InPatternTable, const UDataTable* InFightTable);
+
+	// ---- Rod steering (T-028; docs/specs/reel-fight-rules.md "Rod steering") ----
+
+	/** Owning client: a fish is on and the fight runs, so the look input steers the rod (and the camera follows the fish). */
+	UFUNCTION(BlueprintPure, Category="Lure|Fishing|Fight")
+	bool IsSteeringRod() const;
+
+	/**
+	 *  Owning client: look input (degrees this frame: yaw right, pitch up). While steering it moves the rod aim and returns
+	 *  true (consumed: the view must not turn); otherwise false and nothing changes.
+	 */
+	bool ConsumeLookInput(float YawDegrees, float PitchDegrees);
+
+	/** Owning client, while steering: the reel speed one step faster (+1) or slower (-1), within DT_FishFight ReelSteps. */
+	UFUNCTION(BlueprintCallable, Category="Lure|Fishing|Fight")
+	void StepReelSpeed(int32 Delta);
+
+	/** The reel speed step, 0-based: the owner's own choice (kept between fights), for other machines the server's. */
+	UFUNCTION(BlueprintPure, Category="Lure|Fishing|Fight")
+	int32 GetReelStep() const;
+
+	/** The rod aim now, -1..1 (X = yaw, + right of the line; Y = pitch, + pulled back): the owner's live aim, others' the server's. */
+	UFUNCTION(BlueprintPure, Category="Lure|Fishing|Fight")
+	FVector2D GetRodAim() const;
+
+	/** GetRodAim eased (DT_FishFight RodAimBlendTime), back to 0 after the fight: the arms' rod-aim aim offset reads this. */
+	UFUNCTION(BlueprintPure, Category="Lure|Fishing|Fight")
+	FVector2D GetRodAimForAnimation() const { return RodAimVisual; }
+
+	/**
+	 *  Server: the owner's rod input (ServerSetFightInput unpacks into this). Ignored unless FightId is the fight on now;
+	 *  pitch and yaw are clamped to [-1, 1] (non-finite = 0) and the step to a real one. It is only input: the server's own
+	 *  simulation decides the tension and the outcome.
+	 */
+	void AuthoritySetFightInput(uint8 FightId, float RodPitch, float RodYaw, int32 ReelStep);
+
+	/** Server: the rod input the fight runs with now (bReeling included). */
+	FLureFightInput GetServerFightInput() const;
 
 	/** Server only: a fish was landed (after the reel fight, or the AutoLandDelay debug placeholder). Hand-off to the cooler (T-010). */
 	UPROPERTY(BlueprintAssignable, Category="Lure|Fishing")
@@ -315,9 +365,16 @@ protected:
 	UFUNCTION()
 	void OnRep_Loadout();
 
-	/** The owning client's reel input (hold = true). The only fight input a client sends: the server decides the outcome. */
+	/** The owning client's reel input (hold = true). Reliable: a release must never be lost. The server decides the outcome. */
 	UFUNCTION(Server, Reliable)
 	void ServerSetReeling(bool bReeling);
+
+	/**
+	 *  T-028: the owning client's rod aim and reel step, 4 bytes (FLureRodControl::PackAxis; ReelStep 0-based), sent unreliably
+	 *  at FightInputSendSeconds while a fish is on and re-sent every FightInputResendSeconds. Only input: see AuthoritySetFightInput.
+	 */
+	UFUNCTION(Server, Unreliable)
+	void ServerSetFightInput(uint8 FightId, uint8 RodPitch, uint8 RodYaw, uint8 ReelStep);
 
 	UFUNCTION(Server, Reliable)
 	void ServerCast(float Charge01, float AimYawDegrees);
@@ -444,4 +501,41 @@ private:
 	void PlayArmsMontage(const TSoftObjectPtr<UAnimMontage>& Montage, bool bStop = false) const;
 	void UpdateFightMontages();
 	bool bReelMontagePlaying = false;
+
+	// Rod steering (T-028; LureFishingComponentRod.cpp). Owner: the aim, the reel step, what was sent. Server: the input it
+	// fights with. Every machine: the eased aim.
+	void BindRodInput(UEnhancedInputComponent& Input);
+	/** Owner, every tick: new-fight reset, the input to the server, the camera. */
+	void UpdateRodSteering(float DeltaTime);
+	/** The placeholder HUD's rod, reel and run-hint lines (while a fight is on). */
+	void AppendRodHudLines(TArray<FString>& Lines) const;
+	FLureRodAim RodAim;
+	int32 LocalReelStep = INDEX_NONE;
+	uint8 AimFightId = 0;
+	bool bAimFightValid = false;
+	bool bFightInputDirty = false;
+	double FightInputSentTime = -1000.0;
+	uint8 SentFightInput[4] = { 0, 0, 0, 0 };
+	float ServerRodPitch = 0.f;
+	float ServerRodYaw = 0.f;
+	int32 ServerReelStep = INDEX_NONE;
+	/** T-028b (O6): the server's reel-step rate limit (ULureFishingSettings::FightReelStepBurst / FightReelStepsPerSecond, a token bucket); a change over it waits here. */
+	int32 ServerPendingReelStep = INDEX_NONE;
+	float ServerReelStepTokens = -1.f; // < 0: not started (a full bucket)
+	double ServerReelStepTokenTime = 0.0;
+	/** Server: applies a held-back reel-step change once the rate limit allows it. */
+	void ApplyPendingReelStep(double Now);
+	FVector2D RodAimVisual = FVector2D::ZeroVector;
+	/** Resets the owner's aim when a new fight starts (FightNet.FightId changed); true while steering. */
+	bool SyncRodAimToFight();
+	/** Owner: sends the rod input when it changed (at most every FightInputSendSeconds) or every FightInputResendSeconds. */
+	void UpdateFightInputSend();
+	/** Owner: the camera eases toward the fish and the rod while steering. */
+	void UpdateFightCamera(float DeltaTime);
+	/** The arms and the rod of other players: the aim eased toward GetRodAim. */
+	void UpdateRodAimVisual(float DeltaTime);
+	/** The owner's arms play the rod-aim aim offset (UFPArmsAnimInstance::bRodAimOffsetInGraph): no placeholder rod turn then. */
+	bool ArmsPlayRodAim() const;
+	void PressReelFaster() { StepReelSpeed(1); }
+	void PressReelSlower() { StepReelSpeed(-1); }
 };

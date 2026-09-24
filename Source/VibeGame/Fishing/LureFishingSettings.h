@@ -45,6 +45,14 @@ public:
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category="Data")
 	FName DefaultProfileRow;
 
+	/** How the physics fishing line moves (row struct LureFishingLineRow; source data/tables/DT_FishingLine.csv; T-032). Missing = built-in tuning, logged once. */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category="Data", meta=(RequiredAssetDataTags="RowStructure=/Script/VibeGame.LureFishingLineRow"))
+	TSoftObjectPtr<UDataTable> FishingLineTable;
+
+	/** DT_FishingLine row the line uses (a line gear item can name its own later). */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category="Data")
+	FName FishingLineRow;
+
 	// ---- Assets ----
 
 	/** Rod held by the first-person arms (attached to RodAttachBone, world scale kept). */
@@ -156,6 +164,34 @@ public:
 	/** Optional separate hook button (none by default: the cast button hooks). */
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category="Controls")
 	TArray<FKey> HookKeys;
+
+	/** T-028: one reel speed step faster / slower while a fish is on (mouse wheel up / down, right / left bumper). */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category="Controls")
+	TArray<FKey> ReelFasterKeys;
+
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category="Controls")
+	TArray<FKey> ReelSlowerKeys;
+
+	/**
+	 *  T-028: while a fish is on, the owner sends its rod aim and reel step to the server (unreliable) at most this often,
+	 *  seconds, and at least every FightInputResendSeconds even when nothing changed (so a lost packet is repaired).
+	 */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category="Controls", meta=(ClampMin="0.01"))
+	float FightInputSendSeconds = 0.05f;
+
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category="Controls", meta=(ClampMin="0.05"))
+	float FightInputResendSeconds = 0.25f;
+
+	/**
+	 *  T-028b: the server's rate limit on reel-step changes (a token bucket): up to FightReelStepBurst changes at once (a quick flick
+	 *  of the wheel), then FightReelStepsPerSecond, so a twitching wheel can't change the fight's reel every frame. A change over the
+	 *  limit waits and applies as soon as the limit allows: the owner's last step always wins. FightReelStepsPerSecond 0 = no limit.
+	 */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category="Controls", meta=(ClampMin="1"))
+	int32 FightReelStepBurst = 4;
+
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category="Controls", meta=(ClampMin="0"))
+	float FightReelStepsPerSecond = 10.f;
 
 	/** Seconds a result or a refusal stays in the placeholder HUD text. */
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category="Controls", meta=(ClampMin="0"))

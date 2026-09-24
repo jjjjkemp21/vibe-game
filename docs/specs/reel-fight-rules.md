@@ -1,13 +1,16 @@
-# Reel fight rules (T-007), unreal-engineer 2026-09-23
+# Reel fight rules (T-007, rod steering T-028), unreal-engineer 2026-09-23
 
 The reel fight between "hooked" and "landed". Code: `Source/VibeGame/Fishing/FishFight.{h,cpp}` (pure simulation; the
 formulas are also in the `FishFight.h` header comment), `FishFightTypes.{h,cpp}` (gear, patterns, tuning, replicated
 state), wired into `ULureFishingComponent`. Tests: `Project.Fishing.Fight.*` (`Source/VibeGame/Tests/FishFightTest.cpp`).
+Rod steering and reel speed (T-028): section "Rod steering" below; tests `Project.Fishing.Fight.Rod.*`
+(`Tests/FishFight/RodFightTest.cpp`); balance model `tools/balance/reel_fight_model.py`.
 All numbers are PLACEHOLDER until Jimmy's playtest A.
 
 ## Decisions
-- **One input: hold to reel.** While a fish is on, holding Cast (LMB / gamepad RT) reels; releasing lets the fish run
-  against the drag. The owning client sends only `ServerSetReeling(bool)`; the server simulates and decides every outcome.
+- **Hold to reel.** While a fish is on, holding Cast (LMB / gamepad RT) reels; releasing lets the fish run against the
+  drag. The owning client sends `ServerSetReeling(bool)` (reliable) and, since T-028, its rod aim and reel step
+  (`ServerSetFightInput`, below); the server simulates and decides every outcome.
 - **Server-authoritative, deterministic.** The server runs a fixed-step sim (`SimRate` steps/s, at most 30 steps per frame
   after a hitch). The fight seed is derived from the fish record's seed (`FightSeed = HashCombine(Seed, 7)`), so the same
   fish + gear + tuning + inputs replays the same fight. Clients get `FightNet` (replicated): tension, line strength, slack
@@ -122,6 +125,127 @@ hold snaps 25-60 %, careful and run-aware lose at most 2 %, careful p10 >= 7.5 s
 - Tests pin this: `Project.Fishing.Fight.GearDecidesOutcome` (weak gear snaps, right gear lands, both for a hold-reel
   player and a scripted careful player), plus data validation, determinism, grace timers, authority and replication.
 
+## Rod steering and reel speed (T-028, 2026-09-23)
+Jimmy's playtest: "pull back on the rod or aim it down to raise or lower tension, with the mouse; if the fish runs left, angle
+the rod up and to the right; a way to set the reel speed." His decision: once a fish is hooked the MOUSE STEERS THE ROD instead
+of the view, and the camera gently follows the rod and the fish until it is landed or lost. Lead: hold click/trigger to reel,
+the mouse wheel / bumpers set the reel speed in steps, shown in the HUD text.
+
+**Decisions**
+- **Input routing.** `ALurePlayerCharacter::DoLook` hands the Look action's degrees to `ULureFishingComponent::ConsumeLookInput`
+  while `IsSteeringRod()` (the owning client, a fish on, the fight running); the view does not turn then. The Look action is
+  unchanged (mouse: degrees per count; right stick: degrees per second), so the gamepad steers the rod at the look rate and the
+  playtest driver's injected Look steers it too. The rod stays where you leave it (no spring back). Reel speed: two new Enhanced
+  Input actions, `ReelFaster` (mouse wheel up, right bumper) and `ReelSlower` (wheel down, left bumper), keys in
+  `ULureFishingSettings` (`ReelFasterKeys`, `ReelSlowerKeys`); they work only while a fish is on. The step is kept from fight
+  to fight (a reel keeps its setting); the rod starts level and centered in every fight.
+- **The aim** (`FLureRodAim`, `LureRodControl.h`): look degrees accumulate, clamped to `RodAimUpDeg` / `RodAimDownDeg` /
+  `RodAimSideDeg`, and become RodPitch (-1 dipped toward the fish .. +1 pulled back/up) and RodYaw (-1 left .. +1 right).
+  The yaw is relative to the LINE (player to fish), not the camera, so the fight needs no camera and stays deterministic.
+- **The neutral rod is the T-007 fight, bit for bit**: level, centered, at the default step (speed 1) every factor is exactly 1
+  (`Project.Fishing.Fight.Rod.NeutralRodIsTheT007Fight`). A player who never touches the mouse or the wheel fights exactly
+  as before, and every T-007 test and number above still holds.
+- **What the rod does** (each step; exact formulas in `FishFight.h`, `FLureFight::RodFactors`):
+  - Pitch pressure `P = 1 + p x PitchBackPressure` (back) or `1 + p x PitchDipPressure` (dipped). It scales the tension you
+    apply (reeling: `(Pull x ReelStrain + RodPower x ReelLoad x ReelStepLoad) x P`). The rod's power (line gained, line
+    taken while you reel) is `R = 1 + p x PitchBackPressure` (back) or `1 + p x PitchDipPower` (dipped; T-028b): **pull back =
+    pressure, dip = relief**. A dipped rod gives slack to save the line but barely works the fish (PitchDipPower 0.8 >
+    PitchDipPressure 0.5), so dipping is no longer a way to reel in fast (see T-028b below). Letting it run: `min(Pull x P, Drag)`: **the drag still caps a running fish**, so letting it run
+    never snaps the line whatever the rod does.
+  - Run direction: a move's `Side` share x its random side, when `|Side| >= SideMinShare`: the fish runs LEFT or RIGHT
+    (dives, rests, straight runs and a tired fish have no side). Side score `S = -RodYaw x RunDir`: +1 = rod fully against
+    the run, -1 = fully with it.
+  - Against the run (S > 0) the fish is **turned**: its move's clock runs `1 + S x SideTurnRate` times as fast (the run ends
+    sooner), it pulls `1 - S x SideTurnPull` as hard, and it tires `1 + S x SideDrain` times as fast. Both ways the rod's
+    power is `x (1 + S x SideLeverage)`: **with the run you lose ground** (you gain less, it takes more line). Cosmetic: a
+    turned fish swings back toward the middle.
+  - Reel speed steps: `ReelSteps` evenly from `ReelSpeedMin` to `ReelSpeedMax` x the rod's ReelSpeed; the cranking load
+    (`RodPower x ReelLoad`) x `max(0, 1 + (speed - 1) x ReelLoadPerSpeed)`: **fast gains line but builds tension**.
+- **Networking.** The owner sends `ServerSetFightInput(FightId, pitch, yaw, step)`: 4 bytes, **unreliable**, at most every
+  `FightInputSendSeconds` (0.05 s) when the aim changes, at once for a step change or a new fight, and again every
+  `FightInputResendSeconds` (0.25 s) so a lost packet is repaired. Axes are packed in a byte with 127 = exactly 0, so the
+  neutral rod stays exact on the wire. The server ignores packets with no fight on or from another fight (FightId) and clamps
+  the rest (`FLureFight::SanitizeInput`); the tension, line and outcome are only ever its own simulation. `ServerSetReeling`
+  stays reliable (a release must never be lost). `FightNet` carries RodPitch, RodYaw, ReelStep and RunSide back: other players
+  draw this player's rod tip and line from it (eased by `RodAimBlendTime`), and the HUD shows the run hint.
+- **Camera** (owner): each frame the control rotation eases (`CameraFollowTime`, the short way round) toward the fish from the
+  eye, turned by `CameraRodYawShare` / `CameraRodPitchShare` of the rod's aim. When the fish is landed or lost, the mouse turns
+  the view again from wherever the camera is (no snap).
+- **Arms**: `UFPArmsAnimInstance::RodAimPitch` / `RodAimYaw` (-1..1, eased) drive an aim offset `AO_FPArms_RodAim` (base
+  `A_FPArms_HoldRod_Idle`, poses `A_FPArms_RodAim_{Center, Up, Down, Left, Right, UpLeft, UpRight, DownLeft, DownRight}`; yaw +1
+  = tip right, pitch +1 = pulled back). Until it is wired the fishing component turns the rod mesh itself (`RodAimLook*Deg`);
+  setting `bRodAimOffsetInGraph` in ABP_FPArms' class defaults hands that over to the arms.
+- **HUD** (placeholder text): `Rod: back-right  (turning it)` / `(same way: losing line)`, `Reel 2/3 (wheel or LB/RB)`,
+  `Fish runs LEFT: pull right`.
+
+**Tuning columns** (DT_FishFight, all optional: a CSV without them imports with these values): RodAimUpDeg 35, RodAimDownDeg
+35, RodAimSideDeg 45, PitchBackPressure 0.3, PitchDipPressure 0.5 (< 0.95), PitchDipPower 0.8 (< 0.95; T-028b), SideMinShare 0.15, SideLeverage 0.5 (< 0.95),
+SideTurnRate 1.0, SideTurnPull 0.2 (< 0.95), SideDrain 1.5, ReelSteps 3 (1-9), ReelDefaultStep 2 (1-based; its speed must
+be 1, Validate checks), ReelSpeedMin 0.5, ReelSpeedMax 1.5, ReelLoadPerSpeed 1.5 (steps: speed 0.5 / 1 / 1.5, cranking load x0.25 / x1 /
+x1.75), CameraFollowTime 0.35, CameraRodYawShare 0.5, CameraRodPitchShare 0.35, RodAimLookPitchDeg 20, RodAimLookYawDeg 25,
+RodAimBlendTime 0.1. DT_FightPattern and DT_Gear are unchanged.
+
+**Why the reel step adds cranking load, not a multiple of the whole tension**: a first tune multiplied the whole reeling
+tension by the step. Then any fast reeling became a gamble at every move change (a dive under a fast reel overshot far past the
+line before a 0.3 s reaction could help: skilled play lost 21-46 % of snappers vs 7 % for careful play). Cranking faster
+loads the rod, it doesn't make the fish pull harder; with the load model skilled play is as safe as careful play on snappers.
+
+**Targets and results** (starter kit, the fight 10 m out; model = `tools/balance/reel_fight_model.py`, 300 fish rolled like
+the pipeline; C++ = `Project.Fishing.Fight.Rod.SkilledPlayBeatsHolding`, 200 real rolls; players react in 0.3 s; "skilled" =
+steers against every sideways run, eases on hard moves (rod half dipped, slowest reel), dips fully above 85 %, pumps (rod 60 %
+back, fastest reel) while the fish rests or is tired and reels fast through a gentle swim until the fish has once overpowered
+the line, with the careful watcher on the reel button):
+
+| Target | Model | C++ test (pinned) |
+|---|---|---|
+| Holding reel is unchanged (T-007 tune) | 42 % of bonefish lost, landed median 9.0 s | 82 of 200 lost (test: 25-60 %) |
+| SAFER: skilled play loses (almost) nothing | 0 % bonefish lost | 0 of 200 (test: <= 2 %) |
+| FASTER: skilled vs holding on the fish holding lands | median time x0.74 (p90 x0.92) | x0.73 (test: <= 0.85) |
+| Reference fish | 1.5 kg Common: skilled 6.8 s vs hold 9.6 s; Rare 2.04 kg (the playtest fish): hold snaps, skilled 9.8 s vs careful 13.4 s | 6 seeds each: skilled faster than hold / than careful |
+| Steering against runs alone helps | 14 % lost (vs 42 %), faster on the same fish (x0.89 in C++) | 36 vs 82 lost (test: <= 60 % of hold's losses) |
+| Steering WITH the run loses ground | same losses, x1.16 slower | x1.17 (test: >= 1.05) |
+| Rod held back / fastest reel held: riskier | 62 % / 51 % lost | 140 / 100 of 200 (test: more than hold) |
+| The snapper stays harder, skilled play no less safe | careful 7 % lost (17.6 s), skilled 6 % (15.7 s) | 100 rolls: skilled 5, careful 6 lost; skilled snapper 15.0 s vs bonefish 8.5 s |
+| Reef kit bonefish | hold 6.7 s, skilled 5.2 s (x0.77) | - |
+
+## T-028b: follow-ups of the T-028 senior QA (2026-09-23; QA report Saved/AgentLogs/qa/20260923-185837-T028.md)
+- **O1, rod-down posture closed.** Rod fully dipped + fastest reel + reel held + rod against the run matched skilled play
+  without watching the bar: the dip's tension relief cancelled the fast reel's extra load, and the dip cost only the same 0.5
+  of the rod's power. New column `PitchDipPower` 0.8 (the rod's power share lost when fully dipped; tension relief still
+  `PitchDipPressure`). Data only: `PitchDipPower = PitchDipPressure` restores the T-028 rod. The neutral rod is unchanged.
+  Tests: `Project.Fishing.Fight.Rod.T028b.DipIsReliefNotReeling`, `.DippedFastPostureLosesToSkilledPlay`.
+- **O2, one slack rule** (`FLureFight::IsSlack`): slack = NOT reeling and tension < `SlackShare` x base pull. It drives the
+  thrown-hook timer, the stamina recovery and the HUD. Reeling always takes up slack (whatever the rod and the reel step), so
+  reeling with the rod dipped at the slowest step never throws the hook, and the HUD never shows "Reeling." next to "Slack
+  line". Tests: `.OneSlackRule`, `.HudNeverContradictsItself`.
+- **O4 / O5.** A teleport (`APawn::TeleportTo`, e.g. `Lure.Teleport`; not a `bIsATest` probe) ends a fight: the fish is lost,
+  reason `Teleported` ("The fish got away (teleported)."). Unpossessing a pawn (a respawn, a pawn switch) ends its fight:
+  reason `Unpossessed` ("the player left"). A line with no fish on is not affected. Tests: `.TeleportEndsTheFight`,
+  `.PawnSwitchEndsTheOldFight`.
+- **O6, server rate limit on reel-step changes** (`ULureFishingSettings`, a token bucket): up to `FightReelStepBurst` (4)
+  changes at once, then `FightReelStepsPerSecond` (10; 0 = no limit). A change over the limit waits and applies when the
+  limit allows; the latest step asked for wins; asking for the step in use drops a waiting change. The aim is never held back.
+  Test: `.ServerRateLimitsReelSteps` (and `Rod.QA.Reel.WheelSpamClampsAndSendsTheLast`, updated for the wait).
+- **O7.** `FFishDataValidator::ValidateCsvSource(Csv, RowStruct, Table)` checks a CSV source's raw text: unknown columns, the
+  cell count, True/False for bools, plain numbers in number cells (whole numbers in int cells). The engine's importer
+  silently turns 'fast' into 0 or '45deg' into 45. Test: `.TextInANumberCellFailsValidation` (shipped DT_FishFight and DT_Gear pass).
+- **O8.** `Validate` requires the default reel step's speed to be 1 (`.DefaultReelStepMustBeSpeedOne`).
+- Renamed: `Project.Fishing.QA.Net.OnlyChargeAndYawCrossTheWire` -> `Project.Fishing.QA.Net.ServerRpcsTakeOnlyPlainNumbers`.
+
+**O1 numbers** (starter kit, lost / landed median; players react in 0.3 s; "advice" = QA's skilled player: rod against the
+run and a little back during a run, ease off at 90 % of the bar, reel again under 60 %; "posture" = rod fully dipped, fastest
+reel, reel held, rod against the run). Acceptance: the posture loses >= 3x as many fish or takes >= 30 % longer; skilled play
+within about 10 % of before.
+
+| | Before (T-028) | After (T-028b) |
+|---|---|---|
+| C++ bonefish 200 rolls (seed 31000): advice | 0 lost, 8.5 s | 0 lost, 8.5 s |
+| C++ bonefish: posture | 0 lost, 7.8 s | 7 lost, 12.7 s (x1.51) |
+| C++ snapper 100 rolls (seed 34000): advice | 5 lost, 18.1 s | 4 lost, 18.5 s |
+| C++ snapper: posture | - | 87 lost, 40.0 s (x2.17) |
+| Model bonefish 200 rolled: advice / posture | 0 lost 9.4 s / 1 lost 8.3 s | 0 lost 9.4 s / 3 lost 13.7 s |
+| Model snapper 200 rolled: advice / posture | 12 lost 16.4 s / 145 lost 12.5 s | 9 lost 16.3 s / 165 lost 31.0 s |
+
 ## Open questions (for Jimmy after playtest A)
 1. Snap speed: holding reel on a snapper with starter gear snaps the line in under a second. Too punishing, or the right
    "you need better gear" signal? (Knob: SnapGraceTime.)
@@ -130,6 +254,10 @@ hold snaps 25-60 %, careful and run-aware lose at most 2 %, careful p10 >= 7.5 s
    can change mid-fight?
 4. Should the tension bar warn (colour/flash) near the snap point, or stay plain text until he directs the UI?
 5. Fight length: 8-15 s for starter fish. Longer and more tense, or shorter?
+6. (T-028) Rod steering feel: how far the mouse must move for a full rod swing (RodAimSideDeg / RodAimUpDeg), how much the
+   camera follows the rod (CameraRodYawShare), and whether the rod should drift back to level on its own.
+7. (T-028) Is "Fish runs LEFT: pull right" on the HUD enough to read a run, or should the run show more (bigger swing,
+   splash) once the fish is visible (T-029)?
 
 ## Merge notes
 - QA tests expecting AutoLandDelay 1.5 (T-006 placeholder landing) must set AutoLandDelay > 0 in their fixture.
@@ -138,3 +266,15 @@ hold snaps 25-60 %, careful and run-aware lose at most 2 %, careful p10 >= 7.5 s
   `Project.Movement.QA.Eye.MidTransitionIsBetween`; fixed in `QAMovementTestUtils.cpp` and `FishingTest.cpp`).
 - After the merge the editor-operator imports `DT_Gear.csv` (LureGearRow), `DT_FightPattern.json` (LureFightPatternRow),
   `DT_FishFight.csv` (LureFishFightRow) to `/Game/Data/`, and re-imports `DT_Fishing.csv` (AutoLandDelay 0).
+- T-028: re-import `DT_FishFight.csv` (22 new optional columns; an old asset still works with the defaults). Wire the aim
+  offset `AO_FPArms_RodAim` in ABP_FPArms (see "Arms" above) and set its class default `bRodAimOffsetInGraph` = true.
+  Tests pinning the old contract, updated: `Project.Fishing.Fight.ServerAuthority` (5 server RPCs),
+  `Project.Fishing.QA.Net.OnlyChargeAndYawCrossTheWire` (byte parameters are plain numbers; renamed in T-028b to
+  `Project.Fishing.QA.Net.ServerRpcsTakeOnlyPlainNumbers`),
+  `Project.Movement.QA.Input.AllSixActionsResolveByName` (ReelFaster, ReelSlower).
+- T-028b: re-import `DT_FishFight.csv` (new optional column PitchDipPower; an old asset uses the default 0.8). Tests updated
+  for the new contract: the QA rod oracle (`Rod.QA.Sim.StepMatchesSpecWithRodInput`: dip power, one slack rule, O8-valid
+  random tuning), the T-007 oracle (`Fight.QA.Sim.StepMatchesSpecFormulas`: one slack rule), `Rod.QA.Timers.SlackWholeStepsWhenTheRodDips` (reeling dipped
+  never throws), `Rod.QA.Data.*` (PitchDipPower range), `Rod.PitchScalesTension` (dip power) and `Rod.QA.Reel.WheelSpamClampsAndSendsTheLast`
+  (the rate limit). The rod oracle's side knife-edge skip now ignores straight moves (Side 0 never runs, whatever
+  SideMinShare): with SideMinShare 0 it skipped every straight step (33 skipped of 139,736 now).

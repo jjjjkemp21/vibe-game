@@ -126,7 +126,7 @@ public:
 	UFUNCTION(BlueprintCallable, Category="Lure|Input")
 	void DoMove(float Right, float Forward);
 
-	/** Look input in degrees (yaw right, pitch up). */
+	/** Look input in degrees (yaw right, pitch up). While a fish is on it steers the rod instead (T-028, ULureFishingComponent::ConsumeLookInput). */
 	UFUNCTION(BlueprintCallable, Category="Lure|Input")
 	void DoLook(float YawDegrees, float PitchDegrees);
 
@@ -261,6 +261,10 @@ public:
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	virtual void Tick(float DeltaSeconds) override;
 	virtual void NotifyControllerChanged() override;
+	/** T-028b: a teleport (TeleportTo) ends a fight in progress (ULureFishingComponent::AuthorityOwnerTeleported). */
+	virtual void TeleportSucceeded(bool bIsATest) override;
+	/** T-028b: the controller leaving this pawn ends its fight (ULureFishingComponent::AuthorityOwnerUnpossessed). */
+	virtual void UnPossessed() override;
 	virtual void PawnClientRestart() override;
 	virtual void Restart() override;
 	virtual void OnRep_IsCrouched() override;
