@@ -206,7 +206,9 @@ by the server; clients only ask ("I pressed E on this cooler, expecting Put in")
   `Lure.CoolerSpawn` if the level has one (each player's cooler `StarterCoolerSpacing` further along its +Y, turned like
   the marker: point the marker's +X where players will stand), else at `StarterCoolerOffset` in the player start's frame
   with its front toward the start (players sharing one start, e.g. a map with one PlayerStart: the same row,
-  `StarterCoolerSpacing` apart along the start's +Y); dropped onto the floor below. One rule for both: a slot with a
+  `StarterCoolerSpacing` apart along the start's +Y), else (T-030i: no marker and no player start, where the engine
+  hands over its world settings at the origin) the same row at `StarterCoolerOffset` in the first player's pawn's yaw frame,
+  front toward that pawn, with a warning in the log; dropped onto the floor below. One rule for both: a slot with a
   cooler already standing in it (within half a spacing) is skipped, so starter coolers never stand inside each other. Respawns don't make another.
   `bSpawnStarterCooler` = False turns it off (settings).
 

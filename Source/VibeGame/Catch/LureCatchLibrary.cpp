@@ -10,6 +10,7 @@
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "Fishing/FishingSpots.h"
+#include "GameFramework/WorldSettings.h"
 #include "GameFramework/Controller.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
@@ -32,6 +33,26 @@ namespace LureCatchLibraryPrivate
 			return Controller->GetPawn();
 		}
 		return nullptr;
+	}
+
+	/** A real start spot: not null and not the world settings actor the engine falls back to on a map with no PlayerStart */
+	bool IsPlayerStartSpot(const AActor* StartSpot)
+	{
+		return IsValid(StartSpot) && !StartSpot->IsA<AWorldSettings>();
+	}
+
+	/** The first player's pawn (the first player controller with one), else PlayerState's own pawn */
+	APawn* FirstPlayerPawn(UWorld* World, const APlayerState* PlayerState)
+	{
+		for (FConstPlayerControllerIterator It = World->GetPlayerControllerIterator(); It; ++It)
+		{
+			const APlayerController* Controller = It->Get();
+			if (Controller && IsValid(Controller->GetPawn()))
+			{
+				return Controller->GetPawn();
+			}
+		}
+		return PlayerState ? PlayerState->GetPawn() : nullptr;
 	}
 
 	/**
@@ -151,7 +172,8 @@ ALureCoolerActor* ULureCatchLibrary::EnsureStarterCooler(APlayerState* PlayerSta
 		return nullptr;
 	}
 
-	// Where: a tagged spot in the level (players' coolers in a row), else next to the player's start.
+	// Where: a tagged spot in the level (players' coolers in a row), else next to the player's start, else next to the first
+	// player's pawn (T-030i).
 	TArray<const AActor*> Spots;
 	if (!Settings->CoolerSpawnTag.IsNone())
 	{
@@ -179,15 +201,27 @@ ALureCoolerActor* ULureCatchLibrary::EnsureStarterCooler(APlayerState* PlayerSta
 		const FVector Location = LureCatchLibraryPrivate::StarterRowSlot(World, Marker->GetActorTransform(), FVector::ZeroVector, Starters / Spots.Num());
 		Spot = FTransform(FRotator(0.0f, Marker->GetActorRotation().Yaw, 0.0f), Location);
 	}
-	else if (StartSpot)
+	else if (LureCatchLibraryPrivate::IsPlayerStartSpot(StartSpot))
 	{
 		// Players sharing one start (a map with one PlayerStart): the same row rule, starting at StarterCoolerOffset.
 		const FVector Location = LureCatchLibraryPrivate::StarterRowSlot(World, StartSpot->GetActorTransform(), Settings->StarterCoolerOffset, 0);
 		// Its front (+X, the latch) toward the player's start (the offset is to the side too, so not just the start's yaw + 180).
 		Spot = FTransform(FRotator(0.0f, ALureCoolerActor::GetYawFacing(Location, StartSpot), 0.0f), Location);
 	}
+	else if (const APawn* Anchor = LureCatchLibraryPrivate::FirstPlayerPawn(World, PlayerState))
+	{
+		// T-030i: no marker and no player start (a map without a PlayerStart: the engine passes its world settings, at the
+		// origin): the same row next to the first player's pawn, in its yaw frame, front toward that pawn.
+		const FTransform Frame(FRotator(0.0f, Anchor->GetActorRotation().Yaw, 0.0f), Anchor->GetActorLocation());
+		const FVector Location = LureCatchLibraryPrivate::StarterRowSlot(World, Frame, Settings->StarterCoolerOffset, 0);
+		Spot = FTransform(FRotator(0.0f, ALureCoolerActor::GetYawFacing(Location, Anchor), 0.0f), Location);
+		UE_LOG(LogLureCatch, Warning, TEXT("No %s marker and no player start: %s's starter cooler goes next to %s (add a PlayerStart or a %s marker to the level)."),
+			*Settings->CoolerSpawnTag.ToString(), *GetNameSafe(PlayerState), *GetNameSafe(Anchor), *Settings->CoolerSpawnTag.ToString());
+	}
 	else
 	{
+		UE_LOG(LogLureCatch, Warning, TEXT("No %s marker, no player start and no player pawn: no starter cooler for %s."),
+			*Settings->CoolerSpawnTag.ToString(), *GetNameSafe(PlayerState));
 		return nullptr;
 	}
 
