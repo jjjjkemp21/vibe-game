@@ -19,6 +19,8 @@
 #include "Engine/StaticMesh.h"
 #include "Engine/StaticMeshSocket.h"
 #include "Engine/World.h"
+#include "Fish/FightFishVisual.h"
+#include "Fish/LureFightFishSubsystem.h"
 #include "Fishing/FishingSpots.h"
 #include "Fishing/LureFishingSettings.h"
 #include "GameFramework/Character.h"
@@ -868,13 +870,16 @@ void ALureCoolerActor::RefreshDisplay()
 		DisplayFish.Reset();
 		DisplayKeys = Wanted;
 		UAnimSequenceBase* Pose = LureCoolerPrivate::LoadIfExists(Row.FishPose);
+		ULureFightFishSubsystem* Visuals = ULureFightFishSubsystem::Get(this);
+		const FFishVisualRow VisualRow = Visuals ? Visuals->GetVisualRow() : FFishVisualRow::GetFallbackRow();
 		for (int32 Index = 0; Index < Shown; ++Index)
 		{
 			const FLureCaughtFish& Record = Fish[Fish.Num() - Shown + Index];
 			const FLureCoolerDisplaySlot& Slot = Row.Slots[Index];
 			UStreamableRenderAsset* Asset = Subsystem ? Subsystem->LoadSpeciesMesh(Record.Fish.SpeciesId) : nullptr;
 			const float Reference = Subsystem ? Subsystem->GetSpeciesReferenceWeight(Record.Fish.SpeciesId) : 0.0f;
-			const float WeightScale = (Reference > 0.0f && Record.Fish.WeightKg > 0.0f) ? FMath::Pow(Record.Fish.WeightKg / Reference, 1.0f / 3.0f) : 1.0f;
+			// The fight fish's scale (T-030d: no size jump from hand to cooler), then the cooler's own fit cap below.
+			const float WeightScale = FFightFishVisual::WeightScale(Record.Fish.WeightKg, Reference, VisualRow);
 			const float Scale = FMath::Clamp(FMath::Min(WeightScale, Row.MaxFishScale), 0.05f, 10.0f);
 			UPrimitiveComponent* Shown3D = nullptr;
 			if (USkeletalMesh* Skeletal = Cast<USkeletalMesh>(Asset))

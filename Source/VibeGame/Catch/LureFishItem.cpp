@@ -16,6 +16,8 @@
 #include "Engine/StaticMesh.h"
 #include "Engine/StaticMeshSocket.h"
 #include "Engine/World.h"
+#include "Fish/FightFishVisual.h"
+#include "Fish/LureFightFishSubsystem.h"
 #include "Fishing/FishingSpots.h"
 #include "Fishing/LureFishingComponent.h"
 #include "Fishing/LureFishingLineComponent.h"
@@ -528,9 +530,11 @@ void ALureFishItem::EnsureLook()
 		}
 	}
 
-	// Size: the meshes are modeled at the species' reference weight (fishkit rule): scale = (Weight / Reference)^(1/3).
+	// Size: the same scale as the fight fish on the line (T-030d), (Weight / Reference)^(1/3) clamped by DT_FishVisual
+	// MinScale..MaxScale, so the fish does not jump in size when it lands in the hand.
 	const float Reference = Subsystem ? Subsystem->GetSpeciesReferenceWeight(Catch.Fish.SpeciesId) : 0.0f;
-	WeightScale = (Reference > 0.0f && Catch.Fish.WeightKg > 0.0f) ? FMath::Clamp(FMath::Pow(Catch.Fish.WeightKg / Reference, 1.0f / 3.0f), 0.25f, 4.0f) : 1.0f;
+	ULureFightFishSubsystem* Visuals = ULureFightFishSubsystem::Get(this);
+	WeightScale = FFightFishVisual::WeightScale(Catch.Fish.WeightKg, Reference, Visuals ? Visuals->GetVisualRow() : FFishVisualRow::GetFallbackRow());
 	const bool bPlaceholder = !SkeletalFish->IsVisible() && StaticFish->GetStaticMesh() && StaticFish->GetStaticMesh()->GetPathName().StartsWith(TEXT("/Engine/"));
 	StaticFish->SetRelativeScale3D((bPlaceholder ? LureFishItemPrivate::PlaceholderScale : FVector::OneVector) * WeightScale);
 	SkeletalFish->SetRelativeScale3D(FVector(WeightScale));
