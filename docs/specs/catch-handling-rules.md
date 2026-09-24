@@ -171,7 +171,11 @@ by the server; clients only ask ("I pressed E on this cooler, expecting Put in")
 ## Focus and input
 - Keys: **Interact** (E / gamepad X, existing) and the new **AltInteract** (F / gamepad Y). LMB stays the fishing
   button (never drops a fish: habit clicks must not throw a catch away).
-- What a key does: the target you look at if it has a verb for that key; else the item in your hands; else your
+- **Your own hanging fish wins E first (T-030j):** while your own landed fish hangs on your line and you can grab it,
+  E takes it off the hook whatever you look at (a counter's Sell, a cooler, anything else); F keeps the rules below
+  (with a fish on the hook the counter and cooler offer nothing, so F lets it go). A friend's hanging fish never changes
+  your keys. Once your hook is empty (grabbed or let go), the counter's Sell prompt shows again.
+- What a key does otherwise: the target you look at if it has a verb for that key; else the item in your hands; else your
   hanging fish. The target you look at (registered interactables within their reach): **first what the view ray
   actually hits** (the nearest hit; each target's hit shape: a cooler its box, a counter its focus box, a fish or item
   its `GetFocusRadius` sphere), **else** the smallest angle between your view and the target's shape, at most
