@@ -113,6 +113,8 @@ bool FLureCatchRow::Validate(FString& OutProblem) const
 		{ TEXT("PutDownMaxFall"), PutDownMaxFall, 0.0f, 100000.0f, true },
 		{ TEXT("LidOpenPitch"), LidOpenPitch, 0.0f, 180.0f, false },
 		{ TEXT("LidOpenTime"), LidOpenTime, 0.0f, 10.0f, false },
+		{ TEXT("HoldFishScaleSmall"), HoldFishScaleSmall, 0.0f, 10.0f, true },
+		{ TEXT("HoldFishScaleLarge"), HoldFishScaleLarge, 0.0f, 10.0f, true },
 	};
 	for (const FCheck& Check : Checks)
 	{
@@ -122,6 +124,11 @@ bool FLureCatchRow::Validate(FString& OutProblem) const
 			OutProblem = FString::Printf(TEXT("%s %g must be in %s%g, %g]"), Check.Name, Check.Value, Check.bExclusiveMin ? TEXT("(") : TEXT("["), Check.Min, Check.Max);
 			return false;
 		}
+	}
+	if (!(HoldFishScaleLarge > HoldFishScaleSmall))
+	{
+		OutProblem = FString::Printf(TEXT("HoldFishScaleLarge %g must be above HoldFishScaleSmall %g"), HoldFishScaleLarge, HoldFishScaleSmall);
+		return false;
 	}
 	return true;
 }

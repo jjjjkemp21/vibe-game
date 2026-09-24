@@ -172,6 +172,17 @@ struct FLureCatchRow : public FTableRowBase
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Cooler", meta=(ClampMin="0", Units="s"))
 	float LidOpenTime = 0.25f;
 
+	/**
+	 *  T-030c: the held fish's scale (its visual weight scale S) that A_FPArms_HoldFish_Idle is authored for; at or below it
+	 *  UFPArmsAnimInstance::HoldFishSizeAlpha is 0 (SK_FPArms.anim.md "HoldFish"), > 0
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Held Fish", meta=(ClampMin="0.01", DataTableImportOptional))
+	float HoldFishScaleSmall = 1.0f;
+
+	/** T-030c: the scale A_FPArms_HoldFish_Large_Idle is authored for (the trophy hold); at or above it the alpha is 1, > HoldFishScaleSmall */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Held Fish", meta=(ClampMin="0.01", DataTableImportOptional))
+	float HoldFishScaleLarge = 1.6f;
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Catch", meta=(MultiLine=true, DataTableImportOptional))
 	FString DevComment;
 

@@ -62,5 +62,18 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Lure|Arms")
 	bool bRodAimOffsetInGraph = false;
 
+	/**
+	 *  T-030c: blend alpha of the HoldFish pose, A_FPArms_HoldFish_Idle (0, a fish at DT_Catch HoldFishScaleSmall) to
+	 *  A_FPArms_HoldFish_Large_Idle (1, at HoldFishScaleLarge), from the held fish's visual scale. 0 without a fish in hand.
+	 */
+	UPROPERTY(Transient, BlueprintReadOnly, Category="Lure|Arms")
+	float HoldFishSizeAlpha = 0.f;
+
+	/**
+	 *  clamp((FishScale - ScaleSmall) / (ScaleLarge - ScaleSmall), 0, 1); 0 for an unknown scale (<= 0, not finite) or a
+	 *  bad range (ScaleLarge <= ScaleSmall). Spec: SK_FPArms.anim.md "HoldFish".
+	 */
+	static float ComputeHoldFishSizeAlpha(float FishScale, float ScaleSmall, float ScaleLarge);
+
 	virtual void NativeUpdateAnimation(float DeltaSeconds) override;
 };
