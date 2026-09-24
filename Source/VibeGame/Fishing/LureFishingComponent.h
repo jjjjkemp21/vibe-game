@@ -493,7 +493,12 @@ private:
 	void UpdateVisuals(float DeltaTime);
 	void EnsureRod();
 	void EnsureBobberAndLine();
-	void UpdateRod();
+	void UpdateRod(float DeltaTime);
+	/**
+	 *  The placeholder rod bend's tension: the fight's Tension01 during a fight, then eased back to 0 (TensionFallTime) instead of
+	 *  springing back in one frame, which jerked the rod tip up and flung a just-landed fish over it (T-032b).
+	 */
+	float RodBendTension01 = 0.f;
 	void ComputeBobberPose(double Now, FVector& OutLocation, FRotator& OutRotation) const;
 	void GetViewer(FVector& OutLocation, float& OutFovDeg) const;
 	void HandleStateChanged(const FLureFishingNetState& Previous);

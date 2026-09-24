@@ -260,4 +260,11 @@ struct FLureFight
 
 	/** Line sag while a fish is on: BaseSag x clamp(1 - Tension01 / TautTension, 0, 1) (taut under load, sagging when slack). */
 	static float LineSag(float BaseSag, float Tension01, const FLureFishFightRow& Tuning);
+
+	/**
+	 *  The tension the physics line shows during a fight (0..1, 1 = pulled straight): clamp(Tension01 / TautTension, 0, 1).
+	 *  A fish pulling on the line with TautTension of its strength or more pulls it straight; below that it sags
+	 *  (docs/specs/reel-fight-rules.md, T-032b). NaN = 0 (slack), +Inf = 1; a bad TautTension counts as 0.3.
+	 */
+	static float LineTension(float Tension01, const FLureFishFightRow& Tuning);
 };

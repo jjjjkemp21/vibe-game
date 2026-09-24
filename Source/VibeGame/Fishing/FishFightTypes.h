@@ -438,7 +438,7 @@ struct FLureFishFightRow : public FTableRowBase
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Look", meta=(ClampMin="0"))
 	float RodShakeDeg = 2.5f;
 
-	/** The line is drawn fully taut from this share of its strength; below it, it sags toward DT_Fishing LineSag. */
+	/** The line is drawn fully taut from this share of its strength; below it, it sags (FLureFight::LineTension feeds the physics line). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Look", meta=(ClampMin="0.01", ClampMax="1"))
 	float TautTension = 0.3f;
 

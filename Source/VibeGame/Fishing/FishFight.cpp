@@ -467,3 +467,13 @@ float FLureFight::LineSag(float BaseSag, float Tension01, const FLureFishFightRo
 	const float Taut = FMath::Max(0.01f, Tuning.TautTension);
 	return FMath::Max(0.f, BaseSag) * FMath::Clamp(1.f - FMath::Max(0.f, LureFishFightPrivate::Finite(Tension01)) / Taut, 0.f, 1.f);
 }
+
+float FLureFight::LineTension(float Tension01, const FLureFishFightRow& Tuning)
+{
+	if (FMath::IsNaN(Tension01))
+	{
+		return 0.f;
+	}
+	const float Taut = FMath::IsFinite(Tuning.TautTension) ? FMath::Clamp(Tuning.TautTension, 0.01f, 1.f) : 0.3f;
+	return Tension01 >= Taut ? 1.f : FMath::Clamp(Tension01 / Taut, 0.f, 1.f); // +Inf >= Taut: 1
+}
