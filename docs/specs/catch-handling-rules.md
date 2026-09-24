@@ -171,6 +171,11 @@ by the server; clients only ask ("I pressed E on this cooler, expecting Put in")
 - Selling (server): every fish on the counter at its current price (freshness x market), money to the **seller**, the
   items are removed, and the seller sees "Sold N fish for X coins" (T-010 notice path `ClientFishSold`). XP is not given
   again. Fish on the counter keep spoiling until sold. The seller must be within `InteractionRadius` + 150 cm.
+- A sale sells exactly the fish the seller's prompt showed, or nothing (T-030h): the Sell request carries the counter's
+  contents token as the seller's machine saw it (`ALureSellCounter::GetContentsToken`: the fish records on it, order-free).
+  If the fish on the counter changed before the server ran it (another player took one back or put one on), the sale is
+  refused, the seller gets the notice "That just changed: nothing done. Now: Sell N fish (X coins)" and their prompt
+  refreshes; pressing E again sells what it shows now. The price can still move by spoiling between prompt and sale.
 - The counter replicates (dormant after its first send) and its four settings replicate once, so a counter spawned at
   runtime works like one placed in the level. Old maps: a CoreRedirect in `Config/DefaultEngine.ini` maps
   `LureSellPoint` to `LureSellCounter`.
@@ -192,7 +197,9 @@ by the server; clients only ask ("I pressed E on this cooler, expecting Put in")
 - Network: the client sends `ServerInteract(Target, Key, Verb)`. The server checks the target (interactable, in its reach
   + `ServerRangeSlack` 150 cm) and that ITS own verb for that key is the same (so a stale prompt never does something
   else, e.g. two players taking the last fish: the second is refused), then performs it. The view angle is not
-  re-checked on the server.
+  re-checked on the server. T-030h: a verb whose prompt shows contents that can change under it has a state token
+  (`ILureInteractable::GetInteractionStateToken`; today only the counter's Sell): `ServerInteract(Target, Key, Verb,
+  ExpectedState)` sends the one the client saw and the server refuses a mismatch (with a notice). 0 = not checked.
 
 ## Network (what replicates, what each machine does)
 - Server-authoritative: every change goes through `Authority*` functions that refuse on clients (with a Warning).
