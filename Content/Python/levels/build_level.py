@@ -156,21 +156,47 @@ def ensure_palette_parent(path=PALETTE_PARENT):
     return mat
 
 
+def _mi_matches(mi, parent, scalars, vectors, exact):
+    """True when mi already has this parent and these scalar/vector overrides (exact: and no other overrides).
+    Reads the instance's own override arrays, so a value inherited from the parent counts as missing."""
+    if mi.get_editor_property("parent") != parent:
+        return False
+    have_s = {str(v.parameter_info.name): v.parameter_value for v in mi.get_editor_property("scalar_parameter_values")}
+    have_v = {str(v.parameter_info.name): v.parameter_value for v in mi.get_editor_property("vector_parameter_values")}
+    if exact and (set(have_s) != set(scalars) or set(have_v) != set(vectors)):
+        return False
+    def differs(a, b):  # stored values are float32: relative tolerance
+        return abs(a - b) > 1e-5 * max(1.0, abs(b))
+    for k, want in scalars.items():
+        if k not in have_s or differs(have_s[k], want):
+            return False
+    for k, want in vectors.items():
+        c = have_v.get(k)
+        if c is None or any(differs(a, b) for a, b in ((c.r, want.r), (c.g, want.g), (c.b, want.b), (c.a, want.a))):
+            return False
+    return True
+
+
 def ensure_palette_instance(mat_id, spec, parent):
     """MI_Lvl_<mat_id> under /Game/Materials/Level, created or updated from {"color", "roughness", "emissive"}."""
     name = "MI_Lvl_" + mat_id
     path = PALETTE_DIR + "/" + name
     mel = unreal.MaterialEditingLibrary
+    scalars = {"Roughness": float(spec.get("roughness", 0.8)), "Emissive": float(spec.get("emissive", 0.0))}
+    vectors = {"Color": hex_to_linear_color(spec["color"])}
     if unreal.EditorAssetLibrary.does_asset_exist(path):
         mi = unreal.load_asset(path)
+        if _mi_matches(mi, parent, scalars, vectors, exact=False):
+            return mi  # unchanged: don't re-save (keeps the .uasset out of git diffs)
     else:
         tools = unreal.AssetToolsHelpers.get_asset_tools()
         mi = tools.create_asset(name, PALETTE_DIR, unreal.MaterialInstanceConstant,
                                 unreal.MaterialInstanceConstantFactoryNew())
     mel.set_material_instance_parent(mi, parent)
-    mel.set_material_instance_vector_parameter_value(mi, "Color", hex_to_linear_color(spec["color"]))
-    mel.set_material_instance_scalar_parameter_value(mi, "Roughness", float(spec.get("roughness", 0.8)))
-    mel.set_material_instance_scalar_parameter_value(mi, "Emissive", float(spec.get("emissive", 0.0)))
+    for k, v in vectors.items():
+        mel.set_material_instance_vector_parameter_value(mi, k, v)
+    for k, v in scalars.items():
+        mel.set_material_instance_scalar_parameter_value(mi, k, v)
     mel.update_material_instance(mi)
     unreal.EditorAssetLibrary.save_loaded_asset(mi, False)
     return mi
@@ -428,8 +454,14 @@ def ensure_water_instance(mat_id, spec, parent):
     name = "MI_Lvl_" + mat_id
     path = PALETTE_DIR + "/" + name
     mel = unreal.MaterialEditingLibrary
+    p = water_params(spec)
+    vectors = {"Color": hex_to_linear_color(p["color"])}
+    vectors.update({param: hex_to_linear_color(p[key]) for param, key in _WATER_VECTORS})
+    scalars = {param: float(p[key]) for param, key in _WATER_SCALARS}
     if unreal.EditorAssetLibrary.does_asset_exist(path):
         mi = unreal.load_asset(path)
+        if _mi_matches(mi, parent, scalars, vectors, exact=True):
+            return mi  # unchanged: don't re-save (keeps the .uasset out of git diffs)
     else:
         mi = unreal.AssetToolsHelpers.get_asset_tools().create_asset(name, PALETTE_DIR, unreal.MaterialInstanceConstant,
                                                                      unreal.MaterialInstanceConstantFactoryNew())
@@ -437,12 +469,10 @@ def ensure_water_instance(mat_id, spec, parent):
     # Drop overrides the old palette parent left behind (Emissive), so the instance holds exactly the water params.
     mi.set_editor_property("scalar_parameter_values", [])
     mi.set_editor_property("vector_parameter_values", [])
-    p = water_params(spec)
-    mel.set_material_instance_vector_parameter_value(mi, "Color", hex_to_linear_color(p["color"]))
-    for param, key in _WATER_VECTORS:
-        mel.set_material_instance_vector_parameter_value(mi, param, hex_to_linear_color(p[key]))
-    for param, key in _WATER_SCALARS:
-        mel.set_material_instance_scalar_parameter_value(mi, param, float(p[key]))
+    for param, v in vectors.items():
+        mel.set_material_instance_vector_parameter_value(mi, param, v)
+    for param, v in scalars.items():
+        mel.set_material_instance_scalar_parameter_value(mi, param, v)
     mel.update_material_instance(mi)
     unreal.EditorAssetLibrary.save_loaded_asset(mi, False)
     return mi
