@@ -135,6 +135,23 @@ FLureResolvedInteraction ULureInteractionComponent::ResolveInteraction(ELureInte
 	{
 		return Result;
 	}
+	// T-030j: while your own landed fish hangs on your line, E takes it off the hook, whatever you look at (a counter's Sell,
+	// a cooler). The targets hide their E verbs while a fish hangs too; this rule makes the priority explicit here.
+	if (Key == ELureInteractKey::Primary)
+	{
+		const ULureHandsComponent* Hands = ULureHandsComponent::Get(Pawn);
+		if (ALureFishItem* Hanging = Hands ? Hands->GetHangingFish() : nullptr)
+		{
+			const FLureInteraction Interaction = Hanging->GetInteraction(Pawn, Key);
+			if (Interaction.HasVerb())
+			{
+				Result.Target = Hanging;
+				Result.Verb = Interaction.Verb;
+				Result.Prompt = Interaction.Prompt;
+				return Result;
+			}
+		}
+	}
 	AActor* Focus = FindFocusedInteractable();
 	const ILureInteractable* Interactable = Cast<ILureInteractable>(Focus);
 	if (!Interactable)
