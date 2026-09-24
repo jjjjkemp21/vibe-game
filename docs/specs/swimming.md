@@ -51,6 +51,10 @@ Code: `Source/VibeGame/Character/LureSwimMovement.cpp` (movement), `LureWaterVol
   owning client of a server teleport, the correction brings the server's mode and no plan; no further corrections.
 - **Ladders** (`ALureLadder`) allow higher edges: a swimmer in the ladder's grab zone who presses Jump climbs to the
   edge above it (up to the ladder's `MaxClimbHeight`, default 300 cm), whichever way they face.
+- **Holding Jump works too** (playtest 2026-09-23 bug 2): while swimming with Jump held, every move carries the Jump
+  flag again (`ALurePlayerCharacter::CheckJumpInput`), so swimming into a ladder's zone or a climbable edge with Jump
+  already held climbs on arrival. Only the flag changes (see "Networking contract"); replays use the saved flags. Out of
+  the water a held Jump does nothing new (no repeat jump, no ledge climb). Tests `Project.Movement.Swim.Net.HeldJump*`.
 - **Fishing (T-006):** `ALurePlayerCharacter::IsSwimming()` is true from falling in until standing on land again (the
   climb included); `OnSwimStateChanged(bool)` fires on every machine when it changes. Swimming cancels fishing, and the
   climbs (`MOVE_Custom`: ClimbOut, LedgeClimb) are busy too (fishing-rules.md, "Swimming and climbing"). Fishing reads

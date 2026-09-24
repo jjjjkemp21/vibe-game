@@ -4,6 +4,28 @@ Format: `- [ ] T-### Title (owner) - acceptance: ... In progress: <agent>, start
 Done tasks move to "Done" with their commit hash. Read the "In progress" markers before starting work.
 Last processed playtest folder: (none)
 
+## Status 2026-09-23 ~18:15 (lead): see the memory snapshot for agent IDs
+A2 lanes:
+- eng1 T-027: built 740/740; QA plus water-area painting running
+- eng2 T-028: built 725/725; senior QA running
+- eng3 T-029: QA found 2 minor bugs, junior fixing
+- eng4 T-030: building (senior)
+- eng5 T-032: MERGED to main (b799ae6), 763/763 after merging main
+Curled-fish art fixes running.
+Then: merge all (git merge main in each lane, then ff), editor imports + ABP work, level rebuild, full A2 playtest, designer, push.
+
+## Status 2026-09-23 ~17:10 (lead)
+Merged since the push:
+- ladder climbs with Jump held (83e36f4; main 716/716)
+- clear shallow water (259937c)
+- shop light and haze (6d4639f)
+- cooler model final (11a483a: rim handles, weathered; designer-approved)
+- arm clips: rod aim + hold fish designer-approved (f2c8a46); carry front-wall tweak in progress
+Running:
+- T-027 (eng1), T-028 (eng2), T-030 (eng4), T-032 (eng5)
+- T-029 QA (eng3)
+- A_Fish_Curled + cooler slots
+
 ## Status 2026-09-23 ~16:00 (lead)
 **Pushed to GitHub: origin/main 4d64f2c (2026-09-23, e74801b..4d64f2c). Janitor ran after the push.**
 Milestone A features are merged and passed the release gate: build green, full suite 714/714 (Saved/AgentLogs/tests/20260923-151434), Project.Fishing 178/178 with the 16:00 clock, final playtest PASS (Saved/AgentLogs/playtest/20260923-152855-final-gate/report.md), designer APPROVED WITH CHANGES, no must-fix (Saved/AgentLogs/design/20260923-153500-release-gate.md).
@@ -40,11 +62,11 @@ All tuning (movement speeds, gear stats, fish, XP curve, noise radii, shark beha
 
 ### Milestone A2: Jimmy's playtest redesign (2026-09-23; design in GAME_DESIGN.md "Player verbs" and "Collect")
 Contracts between lanes: T-027 owns the pre-bite phase (where and what can bite, hot spots); T-028 owns the fight phase (Hooked to Landed/Lost, rod input, reel speed); T-030 owns everything after Landed (fish item, hand, cooler, selling). Each keeps its changes to LureFishingComponent small and in separate files where possible.
-- [ ] T-027 Fish anywhere + hot spots (unreal-engineer-senior-max; then level-designer-mid-medium paints water areas; editor-operator adds placeholder ripple/bubble VFX) - acceptance: every body of water can be fished; the species come from the water area (habitat) + depth + time; no "Nothing is biting here" in valid water (the spot rule is gone); hot spots (bubbling/rippling) appear in valid water, last and move per data, and boost rarity/size/value; data-driven (DT_HotSpot or similar), replicated, tested. In progress: unreal-engineer-senior-max in lane eng1, started 2026-09-23.
+- [ ] T-027 Fish anywhere + hot spots (unreal-engineer-senior-max; then level-designer-mid-medium paints water areas; editor-operator adds placeholder ripple/bubble VFX) - acceptance: every body of water can be fished; the species come from the water area (habitat) + depth + time; no "Nothing is biting here" in valid water (the spot rule is gone); hot spots (bubbling/rippling) appear in valid water, last and move per data, and boost rarity/size/value; data-driven (DT_HotSpot or similar), replicated, tested. In progress: unreal-engineer-senior-max in lane eng1, started 2026-09-23. Water areas + hot spots painted in L_PalmKey/L_Dev_Movement (level-designer-mid-medium, cbab532). Follow-up T-027b (unreal-engineer-junior-medium, after QA): hot spots must spawn where players can reach them. Today ~80% of open-water spots land out of cast reach (OpenWaterSpawnRadius 30 m vs an ~18 m cast), and bounded areas far from every player (Gull Key) take up to 5 of the 12. Fix: a data setting HotSpotNearPlayerRadius so every spawn point is within N m of a player, plus a shorter OpenWaterSpawnRadius.
 - [ ] T-028 Mouse-steered rod fight + reel speed (unreal-engineer-senior-max; animation-artist rod-aim poses; editor-operator-senior-max aim offset in ABP_FPArms) - acceptance: once hooked, the mouse steers the rod and the camera follows the rod and fish; pull back/up raises tension, dipping lowers it; side pressure opposite the fish's run turns it, same side loses ground; hold to reel, the mouse wheel sets reel speed (fast gains line but adds tension); server-authoritative (rod aim and reel speed replicate as input); tuning in data; fight tests updated; HUD text shows rod angle and reel speed. In progress: unreal-engineer-senior-max in lane eng2; animation-artist-mid-high making the rod-aim poses in main, started 2026-09-23.
 - [ ] T-030 Catch handling + physical cooler + counter selling (unreal-engineer-senior-max; model-artist starter cooler; animation-artist hold-fish and carry-cooler poses) - acceptance: a landed fish hangs on the hook at the line's end with simple swing physics; grab it into your hand (hold pose, rod stowed); a physical, replicated cooler actor (starter capacity 4, data) you put fish into, pick up and carry (both hands, no fishing), put down and open; fish outside a cooler lose value over time (freshness in data), inside they stay fresh; at the shop, take fish out one at a time and drop them on the counter; a Sell prompt shows the counter's total and sells them; XP still on landing; replaces the abstract cooler and sell point from T-010; save data updated. In progress: unreal-engineer-senior-max in lane eng4; model-artist-junior-medium making SM_Cooler_Starter; animation-artist-mid-high making HoldFish/CarryCooler, started 2026-09-23.
 - [ ] T-029 See the fish while reeling (unreal-engineer-mid-high + editor-operator-senior-max for ABP_Fish and the water material; after T-028) - acceptance: during the fight the fish model swims and fights in the water near the line's end, playing the fish clips by fight state (Rest=Swim_Idle, runs and dives and darts, Hooked_Thrash; Landed_Flop alpha 1); fish size scaled by weight; shallow water clear enough to see it.
-- [ ] T-032 Physics fishing line (unreal-engineer-senior-max; after T-029/T-030) - acceptance: the line is a simulated rope from the rod tip that dangles when slack, floats on the water surface, and pulls straight under tension; carries the hanging fish; cosmetic on clients from replicated endpoints and tension; performance within budget.
+- [ ] T-032 Physics fishing line (unreal-engineer-senior-max; after T-029/T-030) - acceptance: the line is a simulated rope from the rod tip that dangles when slack, floats on the water surface, and pulls straight under tension; carries the hanging fish; cosmetic on clients from replicated endpoints and tension; performance within budget. Built by unreal-engineer-senior-max (0e27678), QA 25 tests (c7871be) + fixes (f14119f); merged to main b799ae6 (lane test 763/763, eng5 run 20260923-181346). Waiting on the editor re-import of DT_FishingLine and the A2 playtest.
 
 ### Milestone B: "Fishing is a game" (progression)
 - [ ] T-009 Remaining 4 fish + rarities and modifiers (model-artist + animation-artist + unreal-engineer) - acceptance: 6 species total; 3 rarity tiers (Common, Uncommon, Rare) with a visual cue; at least 4 modifiers (e.g. Heavy, Feisty, Giant, Albino) as data rows across shore, reef and deep drop; at least one dawn-only and one night-only fish; each readable in silhouette; data rows complete.

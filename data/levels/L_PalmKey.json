@@ -53,8 +53,9 @@
     "rock": {"color": "#6B7275", "roughness": 0.8, "notes": "TROPICAL rock (ART_STYLE 2026-09-23, designer M2): mid grey in sun, grey not teal in shade"},
     "rock_dark": {"color": "#3E4A4F", "roughness": 0.8, "notes": "FOGGY.ROCK: cave, cliff shadows, seabed"},
     "reef": {"color": "#F28F6B", "roughness": 0.7, "notes": "TROPICAL.REEF"},
-    "water_shallow": {"color": "#3ED1C4", "roughness": 0.3, "water": true, "notes": "TROPICAL.SHALLOW_WATER (greybox water, opaque); roughness 0.3 = less sky reflection (designer S2)"},
-    "water_deep": {"color": "#0A5560", "roughness": 0.3, "water": true, "notes": "darker than TROPICAL.DEEP_WATER #0E6F7A so the greybox plane (sky reflection, no depth) reads ~#0E6F7A on screen (designer S2)"},
+    "water_shallow": {"color": "#3ED1C4", "roughness": 0.3, "water": true, "notes": "TROPICAL.SHALLOW_WATER; roughness 0.3 = less sky reflection (designer S2). Same id and values as L_Dev_Movement (its pool); not used by Palm Key blocks since T-029 (the shelf discs use water_shelf)"},
+    "water_deep": {"color": "#0A5560", "shallow_color": "#3ED1C4", "roughness": 0.3, "water": true, "notes": "The sea (T-029, M_LevelWater): clear #3ED1C4 over the sand shelves, fading with depth to #0A5560 (darker than TROPICAL.DEEP_WATER #0E6F7A: the sky reflection lifts it on screen, designer S2). One water surface per body of water; tuning keys in build_level.py WATER_DEFAULTS"},
+    "water_shelf": {"color": "#3ED1C4", "roughness": 0.3, "water": true, "coverage": 0.0, "notes": "T-029: the shallow-shelf discs on top of the sea plane. Coverage 0 = drawn invisible in Unreal: the sea's depth fade already shows the shelves, and a second water layer would blend twice (greener, darker, a seam at every disc edge). They stay for the preview maps; raise coverage (e.g. 0.2) only for an extra shelf tint"},
     "accent": {"color": "#FF4D3D", "roughness": 0.6, "notes": "TROPICAL.ACCENT (awning, beacon bands)"},
     "lantern": {"color": "#E8C46A", "roughness": 0.6, "emissive": 4.0, "notes": "FOGGY.LANTERN, glowing"},
     "beacon_white": {"color": "#F3E9D2", "roughness": 0.7, "notes": "UI.PARCHMENT as whitewash"},
@@ -69,18 +70,19 @@
     {"id": "cave/fill_mouth", "type": "point", "at": [2750, -1500, 300], "falloff": "soft", "falloff_exponent": 2, "intensity": 10, "radius": 700, "color": "#B8D8E6", "shadows": false, "notes": "Rebuild b974f4d: lifts the outer mouth walls (sampled #020A14) toward #2E3A40-#3E4A4F, no hotspot"},
     {"id": "cave/fill_in", "type": "point", "at": [3050, -1500, 225], "falloff": "soft", "falloff_exponent": 2, "intensity": 9, "radius": 750, "color": "#C8D2D6", "shadows": false, "notes": "Designer M1: daylight spill in the crouch-in section, 40 cm under its ceiling. Soft falloff (no hotspot): about 12 lux-equivalent at the light, 0.83 of that on the walls 1.2 m away -> rock_dark walls ~#1C4860 in the preview (target luminance #2E3A40-#3E4A4F, bluer hue from the sky-blue light), rock ceiling a lighter band ~#4A89A0"},
     {"id": "cave/fill_mid", "type": "point", "at": [3500, -1500, 200], "falloff": "soft", "falloff_exponent": 2, "intensity": 7, "radius": 550, "color": "#C8D2D6", "shadows": false, "notes": "Designer M1: middle of the 60 cm crawl, 15 cm under its ceiling; walls 0.8 m away get 0.94 of it"},
-    {"id": "cave/fill_out", "type": "point", "at": [3950, -1500, 225], "falloff": "soft", "falloff_exponent": 2, "intensity": 9, "radius": 750, "color": "#C8D2D6", "shadows": false, "notes": "Designer M1: crouch-out section, mirror of fill_in"}
+    {"id": "cave/fill_out", "type": "point", "at": [3950, -1500, 225], "falloff": "soft", "falloff_exponent": 2, "intensity": 9, "radius": 750, "color": "#C8D2D6", "shadows": false, "notes": "Designer M1: crouch-out section, mirror of fill_in"},
+    {"id": "shop/fill", "type": "point", "at": [-3400, -900, 310], "falloff": "soft", "falloff_exponent": 2, "intensity": 8, "radius": 600, "color": "#FFD9A0", "shadows": false, "notes": "Designer release-gate should-item 1 (2026-09-23): warm shadowless fill in the shop stall, centered between back wall and counter, 50 cm under the roof, so the dark-wood interior and counter read friendly without blowing out."}
   ],
   "time_of_day": "tropical_day",
   "time_of_day_presets": {
     "tropical_day": {
       "exposure_ev100": 1.0,
-      "fog": {"density": 0.03, "height_falloff": 0.2, "color": "#8FD3F0", "start_distance": 3000, "max_opacity": 1.0, "sky_ambient": 0.0},
+      "fog": {"density": 0.05, "height_falloff": 0.2, "color": "#8FD3F0", "start_distance": 3000, "max_opacity": 1.0, "sky_ambient": 0.0},
       "sky": {"luminance_factor": [2.35, 2.75, 3.1]},
       "sky_light": {"intensity": 0.35},
       "notes": [
         "Rebuild b974f4d tuning: sky x1.3 (zenith #528CBE -> ~#6FA0C8), sky light 0.45->0.35 to keep shadow fill; cave fills #B8D8E6 (neutral), +50% intensity, radius 750/550/750 so the mouth outer walls (#020A14) and crawl walls (#15465C) reach #2E3A40-#3E4A4F. Designer S1 + ART_STYLE: fixed exposure, palette hex = on-screen target. EV100 1.0 = exposure scale 0.5: the 10 lux sun (x0.84 atmosphere, 50 deg) plus sky fill puts sunlit horizontal surfaces at ~1.05x their albedo before the filmic tonemapper (which keeps mid tones, compresses highlights). Tune in steps of 0.25: +0.25 = darker.",
-        "Fog: density 0.03 from 30 m (was 0.006 from 40 m). levels.layout.fog_transmittance: Gull Key at 210 m 22% fog (readable), sea edge 400 m 41%, sky 6 deg up 60%, 10 deg 42%, 20 deg 22%, Beacon from spawn 4%. Color = on-screen target (builder undoes exposure + tonemapper); sky_ambient 0 keeps the SkyAtmosphere from adding to it.",
+        "Fog: density 0.05 (designer release-gate should-item 2, 2026-09-23: x1.67 for more horizon haze; was 0.03). Old 0.03 numbers follow: from 30 m (was 0.006 from 40 m). levels.layout.fog_transmittance: Gull Key at 210 m 22% fog (readable), sea edge 400 m 41%, sky 6 deg up 60%, 10 deg 42%, 20 deg 22%, Beacon from spawn 4%. Color = on-screen target (builder undoes exposure + tonemapper); sky_ambient 0 keeps the SkyAtmosphere from adding to it.",
         "Sky: luminance x1.8/2.1/2.4 lifts the steel-blue zenith (~#3E607C in the T-005 PIE shot) toward #8FD3F0 (estimate ~#6095B9); the real-time sky light captures that too, so its intensity 0.45 keeps the shadow fill about where it was. First guesses: check the zenith in the rebuild screenshot."
       ]
     },
@@ -107,12 +109,12 @@
     {"id": "terrain/spit_b", "shape": "cone", "at": [-1900, -4800, -150], "size": [3750, 1300, 280], "yaw": -63, "mat": "sand", "group": "terrain"},
     {"id": "terrain/spit_c", "shape": "cone", "at": [-1050, -5800, -150], "size": [3800, 1300, 280], "yaw": -36, "mat": "sand", "group": "terrain"},
     {"id": "terrain/spit_d", "shape": "cone", "at": [-50, -6350, -150], "size": [2900, 1300, 280], "yaw": -18, "mat": "sand", "group": "terrain"},
-    {"id": "water/shallow_0", "shape": "cylinder", "at": [-800, 600, 1], "size": [11700, 10800, 2], "yaw": 0, "mat": "water_shallow", "collision": "none", "shadow": false, "group": "water"},
-    {"id": "water/shallow_1", "shape": "cylinder", "at": [-3000, 3000, 1], "size": [3800, 3300, 2], "yaw": 30, "mat": "water_shallow", "collision": "none", "shadow": false, "group": "water"},
-    {"id": "water/shallow_2", "shape": "cylinder", "at": [2000, -1400, 1], "size": [5000, 6000, 2], "yaw": 0, "mat": "water_shallow", "collision": "none", "shadow": false, "group": "water"},
-    {"id": "water/shallow_3", "shape": "cylinder", "at": [-1300, -4400, 1], "size": [3800, 3200, 2], "yaw": -20, "mat": "water_shallow", "collision": "none", "shadow": false, "group": "water"},
-    {"id": "water/shallow_4", "shape": "cylinder", "at": [-700, 5700, 1], "size": [4800, 2400, 2], "yaw": 0, "mat": "water_shallow", "collision": "none", "shadow": false, "group": "water"},
-    {"id": "water/shallow_5", "shape": "cylinder", "at": [4400, -1600, 1], "size": [3000, 3200, 2], "yaw": 0, "mat": "water_shallow", "collision": "none", "shadow": false, "group": "water"},
+    {"id": "water/shallow_0", "shape": "cylinder", "at": [-800, 600, 1], "size": [11700, 10800, 2], "yaw": 0, "mat": "water_shelf", "collision": "none", "shadow": false, "group": "water"},
+    {"id": "water/shallow_1", "shape": "cylinder", "at": [-3000, 3000, 1], "size": [3800, 3300, 2], "yaw": 30, "mat": "water_shelf", "collision": "none", "shadow": false, "group": "water"},
+    {"id": "water/shallow_2", "shape": "cylinder", "at": [2000, -1400, 1], "size": [5000, 6000, 2], "yaw": 0, "mat": "water_shelf", "collision": "none", "shadow": false, "group": "water"},
+    {"id": "water/shallow_3", "shape": "cylinder", "at": [-1300, -4400, 1], "size": [3800, 3200, 2], "yaw": -20, "mat": "water_shelf", "collision": "none", "shadow": false, "group": "water"},
+    {"id": "water/shallow_4", "shape": "cylinder", "at": [-700, 5700, 1], "size": [4800, 2400, 2], "yaw": 0, "mat": "water_shelf", "collision": "none", "shadow": false, "group": "water"},
+    {"id": "water/shallow_5", "shape": "cylinder", "at": [4400, -1600, 1], "size": [3000, 3200, 2], "yaw": 0, "mat": "water_shelf", "collision": "none", "shadow": false, "group": "water"},
     {"id": "ridge/w1", "shape": "box", "at": [3500, -2350, -800], "size": [1400, 1300, 1450], "yaw": 0, "mat": "rock", "group": "ridge"},
     {"id": "ridge/w2", "shape": "box", "at": [3400, -3650, -800], "size": [1400, 1400, 1400], "yaw": -6, "mat": "rock", "group": "ridge"},
     {"id": "ridge/w3", "shape": "box", "at": [3000, -4650, -800], "size": [1000, 900, 1250], "yaw": 18, "mat": "rock", "group": "ridge"},
@@ -195,12 +197,12 @@
     {"id": "reef/head_10", "shape": "sphere", "at": [-2100, 4650, -140], "size": [220, 200, 170], "yaw": -45, "mat": "reef", "group": "reef"},
     {"id": "reef/head_11", "shape": "box", "at": [-700, 5250, -140], "size": [180, 200, 160], "yaw": 25, "mat": "reef", "group": "reef"},
     {"id": "islet/sand", "shape": "cone", "at": [-19000, 17000, -300], "size": [6000, 5200, 500], "mat": "sand", "group": "islet"},
-    {"id": "islet/shallows", "shape": "cylinder", "at": [-19000, 17000, 1], "size": [4400, 3800, 2], "mat": "water_shallow", "collision": "none", "shadow": false, "group": "islet"},
+    {"id": "islet/shallows", "shape": "cylinder", "at": [-19000, 17000, 1], "size": [4400, 3800, 2], "mat": "water_shelf", "collision": "none", "shadow": false, "group": "islet"},
     {"id": "islet/palm_1", "kind": "palm", "at": [-18700, 16800, 140], "height": 850, "lean": 8, "lean_yaw": 60, "crown": 460, "trunk": 34, "group": "islet"},
     {"id": "islet/palm_2", "kind": "palm", "at": [-19400, 17300, 150], "height": 680, "lean": 12, "lean_yaw": 200, "crown": 420, "trunk": 32, "group": "islet"},
     {"id": "islet/rock", "shape": "box", "at": [-19500, 16300, 20], "size": [300, 260, 200], "yaw": 30, "roll": 6, "mat": "rock", "group": "islet"},
     {"id": "islet/pier", "kind": "pier", "to": [-17600, 15200], "width": 250, "top": 60, "deck": 20, "posts": {"spacing": 300, "size": 30, "bottom": -800, "above": 30, "mat": "wood_dark"}, "mat": "wood", "group": "islet", "from": [-18300, 16100]},
-    {"id": "water/shallow_inner_mouth", "shape": "cylinder", "at": [300, -5500, 1], "size": [1400, 1200, 2], "mat": "water_shallow", "collision": "none", "shadow": false, "group": "water"}
+    {"id": "water/shallow_inner_mouth", "shape": "cylinder", "at": [300, -5500, 1], "size": [1400, 1200, 2], "mat": "water_shelf", "collision": "none", "shadow": false, "group": "water"}
   ],
   "props": [
     {"id": "crate_scale", "mesh": "/Game/Art/Props/SM_GoldenCrate", "at": [-3550, -150, 379.4], "yaw": 10, "tags": ["ScaleReference"], "preview": {"shape": "box", "size": [100, 100, 100], "mat": "wood"}},

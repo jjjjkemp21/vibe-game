@@ -66,7 +66,7 @@ Every script writes `Saved/AgentLogs/status/<script>.json` (state, message, log 
 - `level-designer`: designs maps and play spaces (flow, pacing, fishing spots, cover and sight lines, crawl routes): plan in `docs/levels/`, layout data in `data/levels/*.json` (the source of truth), a generic builder `Content/Python/levels/build_level.py` that the editor-operator runs, and Blender layout previews. It never calls unreal-mcp itself.
 - `qa-engineer`: senior QA. Writes independent unit, data-validation and integration tests (owns `Source/VibeGame/Tests/`, `docs/TEST_PLAN.md`), runs the full suite, reports PASS/FAIL with evidence; never changes production code.
 - `playtester`: plays the game in PIE (injected input + screenshots), runs the feature scenario and free play, reports bugs and feel notes; read-only.
-- `janitor`: housekeeping for Jimmy's disk (Jimmy, 2026-09-23). The lead runs it after each push to GitHub, at milestones, or when Saved/ passes ~500 MB. Deletes only through `tools/cleanup.ps1`.
+- `janitor`: housekeeping for Jimmy's disk (Jimmy, 2026-09-23). The lead runs it without being asked: after each push to GitHub, after each lane merge batch, at milestones, and whenever `tools/lead-check.ps1` flags JANITOR (last run over 3 h ago, or a Saved/ over 500 MB and the last run over 1 h ago). Deletes only through `tools/cleanup.ps1`.
 - `designer`: reviews playtester screenshots and previews against GAME_DESIGN.md / ART_STYLE.md and the mood boards; verdict + prioritized change requests; changes nothing.
 - Typical flow per task: implementer (unreal-engineer / model-artist / animation-artist / level-designer / editor-operator) -> qa-engineer tests -> playtester plays -> designer reviews -> lead fixes or accepts -> release gate before publishing.
 C++ work and Blender work (model-artist, animation-artist) can run in parallel; two Blender agents can too, as long as they work on different recipes.
@@ -100,6 +100,10 @@ C++ work and Blender work (model-artist, animation-artist) can run in parallel; 
   Elsewhere in this file and in the skills, a plain role name (e.g. "editor-operator") means that role at any level.
   Junior and senior agents are thin wrappers: they read and follow the role's mid-level file (e.g. `.claude/agents/unreal-engineer-mid-high.md`), so each role's rules live in one file.
   A junior that finds the task bigger than briefed stops and reports back, and the lead re-assigns it to a senior.
+  **Art is taken seriously (Jimmy, 2026-09-23).** A good-looking game in one art style matters as much as working systems.
+    - Levels: anything the player sees often or up close (arms, rod, fish, cooler, boat, creatures, NPCs, anything held, carried or interacted with) goes to at least a mid artist. New shapes, species and hero assets go to senior. Junior artists only do fixes, re-exports, recolors, variants of approved assets and small background props.
+    - Briefs: give artists the palette and mood boards, the existing assets to match, and the distance and camera it's seen from.
+    - Review: every new visible asset or clip gets a designer review of its previews against ART_STYLE.md before the editor imports it, and the artist fixes the must-fix items. The lead also looks at the previews.
   **Mixed-difficulty tasks (Jimmy, 2026-09-23).** Split a task into parts by difficulty and give each part its own agent at the right level. Example: a senior designs and builds the core system; a mid adds the standard feature plumbing; a junior adds data rows, the placeholder text UI and routine tests. Give each part its own files or lane, brief the order and hand-offs (a junior starts from the senior's committed API), and list the parts on the task line in docs/TASKS.md.
   **Ultracode, used sparingly (Jimmy, 2026-09-23).** Only for the very toughest work, and only where a single senior (effort max) isn't enough. That means:
     (a) a foundational design that is expensive to undo later, such as the multiplayer sync model, the creature AI and senses foundation, or the noise/mic pipeline; or
@@ -126,7 +130,13 @@ C++ work and Blender work (model-artist, animation-artist) can run in parallel; 
   Never fan out editor work: unreal-mcp stays one agent at a time (rule 4). The workflow size guideline is set in /config ("Dynamic workflow size"; Jimmy can raise it).
   New agents (whenever Jimmy asks for one, or the lead adds one) get `model: claude-opus-5-5` and an effort chosen like this: high for math, geometry, code or tricky logic; medium for known procedures; low for checklists, reviews and chores. Add junior/senior levels where the role's work varies in difficulty, then name each level `<role>-<level>-<effort>`, add it to this table and tell Jimmy.
   Changing a model, or upgrading to a newer one, needs Jimmy's OK.
-- Subagent conversations end with their task; nothing to compact there. Keeping reports short is what saves tokens.
+- **Housekeeping is automatic; Jimmy should never have to ask (Jimmy, 2026-09-23).**
+  - Auto-compaction is lowered to about 30% of the context window (`CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=30` in `.claude/settings.local.json`, kept out of git). It applies to the lead and to subagents.
+  - At the start of every session the lead schedules the housekeeping tick: a recurring CronCreate job every 30 minutes that runs `tools/lead-check.ps1` and acts on its flags. The job is session-only, so re-create it in each new session. The lead also runs the script at every agent hand-back.
+  - HANDOFF (a running agent's context is over 250k): the lead asks the agent to finish if it is within about 10 tool calls. Otherwise the agent commits what builds, writes `Saved/AgentLogs/handoff/<ts>-<task>.md` (done, remaining steps, files, build/test state, decisions) and stops. A fresh agent of the same type continues from the handoff.
+  - JANITOR: run `janitor-low` (see the janitor line above).
+  - Brief long tasks in stages, so that one agent does not run past ~250k.
+- Keeping reports short is what saves tokens.
 
 ## Working with Jimmy
 - He playtests. Feedback notes land in `Saved/Playtest/` once the feedback key exists (see `playtest-feedback` skill). Turn each note into a task in `docs/TASKS.md`.
