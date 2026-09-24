@@ -5,6 +5,7 @@
 # Safety rules (the script enforces all of them):
 # - Only touches output folders that git ignores, in the main checkout and every worktree lane:
 #   Saved/AgentLogs, Saved/Logs, Saved/Crashes, plus the main checkout's Progress/ (only files named in -Paths).
+# - Scratch = Saved/AgentLogs/scratch/* and experiment renders Saved/AgentLogs/previews/**/exp_*.
 # - Skips anything modified in the last -MinAgeMinutes (a running agent may still use it).
 # - Keeps the newest -KeepRuns run folders per area and every folder an OPEN task line in docs/ still references
 #   (lines of done tasks, "- [x] ...", don't count).
@@ -52,6 +53,9 @@ foreach ($co in $checkouts) {
     # Scratch: temporary by definition.
     $scratch = Join-Path $logs 'scratch'
     if (Test-Path $scratch) { Get-ChildItem $scratch | ForEach-Object { Add-Candidate $_ 'scratch' } }
+    # Experiment renders: previews named exp_* (any depth) are scratch too; the kept previews never use that prefix.
+    $previews = Join-Path $logs 'previews'
+    if (Test-Path $previews) { Get-ChildItem $previews -Recurse -Filter 'exp_*' | ForEach-Object { Add-Candidate $_ 'experiment render' } }
     # Run folders: keep the newest $KeepRuns per area and anything an open task references.
     foreach ($area in @('playtest', 'editor', 'tests', 'anim')) {
         $dir = Join-Path $logs $area
