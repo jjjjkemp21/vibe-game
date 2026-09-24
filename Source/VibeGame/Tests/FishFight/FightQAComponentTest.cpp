@@ -9,6 +9,8 @@
 
 #if WITH_DEV_AUTOMATION_TESTS
 
+#include "Catch/LureFishItem.h"
+#include "Catch/LureHandsComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 
 namespace LureFightQA
@@ -28,6 +30,17 @@ namespace LureFightQA
 			Out.Line = Line;
 			Out.Hook = Hook;
 			return Out;
+		}
+
+		/** T-030 (unreal-engineer): a landed fish hangs on the angler's hook until it is grabbed or let go, and a cast is Busy
+		 *  until then. Takes it off the hook (and away) so the next cast starts. */
+		inline void TakeFishOffTheHook(ULureFishingComponent* Fishing)
+		{
+			ULureHandsComponent* Hands = Fishing && Fishing->GetOwner() ? Fishing->GetOwner()->FindComponentByClass<ULureHandsComponent>() : nullptr;
+			if (ALureFishItem* Fish = Hands ? Hands->AuthorityReleaseHanging() : nullptr)
+			{
+				Fish->Destroy();
+			}
 		}
 
 		/** A pattern table with one row (the species' FightPatternId) holding Pattern. */
@@ -461,6 +474,7 @@ namespace LureFightQA
 		TestTrue(TEXT("B: LastLandedFish is B's fish"), SameFish(B->GetLastLandedFish(), FishB));
 		TestEqual(TEXT("one Catch: log line per landed fish"), Log.Count(TEXT("Catch:")), 2);
 
+		ComponentQA::TakeFishOffTheHook(B); // T-030: B's landed fish hangs on B's hook until it is taken off
 		// The debug switch (AutoLandDelay > 0) turned on in the middle of a fight lands the fish once, not once per path.
 		if (!TestEqual(TEXT("B is idle again"), StateName(B->GetFishingState()), StateName(ELureFishingState::Idle)) || !CastAndWait(*this, World, B, 0.f)
 			|| !TestTrue(TEXT("B hooks another"), B->AuthorityHookFish(FishB2)))
@@ -661,6 +675,7 @@ namespace LureFightQA
 				Stat.Value *= 10.f;
 			}
 		}
+		ComponentQA::TakeFishOffTheHook(Fishing); // T-030: the landed fish hangs on the hook until it is taken off
 		if (CastAndWait(*this, World, Fishing) && TestTrue(TEXT("the same record hooked again"), Fishing->AuthorityHookFish(Hooked)))
 		{
 			TestTrue(TEXT("species base stats x10 in the table: the fight's fish is unchanged (it reads the record)"), SameFightFish(Fishing->GetFightState().Fish, Expected));

@@ -8,6 +8,8 @@
 
 #if WITH_DEV_AUTOMATION_TESTS
 
+#include "Catch/LureFishItem.h"
+#include "Catch/LureHandsComponent.h"
 #include "Character/LureCharacterMovementComponent.h"
 #include "Character/LureInputSubsystem.h"
 #include "Character/LureMovementTypes.h"
@@ -1441,6 +1443,14 @@ bool FLureFightLandedHandsOff::RunTest(const FString& Parameters)
 	}
 	TestTrue(TEXT("HUD: caught"), Fishing->GetStatusText().Contains(TEXT("Caught: Bonefish")));
 	TestFalse(TEXT("HUD: no fight readout after the landing"), Fishing->GetStatusText().Contains(TEXT("Tension [")));
+
+	// T-030: the landed fish hangs on the hook until it is grabbed or let go (a cast is Busy until then); take it off.
+	ULureHandsComponent* Hands = Character->FindComponentByClass<ULureHandsComponent>();
+	ALureFishItem* OnHook = Hands ? Hands->AuthorityReleaseHanging() : nullptr;
+	if (TestNotNull(TEXT("T-030: the landed bonefish hangs on the hook"), OnHook))
+	{
+		OnHook->Destroy();
+	}
 
 	// The T-006 placeholder still works as a debug option (AutoLandDelay > 0 skips the fight).
 	FLureFishingRow Placeholder = QuickProfile();

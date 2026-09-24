@@ -5,6 +5,8 @@
 
 #if WITH_DEV_AUTOMATION_TESTS
 
+#include "Catch/LureFishItem.h"
+#include "Catch/LureHandsComponent.h"
 #include "Character/LurePlayerCharacter.h"
 #include "Engine/DataTable.h"
 #include "Engine/World.h"
@@ -648,6 +650,13 @@ bool FQAFishHookHookedAndLandedFishIsTheBite::RunTest(const FString& Parameters)
 		TestEqual(FString::Printf(TEXT("%s: the landed fish is exactly the bite (differs in: %s)"), *Label, *FString::Join(LandDiff, TEXT(", "))), LandDiff.Num(), 0);
 		TestFalse(Label + TEXT(": nothing left on the line"), Fishing->GetHookedFish().IsValid());
 		TestTrue(Label + TEXT(": HUD: caught"), Fishing->GetStatusText().Contains(TEXT("Caught:")));
+		// T-030 (unreal-engineer): the landed fish hangs on the hook until it is grabbed or let go (a cast is Busy until then).
+		ULureHandsComponent* Hands = Character->FindComponentByClass<ULureHandsComponent>();
+		ALureFishItem* OnHook = Hands ? Hands->AuthorityReleaseHanging() : nullptr;
+		if (TestNotNull(Label + TEXT(": the landed fish hangs on the hook (T-030)"), OnHook))
+		{
+			OnHook->Destroy();
+		}
 	}
 	return true;
 }
