@@ -152,5 +152,16 @@ public:
 
 private:
 
+	/**
+	 *  Sets the Curled pin's Sequence Player (the node its pose link points at) to DisplayPoseTime, so a re-pose shows
+	 *  even when the role was already Curled (the player reads Start Position only when its pin activates). False
+	 *  without a Curled pin wired straight to a sequence player (native class, no pin): nothing changes. Game thread,
+	 *  before the graph update (NativeUpdateAnimation).
+	 */
+	bool SeekHeldPosePlayer();
+
 	bool bHeldPose = false;
+
+	/** SetHeldPose ran since the last update: SeekHeldPosePlayer on the next one */
+	bool bHeldPoseSeekPending = false;
 };
