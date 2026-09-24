@@ -500,13 +500,33 @@ FPARMS_POSES = [
     ("HoldRod", "Hold Rod", "A_FPArms_HoldRod_Idle"),
     ("ProneHold", "Prone Hold", "A_FPArms_Prone_HoldRod_Idle"),
     ("ProneTuck", "Prone Tuck", "A_FPArms_Prone_TuckRod"),
+    ("HoldFish", "Hold Fish", "A_FPArms_HoldFish_Idle"),         # A of the HoldFish size blend (FPARMS_HOLDFISH)
+    ("CarryCooler", "Carry Cooler", "A_FPArms_CarryCooler_Idle"),
 ]
+# T-030 HoldFish branch: Two Way Blend (tag HoldFishSize) of the small clip above (A) and the trophy clip (B),
+# Alpha <- HoldFishSizeAlpha (C++: clamp((FishScale - HoldFishScaleSmall) / (Large - Small)), DT_Catch).
+FPARMS_HOLDFISH = {"entry": "HoldFish", "large_clip": "A_FPArms_HoldFish_Large_Idle", "tag": "HoldFishSize",
+                   "class": "AnimGraphNode_TwoWayBlend", "type_id": "Animation|Blends|TwoWayBlend",
+                   "alpha": "HoldFishSizeAlpha"}
+
+
+def _fparms_clips():
+    """Every clip the arms graph plays, in layout-row order (the trophy HoldFish clip right under the small one)."""
+    clips = []
+    for entry, _, clip in FPARMS_POSES:
+        clips.append(clip)
+        if entry == FPARMS_HOLDFISH["entry"]:
+            clips.append(FPARMS_HOLDFISH["large_clip"])
+    return clips
 FPARMS_NOTE = (
     "Arms pose (T-006). No logic here (CLAUDE.md rule 1): C++ UFPArmsAnimInstance sets ArmsPose from DT_Movement "
     "RodPoseStill / RodPoseMoving and ArmsPoseBlendTime from RodPoseBlendTime.\n"
     "Blend Poses (EFPArmsPose): Default pin = Idle (enum 0, and any pose without its own pin), then Hold Rod, "
-    "Prone Hold, Prone Tuck = pins 1-3. Standard Blend, Linear (the clearance in SK_FPArms.anim.md was measured "
-    "with this). All four players loop in sync group FPArmsBreath.\n"
+    "Prone Hold, Prone Tuck, Hold Fish, Carry Cooler = pins 1-5. Standard Blend, Linear (the clearance in "
+    "SK_FPArms.anim.md was measured with this). All players loop in sync group FPArmsBreath.\n"
+    "Hold Fish (T-030) = Two Way Blend of HoldFish_Idle (A) and HoldFish_Large_Idle (B), Alpha <- HoldFishSizeAlpha "
+    "(C++, from the fish's scale and DT_Catch HoldFishScaleSmall/Large). C++ picks Carry Cooler over Hold Fish over the "
+    "rod rule.\n"
     "New pose: add the enum value in C++, right-click this node > Add pin for element, add a Play '<clip>' player, "
     "then extend FPARMS_POSES in Content/Python/pipeline_unreal.py and rerun fparms_abp_wire().")
 
@@ -697,7 +717,7 @@ def fparms_abp_prepare(abp_path=FPARMS_ABP):
 
     players = _fparms_players(ed)
     created = []
-    for i, (_, _, clip) in enumerate(FPARMS_POSES):
+    for i, clip in enumerate(_fparms_clips()):
         node = players.get(clip)
         if node is None:
             node = ed.create_node_from_name("Animation|Sequences|Play'%s'" % clip, unreal.Vector2D(0.0, 0.0), [])
@@ -708,6 +728,11 @@ def fparms_abp_prepare(abp_path=FPARMS_ABP):
         set_anim_node(node, sequence=seq, loop_animation=True, play_rate=1.0, group_name=FPARMS_SYNC_GROUP,
                       group_role=unreal.AnimGroupRole.CAN_BE_LEADER, method=unreal.AnimSyncMethod.SYNC_GROUP)
         node.set_node_pos(unreal.IntPoint(0, -360 + 170 * i))
+
+    hf = FPARMS_HOLDFISH
+    size_blend, new = tagged_node(ed, hf["tag"], hf["class"], hf["type_id"])
+    if new:
+        created.append("%s (%s)" % (size_blend.get_name(), hf["tag"]))
 
     blends = _nodes_of(ed, "AnimGraphNode_BlendListByEnum")
     if len(blends) > 1:
@@ -760,9 +785,14 @@ def fparms_abp_wire(abp_path=FPARMS_ABP, save=True):
         raise RuntimeError("%s has pins for %s, which FPARMS_POSES doesn't list: add (entry, label, clip) rows first"
                            % (blend.get_name(), unknown))
     players = _fparms_players(ed)
-    missing = [clip for _, _, clip in FPARMS_POSES if clip not in players]
+    missing = [clip for clip in _fparms_clips() if clip not in players]
     if missing:
         raise RuntimeError("No Sequence Player for %s: run fparms_abp_prepare()" % missing)
+    hf = FPARMS_HOLDFISH
+    size_blend = [n for n in ed.list_all_nodes() if _node_tag(n) == hf["tag"]]
+    if len(size_blend) != 1:
+        raise RuntimeError("Expected one node tagged %s, found %d: run fparms_abp_prepare()" % (hf["tag"], len(size_blend)))
+    size_blend = size_blend[0]
     slots = {}
     for n in _nodes_of(ed, "AnimGraphNode_Slot"):
         slots[str(n.get_editor_property("node").get_editor_property("slot_name"))] = n
@@ -780,6 +810,11 @@ def fparms_abp_wire(abp_path=FPARMS_ABP, save=True):
         if chain and entry == FPARMS_AIM_POSE:
             links += _fparms_link_rod_aim(ed, chain, source)
             source = chain["c2l"]
+        if entry == hf["entry"]:
+            links += _connect(source, "Pose", size_blend, "A")
+            links += _connect(players[hf["large_clip"]], "Pose", size_blend, "B")
+            links += _connect(_getter(ed, hf["alpha"]), hf["alpha"], size_blend, "Alpha")
+            source = size_blend
         links += _connect(source, "Pose", blend, pins[entry])
     pose_get = _getter(ed, "ArmsPose")
     time_get = _getter(ed, "ArmsPoseBlendTime")
@@ -791,9 +826,14 @@ def fparms_abp_wire(abp_path=FPARMS_ABP, save=True):
     links += _connect(slots["StanceAdditive"], "Pose", roots[0], "Result")
 
     # Layout, left to right (graph units): players | [rod-aim chain on the Hold Rod row] | getters | blend | slots | output.
-    rows = {entry: -360 + 170 * i for i, (entry, _, _) in enumerate(FPARMS_POSES)}
-    for entry, _, clip in FPARMS_POSES:
-        players[clip].set_node_pos(unreal.IntPoint(0, rows[entry]))
+    clip_rows = {clip: -360 + 170 * i for i, clip in enumerate(_fparms_clips())}
+    rows = {entry: clip_rows[clip] for entry, _, clip in FPARMS_POSES}
+    for clip, y in clip_rows.items():
+        players[clip].set_node_pos(unreal.IntPoint(0, y))
+    # HoldFish size blend right of the rod-aim note (which hangs under the Hold Rod row at x 420-820).
+    y = rows[hf["entry"]]
+    size_blend.set_node_pos(unreal.IntPoint(1100, y))
+    _getter(ed, hf["alpha"]).set_node_pos(unreal.IntPoint(860, y + 190))
     blend_x = 420
     if chain:
         y = rows[FPARMS_AIM_POSE]
