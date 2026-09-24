@@ -192,16 +192,18 @@ TUCK_LEFT_CURL_DEG = 70.0
 # view by construction. Center's tip is at (52.7, 14.1). The pitch/yaw are solved (RESULT_JSON rod_aim).
 # Designer review 2026-09-23: Down row grips 5 cm higher (a full fist in frame), Right column grips 9 cm towards the
 # center, the rod rolled in the Right column and in Down so the reel swings out from behind the fists (AIM_ROLL).
+# T-033b (designer review 2026-09-24): Right column grips 3-3.5 cm further left (fists ~4.5 % of the width more central,
+# right knuckles clear of the frame edge).
 ROD_TIP_M = 1.648                    # SM_Rod_Basic line tip on the rod's X axis
 AIM_POSES = {  # name: (grip offset cm, shoulder offset cm, tip target %)
     "Up": ((-12.0, 2.0, 6.0), (-2.0, 0.0, 1.0), (56.0, 4.5)),        # pulled back and high: strong tension
     "Down": ((7.0, 0.0, 2.0), (2.0, 0.0, -1.0), (50.0, 62.0)),        # dipped towards the water
     "Left": ((2.0, 6.0, 0.0), (0.0, 1.0, 0.0), (22.0, 20.0)),          # tip swung to the left
-    "Right": ((-3.5, -1.0, 2.0), (0.0, -1.0, 0.0), (96.0, 40.0)),     # tip swung to the right
+    "Right": ((-3.5, 2.5, 2.0), (0.0, -1.0, 0.0), (96.0, 40.0)),     # tip swung to the right
     "UpLeft": ((-8.0, 5.0, 7.0), (-2.0, 1.0, 1.0), (25.0, 6.0)),
-    "UpRight": ((-11.5, 3.5, 6.0), (-2.0, -1.0, 1.0), (92.0, 10.0)),
+    "UpRight": ((-11.5, 6.5, 6.0), (-2.0, -1.0, 1.0), (92.0, 10.0)),
     "DownLeft": ((3.0, 6.0, 2.0), (2.0, 1.0, -1.0), (24.0, 56.0)),
-    "DownRight": ((-2.0, -1.5, 1.0), (2.0, -1.0, -1.0), (95.0, 62.0)),
+    "DownRight": ((-2.0, 2.0, 1.0), (2.0, -1.0, -1.0), (95.0, 62.0)),
 }
 AIM_ROLL = {"Right": 18.0, "UpRight": 15.0, "DownRight": 23.5, "Down": 15.0}   # rod roll (deg): swings the reel out from
                                                                      # behind the right fist towards the eye

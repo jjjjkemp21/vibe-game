@@ -235,11 +235,11 @@ Screen numbers for 1920x1080 at 90 deg; tip = SM_Rod_Basic's line tip.
 | Up | -12, +2, +6 | 37.3 / -0.2 / 0 | 0 | 56, 4.5 | 56-98 / 77 | 97 % | (30.9, 19.0, -17.0) |
 | Down | +7, 0, +2 | -2.7 / 7.3 / 15 | 0 | 50, 62 | 55-80 / 71 | 40 % | (49.9, 21.0, -21.0) |
 | Left | +2, +6, 0 | 26.9 / 43.0 / 0 | 40 | 22, 20 | 47-77 / 80 | 90 % | (44.9, 15.0, -23.0) |
-| Right (T-033) | -3.5, -1, +2 | 13.3 / -46.4 / +18 | -35 | 96, 40 | 62-91 / 80 | 0 % | (39.4, 22.0, -21.0) |
+| Right (T-033b) | -3.5, +2.5, +2 | 13.2 / -47.3 / +18 | -35 | 96, 40 | 59-87 / 80 | 0 % | (39.4, 18.5, -21.0) |
 | UpLeft | -8, +5, +7 | 31.9 / 38.9 / 0 | 40 | 25, 6 | 47-88 / 71 | 90 % | (34.9, 16.0, -16.0) |
-| UpRight (T-033) | -11.5, +3.5, +6 | 28.6 / -42.7 / +15 | -35 | 92, 10 | 59-94 / 75 | 8 % | (31.4, 17.5, -17.0) |
+| UpRight (T-033b) | -11.5, +6.5, +6 | 28.4 / -43.6 / +15 | -35 | 92, 10 | 56-89 / 75 | 20 % | (31.4, 14.5, -17.0) |
 | DownLeft | +3, +6, +2 | 3.3 / 39.6 / 0 | 40 | 24, 56 | 48-75 / 74 | 77 % | (45.9, 15.0, -21.0) |
-| DownRight (T-033) | -2, -1.5, +1 | 0.3 / -45.7 / +23.5 | -35 | 95, 62 | 62-90 / 80 | 0 % | (40.9, 22.5, -22.0) |
+| DownRight (T-033b) | -2, +2, +1 | 0.4 / -46.6 / +23.5 | -35 | 95, 62 | 59-85 / 80 | 0 % | (40.9, 19.0, -22.0) |
 
 - Review fixes: the Down row's grips are 5 cm higher (fist tops 71-78 % instead of 80-87 %: a full fist in frame); the
   Right column's grips are 9 cm further left (fists 4-7 % more central); the rod is rolled in the Right column (-35 deg)
@@ -274,6 +274,15 @@ Screen numbers for 1920x1080 at 90 deg; tip = SM_Rod_Basic's line tip.
   the fists sit 5-10 % further right (62-94 %) than the 2026-09-23 review, and Left/Up/Down/left corners are
   unchanged (DownLeft still has a 53 deg right-wrist change, off-screen). Halfway to the right (yaw 0.5) the rod
   points away from the eye (tip high, as before the fix).
+- **T-033b (designer review 2026-09-24, "should"): Right column fists pulled toward the center.** The grips of
+  Right / UpRight / DownRight moved 3.5 / 3.0 / 3.5 cm left (camera space); the rod still solves to the same tip
+  points, so it yaws about 1 deg further right. Fists (hand verts) now end at 86.5 / 89.0 / 85.3 % of the width
+  (were 91.0 / 93.9 / 89.7 %): about 4.5 % more central, 11-15 % clearance to the right edge. Both hands move rigidly
+  with the rod, so the fist-to-fist gap (1.3 cm) and their screen overlap are the same as the approved T-033 pose; no
+  new clipping on screen. Side effects: the rod butt now touches the right forearm by 12 / 1 / 14 mm (all off-screen,
+  0 visible verts); UpRight's right wrist flexes 18 deg more (43 vs 25, below the fists, not visible); UpRight's reel
+  spool shows 20 % (was 8 %). Aim-offset blend on HoldRod_Idle: left fist off the crank at most 29 mm (Two Bone IK
+  closes it, crank at <= 97.6 % of the arm's reach), rod tip on screen in 324 of 324 samples.
 - **Standing / crouched only.** On `Prone_HoldRod_Idle` the same deltas don't fit (the left fist drifts up to 20 cm,
   `Up` lifts the rod to +21 cm above the eye where a 60 cm crawl gap allows +15, the tip leaves the frame at the
   right/down corners). Apply the aim offset only on the `HoldRod` branch (below); a prone fight keeps ProneHold still
@@ -347,6 +356,17 @@ rotation/translation offset, normals imported, no physics asset. In `Content/Pyt
 3. Verify: `A_FPArms_RodAim_Right` frame 0 `hand_r_rod` at about (39.4, 22.0, -21.0) cm component space; PIE with a
    fish on, steer the rod fully right (and up-right, down-right): both forearms visible, the left one reaching across
    to the crank, no bent-back right wrist; compare with `Saved/AgentLogs/previews/SK_FPArms_rodaim_fp.png`.
+   (Superseded by T-033b below: if T-033 was not imported yet, do only T-033b.)
+
+**T-033b re-import (2026-09-24)**, same folder and settings (Convert Scene Unit OFF):
+1. Re-import only `A_FPArms_RodAim_Right`, `A_FPArms_RodAim_UpRight`, `A_FPArms_RodAim_DownRight` (as T-033 step 1);
+   nothing else changed.
+2. Re-check on each: **Additive Anim Type = Mesh Space**, Base Pose Type = Selected animation frame, Ref Pose Seq =
+   `A_FPArms_RodAim_Center`, frame 0.
+3. Verify frame 0 `hand_r_rod` (component space, cm): **Right (39.4, 18.5, -21.0)**, rotation P 13.2 / Y 47.3 /
+   R 18.0; UpRight (31.4, 14.5, -17.0); DownRight (40.9, 19.0, -22.0). Old values (22.0 / 17.5 / 22.5 in Y) mean the
+   old file is still in. Playtester (nice): in-game shot at hard right with the real FOV; the right knuckles should
+   end about 11 % from the right edge (compare `SK_FPArms_rodaim_fp.png`, right column).
 
 First-time import (a fresh project or a new copy), for reference:
 1. `SK_FPArms.fbx` -> `/Game/Art/Characters/FPArms/`, Skeletal Mesh, create a new skeleton and rename it
