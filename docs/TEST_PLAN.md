@@ -174,6 +174,31 @@ Observations (per spec, not bugs):
 
 Gaps: races under latency or packet loss (`FScopedNetEmulationOverride` unused), 3-4 players, a listen-server host racing a client, the owner reconnecting to their coolers (T-019), visuals (lid, carry pose, counter layout: playtester + designer).
 
+### T-030g independent QA (qa-engineer, 2026-09-24)
+Covers the A2 playtest regressions (lid look, big fish in the display, view-ray focus, HUD cooler count), apart from the engineer's `CoolerLidFocusTest.cpp`. File `Source/VibeGame/Tests/Catch/QACoolerLidFocusTest.cpp` (namespace `LureCoolerLidFocusQA`), 12 tests. The display tests check contracts only (DT_CoolerDisplay slot values are being re-solved), never slot coordinates.
+
+| Group | Tests (Project.Catch.QA.*) | Proves |
+|---|---|---|
+| Lid | `Lid.PulseFollowsTuning` | The clack is data: shipped 30 and injected 20 and 0, on Starter and Large. It reaches at least 0.8x and at most the pulse, stays up no longer than LidOpenTime, never reads open, and ends shut. Pulse 0 means the lid never moves. |
+| Lid | `Lid.ToggleMidSwingSettles` | Closing mid-swing only goes down. Open/close/open ends fully open. A put-in during a closing swing and two clacks in a row both end shut with the prompt still saying Open. |
+| Display | `Display.SlotContracts` | Every row names a DT_Cooler row. Slot count is 1..capacity (Starter: one per capacity). Beds sit on or above the liner floor, with slot 0 the lowest. Fish lie on their side (pitch 0, roll +-90) at distinct spots, origin = bed + LieOffsetCm x scale. A bad slot index gives identity. |
+| Display | `Display.ScaleCapMonotonic` | Shown scale = min(cap, (W/Ref)^(1/3)) against an oracle, at caps 1.0/0.6/0.3. It never gets smaller for a heavier fish, and bad weights or references stay finite, > 0 and <= cap. |
+| Display | `Display.ShownFishInsideBody` | In a world: a lone 5.5 kg Bonefish (at the cap), a lone tiny one, a lone monster, full Starter/Large coolers turned 37/-120 deg, and two fish on a raised box. Every drawn fish is inside the cooler box, not below the liner floor or the cooler floor, under the top, never hidden and in its own slot, including after a take-out. Closed shows nothing. |
+| Focus | `Focus.RayGeometry` | RayToBox/RayToSphere/AngleToBox/AngleToSphere against hand-computed values: entry distance, from inside, misses, behind the eye, a 45 deg turned box, scale ignored, looking down, chords. |
+| Focus | `Focus.LookedAtTargetWins` | A fish and a closed cooler side by side, in both spawn orders: the one you look at wins, back and forth with no stickiness, and E grabs the fish without touching the cooler. With the fish beyond the cooler, looking past the cooler's top at the fish gives the fish, and looking at the cooler's front gives the cooler. |
+| Focus | `Focus.CarriedCoolerNeverFocused` | A cooler a friend carries, in my reach and looked at, has no verbs for me and never takes the focus. A stale Open is refused. |
+| Hud | `Hud.CoolerCountFollowsCarried` | Status and Carrying counts agree. The count follows when I carry my own cooler, a friend's Large one (x/8, updating live as fish are added or taken), when a friend carries mine (their screen shows mine, mine shows my own), and for a player with no cooler (empty until they carry one). |
+| Net | `Net.LidJoinsOpenWithoutSwing` | A client that joins while the lid is open sees it open from its first frame (no swing from 0) and shows the fish. A put-in while open doesn't move the lid. Close reaches the client and shuts within LidOpenTime. A second late client sees a closed cooler with an old pulse shut from its first frame. |
+| Net | `Net.ClackSeenByBothClients` | A real client E puts a fish into another player's closed cooler. Both clients see a short clack (at least 0.8x and at most LidPulsePitch, no longer than LidOpenTime), the state stays closed, and the prompt says Open. |
+| Net | `Net.HudCountsCarriedCoolerOnClients` | Client 0 picks up client 1's cooler with a real F. On client 0, status and Carrying both read 1/4 and follow a server-side add (2/4). Client 1 still shows its own count. After put-down, client 0 is back to its own 0/4. |
+
+Bugs found: none in production code.
+Notes for the next QA agent:
+- The net harness's game mode gives every player a starter cooler. For "own cooler" tests, reuse it (move it with `AuthorityPutDownAt`) instead of spawning a second one.
+- The HUD status line contains `(XP 0/40)`. Never check a count with a bare `Contains("0/4")`: match `Cooler 0/4` or `(0/4`. The engineer's `Hud.CarriedCoolerCount` uses `!Joined.Contains("0/4")`, so it would give a false failure if its world's XP text ever read `x/4...`.
+
+Gaps: the drawn fish's full length (tail/head clipping through the walls) is not checked: the tests use the origin, LieOffsetCm and the box, because there is no API for curled-pose bounds. A per-fish bounds accessor would close this (seam request). The dedicated-server lid pitch is not asserted, because the server doesn't render. Visual confirmation of the lid and the display stays with the playtester and designer.
+
 ## T-010 cooler, selling, money, XP and levels (lane eng5)
 (T-030 retired the cooler and sell-point tests of this section; see the T-030 section above.)
 Implementer tests: `Tests/Progression/Progression{Component,Data,Interaction,Rules}Test.cpp`, `Project.Progression.{Cooler,Level,Landed,Money,Authority,Caught,Save,Data,Sell,Interact,Net}.*`, 25 tests (unreal-engineer).
