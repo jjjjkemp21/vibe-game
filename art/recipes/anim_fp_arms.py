@@ -223,7 +223,7 @@ FISH_SINK_M = 0.006                  # the belly rests this far into the palms (
 # pos = hand_r_fish (the fish's Grip at REFERENCE size) at frame 0, camera space; yaw = head direction (-90 = right).
 FISH_POSES = {
     "A_FPArms_HoldFish_Idle": dict(scale=1.0, pos=Vector((0.47, -0.08, -0.165)), yaw=-80.0, pitch=6.0, roll=-15.0),
-    "A_FPArms_HoldFish_Large_Idle": dict(scale=1.6, pos=Vector((0.44, -0.10, -0.19)), yaw=-125.0, pitch=22.0,
+    "A_FPArms_HoldFish_Large_Idle": dict(scale=1.6, pos=Vector((0.44, -0.12, -0.172)), yaw=-125.0, pitch=22.0,
                                          roll=-15.0),
 }
 FISH_SWAY = (1.2, 0.8, Vector((0.003, 0.002, 0.007)))   # pitch deg, yaw deg, offsets m (per breath)
@@ -244,8 +244,8 @@ FISH_SCALES = (0.8, 1.0, 1.3, 1.6)    # checked sizes (Weight/ReferenceWeight)^(
 # peek in at the bottom corners, the lid edge stays in the lower third. The attach bone `cooler` is the cooler's pivot
 # (bottom center) with the cooler's own axes, i.e. the carry frame turned 180 deg about Z.
 COOLER_HANDLE_L = Vector((0.0, 0.315, 0.306))    # socket Handle_L in cooler space (Blender +Y; rim handles, 7e4ba79); Handle_R = mirror
-COOLER_HANDLES_POS = Vector((0.46, 0.0, -0.25))   # midpoint between the two handle grips at frame 0, camera space
-COOLER_TILT_DEG = 16.0              # about the handle axis (+ = top away from the eye); - = lid tipped slightly towards the eye
+COOLER_HANDLES_POS = Vector((0.46, 0.0, -0.222))  # midpoint between the two handle grips at frame 0, camera space
+COOLER_TILT_DEG = 19.0              # about the handle axis (+ = top away from the eye); - = lid tipped slightly towards the eye
 COOLER_SWAY = (0.6, Vector((0.002, 0.0, 0.007)))  # tilt deg, offsets m (per breath)
 HANDLE_DIR = 1.0                     # fist channel along the rope: +1 = the carry frame's forward (+X)
 HANDLE_ROLL_DEG = 0.0                # roll of the fist about the rope (least wall contact in a 15 deg search)
