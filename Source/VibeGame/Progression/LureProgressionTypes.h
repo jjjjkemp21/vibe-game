@@ -5,7 +5,11 @@
 #include "CoreMinimal.h"
 #include "Engine/DataTable.h"
 #include "Fish/FishInstance.h"
+#include "UObject/SoftObjectPtr.h"
 #include "LureProgressionTypes.generated.h"
+
+class AActor;
+class UStaticMesh;
 
 /** Progression log: data problems are Warnings (never check/ensure); a client calling a server-only function is a Warning. */
 DECLARE_LOG_CATEGORY_EXTERN(LogLureProgression, Log, All);
@@ -13,7 +17,7 @@ DECLARE_LOG_CATEGORY_EXTERN(LogLureProgression, Log, All);
 /**
  *  Progression data (T-010). Three DataTables, CSV sources in the repo, imported by the editor-operator (row name = id):
  *    data/tables/DT_PlayerLevel.csv -> /Game/Data/DT_PlayerLevel (FPlayerLevelRow)  the player XP curve
- *    data/tables/DT_Cooler.csv      -> /Game/Data/DT_Cooler      (FCoolerRow)       cooler sizes (upgrades are rows)
+ *    data/tables/DT_Cooler.csv      -> /Game/Data/DT_Cooler      (FCoolerRow)       cooler types: size, look, freshness, carry (T-030)
  *    data/tables/DT_FishMarket.csv  -> /Game/Data/DT_FishMarket  (FFishMarketRow)   buyers (a dock or an NPC) and their price multiplier
  *  The level-gap rule (fish above your level are harder) is not a new table: it is UFishSettings.LevelScaling
  *  (FFishLevelScaling, DefaultGame.ini), reused through FFishRoll::LevelDifficultyMultiplier.
@@ -37,7 +41,10 @@ struct FPlayerLevelRow : public FTableRowBase
 	FString DevComment;
 };
 
-/** DT_Cooler row: a cooler size. Every player starts with ULureProgressionSettings::DefaultCoolerId; upgrades switch the row. */
+/**
+ *  DT_Cooler row: a type of physical cooler (T-030, ALureCoolerActor). Every player gets a ULureProgressionSettings::DefaultCoolerId
+ *  cooler at the dock; a bigger cooler (the shop, later) is another row. Rules: docs/specs/catch-handling-rules.md.
+ */
 USTRUCT(BlueprintType)
 struct FCoolerRow : public FTableRowBase
 {
@@ -48,13 +55,33 @@ struct FCoolerRow : public FTableRowBase
 
 	/** How many fish it holds, 1..FLureProgressionData::MaxCoolerSlots */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Cooler", meta=(ClampMin="1"))
-	int32 Slots = 8;
+	int32 Slots = 4;
+
+	/** Body mesh (pivot at the bottom center, front +X, sockets LidHinge, Handle_L, Handle_R, Contents). None = a placeholder box. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Look", meta=(DataTableImportOptional))
+	TSoftObjectPtr<UStaticMesh> BodyMesh;
+
+	/** Lid mesh, pivot on its hinge, attached to the body's LidHinge socket (opens by relative pitch). None = a placeholder lid. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Look", meta=(DataTableImportOptional))
+	TSoftObjectPtr<UStaticMesh> LidMesh;
+
+	/** Freshness speed of the fish inside while the lid is open (1 = like outside), in [0, FLureProgressionData::MaxDecayRate] */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Freshness", meta=(ClampMin="0", DataTableImportOptional))
+	float OpenDecayRate = 1.0f;
+
+	/** Freshness speed of the fish inside while the lid is closed (0 = they stay fresh), in [0, FLureProgressionData::MaxDecayRate] */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Freshness", meta=(ClampMin="0", DataTableImportOptional))
+	float ClosedDecayRate = 0.0f;
+
+	/** The carrier moves this much slower or faster on land, in (0, FLureProgressionData::MaxCarrySpeedMultiplier] */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Carry", meta=(ClampMin="0.05", DataTableImportOptional))
+	float CarrySpeedMultiplier = 1.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Cooler", meta=(MultiLine=true, DataTableImportOptional))
 	FString DevComment;
 };
 
-/** DT_FishMarket row: a buyer (a dock, later an NPC). A sell point names its row (ALureSellPoint::MarketId). */
+/** DT_FishMarket row: a buyer (a dock, later an NPC). A sell counter names its row (ALureSellCounter::MarketId). */
 USTRUCT(BlueprintType)
 struct FFishMarketRow : public FTableRowBase
 {
@@ -72,8 +99,10 @@ struct FFishMarketRow : public FTableRowBase
 };
 
 /**
- *  Everything T-019 save/load needs from T-010, in one struct (every field SaveGame). The records are authoritative:
- *  loading never re-rolls or re-prices a fish. Apply with ULureProgressionComponent::ApplySaveData (server).
+ *  A player's progression for T-019 save/load and for seamless travel and reconnects (every field SaveGame): money, XP and
+ *  level. Apply with ULureProgressionComponent::ApplySaveData (server).
+ *  Version 2 (T-030): the abstract cooler fields (CoolerId, CoolerFish) are gone. Coolers are world objects saved by
+ *  ULureCatchLibrary::GetCoolerSaveData (FLurePlayerSaveData bundles both). Version 1 was never written to disk.
  */
 USTRUCT(BlueprintType)
 struct FLureProgressSaveData
@@ -81,7 +110,7 @@ struct FLureProgressSaveData
 	GENERATED_BODY()
 
 	/** Bump when the layout changes (T-019 migrates old saves) */
-	static constexpr int32 CurrentVersion = 1;
+	static constexpr int32 CurrentVersion = 2;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category="Progression")
 	int32 Version = CurrentVersion;
@@ -96,14 +125,6 @@ struct FLureProgressSaveData
 	/** Level at save time: a floor on load, so a steeper curve never takes levels away */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category="Progression")
 	int32 Level = 1;
-
-	/** DT_Cooler row (None = the default cooler) */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category="Progression")
-	FName CoolerId;
-
-	/** Unsold fish, in cooler order */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category="Progression")
-	TArray<FFishInstance> CoolerFish;
 };
 
 /** Where a player stands on the XP curve (for the HUD and T-011) */
@@ -131,7 +152,10 @@ struct FLureLevelProgress
 	float Fraction = 0.0f;
 };
 
-/** What happened when a fish was landed (ULureProgressionComponent::HandleFishLanded) */
+/**
+ *  What happened when a fish was landed: ULureCatchLibrary::HandleFishLanded (XP + the fish on the hook, T-030) or
+ *  ULureProgressionComponent::HandleFishLanded (the XP part only).
+ */
 USTRUCT(BlueprintType)
 struct FLureFishLandedResult
 {
@@ -141,13 +165,13 @@ struct FLureFishLandedResult
 	UPROPERTY(BlueprintReadOnly, Category="Progression")
 	bool bAccepted = false;
 
-	/** True if the fish went into the cooler; false = the cooler was full (the fish is released, the XP still counts) */
+	/** True if the fish now hangs on the angler's hook (a fish item, T-030); false = nothing to hang it on (a pawn without hands) */
 	UPROPERTY(BlueprintReadOnly, Category="Progression")
-	bool bStoredInCooler = false;
+	bool bOnHook = false;
 
-	/** Cooler slot it went into (INDEX_NONE if not stored) */
+	/** The fish item on the hook (null if bOnHook is false) */
 	UPROPERTY(BlueprintReadOnly, Category="Progression")
-	int32 CoolerSlot = INDEX_NONE;
+	TObjectPtr<AActor> FishItem = nullptr;
 
 	UPROPERTY(BlueprintReadOnly, Category="Progression")
 	int32 XpGained = 0;
@@ -159,7 +183,7 @@ struct FLureFishLandedResult
 	int32 NewLevel = 1;
 };
 
-/** What a sale paid (ALureSellPoint::SellAll / SellOne) */
+/** What a sale paid (ALureSellCounter::Sell, T-030) */
 USTRUCT(BlueprintType)
 struct FLureSaleResult
 {
@@ -230,11 +254,16 @@ struct FLureProgressionData
 	static constexpr int32 MaxCoolerSlots = 100;
 	/** Largest buyer multiplier a row may declare */
 	static constexpr float MaxSellMultiplier = 10.0f;
+	/** Largest freshness speed a cooler row may declare (DT_Cooler OpenDecayRate / ClosedDecayRate) */
+	static constexpr float MaxDecayRate = 10.0f;
+	/** Largest carry speed multiplier a cooler row may declare (DT_Cooler CarrySpeedMultiplier) */
+	static constexpr float MaxCarrySpeedMultiplier = 2.0f;
 
 	/** Row struct, at least one row, Levels 1..N unique and contiguous, XpToNext > 0 below the cap and 0 on the cap, non-decreasing */
 	static TArray<FString> ValidatePlayerLevelTable(const UDataTable* Table);
 
-	/** Row struct, at least one row, Slots in [1, MaxCoolerSlots], DefaultCoolerId (if not None) exists */
+	/** Row struct, at least one row, Slots in [1, MaxCoolerSlots], decay rates finite in [0, MaxDecayRate], the carry multiplier
+	 *  finite in (0, MaxCarrySpeedMultiplier], DefaultCoolerId (if not None) exists */
 	static TArray<FString> ValidateCoolerTable(const UDataTable* Table, FName DefaultCoolerId = NAME_None);
 
 	/** Row struct, at least one row, SellMultiplier finite in (0, MaxSellMultiplier], DefaultMarketId (if not None) exists */

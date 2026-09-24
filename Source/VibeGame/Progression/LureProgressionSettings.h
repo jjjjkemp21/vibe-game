@@ -36,13 +36,13 @@ public:
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category="Tables", meta=(RequiredAssetDataTags="RowStructure=/Script/VibeGame.FishMarketRow"))
 	TSoftObjectPtr<UDataTable> MarketTable;
 
-	/** DT_Cooler row every new player starts with */
+	/** DT_Cooler row of the cooler every new player gets at the dock (T-030 starter cooler: Starter, 4 fish) */
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category="Cooler")
 	FName DefaultCoolerId;
 
 	/** Emergency cooler size, used only when DT_Cooler itself (or its DefaultCoolerId row) is missing, so the game still works (Warning).
 	 *  An unknown row (e.g. an old save) uses the DefaultCoolerId row instead. The one place for this value: not set in DefaultGame.ini,
-	 *  and not a copy of the Basic row (its size lives only in data/tables/DT_Cooler.csv). */
+	 *  and not a copy of the Starter row (its size lives only in data/tables/DT_Cooler.csv). */
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category="Cooler", meta=(ClampMin="1"))
 	int32 FallbackCoolerSlots = 8;
 

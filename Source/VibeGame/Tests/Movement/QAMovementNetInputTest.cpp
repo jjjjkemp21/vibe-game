@@ -413,10 +413,11 @@ bool FQAMoveInputAllSixActionsResolveByName::RunTest(const FString& Parameters)
 		TestNotNull(FString::Printf(TEXT("%s resolves"), Name), ULureInputSubsystem::GetInputActionByName(Name));
 	}
 	const TArray<FName> Listed = ULureInputSubsystem::GetInputActionNames();
-	// QA (T-006 review): the list is EXACTLY the known actions - the 6 movement actions, T-010's Interact, and T-006's Cast and Hook
-	// (tested in Project.Fishing.QA.Input.*). A new action must be added here on purpose; an unexpected, duplicate or renamed action fails.
-	const TArray<FName> Known = { TEXT("Move"), TEXT("Look"), TEXT("Jump"), TEXT("Sprint"), TEXT("Crouch"), TEXT("Prone"), TEXT("Interact"), TEXT("Cast"), TEXT("Hook") };
-	TestEqual(TEXT("GetInputActionNames lists exactly the known actions (6 movement + Interact + Cast + Hook)"), Listed.Num(), Known.Num());
+	// QA (T-006 review): the list is EXACTLY the known actions - the 6 movement actions, T-010's Interact, T-030's AltInteract, and
+	// T-006's Cast and Hook (tested in Project.Fishing.QA.Input.*). A new action must be added here on purpose; an unexpected,
+	// duplicate or renamed action fails.
+	const TArray<FName> Known = { TEXT("Move"), TEXT("Look"), TEXT("Jump"), TEXT("Sprint"), TEXT("Crouch"), TEXT("Prone"), TEXT("Interact"), TEXT("AltInteract"), TEXT("Cast"), TEXT("Hook") };
+	TestEqual(TEXT("GetInputActionNames lists exactly the known actions (6 movement + Interact + AltInteract + Cast + Hook)"), Listed.Num(), Known.Num());
 	TSet<FName> Unique;
 	for (const FName& Name : Listed)
 	{

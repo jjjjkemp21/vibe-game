@@ -1,7 +1,7 @@
 // Lure: progression entry points for other systems (T-010).
 
 #include "Progression/LureProgressionLibrary.h"
-#include "Progression/LureCoolerComponent.h"
+#include "Catch/LureCatchLibrary.h"
 #include "Progression/LureProgressionComponent.h"
 #include "Progression/LureProgressionSettings.h"
 #include "Interaction/LureInteractionComponent.h"
@@ -46,12 +46,6 @@ ULureProgressionComponent* ULureProgressionLibrary::GetProgression(const AActor*
 	return PlayerState ? PlayerState->FindComponentByClass<ULureProgressionComponent>() : nullptr;
 }
 
-ULureCoolerComponent* ULureProgressionLibrary::GetCooler(const AActor* Context)
-{
-	const APlayerState* PlayerState = FindPlayerState(Context);
-	return PlayerState ? PlayerState->FindComponentByClass<ULureCoolerComponent>() : nullptr;
-}
-
 FLureFishLandedResult ULureProgressionLibrary::HandleFishLanded(AActor* Context, const FFishInstance& Fish)
 {
 	if (ULureProgressionComponent* Progression = GetProgression(Context))
@@ -71,17 +65,6 @@ float ULureProgressionLibrary::GetFishDifficultyMultiplier(const AActor* Context
 	return FFishRoll::LevelDifficultyMultiplier(FishLevel, /*PlayerLevel*/ 1, GetDefault<UFishSettings>()->LevelScaling);
 }
 
-int32 ULureProgressionLibrary::HandlePlayerCaught(AActor* Context)
-{
-	ULureCoolerComponent* Cooler = GetCooler(Context);
-	const int32 Lost = Cooler ? Cooler->Clear() : 0;
-	if (Lost > 0)
-	{
-		UE_LOG(LogLureProgression, Log, TEXT("%s was caught: %d unsold fish lost."), *GetNameSafe(Context), Lost);
-	}
-	return Lost;
-}
-
 TArray<FString> ULureProgressionLibrary::GetPlaceholderStatusLines(const APlayerController* PlayerController)
 {
 	TArray<FString> Lines;
@@ -91,8 +74,10 @@ TArray<FString> ULureProgressionLibrary::GetPlaceholderStatusLines(const APlayer
 	}
 	if (const ULureProgressionComponent* Progression = GetProgression(PlayerController))
 	{
-		Lines.Add(Progression->GetStatusText());
+		const FString Cooler = ULureCatchLibrary::GetOwnCoolerStatus(FindPlayerState(PlayerController));
+		Lines.Add(Cooler.IsEmpty() ? Progression->GetStatusText() : Progression->GetStatusText() + TEXT("   ") + Cooler);
 	}
+	Lines.Append(ULureCatchLibrary::GetPlaceholderLines(PlayerController)); // what the hands hold (T-030)
 	const APawn* Pawn = PlayerController->GetPawn();
 	if (const ULureInteractionComponent* Interaction = Pawn ? Pawn->FindComponentByClass<ULureInteractionComponent>() : nullptr)
 	{

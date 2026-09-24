@@ -16,7 +16,8 @@ struct FLureInputActionNames
 	static const FName Move;	// Axis2D: X = right, Y = forward
 	static const FName Look;	// Axis2D: degrees this frame, X = yaw right, Y = pitch up
 	static const FName Jump;	// Boolean
-	static const FName Interact;	// Boolean: use the nearest interactable (T-010 sell points; later NPCs)
+	static const FName Interact;	// Boolean: the main verb on what you look at (T-010, T-030; later NPCs)
+	static const FName AltInteract;	// Boolean: the second verb (T-030: pick up / put down the cooler, close it, drop a fish)
 	static const FName Sprint;	// Boolean
 	static const FName Crouch;	// Boolean
 	static const FName Prone;	// Boolean
@@ -50,7 +51,7 @@ public:
 	/** The engine's instance (null before engine init or after shutdown). */
 	static ULureInputSubsystem* Get();
 
-	/** The input action for Move, Look, Jump, Sprint, Crouch, Prone, Interact, Cast or Hook; null for any other name. Same object every call. */
+	/** The input action for Move, Look, Jump, Sprint, Crouch, Prone, Interact, AltInteract, Cast or Hook; null for any other name. Same object every call. */
 	UFUNCTION(BlueprintCallable, Category="Lure|Input")
 	static UInputAction* GetInputActionByName(FName ActionName);
 

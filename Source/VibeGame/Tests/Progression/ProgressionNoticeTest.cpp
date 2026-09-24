@@ -1,6 +1,7 @@
 // Lure tests (unreal-engineer): the placeholder "Level up! Level N" and "Sold N fish for X coins" notices from the
 // fishing-loop playtest (2026-09-23). They show on the owning player's machine only, once per event, for
-// ULureProgressionSettings::NoticeSeconds. Project.Progression.Notice.*
+// ULureProgressionSettings::NoticeSeconds. Project.Progression.Notice.* (T-030: sales come from the sell counter through
+// ULureProgressionComponent::RecordSale; the counter itself is tested in Project.Catch.Counter.*).
 
 #include "Tests/Progression/ProgressionTestUtils.h"
 
@@ -13,7 +14,6 @@
 #include "Game/LureHUD.h"
 #include "Game/LurePlayerState.h"
 #include "GameFramework/PlayerController.h"
-#include "Progression/LureCoolerComponent.h"
 #include "Progression/LureProgressionComponent.h"
 #include "Progression/LureProgressionSettings.h"
 #include "Tests/Progression/ProgressionTestListener.h"
@@ -23,7 +23,6 @@ namespace ProgressionNoticeTest
 	struct FFixture
 	{
 		TStrongObjectPtr<UDataTable> Levels;
-		TStrongObjectPtr<UDataTable> Coolers;
 		LPT::FWorld World;
 		/** The local players given to the controllers (a controller counts as local when it has one) */
 		TArray<TStrongObjectPtr<ULocalPlayer>> LocalPlayers;
@@ -43,14 +42,13 @@ namespace ProgressionNoticeTest
 		bool Init(FAutomationTestBase& Test)
 		{
 			Levels = LPT::MakeTable(Test, FPlayerLevelRow::StaticStruct(), LPT::FixtureLevelCsv());
-			Coolers = LPT::MakeTable(Test, FCoolerRow::StaticStruct(), LPT::FixtureCoolerCsv());
-			return Levels.IsValid() && Coolers.IsValid() && World.Create(Test);
+			return Levels.IsValid() && World.Create(Test);
 		}
 
 		/** A player; with bLocalController its player state is owned by a (local, standalone) player controller */
 		LPT::FPlayer Spawn(FAutomationTestBase& Test, bool bLocalController, APlayerController** OutController = nullptr)
 		{
-			LPT::FPlayer Player = LPT::SpawnPlayer(Test, World, Levels.Get(), Coolers.Get());
+			LPT::FPlayer Player = LPT::SpawnPlayer(Test, World, Levels.Get());
 			if (bLocalController && Player.IsValid())
 			{
 				FActorSpawnParameters Params;
@@ -193,28 +191,25 @@ bool FLureNoticeSale::RunTest(const FString& Parameters)
 	TStrongObjectPtr<ULureProgressionTestListener> KeepOther(OtherListener);
 	OtherListener->Listen(Other.Progression);
 
-	TestEqual(TEXT("empty cooler: nothing sold"), Mine.Progression->SellAllFish(1.0f).FishSold, 0);
-	TestEqual(TEXT("empty cooler: no sale event"), MyListener->Sales.Num(), 0);
-	TestEqual(TEXT("empty cooler: no notice"), Mine.Progression->GetNoticeLines().Num(), 0);
+	TestFalse(TEXT("nothing sold: no sale"), Mine.Progression->RecordSale(0, 0));
+	TestEqual(TEXT("nothing sold: no sale event"), MyListener->Sales.Num(), 0);
+	TestEqual(TEXT("nothing sold: no notice"), Mine.Progression->GetNoticeLines().Num(), 0);
 
-	LPT::FillCooler(Mine.Cooler, { 20, 28 });
-	const FLureSaleResult Sale = Mine.Progression->SellAllFish(1.0f);
-	TestEqual(TEXT("sold 2 fish"), Sale.FishSold, 2);
+	TestTrue(TEXT("a sale of 2 fish for 48 coins"), Mine.Progression->RecordSale(2, 48));
+	TestEqual(TEXT("the seller is paid"), Mine.Progression->GetMoney(), 48);
 	TestEqual(TEXT("one sale event for the seller"), MyListener->Sales.Num(), 1);
 	if (MyListener->Sales.Num() == 1)
 	{
 		TestEqual(TEXT("... with the count"), MyListener->Sales[0].Key, 2);
-		TestEqual(TEXT("... and the coins"), MyListener->Sales[0].Value, Sale.MoneyEarned);
+		TestEqual(TEXT("... and the coins"), MyListener->Sales[0].Value, 48);
 	}
-	TestEqual(TEXT("one sale notice"), ProgressionNoticeTest::Join(Mine.Progression->GetNoticeLines()),
-		FString::Printf(TEXT("Sold 2 fish for %d coins"), Sale.MoneyEarned));
+	TestEqual(TEXT("one sale notice"), ProgressionNoticeTest::Join(Mine.Progression->GetNoticeLines()), FString(TEXT("Sold 2 fish for 48 coins")));
 	TestEqual(TEXT("no sale event for the other player"), OtherListener->Sales.Num(), 0);
 	TestEqual(TEXT("no notice for the other player"), Other.Progression->GetNoticeLines().Num(), 0);
 
-	LPT::FillCooler(Mine.Cooler, { 9 });
-	TestEqual(TEXT("selling one slot"), Mine.Progression->SellOneFish(0, 1.0f).FishSold, 1);
+	TestTrue(TEXT("a sale of one fish"), Mine.Progression->RecordSale(1, 9));
 	const TArray<FString> AfterOne = Mine.Progression->GetNoticeLines();
-	TestEqual(TEXT("selling one slot notifies too"), AfterOne.Num() > 0 ? AfterOne.Last() : FString(), FString(TEXT("Sold 1 fish for 9 coins")));
+	TestEqual(TEXT("one fish notifies too"), AfterOne.Num() > 0 ? AfterOne.Last() : FString(), FString(TEXT("Sold 1 fish for 9 coins")));
 
 	// The owning client receiving the RPC (a client-owned player state and controller).
 	Mine.Progression->ClearNotices();
@@ -244,8 +239,7 @@ bool FLureNoticeHud::RunTest(const FString& Parameters)
 	}
 	TestEqual(TEXT("no controller: no notices"), ALureHUD::GetNoticeLines(nullptr).Num(), 0);
 	Mine.Progression->AddXp(100);
-	LPT::FillCooler(Mine.Cooler, { 12 });
-	Mine.Progression->SellAllFish(1.0f);
+	Mine.Progression->RecordSale(1, 12);
 	TestEqual(TEXT("my HUD: the level-up, then the sale"), ProgressionNoticeTest::Join(ALureHUD::GetNoticeLines(MyController)),
 		FString(TEXT("Level up! Level 2 | Sold 1 fish for 12 coins")));
 	TestEqual(TEXT("the other player's HUD shows none of mine"), ALureHUD::GetNoticeLines(OtherController).Num(), 0);

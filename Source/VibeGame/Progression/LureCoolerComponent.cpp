@@ -1,4 +1,4 @@
-// Lure: the player's cooler (T-010).
+// Lure: a cooler's storage (T-010; T-030 records with freshness on the physical cooler).
 
 #include "Progression/LureCoolerComponent.h"
 #include "Progression/LureProgressionSettings.h"
@@ -16,9 +16,11 @@ ULureCoolerComponent::ULureCoolerComponent()
 void ULureCoolerComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
-	DOREPLIFETIME_CONDITION(ULureCoolerComponent, StoredFish, COND_OwnerOnly);
+	// A cooler is a shared world object (T-030): everyone may look inside, so the contents go to everyone.
+	DOREPLIFETIME(ULureCoolerComponent, StoredFish);
 	DOREPLIFETIME(ULureCoolerComponent, CoolerId);
 	DOREPLIFETIME(ULureCoolerComponent, Capacity);
+	DOREPLIFETIME(ULureCoolerComponent, DecayRate);
 }
 
 void ULureCoolerComponent::BeginPlay()
@@ -39,6 +41,11 @@ bool ULureCoolerComponent::CheckServer(const TCHAR* What) const
 	}
 	UE_LOG(LogLureProgression, Warning, TEXT("%s: %s is server-only; ignored on this client."), *GetPathNameSafe(this), What);
 	return false;
+}
+
+double ULureCoolerComponent::GetNow() const
+{
+	return FLureFreshness::GetServerTime(this);
 }
 
 const UDataTable* ULureCoolerComponent::GetCoolerTable() const
@@ -110,6 +117,27 @@ int32 ULureCoolerComponent::ResolveSlots(FName InCoolerId) const
 	return FMath::Clamp(Row->Slots, 1, FLureProgressionData::MaxCoolerSlots);
 }
 
+const FCoolerRow* ULureCoolerComponent::FindRow() const
+{
+	const UDataTable* Table = GetCoolerTable();
+	return Table && !CoolerId.IsNone() ? Table->FindRow<FCoolerRow>(CoolerId, TEXT("Cooler"), false) : nullptr;
+}
+
+FCoolerRow ULureCoolerComponent::FindRowOrDefault() const
+{
+	if (const FCoolerRow* Row = FindRow())
+	{
+		return *Row;
+	}
+	FCoolerRow Default;
+	Default.DisplayName = NSLOCTEXT("LureCooler", "Cooler", "Cooler");
+	Default.Slots = GetCapacity();
+	Default.OpenDecayRate = 1.0f;
+	Default.ClosedDecayRate = 0.0f;
+	Default.CarrySpeedMultiplier = 1.0f;
+	return Default;
+}
+
 void ULureCoolerComponent::EnsureCapacity()
 {
 	if (Capacity <= 0)
@@ -140,24 +168,24 @@ int32 ULureCoolerComponent::GetCapacity() const
 	return Capacity > 0 ? Capacity : FMath::Max(1, GetDefault<ULureProgressionSettings>()->FallbackCoolerSlots);
 }
 
-bool ULureCoolerComponent::GetFishAt(int32 SlotIndex, FFishInstance& OutFish) const
+bool ULureCoolerComponent::GetFishAt(int32 SlotIndex, FLureCaughtFish& OutFish) const
 {
 	if (!StoredFish.IsValidIndex(SlotIndex))
 	{
-		OutFish = FFishInstance();
+		OutFish = FLureCaughtFish();
 		return false;
 	}
 	OutFish = StoredFish[SlotIndex];
 	return true;
 }
 
-bool ULureCoolerComponent::AddFish(const FFishInstance& Fish)
+bool ULureCoolerComponent::AddFish(const FLureCaughtFish& Fish)
 {
 	int32 Slot = INDEX_NONE;
 	return AddFishToSlot(Fish, Slot);
 }
 
-bool ULureCoolerComponent::AddFishToSlot(const FFishInstance& Fish, int32& OutSlot)
+bool ULureCoolerComponent::AddFishToSlot(const FLureCaughtFish& Fish, int32& OutSlot)
 {
 	OutSlot = INDEX_NONE;
 	if (!CheckServer(TEXT("AddFish")))
@@ -174,22 +202,30 @@ bool ULureCoolerComponent::AddFishToSlot(const FFishInstance& Fish, int32& OutSl
 	{
 		return false;
 	}
-	OutSlot = StoredFish.Add(Fish);
+	FLureCaughtFish Stored = Fish;
+	Stored.Freshness.SetRate(DecayRate, GetNow()); // spoils at the cooler's speed from now on
+	OutSlot = StoredFish.Add(Stored);
 	NotifyChanged();
 	return true;
 }
 
-bool ULureCoolerComponent::RemoveFish(int32 SlotIndex, FFishInstance& OutFish)
+bool ULureCoolerComponent::RemoveFish(int32 SlotIndex, FLureCaughtFish& OutFish)
 {
-	OutFish = FFishInstance();
+	OutFish = FLureCaughtFish();
 	if (!CheckServer(TEXT("RemoveFish")) || !StoredFish.IsValidIndex(SlotIndex))
 	{
 		return false;
 	}
 	OutFish = StoredFish[SlotIndex];
+	OutFish.Freshness.SetRate(OutFish.Freshness.Rate, GetNow()); // the exposure so far, anchored now
 	StoredFish.RemoveAt(SlotIndex);
 	NotifyChanged();
 	return true;
+}
+
+bool ULureCoolerComponent::RemoveLastFish(FLureCaughtFish& OutFish)
+{
+	return RemoveFish(StoredFish.Num() - 1, OutFish);
 }
 
 int32 ULureCoolerComponent::Clear()
@@ -207,14 +243,19 @@ int32 ULureCoolerComponent::Clear()
 	return Removed;
 }
 
-TArray<FFishInstance> ULureCoolerComponent::TakeAll()
+TArray<FLureCaughtFish> ULureCoolerComponent::TakeAll()
 {
 	if (!CheckServer(TEXT("TakeAll")))
 	{
 		return {};
 	}
-	TArray<FFishInstance> Taken = MoveTemp(StoredFish);
+	TArray<FLureCaughtFish> Taken = MoveTemp(StoredFish);
 	StoredFish.Reset();
+	const double Now = GetNow();
+	for (FLureCaughtFish& Fish : Taken)
+	{
+		Fish.Freshness.SetRate(Fish.Freshness.Rate, Now);
+	}
 	if (Taken.Num() > 0)
 	{
 		NotifyChanged();
@@ -240,7 +281,23 @@ bool ULureCoolerComponent::SetCoolerId(FName NewCoolerId)
 	return true;
 }
 
-void ULureCoolerComponent::RestoreState(FName InCoolerId, const TArray<FFishInstance>& InFish)
+void ULureCoolerComponent::SetDecayRate(float NewRate)
+{
+	if (!CheckServer(TEXT("SetDecayRate")))
+	{
+		return;
+	}
+	const float Rate = FMath::IsFinite(NewRate) ? FMath::Max(0.0f, NewRate) : 0.0f;
+	const double Now = GetNow();
+	DecayRate = Rate;
+	for (FLureCaughtFish& Fish : StoredFish)
+	{
+		Fish.Freshness.SetRate(Rate, Now);
+	}
+	NotifyChanged();
+}
+
+void ULureCoolerComponent::RestoreState(FName InCoolerId, const TArray<FLureCaughtFish>& InFish, float InDecayRate)
 {
 	if (!CheckServer(TEXT("RestoreState")))
 	{
@@ -248,12 +305,18 @@ void ULureCoolerComponent::RestoreState(FName InCoolerId, const TArray<FFishInst
 	}
 	CoolerId = ResolveCoolerId(InCoolerId); // None or an unknown row (renamed/removed) -> the default row
 	Capacity = ResolveSlots(CoolerId);
+	DecayRate = FMath::IsFinite(InDecayRate) ? FMath::Max(0.0f, InDecayRate) : 0.0f;
+	const double Now = GetNow();
 	StoredFish.Reset();
-	for (const FFishInstance& Fish : InFish)
+	for (const FLureCaughtFish& Fish : InFish)
 	{
 		if (Fish.IsValid())
 		{
-			StoredFish.Add(Fish);
+			FLureCaughtFish Loaded = Fish;
+			// The saved exposure is the whole history; the anchor starts now at the cooler's speed (server time restarts per session).
+			Loaded.Freshness = FLureFreshnessState::StartAt(Now, DecayRate);
+			Loaded.Freshness.ExposedSeconds = FMath::IsFinite(Fish.Freshness.ExposedSeconds) ? FMath::Max(0.0f, Fish.Freshness.ExposedSeconds) : 0.0f;
+			StoredFish.Add(Loaded);
 		}
 	}
 	if (StoredFish.Num() > Capacity)
@@ -268,7 +331,7 @@ void ULureCoolerComponent::NotifyChanged()
 {
 	if (AActor* Owner = GetOwner())
 	{
-		Owner->ForceNetUpdate(); // PlayerStates update rarely by default
+		Owner->ForceNetUpdate();
 	}
 	OnCoolerChanged.Broadcast(this);
 }

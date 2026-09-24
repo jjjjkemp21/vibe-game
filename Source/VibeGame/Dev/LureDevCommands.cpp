@@ -1,6 +1,7 @@
 // Lure: dev-only console commands for scripted playtests (T-025). Compiled out of Shipping.
 
 #include "Dev/LureDevCommands.h"
+#include "Catch/LureCatchLibrary.h"
 
 DEFINE_LOG_CATEGORY(LogLureDev);
 
@@ -808,21 +809,21 @@ bool FLureDevCommands::RunGiveFish(const TArray<FString>& InArgs, UWorld* InWorl
 		Report(Ar, false, FString::Printf(TEXT("%s: %s"), GiveFishCommand, *Error));
 		return false;
 	}
-	// Like a real catch (T-010): on the server the fish goes through HandleFishLanded (XP + cooler). Without a player
-	// (no world, or no player in it) the roll is only logged.
+	// Like a real catch (T-030): on the server the fish goes through ULureCatchLibrary::HandleFishLanded (XP + the fish on
+	// the player's hook). Without a player (no world, or no player in it) the roll is only logged.
 	FString Stored = TEXT("not stored: no player");
 	if (PC)
 	{
 		AActor* Context = PC->GetPawn() ? static_cast<AActor*>(PC->GetPawn()) : static_cast<AActor*>(PC);
-		const FLureFishLandedResult Landed = ULureProgressionLibrary::HandleFishLanded(Context, Fish);
+		const FLureFishLandedResult Landed = ULureCatchLibrary::HandleFishLanded(Context, Fish);
 		if (!Landed.bAccepted)
 		{
-			Stored = TEXT("not stored: the player has no progression (is the game mode ALureGameMode?)");
+			Stored = TEXT("not stored: the player has no progression and no hands (is the game mode ALureGameMode?)");
 		}
 		else
 		{
 			Stored = FString::Printf(TEXT("%s, +%d XP, level %d%s"),
-				Landed.bStoredInCooler ? *FString::Printf(TEXT("in cooler slot %d"), Landed.CoolerSlot) : TEXT("cooler full, released"),
+				Landed.bOnHook ? TEXT("on the hook") : TEXT("no hook to hang it on"),
 				Landed.XpGained, Landed.NewLevel, Landed.LevelsGained > 0 ? *FString::Printf(TEXT(" (+%d)"), Landed.LevelsGained) : TEXT(""));
 		}
 	}

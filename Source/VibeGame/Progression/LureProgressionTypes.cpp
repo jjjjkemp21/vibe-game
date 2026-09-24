@@ -284,6 +284,18 @@ TArray<FString> FLureProgressionData::ValidateCoolerTable(const UDataTable* Tabl
 		{
 			Problems.Add(FString::Printf(TEXT("DT_Cooler row %s: DisplayName is empty"), *RowName.ToString()));
 		}
+		// T-030: freshness speeds inside (0 = holds) and the carry speed.
+		for (const TPair<const TCHAR*, float>& Rate : { TPair<const TCHAR*, float>(TEXT("OpenDecayRate"), Row.OpenDecayRate), TPair<const TCHAR*, float>(TEXT("ClosedDecayRate"), Row.ClosedDecayRate) })
+		{
+			if (!FMath::IsFinite(Rate.Value) || Rate.Value < 0.0f || Rate.Value > MaxDecayRate)
+			{
+				Problems.Add(FString::Printf(TEXT("DT_Cooler row %s: %s %g must be in [0, %g]"), *RowName.ToString(), Rate.Key, Rate.Value, MaxDecayRate));
+			}
+		}
+		if (!FMath::IsFinite(Row.CarrySpeedMultiplier) || !(Row.CarrySpeedMultiplier > 0.0f) || Row.CarrySpeedMultiplier > MaxCarrySpeedMultiplier)
+		{
+			Problems.Add(FString::Printf(TEXT("DT_Cooler row %s: CarrySpeedMultiplier %g must be in (0, %g]"), *RowName.ToString(), Row.CarrySpeedMultiplier, MaxCarrySpeedMultiplier));
+		}
 	});
 	if (!DefaultCoolerId.IsNone() && !Table->GetRowMap().Contains(DefaultCoolerId))
 	{

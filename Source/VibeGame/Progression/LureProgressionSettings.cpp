@@ -10,7 +10,7 @@ ULureProgressionSettings::ULureProgressionSettings()
 	PlayerLevelTable = TSoftObjectPtr<UDataTable>(FSoftObjectPath(TEXT("/Game/Data/DT_PlayerLevel.DT_PlayerLevel")));
 	CoolerTable = TSoftObjectPtr<UDataTable>(FSoftObjectPath(TEXT("/Game/Data/DT_Cooler.DT_Cooler")));
 	MarketTable = TSoftObjectPtr<UDataTable>(FSoftObjectPath(TEXT("/Game/Data/DT_FishMarket.DT_FishMarket")));
-	DefaultCoolerId = TEXT("Basic");
+	DefaultCoolerId = TEXT("Starter");
 	DefaultMarketId = TEXT("Default");
 }
 

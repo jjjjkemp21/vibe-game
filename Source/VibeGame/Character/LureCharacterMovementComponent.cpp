@@ -1,6 +1,7 @@
 // Lure: first-person movement with sprint, crouch and prone (T-004). Swimming (T-026) is in LureSwimMovement.cpp.
 
 #include "Character/LureCharacterMovementComponent.h"
+#include "Catch/LureHandsComponent.h"
 #include "Character/LureCharacterSettings.h"
 #include "Character/LurePlayerCharacter.h"
 #include "Components/CapsuleComponent.h"
@@ -323,6 +324,12 @@ float ULureCharacterMovementComponent::GetMaxSpeed() const
 	case MOVE_Walking:
 	case MOVE_NavWalking:
 	case MOVE_Falling:
+	{
+		// T-030: carrying the cooler (both hands) slows you by its DT_Cooler CarrySpeedMultiplier (1 with empty hands).
+		const ALurePlayerCharacter* Lure = GetLureCharacter();
+		const ULureHandsComponent* Hands = Lure ? Lure->GetHands() : nullptr;
+		return GetRow(GetMovementState()).MaxSpeed * (Hands ? Hands->GetMoveSpeedMultiplier() : 1.f);
+	}
 	case MOVE_Swimming:
 		return GetRow(GetMovementState()).MaxSpeed;
 	default:

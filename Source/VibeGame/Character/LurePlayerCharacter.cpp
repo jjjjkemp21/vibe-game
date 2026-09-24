@@ -6,6 +6,7 @@
 #include "Character/LureCharacterMovementComponent.h"
 #include "Character/LureCharacterSettings.h"
 #include "Character/LureInputSubsystem.h"
+#include "Catch/LureHandsComponent.h"
 #include "Interaction/LureInteractionComponent.h"
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
@@ -99,6 +100,7 @@ ALurePlayerCharacter::ALurePlayerCharacter(const FObjectInitializer& ObjectIniti
 	PlaceholderBodyColor = FLinearColor(FColor(0x7C, 0x8A, 0x63));
 
 	Fishing = CreateDefaultSubobject<ULureFishingComponent>(TEXT("Fishing"));
+	Hands = CreateDefaultSubobject<ULureHandsComponent>(TEXT("Hands")); // T-030
 
 	CurrentEyeHeight = Stand.EyeHeight;
 	EyeBlendFrom = Stand.EyeHeight;
@@ -305,6 +307,12 @@ void ALurePlayerCharacter::UpdateArmsPose(const FLureMovementRow& Row, float Del
 	}
 	ArmsPose = FLureRodPose::Step(RodPoseState, Row, Input);
 	ArmsPoseBlendTime = Row.RodPoseBlendTime;
+	// T-030: a fish in the hand or the cooler in both hands decides the arms (the rod is stowed then).
+	EFPArmsPose HeldPose = EFPArmsPose::Idle;
+	if (Hands && Hands->GetArmsPoseOverride(HeldPose))
+	{
+		ArmsPose = HeldPose;
+	}
 }
 
 bool ALurePlayerCharacter::PlayStanceDip(float PlayRate)

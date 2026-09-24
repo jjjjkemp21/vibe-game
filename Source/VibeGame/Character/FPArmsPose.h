@@ -11,8 +11,10 @@ struct FLureMovementRow;
 
 /**
  *  Which arms loop ABP_FPArms plays (Blend Poses by EFPArmsPose, one Sequence Player each, sync group FPArmsBreath):
- *  Idle = A_FPArms_Idle, HoldRod = A_FPArms_HoldRod_Idle, ProneHold = A_FPArms_Prone_HoldRod_Idle, ProneTuck = A_FPArms_Prone_TuckRod.
- *  DT_Movement's RodPoseStill / RodPoseMoving columns pick the pose per stance (CSV cells use these names).
+ *  Idle = A_FPArms_Idle, HoldRod = A_FPArms_HoldRod_Idle, ProneHold = A_FPArms_Prone_HoldRod_Idle, ProneTuck = A_FPArms_Prone_TuckRod,
+ *  HoldFish = a fish in the hand without the rod, CarryCooler = the cooler in both hands (T-030; the held item decides them,
+ *  ULureHandsComponent::GetArmsPoseOverride, whatever the stance). Until the graph has their pins, Blend Poses shows its default pose.
+ *  DT_Movement's RodPoseStill / RodPoseMoving columns pick the rod poses per stance (CSV cells use these names).
  */
 UENUM(BlueprintType)
 enum class EFPArmsPose : uint8
@@ -20,7 +22,9 @@ enum class EFPArmsPose : uint8
 	Idle = 0,
 	HoldRod = 1,
 	ProneHold = 2,
-	ProneTuck = 3
+	ProneTuck = 3,
+	HoldFish = 4,
+	CarryCooler = 5
 };
 
 /** Running state of the rod pose switch (owning client, cosmetic, never replicated). */

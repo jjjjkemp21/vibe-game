@@ -9,11 +9,13 @@
 #include "Engine/DataTable.h"
 #include "Game/LurePlayerState.h"
 #include "GameFramework/Pawn.h"
-#include "Progression/LureCoolerComponent.h"
+#include "Catch/LureCatchSubsystem.h"
+#include "Catch/LureCatchTypes.h"
+#include "Catch/LureCoolerActor.h"
+#include "Catch/LureSellCounter.h"
 #include "Progression/LureProgressionComponent.h"
 #include "Progression/LureProgressionSettings.h"
 #include "Progression/LureProgressionTypes.h"
-#include "Progression/LureSellPoint.h"
 
 namespace QAProgressionData
 {
@@ -107,7 +109,9 @@ namespace QAProgressionData
 	{
 		return {
 			{ TEXT("DT_PlayerLevel.csv"), FPlayerLevelRow::StaticStruct(), { TEXT("Level"), TEXT("XpToNext") }, { TEXT("Level"), TEXT("XpToNext") }, {} },
-			{ TEXT("DT_Cooler.csv"), FCoolerRow::StaticStruct(), { TEXT("DisplayName"), TEXT("Slots") }, { TEXT("Slots") }, {} },
+			// T-030 (unreal-engineer): the physical cooler's freshness and carry columns are numbers too.
+			{ TEXT("DT_Cooler.csv"), FCoolerRow::StaticStruct(), { TEXT("DisplayName"), TEXT("Slots") }, { TEXT("Slots") },
+				{ TEXT("OpenDecayRate"), TEXT("ClosedDecayRate"), TEXT("CarrySpeedMultiplier") } },
 			{ TEXT("DT_FishMarket.csv"), FFishMarketRow::StaticStruct(), { TEXT("DisplayName"), TEXT("SellMultiplier") }, {}, { TEXT("SellMultiplier") } },
 		};
 	}
@@ -348,7 +352,7 @@ bool FQAProgDataNewRowsNeedNoCode::RunTest(const FString& Parameters)
 		Csv += Line + TEXT("\n");
 	};
 	AppendLine(LevelCsv, FString::Printf(TEXT("QA_NewCap,%d,0,\"qa: a raised cap\""), Cap.Level + 1));
-	AppendLine(CoolerCsv, TEXT("QA_Huge,\"QA huge cooler\",30,"));
+	AppendLine(CoolerCsv, TEXT("QA_Huge,\"QA huge cooler\",30,,,1.0,0.0,1.0,")); // T-030 columns: no meshes (placeholder), open 1, closed 0, carry 1
 	AppendLine(MarketCsv, TEXT("QA_NightDock,\"QA night dock\",2.0,"));
 
 	QAP::FEnv Env;
@@ -357,8 +361,7 @@ bool FQAProgDataNewRowsNeedNoCode::RunTest(const FString& Parameters)
 		return false;
 	}
 	const QAP::FPlayer Player = Env.SpawnPlayer(*this, /*bWithPawn*/ true, FVector(50.0f, 0.0f, 0.0f));
-	ALureSellPoint* Night = Env.SpawnSellPoint(*this, FVector::ZeroVector, TEXT("QA_NightDock"));
-	if (!Player.IsValid() || !Player.Pawn || !Night)
+	if (!Player.IsValid() || !Player.Pawn)
 	{
 		return false;
 	}
@@ -373,12 +376,27 @@ bool FQAProgDataNewRowsNeedNoCode::RunTest(const FString& Parameters)
 	Player.Progression->AddXp(1);
 	TestEqual(TEXT("the new level is reached with no code change"), Player.Progression->GetLevel(), Cap.Level + 1);
 
-	TestTrue(TEXT("switch to the new cooler row"), Player.Cooler->SetCoolerId(TEXT("QA_Huge")));
-	TestEqual(TEXT("the new cooler has 30 slots"), Player.Cooler->GetCapacity(), 30);
+	// T-030 (unreal-engineer): coolers are actors of a DT_Cooler row, and buyers are sell counters; both still need no code.
+	if (ULureCatchSubsystem* Catch = ULureCatchSubsystem::Get(Env.World))
+	{
+		Catch->SetCoolerTable(Env.Coolers.Get());
+	}
+	const ALureCoolerActor* Huge = ALureCoolerActor::SpawnCooler(Env.World, TEXT("QA_Huge"), FTransform(FVector(300.0f, 0.0f, 0.0f)), nullptr);
+	TestTrue(TEXT("a cooler of the new row"), Huge && Huge->GetCoolerId() == FName(TEXT("QA_Huge")));
+	TestEqual(TEXT("the new cooler has 30 slots"), Huge ? Huge->GetCapacity() : 0, 30);
 
+	const FTransform CounterAt(FVector(0.0f, 300.0f, 0.0f));
+	ALureSellCounter* Night = Env.World->SpawnActorDeferred<ALureSellCounter>(ALureSellCounter::StaticClass(), CounterAt, nullptr, nullptr,
+		ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+	if (!TestNotNull(TEXT("a sell counter"), Night))
+	{
+		return false;
+	}
+	Night->MarketId = TEXT("QA_NightDock");
+	Night->SetMarketTable(Env.Markets.Get());
+	Night->FinishSpawning(CounterAt);
 	TestEqual(TEXT("the new buyer's multiplier"), Night->GetSellMultiplier(), 2.0f, 1e-6f);
-	Player.Cooler->AddFish(QAP::Fish(TEXT("QA_Snapper"), 7, 1));
-	TestEqual(TEXT("the new buyer pays 7 x 2 = 14"), Night->SellAll(Player.Pawn).MoneyEarned, 14);
+	TestEqual(TEXT("the new buyer pays 7 x 2 = 14 for a fresh fish"), FLureFreshness::GetSellPrice(QAP::Fish(TEXT("QA_Snapper"), 7, 1), 1.0f, Night->GetSellMultiplier()), 14);
 	return true;
 }
 

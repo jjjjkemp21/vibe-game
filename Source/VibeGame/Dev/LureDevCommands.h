@@ -69,7 +69,7 @@ struct FLureGiveFishArgs
  *    Lure.Teleport <X> <Y> <Z> [Yaw] [Player=<PlayerId>]       feet location in cm, yaw in degrees
  *    Lure.SetStance <Stand|Crouch|Prone> [Player=<PlayerId>]   the local player, exactly like pressing the stance key
  *    Lure.GiveFish <SpeciesId> [Rarity|-] [Seed] [Mods=A,B] [Weight=0..1] [Player=<PlayerId>]   server / standalone only
- *      (lands the fish like a real catch: ULureProgressionLibrary::HandleFishLanded = cooler + XP)
+ *      (lands the fish like a real catch: ULureCatchLibrary::HandleFishLanded = XP + the fish on the hook)
  *    Lure.Screenshot <file.png>                               this world's game viewport WITH its UI (HUD text, prompts,
  *                                                             widgets), written at once; the viewport's size
  *    (TODO T-006: Lure.Fishing.ForceBite once the fishing component is in main.)
@@ -176,7 +176,7 @@ struct FLureDevCommands
 	static bool RunSetStance(const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar);
 
 	/**
-	 *  Rolls the fish and, when the world has the target player, lands it through ULureProgressionLibrary::HandleFishLanded
+	 *  Rolls the fish and, when the world has the target player, lands it through ULureCatchLibrary::HandleFishLanded
 	 *  (cooler + XP, like a real catch). TablesOverride: tests pass tables built from data/tables/*.json; null = UFishSettings::LoadTables.
 	 */
 	static bool RunGiveFish(const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar, const FFishTables* TablesOverride = nullptr, FFishInstance* OutFish = nullptr);

@@ -1,4 +1,5 @@
-// Lure: things the player can use with the Interact key (T-010: sell points; later NPCs, boats, ladders...).
+// Lure: things the player can use with the two use keys (T-010 interact key; T-030 verbs: fish, coolers, the sell counter;
+// later NPCs, boats...). Rules: docs/specs/catch-handling-rules.md "Focus and input".
 
 #pragma once
 
@@ -8,6 +9,70 @@
 
 class APawn;
 
+/** The two use keys: Interact (E / gamepad X) and AltInteract (F / gamepad Y). */
+UENUM(BlueprintType)
+enum class ELureInteractKey : uint8
+{
+	Primary,
+	Secondary
+};
+
+/**
+ *  Everything a use key can do. The client sends the verb it expects; the server does it only if its own verb for that key
+ *  is the same (a stale prompt never does something else). A new kind of interactable adds its verbs at the end.
+ */
+UENUM(BlueprintType)
+enum class ELureInteractVerb : uint8
+{
+	None,
+	/** A fish on your hook, or lying loose: into your hand */
+	GrabFish,
+	/** Your hanging fish: let it drop off the hook (into the water = released) */
+	ReleaseFish,
+	/** The fish in your hand: drop it in front of you (into the water = released) */
+	DropFish,
+	OpenCooler,
+	CloseCooler,
+	PutFishInCooler,
+	TakeFishFromCooler,
+	PickUpCooler,
+	PutDownCooler,
+	PlaceFishOnCounter,
+	TakeFishFromCounter,
+	SellCounter
+};
+
+/** What a key would do on an interactable right now. Verb None with a prompt is an info line (e.g. "Cooler full (4/4)"). */
+USTRUCT(BlueprintType)
+struct FLureInteraction
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly, Category="Interaction")
+	ELureInteractVerb Verb = ELureInteractVerb::None;
+
+	UPROPERTY(BlueprintReadOnly, Category="Interaction")
+	FText Prompt;
+
+	bool HasVerb() const { return Verb != ELureInteractVerb::None; }
+	bool IsEmpty() const { return !HasVerb() && Prompt.IsEmpty(); }
+
+	static FLureInteraction Make(ELureInteractVerb InVerb, const FText& InPrompt)
+	{
+		FLureInteraction Result;
+		Result.Verb = InVerb;
+		Result.Prompt = InPrompt;
+		return Result;
+	}
+
+	static FLureInteraction Info(const FText& InPrompt)
+	{
+		FLureInteraction Result;
+		Result.Prompt = InPrompt;
+		return Result;
+	}
+};
+
 UINTERFACE(MinimalAPI, meta=(CannotImplementInterfaceInBlueprint))
 class ULureInteractable : public UInterface
 {
@@ -16,8 +81,8 @@ class ULureInteractable : public UInterface
 
 /**
  *  C++ interface for an interactable actor. The actor registers itself with ULureInteractionSubsystem (BeginPlay) and
- *  unregisters (EndPlay); ULureInteractionComponent on the player's pawn picks the nearest one in range, shows its
- *  prompt, and on the Interact key asks the server to run Interact (range and CanInteract are checked again there).
+ *  unregisters (EndPlay). ULureInteractionComponent on the player's pawn picks what the player looks at (in reach, smallest
+ *  focus angle), shows the verbs of both keys, and on a key asks the server to do the verb (checked again there).
  */
 class ILureInteractable
 {
@@ -25,27 +90,39 @@ class ILureInteractable
 
 public:
 
-	/** World point the interaction radius is measured from */
+	/** World point the reach is measured from */
 	virtual FVector GetInteractionLocation() const = 0;
 
-	/** Range in cm (3D distance from the pawn's location) */
+	/** Reach in cm (3D distance from the pawn's location to GetInteractionLocation) */
 	virtual float GetInteractionRadius() const = 0;
 
-	/** Checks besides range (default: any pawn) */
+	/** Size of the target for aiming, cm: the default GetFocusAngle treats it as a sphere of this radius around the location */
+	virtual float GetFocusRadius() const { return 0.0f; }
+
+	/** Degrees between the view ray and the target (0 = looking right at it). Default: a sphere of GetFocusRadius. */
+	virtual float GetFocusAngle(const FVector& ViewLocation, const FVector& ViewDirection) const;
+
+	/** Checks besides reach (default: any pawn). False = no verbs and no focus for this pawn. */
 	virtual bool CanInteract(const APawn* Pawn) const { return Pawn != nullptr; }
 
-	/** Plain prompt text without the key, e.g. "Sell 3 fish (45 coins)" */
-	virtual FText GetInteractionPrompt(const APawn* Pawn) const = 0;
+	/** What Key does for Pawn now (Verb None = nothing; a prompt without a verb is shown as info). Every machine. */
+	virtual FLureInteraction GetInteraction(const APawn* Pawn, ELureInteractKey Key) const = 0;
 
-	/**
-	 *  Server only. Option: INDEX_NONE = the default action (a sell point sells everything); >= 0 = a specific choice
-	 *  (a sell point sells that cooler slot). Returns true if something happened.
-	 */
-	virtual bool Interact(APawn* Pawn, int32 Option) = 0;
+	/** Server only: does Verb for Pawn. ULureInteractionComponent::TryInteract has checked reach, CanInteract and the verb. */
+	virtual bool PerformInteraction(APawn* Pawn, ELureInteractVerb Verb) = 0;
 
-	/** Extra range (cm) the server accepts on top of the radius, for network lag between the client's check and the server's */
+	/** Extra reach (cm) the server accepts, for network lag between the client's check and the server's */
 	static constexpr float ServerRangeSlack = 150.0f;
 
 	/** Distance from Pawn to GetInteractionLocation() <= GetInteractionRadius() + Slack */
 	bool IsInInteractionRange(const APawn* Pawn, float Slack = 0.0f) const;
+
+	/** Degrees from the ray (ViewLocation, ViewDirection) to a sphere: 0 when the ray passes through it (or starts inside). */
+	static float AngleToSphere(const FVector& ViewLocation, const FVector& ViewDirection, const FVector& Center, float Radius);
+
+	/** Degrees from the ray to an oriented box (HalfExtent in BoxTransform's space, scale ignored): 0 when the ray passes through it. */
+	static float AngleToBox(const FVector& ViewLocation, const FVector& ViewDirection, const FTransform& BoxTransform, const FVector& HalfExtent);
+
+	/** The key's display label for prompts: "E", "F" (the first key of the action), or "Interact" / "Alt" without keys. */
+	static FString GetKeyLabel(ELureInteractKey Key);
 };

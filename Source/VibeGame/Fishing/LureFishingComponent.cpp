@@ -5,6 +5,8 @@
 #include "Animation/AnimMontage.h"
 #include "Camera/CameraComponent.h"
 #include "Camera/PlayerCameraManager.h"
+#include "Catch/LureCatchLibrary.h"
+#include "Catch/LureHandsComponent.h"
 #include "Character/LureCharacterMovementComponent.h"
 #include "Character/LureInputSubsystem.h"
 #include "Character/LurePlayerCharacter.h"
@@ -476,13 +478,15 @@ FLureCastConditions ULureFishingComponent::GetConditions() const
 	FLureCastConditions Conditions;
 	const ACharacter* Character = GetCharacter();
 	const UCharacterMovementComponent* Movement = Character ? Character->GetCharacterMovement() : nullptr;
-	Conditions.bHasRod = bRodEquipped;
+	// T-030: the rod is stowed while the hands hold a fish or the cooler (a line out comes in, reason NoRod).
+	Conditions.bHasRod = bRodEquipped && !ULureHandsComponent::IsRodStowedFor(GetOwner());
 	Conditions.bSwimming = IsInWater();
 	Conditions.bFalling = Movement && Movement->IsFalling();
 	// T-026 climbs (ClimbOut, LedgeClimb) are MOVE_Custom: busy, like any custom mode added later.
 	Conditions.bClimbing = Movement && Movement->MovementMode == MOVE_Custom;
 	Conditions.Speed2D = Movement ? static_cast<float>(Movement->Velocity.Size2D()) : 0.f;
-	Conditions.bLineOut = IsLineOut();
+	// T-030: a landed fish still hangs on the line until it is grabbed or let go (a cast is refused as Busy).
+	Conditions.bLineOut = IsLineOut() || ULureHandsComponent::HasFishOnHookFor(GetOwner());
 	return Conditions;
 }
 
@@ -501,7 +505,8 @@ bool ULureFishingComponent::IsInWater() const
 bool ULureFishingComponent::IsRodInHand() const
 {
 	// The rod is put away in the water (the arms show Idle); it comes back once you stand on land.
-	return bRodEquipped && !IsInWater();
+	// T-030: it is also put away while the hands hold a fish or carry the cooler.
+	return bRodEquipped && !IsInWater() && !ULureHandsComponent::IsRodStowedFor(GetOwner());
 }
 
 ELureCastBlock ULureFishingComponent::GetCastBlock() const
@@ -1261,18 +1266,11 @@ void ULureFishingComponent::LandFish(double Now)
 		*LastLandedFish.SpeciesId.ToString(), *LastLandedFish.RarityId.ToString(), LastLandedFish.WeightKg, LastLandedFish.Value, LastLandedFish.Level,
 		Mods.Num() > 0 ? *FString::Printf(TEXT(", [%s]"), *FString::Join(Mods, TEXT(", "))) : TEXT(""),
 		Fight.Elapsed > 0.f && Fight.Outcome == ELureFightOutcome::Landed ? *FString::Printf(TEXT(", fight %.1f s"), Fight.Elapsed) : TEXT(""));
-	// T-010 hand-off: XP + cooler, exactly once per landed fish (LandFish only runs on the server).
-	// A pawn without a player's progression (tests, a bare character) just logs it.
+	// T-030 hand-off (catch-handling-rules.md), exactly once per landed fish (LandFish only runs on the server): the XP now
+	// and the fish on the hook. A pawn without progression or hands (tests, a bare character) just logs what it skips.
 	if (GetOwner() && GetOwner()->HasAuthority())
 	{
-		if (ULureProgressionLibrary::GetProgression(GetOwner()))
-		{
-			ULureProgressionLibrary::HandleFishLanded(GetOwner(), LastLandedFish);
-		}
-		else
-		{
-			UE_LOG(LogLureFishing, Log, TEXT("%s has no player progression: the landed fish is not stored or counted for XP."), *GetNameSafe(GetOwner()));
-		}
+		ULureCatchLibrary::HandleFishLanded(GetOwner(), LastLandedFish);
 	}
 	OnFishingEvent.Broadcast(ELureFishingResult::Landed, LastLandedFish);
 	OnFishLanded.Broadcast(this, LastLandedFish);

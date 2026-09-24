@@ -11,10 +11,8 @@
 #include "Interaction/LureInteractionComponent.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
-#include "Progression/LureCoolerComponent.h"
 #include "Progression/LureProgressionComponent.h"
 #include "Progression/LureProgressionTypes.h"
-#include "Progression/LureSellPoint.h"
 #include "UObject/Package.h"
 
 namespace QAProg
@@ -225,30 +223,17 @@ namespace QAProg
 		State.Money = Player.Progression->GetMoney();
 		State.TotalXp = Player.Progression->GetTotalXp();
 		State.Level = Player.Progression->GetLevel();
-		State.CoolerId = Player.Cooler->GetCoolerId();
-		State.Fish = Player.Cooler->GetFish();
 		return State;
 	}
 
 	bool FState::Equals(const FState& Other) const
 	{
-		if (Money != Other.Money || TotalXp != Other.TotalXp || Level != Other.Level || CoolerId != Other.CoolerId || Fish.Num() != Other.Fish.Num())
-		{
-			return false;
-		}
-		for (int32 Index = 0; Index < Fish.Num(); ++Index)
-		{
-			if (!FFishInstance::StaticStruct()->CompareScriptStruct(&Fish[Index], &Other.Fish[Index], PPF_None))
-			{
-				return false;
-			}
-		}
-		return true;
+		return Money == Other.Money && TotalXp == Other.TotalXp && Level == Other.Level;
 	}
 
 	FString FState::Describe() const
 	{
-		return FString::Printf(TEXT("money %d, XP %d, level %d, cooler %s, %d fish"), Money, TotalXp, Level, *CoolerId.ToString(), Fish.Num());
+		return FString::Printf(TEXT("money %d, XP %d, level %d"), Money, TotalXp, Level);
 	}
 
 	bool FEnv::Init(FAutomationTestBase& Test, const FString& LevelCsv, const FString& CoolerCsv, const FString& MarketCsv)
@@ -293,18 +278,13 @@ namespace QAProg
 			return Player;
 		}
 		Player.State = State;
-		Player.Cooler = State->GetCooler();
 		Player.Progression = State->GetProgression();
-		if (Player.Cooler)
-		{
-			Player.Cooler->SetCoolerTable(Coolers.Get());
-		}
 		if (Player.Progression)
 		{
 			Player.Progression->SetLevelTable(Levels.Get());
 		}
 		State->FinishSpawning(FTransform::Identity);
-		Test.TestTrue(TEXT("QA player state has a cooler and progression"), Player.IsValid());
+		Test.TestTrue(TEXT("QA player state has progression"), Player.IsValid());
 		if (bWithPawn)
 		{
 			Player.Pawn = SpawnLonePawn(Test, PawnLocation, &Player.Interaction);
@@ -337,26 +317,6 @@ namespace QAProg
 			*OutInteraction = Interaction;
 		}
 		return Pawn;
-	}
-
-	ALureSellPoint* FEnv::SpawnSellPoint(FAutomationTestBase& Test, const FVector& Location, FName MarketId, float Radius, const UDataTable* MarketTableOverride)
-	{
-		if (!World)
-		{
-			return nullptr;
-		}
-		const FTransform Transform(Location);
-		ALureSellPoint* Point = World->SpawnActorDeferred<ALureSellPoint>(ALureSellPoint::StaticClass(), Transform, nullptr, nullptr,
-			ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
-		if (!Test.TestNotNull(TEXT("QA sell point"), Point))
-		{
-			return nullptr;
-		}
-		Point->MarketId = MarketId;
-		Point->InteractionRadius = Radius;
-		Point->SetMarketTable(MarketTableOverride ? MarketTableOverride : Markets.Get());
-		Point->FinishSpawning(Transform);
-		return Point;
 	}
 
 	void SetRoles(ENetRole Role, std::initializer_list<AActor*> Actors)

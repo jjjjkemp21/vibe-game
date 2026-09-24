@@ -70,7 +70,7 @@ Helpers (every name here exists; self_check() verifies it)
                                                  keys); a refused request (e.g. Prone while still falling right
                                                  after a teleport) is re-sent every frame until it sticks
             give_fish(species, rarity=None, seed=None, player=0)   Lure.GiveFish: lands it like a catch
-                                                 (cooler + XP); read editor_log for the result
+                                                 (XP + the fish on the player's hook, T-030); read editor_log
   Pictures  screenshot(name, player=0, width=1280, height=720, ui=True)   PNG in the session folder.
                                                  ui=True: Lure.Screenshot in that player's viewport, with the
                                                  HUD text and prompts, viewport size, written at once.
@@ -1033,8 +1033,8 @@ def set_stance(stance, player=0, retry_frames=60):
 
 @_logged
 def give_fish(species, rarity=None, seed=None, player=0):
-    """Lure.GiveFish on the server: rolls a fish with the real pipeline and lands it like a real catch (into the
-    player's cooler, XP added). Read the result with editor_log("Lure.GiveFish") in your next step."""
+    """Lure.GiveFish on the server: rolls a fish with the real pipeline and lands it like a real catch (XP added, the
+    fish hangs on the player's hook: E grabs it, F lets it go; T-030). Read the result with editor_log("Lure.GiveFish")."""
     command = "Lure.GiveFish %s %s" % (species, rarity if rarity else "-")
     if seed is not None:
         command += " %d" % int(seed)

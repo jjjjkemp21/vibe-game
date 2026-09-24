@@ -15,6 +15,7 @@ const FName FLureInputActionNames::Move(TEXT("Move"));
 const FName FLureInputActionNames::Look(TEXT("Look"));
 const FName FLureInputActionNames::Jump(TEXT("Jump"));
 const FName FLureInputActionNames::Interact(TEXT("Interact"));
+const FName FLureInputActionNames::AltInteract(TEXT("AltInteract"));
 const FName FLureInputActionNames::Sprint(TEXT("Sprint"));
 const FName FLureInputActionNames::Crouch(TEXT("Crouch"));
 const FName FLureInputActionNames::Prone(TEXT("Prone"));
@@ -23,7 +24,7 @@ const FName FLureInputActionNames::Hook(TEXT("Hook"));
 
 TArray<FName> FLureInputActionNames::All()
 {
-	return { Move, Look, Jump, Sprint, Crouch, Prone, Interact, Cast, Hook };
+	return { Move, Look, Jump, Sprint, Crouch, Prone, Interact, AltInteract, Cast, Hook };
 }
 
 void ULureInputSubsystem::Initialize(FSubsystemCollectionBase& Collection)
@@ -76,6 +77,7 @@ void ULureInputSubsystem::CreateActions()
 		{ FLureInputActionNames::Look, EInputActionValueType::Axis2D },
 		{ FLureInputActionNames::Jump, EInputActionValueType::Boolean },
 		{ FLureInputActionNames::Interact, EInputActionValueType::Boolean },
+		{ FLureInputActionNames::AltInteract, EInputActionValueType::Boolean },
 		{ FLureInputActionNames::Sprint, EInputActionValueType::Boolean },
 		{ FLureInputActionNames::Crouch, EInputActionValueType::Boolean },
 		{ FLureInputActionNames::Prone, EInputActionValueType::Boolean },
@@ -175,6 +177,7 @@ void ULureInputSubsystem::BuildMappings(UInputMappingContext& Context, const TMa
 	auto NoModifiers = []() { return TArray<UInputModifier*>{}; };
 	Map(FLureInputActionNames::Jump, Settings.JumpKeys, NoModifiers);
 	Map(FLureInputActionNames::Interact, Settings.InteractKeys, NoModifiers); // T-010
+	Map(FLureInputActionNames::AltInteract, Settings.AltInteractKeys, NoModifiers); // T-030
 	Map(FLureInputActionNames::Sprint, Settings.SprintKeys, NoModifiers);
 	Map(FLureInputActionNames::Crouch, Settings.CrouchKeys, NoModifiers);
 	Map(FLureInputActionNames::Prone, Settings.ProneKeys, NoModifiers);

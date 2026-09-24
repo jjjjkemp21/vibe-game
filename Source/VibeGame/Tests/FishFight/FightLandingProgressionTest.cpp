@@ -1,12 +1,17 @@
-// Lure T-007 x T-010 integration (unreal-engineer, playtest B1 of 2026-09-23): a real catch (hook, reel fight, landing on the
-// server) reaches the player's cooler and XP exactly once, for the host's pawn and for a pawn owned by a remote client.
-// Project.Fishing.Fight.Landing.GoesToCoolerAndXp
+// Lure T-007 x T-010 x T-030 integration (unreal-engineer, playtest B1 of 2026-09-23; T-030 catch handling): a real catch (hook,
+// reel fight, landing on the server) gives its XP exactly once and hangs on the angler's hook, for the host's pawn and for a pawn
+// owned by a remote client; a new cast waits until the fish is off the hook (here: put into a physical cooler).
+// Project.Fishing.Fight.Landing.HangsOnHookWithXp
 
 #include "FightQATestUtils.h"
 #include "Tests/Progression/ProgressionTestUtils.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
+#include "Catch/LureCatchSubsystem.h"
+#include "Catch/LureCoolerActor.h"
+#include "Catch/LureFishItem.h"
+#include "Catch/LureHandsComponent.h"
 #include "Game/LurePlayerState.h"
 #include "GameFramework/PlayerController.h"
 #include "Progression/LureCoolerComponent.h"
@@ -19,20 +24,17 @@ namespace LureFightLandingProgression
 	struct FServerPlayer
 	{
 		ALurePlayerState* State = nullptr;
-		ULureCoolerComponent* Cooler = nullptr;
 		ULureProgressionComponent* Progression = nullptr;
 	};
 
-	static bool MakePlayer(FAutomationTestBase& Test, UWorld* World, ALurePlayerCharacter* Character, bool bLocal, const UDataTable* Levels,
-		const UDataTable* Coolers, FServerPlayer& Out)
+	static bool MakePlayer(FAutomationTestBase& Test, UWorld* World, ALurePlayerCharacter* Character, bool bLocal, const UDataTable* Levels, FServerPlayer& Out)
 	{
 		ALurePlayerState* State = World->SpawnActorDeferred<ALurePlayerState>(ALurePlayerState::StaticClass(), FTransform::Identity, nullptr, nullptr,
 			ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
-		if (!Test.TestNotNull(TEXT("ALurePlayerState spawned"), State) || !State->GetCooler() || !State->GetProgression())
+		if (!Test.TestNotNull(TEXT("ALurePlayerState spawned"), State) || !State->GetProgression())
 		{
 			return false;
 		}
-		State->GetCooler()->SetCoolerTable(Coolers);
 		State->GetProgression()->SetLevelTable(Levels);
 		State->FinishSpawning(FTransform::Identity);
 
@@ -52,13 +54,20 @@ namespace LureFightLandingProgression
 		Test.TestEqual(TEXT("the controller is local only for the host"), Controller->IsLocalController(), bLocal);
 
 		Out.State = State;
-		Out.Cooler = State->GetCooler();
 		Out.Progression = State->GetProgression();
 		return true;
 	}
 
-	IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLureFightLandingGoesToCooler, "Project.Fishing.Fight.Landing.GoesToCoolerAndXp", LureFightQA::Flags)
-	bool FLureFightLandingGoesToCooler::RunTest(const FString& Parameters)
+	/** The record on Character's hook (invalid if nothing hangs there) */
+	static FFishInstance Hanging(const ALurePlayerCharacter* Character)
+	{
+		const ULureHandsComponent* Hands = Character ? Character->GetHands() : nullptr;
+		const ALureFishItem* Fish = Hands ? Hands->GetHangingFish() : nullptr;
+		return Fish ? Fish->GetFish() : FFishInstance();
+	}
+
+	IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLureFightLandingHangsOnHook, "Project.Fishing.Fight.Landing.HangsOnHookWithXp", LureFightQA::Flags)
+	bool FLureFightLandingHangsOnHook::RunTest(const FString& Parameters)
 	{
 		LureFightQA::FFightTables Data;
 		FishQA::FTables Fish;
@@ -78,7 +87,7 @@ namespace LureFightLandingProgression
 		TestTrue(TEXT("the rolled fish carry XP"), HostFish.Xp > 0 && ClientFish.Xp > 0 && HostFish2.Xp > 0);
 
 		const TStrongObjectPtr<UDataTable> Levels = LPT::MakeTable(*this, FPlayerLevelRow::StaticStruct(), LPT::FixtureLevelCsv());
-		const TStrongObjectPtr<UDataTable> Coolers = LPT::MakeTable(*this, FCoolerRow::StaticStruct(), LPT::FixtureCoolerCsv());
+		const TStrongObjectPtr<UDataTable> Coolers = LPT::ShippedTable(*this, FCoolerRow::StaticStruct(), TEXT("DT_Cooler.csv"));
 		LureFightQA::FWorld World;
 		if (!Levels.IsValid() || !Coolers.IsValid() || !World.Create(*this))
 		{
@@ -88,8 +97,8 @@ namespace LureFightLandingProgression
 		ALurePlayerCharacter* ClientCharacter = World.Spawn(LureFightQA::StandAt() + FVector(0.f, 300.f, 0.f));
 		FServerPlayer Host;
 		FServerPlayer Client;
-		if (!HostCharacter || !ClientCharacter || !MakePlayer(*this, World.World, HostCharacter, true, Levels.Get(), Coolers.Get(), Host)
-			|| !MakePlayer(*this, World.World, ClientCharacter, false, Levels.Get(), Coolers.Get(), Client))
+		if (!HostCharacter || !ClientCharacter || !MakePlayer(*this, World.World, HostCharacter, true, Levels.Get(), Host)
+			|| !MakePlayer(*this, World.World, ClientCharacter, false, Levels.Get(), Client))
 		{
 			return false;
 		}
@@ -107,8 +116,7 @@ namespace LureFightLandingProgression
 		HostFishing->OnFishLandedNative.AddLambda([&HostLanded](ULureFishingComponent*, const FFishInstance&) { ++HostLanded; });
 		ClientFishing->OnFishLandedNative.AddLambda([&ClientLanded](ULureFishingComponent*, const FFishInstance&) { ++ClientLanded; });
 
-		TestEqual(TEXT("host cooler starts empty"), Host.Cooler->GetNumFish(), 0);
-		TestEqual(TEXT("client cooler starts empty"), Client.Cooler->GetNumFish(), 0);
+		TestFalse(TEXT("nothing hangs on the host's hook yet"), Hanging(HostCharacter).IsValid());
 		TestEqual(TEXT("host starts at 0 XP"), Host.Progression->GetTotalXp(), 0);
 
 		// Hook, fight (reeling), land.
@@ -127,29 +135,46 @@ namespace LureFightLandingProgression
 
 		TestEqual(TEXT("host: one landing"), HostLanded, 1);
 		TestEqual(TEXT("client: one landing"), ClientLanded, 1);
-		if (TestEqual(TEXT("host: the landed fish is in the host's cooler, once"), Host.Cooler->GetNumFish(), 1))
-		{
-			TestTrue(TEXT("host: it is the host's fish"), LureFightQA::SameFish(Host.Cooler->GetFish()[0], HostFish));
-		}
-		if (TestEqual(TEXT("client: the landed fish is in the client's cooler, once"), Client.Cooler->GetNumFish(), 1))
-		{
-			TestTrue(TEXT("client: it is the client's fish"), LureFightQA::SameFish(Client.Cooler->GetFish()[0], ClientFish));
-		}
-		TestEqual(TEXT("host: XP = the fish's XP"), Host.Progression->GetTotalXp(), HostFish.Xp);
-		TestEqual(TEXT("client: XP = the fish's XP"), Client.Progression->GetTotalXp(), ClientFish.Xp);
+		TestTrue(TEXT("host: the landed fish hangs on the host's hook"), LureFightQA::SameFish(Hanging(HostCharacter), HostFish));
+		TestTrue(TEXT("client: the landed fish hangs on the client's hook"), LureFightQA::SameFish(Hanging(ClientCharacter), ClientFish));
+		TestEqual(TEXT("host: XP = the fish's XP, once"), Host.Progression->GetTotalXp(), HostFish.Xp);
+		TestEqual(TEXT("client: XP = the fish's XP, once"), Client.Progression->GetTotalXp(), ClientFish.Xp);
 
-		// A second catch adds exactly one more fish and its XP.
-		if (!TestEqual(TEXT("host is idle again"), static_cast<int32>(HostFishing->GetFishingState()), static_cast<int32>(ELureFishingState::Idle))
-			|| !LureFightQA::CastAndWait(*this, World, HostFishing, 0.f) || !TestTrue(TEXT("host hooks a second fish"), HostFishing->AuthorityHookFish(HostFish2)))
+		// While a fish hangs, a new cast is refused (the line is still out, with the fish on it).
+		TestEqual(TEXT("host is idle again"), static_cast<int32>(HostFishing->GetFishingState()), static_cast<int32>(ELureFishingState::Idle));
+		TestEqual(TEXT("host: a cast is refused while the fish hangs"), static_cast<int32>(HostFishing->GetCastBlock()), static_cast<int32>(ELureCastBlock::Busy));
+		TestFalse(TEXT("host: AuthorityCast is refused"), HostFishing->AuthorityCast(0.f, 0.f));
+
+		// Grab it and put it in a cooler: the hands are free, the rod comes back and fishing goes on.
+		ULureHandsComponent* Hands = HostCharacter->GetHands();
+		ALureFishItem* First = Hands ? Hands->GetHangingFish() : nullptr;
+		if (ULureCatchSubsystem* Catch = ULureCatchSubsystem::Get(World.World))
+		{
+			Catch->SetCoolerTable(Coolers.Get()); // the shipped DT_Cooler.csv, not the binary asset
+		}
+		ALureCoolerActor* Cooler = ALureCoolerActor::SpawnCooler(World.World, NAME_None, FTransform(LureFightQA::StandAt() + FVector(-60.f, 0.f, 0.f)), Host.State);
+		if (!TestNotNull(TEXT("the host's fish item"), First) || !TestNotNull(TEXT("a cooler"), Cooler) || !TestTrue(TEXT("grab it"), Hands->AuthorityTakeInHand(First)))
+		{
+			return false;
+		}
+		TestFalse(TEXT("the rod is stowed while the fish is in hand"), HostFishing->IsRodInHand());
+		TestTrue(TEXT("into the cooler"), Cooler->AuthorityPutFishIn(HostCharacter, First));
+		World.Tick(2);
+		TestTrue(TEXT("the rod is back"), HostFishing->IsRodInHand());
+		FLureCaughtFish Stored;
+		TestTrue(TEXT("the cooler holds the host's fish"), Cooler->GetStorage()->GetFishAt(0, Stored) && LureFightQA::SameFish(Stored.Fish, HostFish));
+
+		// A second catch: one more landing, its XP, and it hangs.
+		if (!LureFightQA::CastAndWait(*this, World, HostFishing, 0.f) || !TestTrue(TEXT("host hooks a second fish"), HostFishing->AuthorityHookFish(HostFish2)))
 		{
 			return false;
 		}
 		HostFishing->AuthoritySetReeling(true);
 		TestTrue(TEXT("the second fish is landed"), World.TickUntil([&]() { return HostLanded > 1; }, 60 * 60));
 		World.Tick(60);
-		TestEqual(TEXT("host: two fish in the cooler"), Host.Cooler->GetNumFish(), 2);
+		TestTrue(TEXT("host: the second fish hangs"), LureFightQA::SameFish(Hanging(HostCharacter), HostFish2));
 		TestEqual(TEXT("host: XP of both fish"), Host.Progression->GetTotalXp(), HostFish.Xp + HostFish2.Xp);
-		TestEqual(TEXT("client: unchanged by the host's catch"), Client.Cooler->GetNumFish(), 1);
+		TestTrue(TEXT("client: unchanged by the host's catch"), LureFightQA::SameFish(Hanging(ClientCharacter), ClientFish));
 		return true;
 	}
 }

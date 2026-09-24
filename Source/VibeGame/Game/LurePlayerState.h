@@ -6,14 +6,14 @@
 #include "GameFramework/PlayerState.h"
 #include "LurePlayerState.generated.h"
 
-class ULureCoolerComponent;
 class ULureProgressionComponent;
 
 /**
  *  Lure's player state (ALureGameMode::PlayerStateClass): holds what belongs to the player rather than the body.
- *  The PlayerState outlives the pawn, so money, XP, level and the cooler survive respawn and a change of pawn (boat).
- *  Getting caught empties the cooler explicitly (ULureProgressionLibrary::HandlePlayerCaught, T-017).
- *  Seamless travel and reconnects carry the progression over (CopyProperties / OverrideWith through the save struct).
+ *  The PlayerState outlives the pawn, so money, XP and level survive respawn and a change of pawn (boat).
+ *  The cooler is a physical world object (ALureCoolerActor, T-030) that remembers this player state for saves.
+ *  Seamless travel and reconnects carry the progression over (CopyProperties / OverrideWith through the save struct);
+ *  world items (coolers, fish) never travel that way, so nothing is duplicated.
  */
 UCLASS()
 class ALurePlayerState : public APlayerState
@@ -25,9 +25,6 @@ public:
 	ALurePlayerState(const FObjectInitializer& ObjectInitializer);
 
 	UFUNCTION(BlueprintPure, Category="Lure|Player")
-	ULureCoolerComponent* GetCooler() const { return Cooler; }
-
-	UFUNCTION(BlueprintPure, Category="Lure|Player")
 	ULureProgressionComponent* GetProgression() const { return Progression; }
 
 protected:
@@ -36,9 +33,6 @@ protected:
 	virtual void OverrideWith(APlayerState* PlayerState) override;
 
 private:
-
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
-	TObjectPtr<ULureCoolerComponent> Cooler;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
 	TObjectPtr<ULureProgressionComponent> Progression;

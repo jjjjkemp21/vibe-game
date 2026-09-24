@@ -29,6 +29,8 @@
 #include "Misc/OutputDeviceNull.h"
 #include "Misc/Paths.h"
 #include "Modules/ModuleManager.h"
+#include "Catch/LureFishItem.h"
+#include "Catch/LureHandsComponent.h"
 #include "Progression/LureCoolerComponent.h"
 #include "Progression/LureProgressionComponent.h"
 #include "Progression/LureProgressionTypes.h"
@@ -572,8 +574,8 @@ bool FLureDevGiveFishRollsTest::RunTest(const FString& Parameters)
 	return true;
 }
 
-/** T-010 follow-up: on the server, Lure.GiveFish lands the fish like a real catch (cooler + XP) for the target player. */
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLureDevGiveFishLandsTest, "Project.Dev.GiveFish.LandsInCoolerWithXp", LureDevTest::Flags)
+/** T-010/T-030: on the server, Lure.GiveFish lands the fish like a real catch (XP + the fish on the player's hook). */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLureDevGiveFishLandsTest, "Project.Dev.GiveFish.LandsOnHookWithXp", LureDevTest::Flags)
 
 bool FLureDevGiveFishLandsTest::RunTest(const FString& Parameters)
 {
@@ -584,16 +586,20 @@ bool FLureDevGiveFishLandsTest::RunTest(const FString& Parameters)
 		return false;
 	}
 	const TStrongObjectPtr<UDataTable> Levels = LPT::MakeTable(*this, FPlayerLevelRow::StaticStruct(), LPT::FixtureLevelCsv());
-	const TStrongObjectPtr<UDataTable> Coolers = LPT::MakeTable(*this, FCoolerRow::StaticStruct(), LPT::FixtureCoolerCsv());
-	LPT::FPlayer Player = LPT::SpawnPlayer(*this, W, Levels.Get(), Coolers.Get());
+	LPT::FPlayer Player = LPT::SpawnPlayer(*this, W, Levels.Get(), /*bWithPawn*/ true, FVector(0.f, 0.f, 300.f));
 	APlayerController* Controller = W.World->SpawnActor<APlayerController>();
-	if (!Player.IsValid() || !TestNotNull(TEXT("controller spawned"), Controller))
+	if (!Player.IsValid() || !Player.Pawn || !TestNotNull(TEXT("controller spawned"), Controller))
 	{
 		return false;
 	}
+	// T-030: the fish goes on the pawn's hook, so the pawn needs hands.
+	ULureHandsComponent* Hands = NewObject<ULureHandsComponent>(Player.Pawn, TEXT("Hands"));
+	Hands->RegisterComponent();
 	Controller->SetPlayerState(Player.State);
 	Player.State->SetPlayerId(7);
 	Controller->SetAsLocalPlayerController();
+	Controller->Possess(Player.Pawn);
+	Player.Pawn->SetPlayerState(Player.State);
 	const int32 XpBefore = Player.Progression->GetTotalXp();
 
 	FOutputDeviceNull Null;
@@ -604,15 +610,17 @@ bool FLureDevGiveFishLandsTest::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
-	TestEqual(TEXT("the fish is in the player's cooler"), Player.Cooler->GetNumFish(), 1);
-	FFishInstance Stored;
-	TestTrue(TEXT("... in slot 0, the same roll"), Player.Cooler->GetFishAt(0, Stored) && Stored.Seed == 99 && Stored.ToString() == Fish.ToString());
+	const ALureFishItem* Hanging = Hands->GetHangingFish();
+	TestTrue(TEXT("the fish hangs on the player's hook, the same roll"), Hanging && Hanging->GetFish().Seed == 99 && Hanging->GetFish().ToString() == Fish.ToString());
 	TestEqual(TEXT("the fish's XP was added"), Player.Progression->GetTotalXp(), XpBefore + FMath::Max(0, Fish.Xp));
 
-	// Without Player= it is the world's first local player: the same player again.
+	// Without Player= it is the world's first local player: the same player again. The older fish drops off the hook
+	// (nothing below this test pawn but the fallback sea level: it is released).
+	const TWeakObjectPtr<const ALureFishItem> First = Hanging;
 	const FString Second = Fixture.Species->GetRowNames()[0].ToString() + TEXT(" 5");
 	TestTrue(TEXT("a second GiveFish"), FLureDevCommands::RunGiveFish(Args(*Second), W.World, Null, &Tables, &Fish));
-	TestEqual(TEXT("... lands in the same cooler"), Player.Cooler->GetNumFish(), 2);
+	TestTrue(TEXT("... hangs the new fish"), Hands->GetHangingFish() && Hands->GetHangingFish()->GetFish().Seed == 5);
+	TestTrue(TEXT("... the older one left the hook"), !First.IsValid() || First->IsFree());
 	return true;
 }
 

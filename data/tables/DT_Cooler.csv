@@ -1,3 +1,3 @@
-Name,DisplayName,Slots,DevComment
-Basic,"Basic cooler",8,"Every new player's cooler (ULureProgressionSettings DefaultCoolerId). PLACEHOLDER size."
-Large,"Large cooler",14,"Upgrade row: not sold yet (the T-012 shop can sell it). A new cooler is a new row."
+Name,DisplayName,Slots,BodyMesh,LidMesh,OpenDecayRate,ClosedDecayRate,CarrySpeedMultiplier,DevComment
+Starter,"Starter cooler",4,/Game/Art/Props/SM_Cooler_Starter.SM_Cooler_Starter,/Game/Art/Props/SM_Cooler_Starter_Lid.SM_Cooler_Starter_Lid,1.0,0.0,0.8,"Every new player's cooler (ULureProgressionSettings DefaultCoolerId), spawned at the dock (T-030). Closed = fish stay fresh; open = they spoil like outside. PLACEHOLDER numbers."
+Large,"Large cooler",8,/Game/Art/Props/SM_Cooler_Starter.SM_Cooler_Starter,/Game/Art/Props/SM_Cooler_Starter_Lid.SM_Cooler_Starter_Lid,1.0,0.0,0.7,"Upgrade row, not sold yet (the T-012 shop can sell it). Placeholder look: the starter model until the model-artist makes one. A new cooler is a new row."

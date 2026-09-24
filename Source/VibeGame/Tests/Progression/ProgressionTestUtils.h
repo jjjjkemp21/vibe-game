@@ -1,4 +1,5 @@
-// Lure T-010 tests (unreal-engineer): shared helpers for Project.Progression.*.
+// Lure T-010 tests (unreal-engineer): shared helpers for Project.Progression.* (T-030: the cooler moved to the physical
+// ALureCoolerActor, tested in Project.Catch.*; the player state keeps money, XP and level).
 // Tables come from the CSV sources in data/tables/ or from CSV fixtures, never the binary /Game/Data assets.
 
 #pragma once
@@ -13,10 +14,8 @@
 #include "Fish/FishInstance.h"
 
 class ALurePlayerState;
-class ALureSellPoint;
 class APawn;
 class UDataTable;
-class ULureCoolerComponent;
 class ULureInteractionComponent;
 class ULureProgressionComponent;
 class UScriptStruct;
@@ -47,7 +46,7 @@ namespace LureProgressionTest
 	/** Fixture levels: 1 -> 100 -> 2 -> 150 -> 3 -> 200 -> 4 (cap). Level starts: 0, 100, 250, 450. */
 	FString FixtureLevelCsv();
 
-	/** Fixture coolers: Basic = 3 slots (the settings' default id), Big = 5, Tiny = 1 */
+	/** Fixture coolers (T-010 columns only; the T-030 ones are optional): Basic = 3 slots, Big = 5, Tiny = 1 */
 	FString FixtureCoolerCsv();
 
 	/** Fixture markets: Default = 1.0, Premium = 1.5, Cheap = 0.5 */
@@ -66,26 +65,19 @@ namespace LureProgressionTest
 		void Tick(int32 Frames = 1);
 	};
 
-	/** A player: ALurePlayerState (tables injected before BeginPlay) and optionally a pawn with an interaction component */
+	/** A player: ALurePlayerState (level table injected before BeginPlay) and optionally a pawn with an interaction component */
 	struct FPlayer
 	{
 		ALurePlayerState* State = nullptr;
-		ULureCoolerComponent* Cooler = nullptr;
 		ULureProgressionComponent* Progression = nullptr;
 		APawn* Pawn = nullptr;
 		ULureInteractionComponent* Interaction = nullptr;
 
-		bool IsValid() const { return State && Cooler && Progression; }
+		bool IsValid() const { return State && Progression; }
 	};
 
-	FPlayer SpawnPlayer(FAutomationTestBase& Test, FWorld& World, const UDataTable* LevelTable, const UDataTable* CoolerTable,
-		bool bWithPawn = false, const FVector& PawnLocation = FVector::ZeroVector);
-
-	ALureSellPoint* SpawnSellPoint(FAutomationTestBase& Test, FWorld& World, const FVector& Location, const UDataTable* MarketTable,
-		FName MarketId = NAME_None, float Radius = 300.0f);
-
-	/** Fills the cooler with fish of these Values (Xp = Value) until full or the list ends; returns how many went in */
-	int32 FillCooler(ULureCoolerComponent* Cooler, TConstArrayView<int32> Values);
+	FPlayer SpawnPlayer(FAutomationTestBase& Test, FWorld& World, const UDataTable* LevelTable, bool bWithPawn = false,
+		const FVector& PawnLocation = FVector::ZeroVector);
 }
 
 namespace LPT = LureProgressionTest;

@@ -15,6 +15,7 @@ class UAnimSequenceBase;
 class UCameraComponent;
 class ULureCharacterMovementComponent;
 class ULureFishingComponent;
+class ULureHandsComponent;
 class UMaterialInterface;
 class USkeletalMesh;
 class USkeletalMeshComponent;
@@ -58,6 +59,10 @@ public:
 	/** Rod, cast, bobber, bite and hook (T-006). */
 	UFUNCTION(BlueprintPure, Category="Lure|Character")
 	ULureFishingComponent* GetFishing() const { return Fishing; }
+
+	/** What the player holds: a fish in a hand, the cooler in both, a landed fish on the hook (T-030). */
+	UFUNCTION(BlueprintPure, Category="Lure|Character")
+	ULureHandsComponent* GetHands() const { return Hands; }
 
 	/**
 	 *  First-person arms mesh (skeleton SKEL_FPArms), loaded at BeginPlay if the FirstPersonArms component has no mesh yet.
@@ -170,7 +175,8 @@ public:
 	UFUNCTION(BlueprintCallable, Category="Lure|First Person")
 	void SetHoldingRod(bool bNewHoldingRod) { bHoldingRod = bNewHoldingRod; }
 
-	/** The arms loop to play (DT_Movement RodPoseStill/RodPoseMoving by stance and motion; Idle without the rod). Owning client. */
+	/** The arms loop to play (DT_Movement RodPoseStill/RodPoseMoving by stance and motion; Idle without the rod; the held item's pose,
+	 *  HoldFish or CarryCooler, while the hands hold something, T-030). Owning client. */
 	UFUNCTION(BlueprintPure, Category="Lure|First Person")
 	EFPArmsPose GetArmsPose() const { return ArmsPose; }
 
@@ -285,6 +291,10 @@ private:
 	/** Fishing (T-006): replicated, server-authoritative. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
 	TObjectPtr<ULureFishingComponent> Fishing;
+
+	/** Hands (T-030): the held item, the fish on the hook; server-authoritative (the items replicate who holds them). */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
+	TObjectPtr<ULureHandsComponent> Hands;
 
 	UPROPERTY()
 	TObjectPtr<UMaterialInterface> PlaceholderBodyMaterial;

@@ -11,9 +11,7 @@
 #include "Interaction/LureInteractionComponent.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
-#include "Progression/LureCoolerComponent.h"
 #include "Progression/LureProgressionComponent.h"
-#include "Progression/LureSellPoint.h"
 #include "UObject/Package.h"
 
 namespace LureProgressionTest
@@ -142,7 +140,7 @@ namespace LureProgressionTest
 		}
 	}
 
-	FPlayer SpawnPlayer(FAutomationTestBase& Test, FWorld& World, const UDataTable* LevelTable, const UDataTable* CoolerTable, bool bWithPawn, const FVector& PawnLocation)
+	FPlayer SpawnPlayer(FAutomationTestBase& Test, FWorld& World, const UDataTable* LevelTable, bool bWithPawn, const FVector& PawnLocation)
 	{
 		FPlayer Player;
 		if (!World.World)
@@ -156,18 +154,13 @@ namespace LureProgressionTest
 			return Player;
 		}
 		Player.State = State;
-		Player.Cooler = State->GetCooler();
 		Player.Progression = State->GetProgression();
-		if (Player.Cooler)
-		{
-			Player.Cooler->SetCoolerTable(CoolerTable);
-		}
 		if (Player.Progression)
 		{
 			Player.Progression->SetLevelTable(LevelTable);
 		}
 		State->FinishSpawning(FTransform::Identity);
-		Test.TestTrue(TEXT("the player state has a cooler and a progression component"), Player.IsValid());
+		Test.TestTrue(TEXT("the player state has a progression component"), Player.IsValid());
 
 		if (bWithPawn)
 		{
@@ -187,39 +180,6 @@ namespace LureProgressionTest
 		return Player;
 	}
 
-	ALureSellPoint* SpawnSellPoint(FAutomationTestBase& Test, FWorld& World, const FVector& Location, const UDataTable* MarketTable, FName MarketId, float Radius)
-	{
-		if (!World.World)
-		{
-			return nullptr;
-		}
-		const FTransform Transform(Location);
-		ALureSellPoint* Point = World.World->SpawnActorDeferred<ALureSellPoint>(ALureSellPoint::StaticClass(), Transform, nullptr, nullptr,
-			ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
-		if (!Test.TestNotNull(TEXT("sell point spawned"), Point))
-		{
-			return nullptr;
-		}
-		Point->MarketId = MarketId;
-		Point->InteractionRadius = Radius;
-		Point->SetMarketTable(MarketTable);
-		Point->FinishSpawning(Transform);
-		return Point;
-	}
-
-	int32 FillCooler(ULureCoolerComponent* Cooler, TConstArrayView<int32> Values)
-	{
-		int32 Added = 0;
-		for (int32 Index = 0; Cooler && Index < Values.Num(); ++Index)
-		{
-			if (!Cooler->AddFish(MakeFish(*FString::Printf(TEXT("TestFish%d"), Index), Values[Index], Values[Index], 1, Index)))
-			{
-				break;
-			}
-			++Added;
-		}
-		return Added;
-	}
 }
 
 #endif // WITH_DEV_AUTOMATION_TESTS

@@ -1,0 +1,2 @@
+Name,GraceSeconds,SpoilSeconds,CurveExponent,MinValueShare,DevComment
+Default,120,600,1.0,0.3,"Every fish unless a row is named like its species (T-030). Out of a closed cooler: full value for 2 minutes, then down to 30 % over the next 10 minutes. PLACEHOLDER numbers."

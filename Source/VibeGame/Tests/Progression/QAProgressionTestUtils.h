@@ -15,10 +15,8 @@
 #include "Fish/FishInstance.h"
 
 class ALurePlayerState;
-class ALureSellPoint;
 class APawn;
 class UDataTable;
-class ULureCoolerComponent;
 class ULureInteractionComponent;
 class ULureProgressionComponent;
 class UScriptStruct;
@@ -64,15 +62,17 @@ namespace QAProg
 	/** Expects at least one warning containing Substring (any count; plain text, not a regex) */
 	void ExpectWarnings(FAutomationTestBase& Test, const TCHAR* Substring);
 
+	// T-030 (unreal-engineer, lead-approved retire/update): the cooler left the player state for the physical ALureCoolerActor,
+	// so FPlayer and FState carry progression only; the sell point became ALureSellCounter (Project.Catch.*). The QA tests
+	// that pinned the abstract cooler and the sell point were retired (docs/TEST_PLAN.md, T-030).
 	struct FPlayer
 	{
 		ALurePlayerState* State = nullptr;
-		ULureCoolerComponent* Cooler = nullptr;
 		ULureProgressionComponent* Progression = nullptr;
 		APawn* Pawn = nullptr;
 		ULureInteractionComponent* Interaction = nullptr;
 
-		bool IsValid() const { return State && Cooler && Progression; }
+		bool IsValid() const { return State && Progression; }
 	};
 
 	/** Everything a progression state holds, to prove that a refused call changed nothing */
@@ -81,8 +81,6 @@ namespace QAProg
 		int32 Money = 0;
 		int32 TotalXp = 0;
 		int32 Level = 0;
-		FName CoolerId;
-		TArray<FFishInstance> Fish;
 
 		static FState Of(const FPlayer& Player);
 		bool Equals(const FState& Other) const;
@@ -108,9 +106,6 @@ namespace QAProg
 
 		/** A pawn with an interaction component and NO player state */
 		APawn* SpawnLonePawn(FAutomationTestBase& Test, const FVector& Location, ULureInteractionComponent** OutInteraction = nullptr);
-
-		ALureSellPoint* SpawnSellPoint(FAutomationTestBase& Test, const FVector& Location, FName MarketId = NAME_None, float Radius = 300.0f,
-			const UDataTable* MarketTableOverride = nullptr);
 	};
 
 	/** Sets the role of every non-null actor (a client sees the player state, pawn and sell point as non-authority) */

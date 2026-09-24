@@ -14,7 +14,7 @@
   ],
   "world": {"game_mode_override": null},
   "labels_in_game": false,
-  "marker_classes": {"sell_point": "/Script/VibeGame.LureSellPoint", "water_volume": "/Script/VibeGame.LureWaterVolume", "ladder": "/Script/VibeGame.LureLadder"},
+  "marker_classes": {"sell_point": "/Script/VibeGame.LureSellCounter", "water_volume": "/Script/VibeGame.LureWaterVolume", "ladder": "/Script/VibeGame.LureLadder"},
   "metrics": {
     "source": "DT_Movement.csv (lane eng1 0cac885) + engine defaults (gravity -980, step 45, walkable 44.765 deg)",
     "walk_cm_s": 350,
@@ -215,7 +215,7 @@
     {"id": "ps_3", "type": "player_start", "at": [-3300, 250, 105.5], "yaw": 23, "player_start_tag": "Respawn.Dock", "tags": ["Lure.Respawn", "Respawn=Dock"], "name": "", "label": false},
     {"id": "ps_4", "type": "player_start", "at": [-3300, 400, 107.0], "yaw": 23, "player_start_tag": "Respawn.Dock", "tags": ["Lure.Respawn", "Respawn=Dock"], "name": "", "label": false},
     {"id": "npc_dock", "type": "npc", "at": [-3400, -1000, 100], "yaw": 90, "role": "shop+requests", "name": "Dock NPC (shop, requests, sell)"},
-    {"id": "sell_dock", "type": "sell_point", "at": [-3400, -600, 100], "yaw": 270, "properties": {"MarketId": "PalmKeyDock"}, "tags": ["Lure.SellPoint"], "notes": "On the shop apron, 130 cm in front of the counter (counter front y=-700, apron to y=-450); 300 cm radius covers the whole counter front. Walk-up from the spawn path (ps_1 at y=-50)."},
+    {"id": "sell_dock", "type": "sell_point", "at": [-3400, -730, 200], "yaw": 90, "properties": {"MarketId": "PalmKeyDock", "CounterHalfSize": [30, 230, 20], "InteractionRadius": 300}, "tags": ["Lure.SellPoint"], "notes": "T-030 sell counter (ALureSellCounter): origin = the centre of the shop counter top (stall 'shop' counter part: centre (-3400,-730), top z=200), +X (yaw 90) toward the customers on the apron; CounterHalfSize = half depth 30, half length 230, 40 cm above the top counts. Fish put or dropped there are listed; E sells them. 300 cm reach from the centre covers the counter front."},
     {"id": "tp_npc_dock", "type": "teleport", "at": [-3300, -560, 100], "yaw": 270, "notes": "Lure.Teleport npc_dock lands here (tag Teleport=tp_npc_dock wins over the NPC marker): customer side of the counter on the shop apron, facing the counter (-Y). The npc marker itself stays behind the counter for the NPC."},
     {"id": "label_sell_dock", "type": "label", "text": "SELL (PalmKeyDock)", "at": [-3400, -600, 330]},
     {"id": "boat_mooring", "type": "boat_mooring", "at": [-6450, 300, 0], "yaw": 90, "name": "Boat mooring (T-018)", "floating": true},

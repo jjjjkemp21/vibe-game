@@ -1,4 +1,4 @@
-// Lure: money, XP and levels (T-010). Rules: docs/specs/progression-rules.md.
+// Lure: money, XP and levels (T-010). Rules: docs/specs/progression-rules.md (the cooler and selling: catch-handling-rules.md, T-030).
 
 #pragma once
 
@@ -9,7 +9,6 @@
 #include "LureProgressionComponent.generated.h"
 
 class UDataTable;
-class ULureCoolerComponent;
 class ULureProgressionComponent;
 struct FFishLevelScaling;
 
@@ -20,9 +19,11 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FLureFishSoldSignature, ULureProg
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FLureFishLandedSignature, ULureProgressionComponent*, Progression, const FFishInstance&, Fish, const FLureFishLandedResult&, Result);
 
 /**
- *  A player's money, XP and level, plus the flows that touch the cooler (landing a fish, selling, save data).
+ *  A player's money, XP and level: the XP of a landed fish, the money of a sale, the save data.
+ *  (T-030: the cooler is a physical actor now, ALureCoolerActor; ULureCatchLibrary::HandleFishLanded calls HandleFishLanded
+ *  here for the XP and hangs the fish on the hook; the sell counter pays through RecordSale.)
  *
- *  Lives on the PlayerState next to ULureCoolerComponent (ALurePlayerState): kept on respawn and when caught.
+ *  Lives on the PlayerState (ALurePlayerState): kept on respawn and when caught.
  *  XP: TotalXp counts every XP ever earned; Level comes from DT_PlayerLevel (FLureLevelCurve) and never goes down.
  *  Server-authoritative: every mutator returns false / 0 on a client (with a Warning) and changes nothing.
  *  Replicated to everyone: Money, TotalXp, Level (OnRep events on clients).
@@ -45,9 +46,9 @@ public:
 	// ---- Server-only changes ----
 
 	/**
-	 *  THE entry point when a fish is landed (T-007 reel fight, T-025 Lure.GiveFish): gives the fish's XP (Fish.Xp, from
-	 *  the roll) and puts it in the cooler if there is room. A full cooler releases the fish but the XP still counts.
-	 *  Nothing happens for an invalid fish or on a client (bAccepted false). Fires OnFishLanded on the server.
+	 *  The XP part of landing a fish (called by ULureCatchLibrary::HandleFishLanded, which also hangs the fish on the hook):
+	 *  gives the fish's XP (Fish.Xp, from the roll; XP on landing, never on selling). Nothing happens for an invalid fish or
+	 *  on a client (bAccepted false). Fires OnFishLanded on the server.
 	 */
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category="Lure|Progression")
 	FLureFishLandedResult HandleFishLanded(const FFishInstance& Fish);
@@ -64,15 +65,15 @@ public:
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category="Lure|Progression")
 	int32 AddXp(int32 Amount);
 
-	/** Sells every fish in the cooler at SellMultiplier (a sell point's market). Pays FLureProgressionRules::GetSellTotal. */
-	FLureSaleResult SellAllFish(float SellMultiplier);
-
-	/** Sells the fish in SlotIndex at SellMultiplier. Nothing sold if the slot is empty. */
-	FLureSaleResult SellOneFish(int32 SlotIndex, float SellMultiplier);
+	/**
+	 *  Server: a sale happened (the sell counter, T-030): pays MoneyEarned (> 0) and tells the seller (the "Sold N fish for X
+	 *  coins" notice and OnFishSold on their machine). False and nothing paid on a client or for FishSold <= 0.
+	 */
+	bool RecordSale(int32 FishSold, int32 MoneyEarned);
 
 	// ---- Save / load (T-019) ----
 
-	/** Money, XP, level and the cooler (row + fish) */
+	/** Money, XP and level (coolers are world objects: ULureCatchLibrary::GetCoolerSaveData) */
 	UFUNCTION(BlueprintCallable, Category="Lure|Progression")
 	FLureProgressSaveData GetSaveData() const;
 
@@ -113,11 +114,7 @@ public:
 	UFUNCTION(BlueprintPure, Category="Lure|Progression")
 	int32 GetMaxLevel() const { return GetLevelCurve().GetMaxLevel(); }
 
-	/** The cooler on the same actor (null if there is none) */
-	UFUNCTION(BlueprintPure, Category="Lure|Progression")
-	ULureCoolerComponent* GetCooler() const;
-
-	/** Placeholder HUD line (T-011 replaces it): "Money 120   Level 3 (XP 40/110)   Cooler 5/8" */
+	/** Placeholder HUD line (T-011 replaces it): "Money 120   Level 3 (XP 40/110)" (the HUD adds "   Cooler 3/4") */
 	UFUNCTION(BlueprintPure, Category="Lure|Progression")
 	FString GetStatusText() const;
 

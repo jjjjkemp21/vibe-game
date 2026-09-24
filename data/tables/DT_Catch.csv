@@ -1,0 +1,2 @@
+Name,HangLineLength,HangDamping,ReachDistance,FocusAngleDeg,DropForward,DropArcTime,PutDownDistance,PutDownMaxFall,LidOpenPitch,LidOpenTime,DevComment
+Default,40,1.2,250,20,60,0.35,80,300,100,0.25,"Catch handling feel (T-030, docs/specs/catch-handling-rules.md): the hanging fish's line and swing, reach and focus, drops, putting the cooler down, the lid. PLACEHOLDER numbers."

@@ -111,7 +111,11 @@ public:
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category="Controls|Keys")
 	TArray<FKey> ProneKeys;
 
-	/** Use the nearest interactable: sell the cooler at a sell point (T-010); later NPCs */
+	/** Interact: the main verb on what you look at (grab a fish, open the cooler, put in, take out, sell; T-010/T-030); later NPCs */
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category="Controls|Keys")
 	TArray<FKey> InteractKeys;
+
+	/** Alt Interact: the second verb (pick up / put down the cooler, close it, drop or release a fish; T-030) */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category="Controls|Keys")
+	TArray<FKey> AltInteractKeys;
 };

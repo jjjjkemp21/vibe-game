@@ -1,0 +1,28 @@
+[
+	{
+		"Name": "Starter",
+		"Slots": [
+			{ "Location": { "X": -7.0, "Y": 0.0, "Z": 4.0 }, "Rotation": { "Pitch": 0.0, "Yaw": 90.0, "Roll": 90.0 } },
+			{ "Location": { "X": 7.0, "Y": 0.0, "Z": 4.0 }, "Rotation": { "Pitch": 0.0, "Yaw": -90.0, "Roll": 90.0 } },
+			{ "Location": { "X": -7.0, "Y": 0.0, "Z": 13.0 }, "Rotation": { "Pitch": 0.0, "Yaw": -90.0, "Roll": 90.0 } },
+			{ "Location": { "X": 7.0, "Y": 0.0, "Z": 13.0 }, "Rotation": { "Pitch": 0.0, "Yaw": 90.0, "Roll": 90.0 } }
+		],
+		"FishPose": "/Game/Art/Fish/A_Fish_Curled.A_Fish_Curled",
+		"PoseTime": 0.0,
+		"MaxFishScale": 0.75,
+		"DevComment": "T-030: the fish shown inside the OPEN starter cooler, curled and stacked (cosmetic). PLACEHOLDER slots relative to the Contents socket until the animation-artist's slot table (art/export/Fish/SK_Fish.anim.md) replaces them; the pose clip A_Fish_Curled is coming (missing = straight fish)."
+	},
+	{
+		"Name": "Large",
+		"Slots": [
+			{ "Location": { "X": -7.0, "Y": 0.0, "Z": 4.0 }, "Rotation": { "Pitch": 0.0, "Yaw": 90.0, "Roll": 90.0 } },
+			{ "Location": { "X": 7.0, "Y": 0.0, "Z": 4.0 }, "Rotation": { "Pitch": 0.0, "Yaw": -90.0, "Roll": 90.0 } },
+			{ "Location": { "X": -7.0, "Y": 0.0, "Z": 13.0 }, "Rotation": { "Pitch": 0.0, "Yaw": -90.0, "Roll": 90.0 } },
+			{ "Location": { "X": 7.0, "Y": 0.0, "Z": 13.0 }, "Rotation": { "Pitch": 0.0, "Yaw": 90.0, "Roll": 90.0 } }
+		],
+		"FishPose": "/Game/Art/Fish/A_Fish_Curled.A_Fish_Curled",
+		"PoseTime": 0.0,
+		"MaxFishScale": 0.75,
+		"DevComment": "Placeholder: the Large cooler uses the starter model for now, so it shows the top 4 fish like the starter cooler."
+	}
+]

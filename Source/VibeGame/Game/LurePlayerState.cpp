@@ -1,13 +1,11 @@
 // Lure: player state (T-010).
 
 #include "Game/LurePlayerState.h"
-#include "Progression/LureCoolerComponent.h"
 #include "Progression/LureProgressionComponent.h"
 
 ALurePlayerState::ALurePlayerState(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
-	Cooler = CreateDefaultSubobject<ULureCoolerComponent>(TEXT("Cooler"));
 	Progression = CreateDefaultSubobject<ULureProgressionComponent>(TEXT("Progression"));
 }
 

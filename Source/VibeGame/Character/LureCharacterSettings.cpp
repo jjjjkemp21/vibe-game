@@ -21,6 +21,7 @@ ULureCharacterSettings::ULureCharacterSettings()
 	CrouchKeys = { EKeys::C, EKeys::LeftControl, EKeys::Gamepad_FaceButton_Right };
 	ProneKeys = { EKeys::Z, EKeys::Gamepad_DPad_Down };
 	InteractKeys = { EKeys::E, EKeys::Gamepad_FaceButton_Left };
+	AltInteractKeys = { EKeys::F, EKeys::Gamepad_FaceButton_Top };
 }
 
 #if WITH_EDITOR

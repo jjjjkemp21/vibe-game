@@ -1,7 +1,6 @@
 // Lure: money, XP and levels (T-010).
 
 #include "Progression/LureProgressionComponent.h"
-#include "Progression/LureCoolerComponent.h"
 #include "Progression/LureProgressionLibrary.h"
 #include "Progression/LureProgressionSettings.h"
 #include "Fish/FishRoll.h"
@@ -177,12 +176,6 @@ float ULureProgressionComponent::GetFishDifficultyMultiplierWith(int32 FishLevel
 
 // ---- Fish flows ----
 
-ULureCoolerComponent* ULureProgressionComponent::GetCooler() const
-{
-	const AActor* Owner = GetOwner();
-	return Owner ? Owner->FindComponentByClass<ULureCoolerComponent>() : nullptr;
-}
-
 FLureFishLandedResult ULureProgressionComponent::HandleFishLanded(const FFishInstance& Fish)
 {
 	FLureFishLandedResult Result;
@@ -198,58 +191,30 @@ FLureFishLandedResult ULureProgressionComponent::HandleFishLanded(const FFishIns
 	}
 
 	Result.bAccepted = true;
-	if (ULureCoolerComponent* Cooler = GetCooler())
-	{
-		Result.bStoredInCooler = Cooler->AddFishToSlot(Fish, Result.CoolerSlot);
-	}
-	else
-	{
-		UE_LOG(LogLureProgression, Warning, TEXT("%s: no cooler next to the progression component; the fish is not stored."), *GetPathNameSafe(this));
-	}
 	Result.XpGained = FMath::Max(0, Fish.Xp);
 	Result.LevelsGained = Result.XpGained > 0 ? AddXp(Result.XpGained) : 0;
 	Result.NewLevel = Level;
 
-	UE_LOG(LogLureProgression, Log, TEXT("%s landed %s: +%d XP, %s"), *GetNameSafe(GetOwner()), *Fish.SpeciesId.ToString(), Result.XpGained,
-		Result.bStoredInCooler ? TEXT("in the cooler") : TEXT("cooler full, released"));
+	UE_LOG(LogLureProgression, Log, TEXT("%s landed %s: +%d XP"), *GetNameSafe(GetOwner()), *Fish.SpeciesId.ToString(), Result.XpGained);
 	OnFishLanded.Broadcast(this, Fish, Result);
 	return Result;
 }
 
-FLureSaleResult ULureProgressionComponent::SellAllFish(float SellMultiplier)
+bool ULureProgressionComponent::RecordSale(int32 FishSold, int32 MoneyEarned)
 {
+	if (!CheckServer(TEXT("RecordSale")) || FishSold <= 0)
+	{
+		return false;
+	}
+	if (MoneyEarned > 0)
+	{
+		AddMoney(MoneyEarned);
+	}
 	FLureSaleResult Result;
-	ULureCoolerComponent* Cooler = GetCooler();
-	if (!CheckServer(TEXT("SellAllFish")) || !Cooler || Cooler->GetNumFish() == 0)
-	{
-		return Result;
-	}
-	const TArray<FFishInstance> Sold = Cooler->TakeAll();
-	Result.FishSold = Sold.Num();
-	Result.MoneyEarned = FLureProgressionRules::GetSellTotal(Sold, SellMultiplier);
-	AddMoney(Result.MoneyEarned);
+	Result.FishSold = FishSold;
+	Result.MoneyEarned = FMath::Max(0, MoneyEarned);
 	NotifySale(Result);
-	return Result;
-}
-
-FLureSaleResult ULureProgressionComponent::SellOneFish(int32 SlotIndex, float SellMultiplier)
-{
-	FLureSaleResult Result;
-	ULureCoolerComponent* Cooler = GetCooler();
-	if (!CheckServer(TEXT("SellOneFish")) || !Cooler)
-	{
-		return Result;
-	}
-	FFishInstance Fish;
-	if (!Cooler->RemoveFish(SlotIndex, Fish))
-	{
-		return Result;
-	}
-	Result.FishSold = 1;
-	Result.MoneyEarned = FLureProgressionRules::GetSellPrice(Fish, SellMultiplier);
-	AddMoney(Result.MoneyEarned);
-	NotifySale(Result);
-	return Result;
+	return true;
 }
 
 // ---- Save ----
@@ -260,11 +225,6 @@ FLureProgressSaveData ULureProgressionComponent::GetSaveData() const
 	Data.Money = Money;
 	Data.TotalXp = TotalXp;
 	Data.Level = Level;
-	if (const ULureCoolerComponent* Cooler = GetCooler())
-	{
-		Data.CoolerId = Cooler->GetCoolerId();
-		Data.CoolerFish = Cooler->GetFish();
-	}
 	return Data;
 }
 
@@ -290,11 +250,6 @@ bool ULureProgressionComponent::ApplySaveData(const FLureProgressSaveData& Data)
 	const FLureLevelCurve& LevelCurve = GetLevelCurve();
 	const int32 Saved = FMath::Max(1, Data.Level);
 	Level = LevelCurve.IsEmpty() ? Saved : FMath::Clamp(FMath::Max(Saved, LevelCurve.GetLevelForXp(TotalXp)), 1, LevelCurve.GetMaxLevel());
-
-	if (ULureCoolerComponent* Cooler = GetCooler())
-	{
-		Cooler->RestoreState(Data.CoolerId, Data.CoolerFish);
-	}
 	ForceNetUpdate();
 
 	OnMoneyChanged.Broadcast(this, Money, Money - OldMoney);
@@ -419,7 +374,5 @@ FString ULureProgressionComponent::GetStatusText() const
 	const FString XpText = Progress.bIsMaxLevel
 		? FString::Printf(TEXT("XP %d, max level"), TotalXp)
 		: FString::Printf(TEXT("XP %d/%d"), Progress.XpIntoLevel, Progress.XpForNextLevel);
-	const ULureCoolerComponent* Cooler = GetCooler();
-	const FString CoolerText = Cooler ? FString::Printf(TEXT("Cooler %d/%d"), Cooler->GetNumFish(), Cooler->GetCapacity()) : FString(TEXT("No cooler"));
-	return FString::Printf(TEXT("Money %d   Level %d (%s)   %s"), Money, Level, *XpText, *CoolerText);
+	return FString::Printf(TEXT("Money %d   Level %d (%s)"), Money, Level, *XpText);
 }
