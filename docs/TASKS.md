@@ -4,10 +4,11 @@ Format: `- [ ] T-### Title (owner) - acceptance: ... In progress: <agent>, start
 Done tasks move to "Done" as one line; their full text and old Status blocks are in docs/TASKS_ARCHIVE.md. Grep for "In progress" before starting work (don't read the whole file).
 Last processed playtest folder: (none)
 
-## Status 2026-09-23 ~21:05 (lead): see the memory snapshot for agent IDs
-main 85479c9 (unpushed since 4d64f2c): ALL A2 code merged: T-027, T-028+T-028b, T-029, T-032, T-030 + T-030c/d. Lane eng6 (merged main + eng4) 987/987 (eng6 tests/20260923-210130). Main not yet rebuilt (the editor is busy).
-- Editor (main): A2 import batch DONE a3dc44d (guards 22/22). Now: ABP_FPArms aim offset + IK and ABP_Fish (editor-operator-senior-max, stage 1).
-- Next: close the editor, build main, full tests, relaunch; import DT_Catch (+HoldFishScaleSmall/Large), DT_Freshness, DT_CoolerDisplay, re-import DT_Cooler; stage 2 pins (HoldFish Blend by HoldFishSizeAlpha, CarryCooler); rebuild both levels (sell counter); full A2 playtest (1P + 2P), designer, push, janitor.
+## Status 2026-09-23 ~21:55 (lead): see the memory snapshot for agent IDs
+main 2a78f0f (unpushed since 4d64f2c): ALL A2 code merged and built in main: 986/987 (tests/20260923-214924; only ArmsFollowTheRodAim, a test that expects the old placeholder rod turn; qa-engineer-junior-low is updating it in qa1).
+- Editor stage 1 DONE 806a580/2a78f0f: AO_FPArms_RodAim (3x3 mesh-space additive) + Two Bone IK in ABP_FPArms, bRodAimOffsetInGraph on; ABP_Fish (7 roles). PIE aim extremes within 0.3-1.2 cm of the spec (Saved/AgentLogs/editor/20260923-210606-A2-graphs.md).
+- Editor stage 2 running (editor-operator-mid-medium): T-030 tables (DT_Catch, DT_Freshness, DT_CoolerDisplay, DT_Cooler) + HoldFish/CarryCooler pins; PIE shots of hold, carry, curled fish.
+- Next: rebuild both levels (sell counter), Lure.Water.Show + bubbles check; full A2 playtest (1P + 2P), designer, push, janitor-low. Jimmy's feedback file: Playtest/2026-09-23 A2 playtest feedback.txt.
 ThirdPerson template level: Jimmy deleted it on purpose; removal committed cfe7e38.
 
 ## Now: foundation (after setup)
