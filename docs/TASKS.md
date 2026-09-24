@@ -7,9 +7,9 @@ Last processed playtest folder: (none)
 ## Status 2026-09-23 ~19:20 (lead): see the memory snapshot for agent IDs
 A2 lanes:
 - eng1 T-027: QA (36 tests, bcafb87; 777/778, Saved/AgentLogs/qa/20260923-192528-T027.md): FAIL on B1 (hot spots drift over rocks). Fixing B1 + T-027b reach (unreal-engineer-junior-medium)
-- eng2 T-028: senior QA PASS (73817be); MERGED to main (787a1b9, 855/856 in lane, only the DT_FishSpecies guard). T-028b fixes running in eng2 (unreal-engineer-mid-high)
+- eng2 T-028 + T-028b: MERGED to main (7617785). T-028b bd337ff (rod-dip exploit closed via DT_FishFight PitchDipPower 0.8, one slack rule, fight ends on teleport/unpossess, reel-step rate limit, stricter validation) + QA d0d8bf0 (5 tests, oracle change verified); 869/870 in lane (only the DT_FishSpecies guard). Re-import DT_FishFight (new column).
 - eng3 T-029: MERGED to main (55ad039), 802/803 after merging main (only the DT_FishSpecies binary guard, fixed by the re-import)
-- eng4 T-030: BUILT by unreal-engineer-senior-max (60cf68c, 67b7772, 2f2d2b3; 722/722; Saved/AgentLogs/build/20260923-185000-T030.md). Merging main + wiring T-029/T-032 glue (unreal-engineer-mid-high); then senior QA
+- eng4 T-030: built (senior) + merged with main and glued to T-029/T-032 (c05ba03, 864/866: DT_FishSpecies guard + cooler bounds missing the lid). Lid-bounds fix running (junior); then senior QA.
 - eng5 T-032: MERGED to main (b799ae6), 763/763 after merging main
 Curled fish in the cooler: designer APPROVED (1b725ad; Saved/AgentLogs/design/20260923-190000-curled-fish-rereview.md). Shop view: cooler on the floor, front (latch) toward the player. Import A_Fish_Curled with the other art.
 Then: merge all (git merge main in each lane, then ff), editor imports + ABP work, level rebuild, full A2 playtest, designer, push.
