@@ -4,8 +4,17 @@ Format: `- [ ] T-### Title (owner) - acceptance: ... In progress: <agent>, start
 Done tasks move to "Done" as one line; their full text and old Status blocks are in docs/TASKS_ARCHIVE.md. Grep for "In progress" before starting work (don't read the whole file).
 Last processed playtest folder: (none)
 
-## Status 2026-09-23 ~23:15 (lead): see the memory snapshot for agent IDs
-main b39dd47 (unpushed since 4d64f2c): ALL A2 code + fixes (T-030c/d/e/f, T-027c) merged; built; full tests 1002/1002 (tests/20260923-231221). Now: full A2 playtest 1P + 2P (playtester-low); T-027c independent QA (qa-engineer-mid-medium, qa1). Then designer, push, janitor-low; tell Jimmy the build is ready.
+## Status 2026-09-23 ~23:35 (lead): see the memory snapshot for agent IDs
+main cebd464 (unpushed since 4d64f2c): ALL A2 code + fixes merged; last main build b39dd47 1002/1002 (tests/20260923-231221); T-027c QA a1c96d1 (10 tests, qa1 1012/1012) merged.
+A2 playtest part 1 (Saved/AgentLogs/playtest/20260923-231437-A2/, handoff Saved/AgentLogs/handoff/20260923-232500-A2-playtest.md): hot spots PASS, fight + exploit closed PASS, fish visible PASS (~10 m; not at 17-22 m: a feel note for Jimmy), catch/cooler/freshness/sell PASS, 2P held fish / shared cooler / both sell PASS.
+- MAJOR, T-032b (unreal-engineer-senior-max, eng5): the line stays U-shaped at 43-84% tension; the line passes through dock planks + a floating loose piece; a landed fish hangs ABOVE the rod tip.
+- minor, T-030g (unreal-engineer-mid-high, eng4): the lid looks open while the prompt says Open; a lone 5.5 kg Bonefish is invisible in the open cooler; E picks the cooler over a loose fish being looked at.
+- minor, later: the hands clip at a hard-right rod swing (RodAim extreme; animation-artist or clamp).
+- Playtest part 2 DONE, PASS (report Saved/AgentLogs/playtest/20260923-231437-A2/report.md): 2P carried cooler seen by both, client quit drops the cooler with its fish, host picks it up. New minors:
+  - invisible floor ~2.6 m past the dock end: the player stepped up onto dock_head/post_02l (on the dock_end line, top 35 cm over the deck). FIXED b43b03e (pier posts step_up=false -> CanCharacterStepUpOn No; level-designer-junior-low). Needs a rebuild of L_PalmKey + L_Dev_Movement; PIE: walk off the dock end at y -200/600/800/1400 -> swim.
+  - HUD top line shows your own cooler while carrying another player's: added to T-030g.
+  - sprinting away mid-fight ends it with no message or log reason: queued after the T-032b merge (touches LureFishingComponent).
+Then: merge the fixes, build, re-test the fixed items in PIE, designer, push, janitor-low; tell Jimmy.
 - Editor stage 1 DONE 806a580/2a78f0f: AO_FPArms_RodAim (3x3 mesh-space additive) + Two Bone IK in ABP_FPArms, bRodAimOffsetInGraph on; ABP_Fish (7 roles). PIE aim extremes within 0.3-1.2 cm of the spec (Saved/AgentLogs/editor/20260923-210606-A2-graphs.md).
 - Editor stage 2 DONE 07ec030: T-030 tables imported; HoldFish (blend by HoldFishSizeAlpha) + CarryCooler pins; guards pass, Catch/Arms 79/79 (Saved/AgentLogs/editor/20260923-220100-A2-stage2.md). Cooler pick up/put down is F (spec).
 - Lead review of the PIE shots: the held fish points straight up with no hand on it (hold_fish.png). Cause: placeholder attach (hand_r_rod, rot -20/-70) instead of the spec (hand_r_fish, rot 0, grip formula). T-030e FIXED 90ea461 (hand_r_fish, rotation 0, grip formula, HeldFishContactPoint data; Catch 77/77), merged ae65927; check the pose in PIE after the rebuild.
