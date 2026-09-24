@@ -328,6 +328,7 @@ QA (independent, black-box from the spec and headers): 25 tests `Project.Fishing
 - Gap: a real networked client console (no replicated relay yet) is untested.
 
 ## T-028 mouse-steered rod fight + reel speed (lane eng2, FULL gate)
+- T-028b independent QA (RodQAT028bTest.cpp, `Rod.QA.T028b.*`, 5 tests): dipped+fastest slower than the pump at every pull and >=1.3x on a resting fish; slowest+dipped reel never throws the hook (15 fish); teleport ends the fight and the next fight works; reel-step burst exactly 4 then ~10/s, last wins; text in every numeric/bool DT_FishFight cell fails ValidateCsvSource. Oracle change in RodQAMathTest (skip Side 0) reviewed: a real test bug (production ignores Side 0), coverage grew.
 Implementer: `Project.Fishing.Fight.Rod.*` (11, RodFightTest.cpp). Independent QA (41): `Project.Fishing.Fight.Rod.QA.*` in
 `Tests/FishFight/RodQA{Math,Data,World,Net,Balance}Test.cpp`; shared fixtures in `RodQATestUtils.h` (namespace LureRodQA: owner pawn in a
 test world, hook-and-fight, fixture tables, HUD line lookup, input firing, water volume).
