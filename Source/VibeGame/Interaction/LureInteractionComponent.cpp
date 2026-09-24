@@ -51,6 +51,10 @@ AActor* ULureInteractionComponent::FindFocusedInteractable() const
 	const ULureHandsComponent* Hands = ULureHandsComponent::Get(Pawn);
 	const AActor* Held = Hands ? Hands->GetHeldItem() : nullptr;
 
+	// T-030g: what the view ray actually hits wins first (the nearest hit), then the smallest angle within FocusAngleDeg
+	// (ties to the nearer). A big cooler next to a small fish no longer takes the E key from the fish you look straight at.
+	AActor* BestHit = nullptr;
+	double BestHitDistance = TNumericLimits<double>::Max();
 	AActor* Best = nullptr;
 	float BestAngle = TNumericLimits<float>::Max();
 	double BestDistance = TNumericLimits<double>::Max();
@@ -70,6 +74,16 @@ AActor* ULureInteractionComponent::FindFocusedInteractable() const
 		{
 			continue;
 		}
+		const double Hit = Interactable->GetFocusHitDistance(Eye, Direction);
+		if (Hit >= 0.0 && Hit < BestHitDistance)
+		{
+			BestHit = Actor;
+			BestHitDistance = Hit;
+		}
+		if (BestHit)
+		{
+			continue; // the angle rule only matters while nothing is hit
+		}
 		const float Angle = Interactable->GetFocusAngle(Eye, Direction);
 		if (!(Angle <= MaxAngle))
 		{
@@ -83,7 +97,7 @@ AActor* ULureInteractionComponent::FindFocusedInteractable() const
 			BestDistance = Distance;
 		}
 	}
-	return Best;
+	return BestHit ? BestHit : Best;
 }
 
 FLureResolvedInteraction ULureInteractionComponent::ResolveFallback(ELureInteractKey Key) const

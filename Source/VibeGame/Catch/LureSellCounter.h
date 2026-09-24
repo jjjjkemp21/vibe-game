@@ -91,6 +91,7 @@ public:
 	virtual FVector GetInteractionLocation() const override { return GetActorLocation(); }
 	virtual float GetInteractionRadius() const override { return InteractionRadius; }
 	virtual float GetFocusAngle(const FVector& ViewLocation, const FVector& ViewDirection) const override;
+	virtual double GetFocusHitDistance(const FVector& ViewLocation, const FVector& ViewDirection) const override;
 	virtual bool CanInteract(const APawn* Pawn) const override;
 	virtual FLureInteraction GetInteraction(const APawn* Pawn, ELureInteractKey Key) const override;
 	virtual bool PerformInteraction(APawn* Pawn, ELureInteractVerb Verb) override;

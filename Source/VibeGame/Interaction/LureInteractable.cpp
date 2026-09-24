@@ -39,21 +39,51 @@ float ILureInteractable::AngleToSphere(const FVector& ViewLocation, const FVecto
 	return static_cast<float>(FMath::Max(0.0, Angle - AngularRadius));
 }
 
-float ILureInteractable::AngleToBox(const FVector& ViewLocation, const FVector& ViewDirection, const FTransform& BoxTransform, const FVector& HalfExtent)
+double ILureInteractable::GetFocusHitDistance(const FVector& ViewLocation, const FVector& ViewDirection) const
+{
+	return RayToSphere(ViewLocation, ViewDirection, GetInteractionLocation(), GetFocusRadius());
+}
+
+double ILureInteractable::RayToSphere(const FVector& ViewLocation, const FVector& ViewDirection, const FVector& Center, float Radius)
+{
+	const double SafeRadius = FMath::IsFinite(Radius) ? static_cast<double>(Radius) : 0.0;
+	const FVector Direction = ViewDirection.GetSafeNormal();
+	if (!(SafeRadius > 0.0) || Direction.IsNearlyZero())
+	{
+		return -1.0; // no shape, or no ray
+	}
+	const FVector ToCenter = Center - ViewLocation;
+	const double Distance2 = ToCenter.SizeSquared();
+	if (Distance2 <= SafeRadius * SafeRadius)
+	{
+		return 0.0; // the eye is inside it
+	}
+	const double Along = FVector::DotProduct(ToCenter, Direction);
+	if (Along <= 0.0)
+	{
+		return -1.0; // behind the eye
+	}
+	const double Miss2 = Distance2 - Along * Along; // squared distance from the center to the ray
+	if (Miss2 > SafeRadius * SafeRadius)
+	{
+		return -1.0;
+	}
+	return Along - FMath::Sqrt(SafeRadius * SafeRadius - Miss2);
+}
+
+double ILureInteractable::RayToBox(const FVector& ViewLocation, const FVector& ViewDirection, const FTransform& BoxTransform, const FVector& HalfExtent)
 {
 	const FVector Extent = HalfExtent.ComponentMax(FVector::ZeroVector);
 	const FVector Origin = BoxTransform.InverseTransformPositionNoScale(ViewLocation);
 	const FVector Direction = BoxTransform.InverseTransformVectorNoScale(ViewDirection).GetSafeNormal();
 	if (Direction.IsNearlyZero())
 	{
-		return 180.0f;
+		return -1.0;
 	}
-
-	// Slab test: does the ray (t >= 0) pass through the box?
+	// Slab test: where does the ray (t >= 0) enter the box?
 	double TMin = 0.0;
 	double TMax = TNumericLimits<double>::Max();
-	bool bHit = true;
-	for (int32 Axis = 0; Axis < 3 && bHit; ++Axis)
+	for (int32 Axis = 0; Axis < 3; ++Axis)
 	{
 		const double O = Origin[Axis];
 		const double D = Direction[Axis];
@@ -61,7 +91,10 @@ float ILureInteractable::AngleToBox(const FVector& ViewLocation, const FVector& 
 		const double Hi = Extent[Axis];
 		if (FMath::Abs(D) < 1.0e-9)
 		{
-			bHit = O >= Lo && O <= Hi;
+			if (O < Lo || O > Hi)
+			{
+				return -1.0;
+			}
 			continue;
 		}
 		double T1 = (Lo - O) / D;
@@ -72,11 +105,26 @@ float ILureInteractable::AngleToBox(const FVector& ViewLocation, const FVector& 
 		}
 		TMin = FMath::Max(TMin, T1);
 		TMax = FMath::Min(TMax, T2);
-		bHit = TMin <= TMax;
+		if (TMin > TMax)
+		{
+			return -1.0;
+		}
 	}
-	if (bHit)
+	return TMin;
+}
+
+float ILureInteractable::AngleToBox(const FVector& ViewLocation, const FVector& ViewDirection, const FTransform& BoxTransform, const FVector& HalfExtent)
+{
+	const FVector Extent = HalfExtent.ComponentMax(FVector::ZeroVector);
+	const FVector Origin = BoxTransform.InverseTransformPositionNoScale(ViewLocation);
+	const FVector Direction = BoxTransform.InverseTransformVectorNoScale(ViewDirection).GetSafeNormal();
+	if (Direction.IsNearlyZero())
 	{
-		return 0.0f;
+		return 180.0f;
+	}
+	if (RayToBox(ViewLocation, ViewDirection, BoxTransform, HalfExtent) >= 0.0)
+	{
+		return 0.0f; // the ray passes through it
 	}
 
 	// Otherwise the smallest angle to a point of the box: sample the ray's closest box points (convex box, smooth enough).

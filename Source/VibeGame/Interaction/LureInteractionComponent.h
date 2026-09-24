@@ -30,8 +30,9 @@ struct FLureResolvedInteraction
 };
 
 /**
- *  On the player's pawn. Picks what the player looks at (registered interactables in reach, the smallest focus angle up to
- *  DT_Catch FocusAngleDeg, ties to the nearer; only targets with a verb or info for this player), and resolves each key:
+ *  On the player's pawn. Picks what the player looks at (registered interactables in reach with a verb or info for this
+ *  player: the nearest one whose shape the view ray hits, T-030g; if the ray hits none, the smallest focus angle up to
+ *  DT_Catch FocusAngleDeg, ties to the nearer), and resolves each key:
  *  the focused target's verb for that key, else the held item's, else the hanging fish's. Gives the HUD its prompt and, on a
  *  key (Interact E / X, AltInteract F / Y), asks the server to do the verb.
  *  Server-authoritative: the server checks the target (interactable, reach + ILureInteractable::ServerRangeSlack,

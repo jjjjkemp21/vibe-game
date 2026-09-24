@@ -102,6 +102,13 @@ public:
 	/** Degrees between the view ray and the target (0 = looking right at it). Default: a sphere of GetFocusRadius. */
 	virtual float GetFocusAngle(const FVector& ViewLocation, const FVector& ViewDirection) const;
 
+	/**
+	 *  T-030g: how far along the view ray (cm from ViewLocation) the ray enters this target's shape; negative if it misses.
+	 *  A target the ray hits wins the focus over any it only comes near (the nearest hit first). Default: the focus sphere
+	 *  (GetFocusRadius around GetInteractionLocation; radius 0 = never hit, the angle rule only).
+	 */
+	virtual double GetFocusHitDistance(const FVector& ViewLocation, const FVector& ViewDirection) const;
+
 	/** Checks besides reach (default: any pawn). False = no verbs and no focus for this pawn. */
 	virtual bool CanInteract(const APawn* Pawn) const { return Pawn != nullptr; }
 
@@ -119,6 +126,12 @@ public:
 
 	/** Degrees from the ray (ViewLocation, ViewDirection) to a sphere: 0 when the ray passes through it (or starts inside). */
 	static float AngleToSphere(const FVector& ViewLocation, const FVector& ViewDirection, const FVector& Center, float Radius);
+
+	/** Distance along the ray (ViewLocation, ViewDirection) to where it enters a sphere: 0 from inside, negative on a miss (or radius <= 0) */
+	static double RayToSphere(const FVector& ViewLocation, const FVector& ViewDirection, const FVector& Center, float Radius);
+
+	/** Distance along the ray to where it enters an oriented box (HalfExtent in BoxTransform's space, scale ignored): 0 from inside, negative on a miss */
+	static double RayToBox(const FVector& ViewLocation, const FVector& ViewDirection, const FTransform& BoxTransform, const FVector& HalfExtent);
 
 	/** Degrees from the ray to an oriented box (HalfExtent in BoxTransform's space, scale ignored): 0 when the ray passes through it. */
 	static float AngleToBox(const FVector& ViewLocation, const FVector& ViewDirection, const FTransform& BoxTransform, const FVector& HalfExtent);

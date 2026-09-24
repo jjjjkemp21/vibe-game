@@ -323,3 +323,18 @@ FString ULureCatchLibrary::GetOwnCoolerStatus(const APlayerState* PlayerState)
 	}
 	return FString::Printf(TEXT("Cooler %d/%d"), Coolers[0]->GetNumFish(), Coolers[0]->GetCapacity());
 }
+
+FString ULureCatchLibrary::GetCoolerStatus(const APlayerController* PlayerController)
+{
+	if (!PlayerController)
+	{
+		return FString();
+	}
+	const ULureHandsComponent* Hands = ULureHandsComponent::Get(PlayerController->GetPawn());
+	if (const ALureCoolerActor* Carried = Hands ? Hands->GetCarriedCooler() : nullptr)
+	{
+		// One count on screen: the cooler in your hands, whoever it belongs to.
+		return FString::Printf(TEXT("Cooler %d/%d"), Carried->GetNumFish(), Carried->GetCapacity());
+	}
+	return GetOwnCoolerStatus(PlayerController->PlayerState);
+}

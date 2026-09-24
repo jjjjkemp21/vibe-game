@@ -224,6 +224,11 @@ void ALureCoolerActor::BeginPlay()
 	ApplyCollision();
 	LidPitch = bLidOpen ? ULureCatchSubsystem::GetTuningFor(this).LidOpenPitch : 0.0f;
 	LastLidPulseId = LidPulseId;
+	LidPulseTimeLeft = 0.0f; // no clack for a pulse that happened before this machine saw the cooler
+	if (LidPivot)
+	{
+		LidPivot->SetRelativeRotation(FRotator(LidPitch, 0.0f, 0.0f)); // the right look from the first frame
+	}
 	RefreshDisplay();
 }
 
@@ -600,6 +605,16 @@ FVector ALureCoolerActor::GetInteractionLocation() const
 	return GetActorTransform().TransformPosition(BoxCenter);
 }
 
+double ALureCoolerActor::GetFocusHitDistance(const FVector& ViewLocation, const FVector& ViewDirection) const
+{
+	if (!IsFree())
+	{
+		return Super::GetFocusHitDistance(ViewLocation, ViewDirection);
+	}
+	const FTransform Box(GetActorQuat(), GetActorTransform().TransformPosition(BoxCenter));
+	return RayToBox(ViewLocation, ViewDirection, Box, BoxHalfExtent);
+}
+
 bool ALureCoolerActor::CanInteract(const APawn* Pawn) const
 {
 	return Pawn && IsValid(this) && (IsFree() || IsHeldBy(Pawn, ELureHoldMode::Hand));
@@ -731,7 +746,16 @@ void ALureCoolerActor::OnRep_Lid()
 	if (LidPulseId != LastLidPulseId)
 	{
 		LastLidPulseId = LidPulseId;
-		LidPulseTimeLeft = FMath::Max(0.3f, 2.0f * ULureCatchSubsystem::GetTuningFor(this).LidOpenTime);
+		// T-030g: a short clack, not an open lid. It lifts to LidPulsePitch at the open speed and shuts as soon as it gets
+		// there (the old pulse held 60 deg for 0.5 s: long enough to read as open while the prompt said "Open"). A cooler
+		// that joins with a pulse id already set (a late-joining client's first replication) does not clack.
+		if (HasActorBegunPlay())
+		{
+			const FLureCatchRow& Tuning = ULureCatchSubsystem::GetTuningFor(this);
+			const float Pulse = FMath::Clamp(Tuning.LidPulsePitch, 0.0f, Tuning.LidOpenPitch);
+			const float Lift = Tuning.LidOpenPitch > 0.0f ? Tuning.LidOpenTime * Pulse / Tuning.LidOpenPitch : 0.0f;
+			LidPulseTimeLeft = Pulse > 0.0f ? FMath::Max(Lift, 1.0f / 60.0f) : 0.0f;
+		}
 	}
 	RefreshDisplay();
 }
@@ -847,6 +871,23 @@ void ALureCoolerActor::SetDisplayVisible(bool bVisible)
 	}
 }
 
+float ALureCoolerActor::GetDisplayFishScale(float WeightKg, float ReferenceWeightKg, const FFishVisualRow& VisualRow, const FLureCoolerDisplayRow& Row)
+{
+	// The fight fish's scale (T-030d: no size jump from hand to cooler), then the cooler's own fit cap.
+	const float WeightScale = FFightFishVisual::WeightScale(WeightKg, ReferenceWeightKg, VisualRow);
+	return FMath::Clamp(FMath::Min(WeightScale, Row.MaxFishScale), 0.05f, 10.0f);
+}
+
+FTransform ALureCoolerActor::GetDisplayFishTransform(const FLureCoolerDisplayRow& Row, int32 SlotIndex, float Scale)
+{
+	if (!Row.Slots.IsValidIndex(SlotIndex))
+	{
+		return FTransform::Identity;
+	}
+	const FLureCoolerDisplaySlot& Slot = Row.Slots[SlotIndex];
+	return FTransform(Slot.Rotation, Slot.Location + FVector(0.0, 0.0, Row.LieOffsetCm * Scale), FVector(Scale));
+}
+
 int32 ALureCoolerActor::GetNumDisplayedFish() const
 {
 	if (!bDisplayVisible)
@@ -899,12 +940,10 @@ void ALureCoolerActor::RefreshDisplay()
 		for (int32 Index = 0; Index < Shown; ++Index)
 		{
 			const FLureCaughtFish& Record = Fish[Fish.Num() - Shown + Index];
-			const FLureCoolerDisplaySlot& Slot = Row.Slots[Index];
 			UStreamableRenderAsset* Asset = Subsystem ? Subsystem->LoadSpeciesMesh(Record.Fish.SpeciesId) : nullptr;
 			const float Reference = Subsystem ? Subsystem->GetSpeciesReferenceWeight(Record.Fish.SpeciesId) : 0.0f;
-			// The fight fish's scale (T-030d: no size jump from hand to cooler), then the cooler's own fit cap below.
-			const float WeightScale = FFightFishVisual::WeightScale(Record.Fish.WeightKg, Reference, VisualRow);
-			const float Scale = FMath::Clamp(FMath::Min(WeightScale, Row.MaxFishScale), 0.05f, 10.0f);
+			const float Scale = GetDisplayFishScale(Record.Fish.WeightKg, Reference, VisualRow, Row);
+			const FTransform Place = GetDisplayFishTransform(Row, Index, Scale);
 			UPrimitiveComponent* Shown3D = nullptr;
 			if (USkeletalMesh* Skeletal = Cast<USkeletalMesh>(Asset))
 			{
@@ -931,7 +970,7 @@ void ALureCoolerActor::RefreshDisplay()
 			Shown3D->SetCanEverAffectNavigation(false);
 			Shown3D->SetupAttachment(ContentsRoot);
 			// The slot's X, Y and bed; the fish's origin lies its lie offset (at its shown size) above the bed.
-			Shown3D->SetRelativeLocationAndRotation(Slot.Location + FVector(0.0f, 0.0f, Row.LieOffsetCm * Scale), Slot.Rotation);
+			Shown3D->SetRelativeLocationAndRotation(Place.GetLocation(), Place.GetRotation());
 			Shown3D->RegisterComponent();
 			if (USkeletalMeshComponent* Skeletal = Cast<USkeletalMeshComponent>(Shown3D); Skeletal && Pose)
 			{
@@ -955,10 +994,14 @@ void ALureCoolerActor::UpdatePresentation(float DeltaSeconds)
 	}
 	const FLureCatchRow& Tuning = ULureCatchSubsystem::GetTuningFor(this);
 	float Target = bLidOpen ? Tuning.LidOpenPitch : 0.0f;
-	if (LidPulseTimeLeft > 0.0f)
+	if (LidPulseTimeLeft > 0.0f && !bLidOpen)
 	{
 		LidPulseTimeLeft -= DeltaSeconds;
-		Target = Tuning.LidOpenPitch * 0.6f; // opens for the fish going in, then shuts again
+		Target = FMath::Clamp(Tuning.LidPulsePitch, 0.0f, Tuning.LidOpenPitch); // the clack: up, then straight back down
+	}
+	else
+	{
+		LidPulseTimeLeft = 0.0f;
 	}
 	const float Speed = Tuning.LidOpenPitch / FMath::Max(0.01f, Tuning.LidOpenTime);
 	LidPitch = Tuning.LidOpenTime > 0.0f ? FMath::FInterpConstantTo(LidPitch, Target, DeltaSeconds, Speed) : Target;
