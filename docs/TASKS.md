@@ -8,7 +8,7 @@ Last processed playtest folder: (none)
 main f73f803 (unpushed since 4d64f2c): T-027, T-028+T-028b, T-029 and T-032 merged; built, 933/934 (tests/20260923-202309; only the DT_FishSpecies guard, fixed by the re-import). Startup/default map: L_PalmKey.
 - eng4 T-030: fixes 1a97b46 (F1 starter coolers never overlap; save re-apply never duplicates fish; 900/901 in lane). QA part 2 running (qa-engineer-senior-max: net tests, full run, TEST_PLAN). Then merge into main.
 - Editor (main): A2 import batch DONE a3dc44d (guards 22/22, tests/20260923-202942). Now: ABP_FPArms aim offset + IK and ABP_Fish (editor-operator-senior-max, stage 1). Stage 2 after the eng4 merge: HoldFish/CarryCooler pose pins.
-- eng6 T-030c: FPArms HoldFishSizeAlpha (data-driven fish size blend; the spec needs it, T-030 missed it), unreal-engineer-junior-medium, based on eng4 1a97b46; merges with eng4. After the eng4 merge: build, tests, T-030 tables, rebuild both levels, full A2 playtest (1P + 2P), designer, push.
+- eng6 T-030c: FPArms HoldFishSizeAlpha DONE 989727d (DT_Catch HoldFishScaleSmall/Large; re-import DT_Catch; wire the ABP HoldFish blend alpha to it). T-030d running (unreal-engineer-junior-medium): held + cooler fish use FFightFishVisual::WeightScale (no size jump on landing). eng6 merges with eng4. After the eng4 merge: build, tests, T-030 tables, rebuild both levels, full A2 playtest (1P + 2P), designer, push.
 Waiting on Jimmy: was the ThirdPerson template level deleted on purpose? (The deletions are unstaged; nobody stages them.)
 
 ## Now: foundation (after setup)
