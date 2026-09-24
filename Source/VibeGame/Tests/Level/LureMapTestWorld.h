@@ -12,7 +12,14 @@
 //   ALurePlayerCharacter* Player = Map.SpawnPlayer(*this, Marker->GetActorLocation());
 //   Map.Tick(Seconds);                                                  // the whole level ticks, like PIE
 //   LureMapTest::FMapWorld::TeleportPlayer(Player, NewFeet);             // "walk" somewhere else
+//   Map.Release();                                                      // or let it go out of scope
+//   return LureMapTest::TestNoMapCopiesLeft(*this, TEXT("/Game/Maps/L_PalmKey"));   // last line of the test
 // Loading the map again for every case is cheap (the package stays loaded): use a fresh FMapWorld per seed or case.
+// Teardown: each FMapWorld streams in its own package copy (/Game/Maps/<Map>_LevelInstance_<N>). Loaded map worlds carry
+// RF_Standalone, an editor GC keep flag, and UWorld::DestroyWorld only clears it on levels still in the world (the forced
+// unload removes the streamed one first). Release() clears the keep flags on the copy and collects garbage, as the engine
+// does for PIE copies (UWorld::Serialize clears RF_Public|RF_Standalone on PKG_PlayInEditor worlds); a leaked copy makes
+// the next PIE session's world leak check (UEditorEngine::CheckForWorldGCLeaks) fatal-error.
 
 #pragma once
 
@@ -37,7 +44,11 @@
 #include "Misc/PackageName.h"
 #include "Misc/Paths.h"
 #include "Tests/AutomationCommon.h"
+#include "UObject/GarbageCollection.h"
+#include "UObject/Package.h"
 #include "UObject/StrongObjectPtr.h"
+#include "UObject/UObjectHash.h"
+#include "UObject/UObjectIterator.h"
 
 namespace LureMapTest
 {
@@ -50,6 +61,50 @@ namespace LureMapTest
 		UWorld* World = nullptr;
 		ULevel* Level = nullptr;
 		TStrongObjectPtr<UDataTable> Movement;
+		/** The package of the streamed map copy (/Game/Maps/<Map>_LevelInstance_<N>), released in Release(). */
+		FName InstancePackage;
+
+		FMapWorld() = default;
+		FMapWorld(const FMapWorld&) = delete;
+		FMapWorld& operator=(const FMapWorld&) = delete;
+		~FMapWorld()
+		{
+			if (UObjectInitialized() && !IsEngineExitRequested())
+			{
+				Release();
+			}
+		}
+
+		/** Destroys the test world and frees its map copy (keep flags cleared, then a garbage collection). Safe to call twice. */
+		void Release()
+		{
+			if (Wrapper.GetTestWorld())
+			{
+				Wrapper.DestroyTestWorld(false);
+			}
+			World = nullptr;
+			Level = nullptr;
+			Movement.Reset();
+			if (InstancePackage.IsNone())
+			{
+				return;
+			}
+			if (UPackage* Package = FindPackage(nullptr, *InstancePackage.ToString()))
+			{
+				ForEachObjectWithPackage(Package, [](UObject* Object)
+				{
+					if (UWorld* CopyWorld = Cast<UWorld>(Object))
+					{
+						CopyWorld->RemoveFromRoot();
+					}
+					Object->ClearFlags(RF_Standalone | RF_Public);
+					return true;
+				});
+				Package->ClearFlags(RF_Standalone);
+			}
+			InstancePackage = NAME_None;
+			CollectGarbage(GARBAGE_COLLECTION_KEEPFLAGS);
+		}
 
 		/** Loads MapPackage (e.g. /Game/Maps/L_PalmKey). False, with a test error, if the map or the world can't be made. */
 		bool Create(FAutomationTestBase& Test, const TCHAR* MapPackage)
@@ -83,6 +138,7 @@ namespace LureMapTest
 				Test.AddError(FString::Printf(TEXT("%s could not be streamed into the test world"), MapPackage));
 				return false;
 			}
+			InstancePackage = Streaming->GetWorldAssetPackageFName();
 			// Loads it and adds it to the world at once: its actors are registered (collision included) and begin play.
 			World->FlushLevelStreaming(EFlushLevelStreamingType::Full);
 			Level = Streaming->GetLoadedLevel();
@@ -184,6 +240,35 @@ namespace LureMapTest
 			}
 		}
 	};
+
+	/** The live UWorlds that are streamed copies of MapPackage (path /Game/Maps/<Map>_LevelInstance_<N>.<Map>). */
+	inline TArray<FString> LiveMapCopies(const TCHAR* MapPackage)
+	{
+		const FString Needle = FPackageName::GetShortName(MapPackage) + TEXT("_LevelInstance_");
+		TArray<FString> Found;
+		for (TObjectIterator<UWorld> It; It; ++It)
+		{
+			if (It->GetOutermost()->GetName().Contains(Needle))
+			{
+				Found.Add(It->GetPathName());
+			}
+		}
+		return Found;
+	}
+
+	/** Call last in a map test, after every FMapWorld is released: collects garbage and checks that no copy of MapPackage is
+	 *  still alive (a leaked copy crashes the next PIE session in the same run). Returns false with an error if one is. */
+	inline bool TestNoMapCopiesLeft(FAutomationTestBase& Test, const TCHAR* MapPackage)
+	{
+		CollectGarbage(GARBAGE_COLLECTION_KEEPFLAGS);
+		const TArray<FString> Left = LiveMapCopies(MapPackage);
+		if (Left.Num() > 0)
+		{
+			Test.AddError(FString::Printf(TEXT("%d copies of %s are still alive after the test (first: %s)"), Left.Num(), MapPackage, *Left[0]));
+			return false;
+		}
+		return true;
+	}
 }
 
 #endif // WITH_DEV_AUTOMATION_TESTS

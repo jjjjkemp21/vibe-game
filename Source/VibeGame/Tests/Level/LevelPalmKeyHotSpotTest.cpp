@@ -232,7 +232,8 @@ bool FLurePalmKeyHotSpotSetup::RunTest(const FString& Parameters)
 		const FString Id = Area->GetStringField(TEXT("id"));
 		TestTrue(FString::Printf(TEXT("the map has the water area %s"), *Id), MapAreas.Contains(FName(*Id)));
 	}
-	return true;
+	Map.Release();
+	return LureMapTest::TestNoMapCopiesLeft(*this, LurePalmKeyHotSpots::MapPath);
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLurePalmKeyHotSpotStart, "Project.Level.PalmKey.HotSpots.WithinReachOfTheStartInTheFirstMinute", LureMapTest::Flags)
@@ -258,7 +259,7 @@ bool FLurePalmKeyHotSpotStart::RunTest(const FString& Parameters)
 	}
 	AddInfo(FString::Printf(TEXT("seconds until a hot spot was within reach of the start, seeds 1-%d (- = none in 60 s): %s"), Seeds, *FString::Join(Results, TEXT(" "))));
 	TestTrue(FString::Printf(TEXT("a hot spot within reach of the start in the first minute: %d of %d seeds (need %d)"), Hits, Seeds, Need), Hits >= Need);
-	return true;
+	return LureMapTest::TestNoMapCopiesLeft(*this, LurePalmKeyHotSpots::MapPath);
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLurePalmKeyHotSpotArrival, "Project.Level.PalmKey.HotSpots.WithinReachSoonAfterArrivingAtACastPoint", LureMapTest::Flags)
@@ -299,7 +300,7 @@ bool FLurePalmKeyHotSpotArrival::RunTest(const FString& Parameters)
 	}
 	const int32 Need = FMath::CeilToInt32(NeedShare * Arrivals);
 	TestTrue(FString::Printf(TEXT("a hot spot within reach in the first 20 s after arriving: %d of %d arrivals (need %d)"), Hits, Arrivals, Need), Hits >= Need);
-	return true;
+	return LureMapTest::TestNoMapCopiesLeft(*this, LurePalmKeyHotSpots::MapPath);
 }
 
 #endif // WITH_DEV_AUTOMATION_TESTS
