@@ -4,6 +4,7 @@
 #include "GameplayTagsManager.h"
 
 DEFINE_LOG_CATEGORY(LogLureWater);
+DEFINE_LOG_CATEGORY(LogLureHotSpot);
 
 namespace LureWaterTypesPrivate
 {

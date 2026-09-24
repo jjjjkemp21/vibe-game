@@ -15,6 +15,10 @@ class ULureHotSpotVisualComponent;
 /** Log category for water areas, depth, the bite habitat and hot spots. */
 DECLARE_LOG_CATEGORY_EXTERN(LogLureWater, Log, All);
 
+/** Log category for the hot spot spawner (ALureHotSpotSpawner): `Log LogLureHotSpot Verbose` in the console logs every spawn
+ *  check (what each row and area did, why candidate points failed); VeryVerbose adds each pair's reason. */
+DECLARE_LOG_CATEGORY_EXTERN(LogLureHotSpot, Log, All);
+
 /** The outline of a water area on the water (2D, X/Y; every area is a column from the surface down). */
 UENUM(BlueprintType)
 enum class ELureWaterAreaShape : uint8

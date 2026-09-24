@@ -10,6 +10,7 @@
 #include "Dom/JsonValue.h"
 #include "EngineUtils.h"
 #include "Fish/FishDataValidator.h"
+#include "Fishing/LureHotSpotVisualComponent.h" // VisualClass.LoadSynchronous needs the full type (T-027c: unity grouping changed)
 #include "HAL/FileManager.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"

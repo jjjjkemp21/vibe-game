@@ -91,12 +91,24 @@ When the bobber lands (`LandBobber`) and at every bite check (`TryBite`), `FLure
   - The struct defaults are the Bubbles row: without the imported table the game uses them (one Warning).
 - **Spawner:** a level gets hot spots only from its `"hot_spots"` layout marker (`ALureHotSpotSpawner`; test maps have none,
   so tests stay deterministic). Server only (a non-replicated level actor has authority on clients too, so it checks the
-  net mode). Every `HotSpotCheckInterval` (1 s; the first check counts as `HotSpotPrewarmSeconds` = 45 s so a level starts
-  with some): for each row (sorted) and each water area (sorted by id, the default water last, and only if some water is
-  default): if the area's habitat is allowed and it has fewer than MaxPerArea of that row, spawn with chance
-  `1 - exp(-seconds / SpawnInterval)`. A spawn tries `HotSpotSpawnTries` (12) random points: inside the area's outline, or
-  within `OpenWaterSpawnRadius` (18 m, inside casting reach) of a random player for unbounded water (default water,
-  `everywhere` areas). A point is good when:
+  net mode). Every `HotSpotCheckInterval` (1 s; the level's first check counts as `HotSpotPrewarmSeconds` = 45 s), for each
+  row (sorted) and each water area (sorted by id, the default water last, and only if some water is default) whose habitat
+  the row allows, the (row, area) pair's clock runs (T-027c):
+  - **full** (MaxPerArea of the row live in the area): the clock resets; it starts again when one ends;
+  - otherwise it **banks** the check's seconds, up to max(the check, `HotSpotPrewarmSeconds`);
+  - it **waits**, keeping its bank, while the level is at its max or while **nobody can reach the area**: a bounded area
+    needs a player within `HotSpotNearPlayerRadius` of its outline, unbounded water needs a player;
+  - otherwise it **rolls its whole bank**: spawn with chance `1 - exp(-bank / SpawnInterval)`; the bank empties.
+  So the level start counts as 45 s for every area whenever a player first comes near it, and water nobody was near has
+  been waiting (up to 45 s) when a player arrives. (T-027c: before, the one 45 s check was spent while everyone stood at
+  the start, where L_PalmKey has only a sliver of hot spot water within reach; a player then waited minutes.)
+  A passed roll tries `HotSpotSpawnTries` (12) random points: in the part of a bounded area within a player's reach (the
+  whole outline when the near rule is off or nobody is in the world), or within `OpenWaterSpawnRadius` (18 m, inside
+  casting reach) of a random player for unbounded water (default water, `everywhere` areas). If none is good, the spawn
+  stays **due**: the pair's next 3 checks with a player in reach retry it without a roll, then it is dropped.
+  **Diagnosis:** `Log LogLureHotSpot Verbose` in the console logs one line per check (players, what every pair did,
+  rejected points by reason), one per spawn and one per failed search; VeryVerbose adds each pair's reason. Tests read the
+  same numbers (`GetLastStepStats`). Real-map tests: `Project.Level.PalmKey.HotSpots.*`. A point is good when:
   - **near a player (T-027b):** it is within `HotSpotNearPlayerRadius` (25 m; 0 = off) of some player. A bounded area whose
     outline is farther than that from every player is skipped (no hot spots, and no cap slots, out of everyone's reach).
     With no player in the world (an empty server, test maps) this rule is skipped;
@@ -145,7 +157,7 @@ When the bobber lands (`LandBobber`) and at every bite check (`TryBite`), `FLure
 ## 8. Settings (`ULureWaterSettings`, Project Settings > Game > Lure Water)
 DefaultWaterHabitat (Habitat.Shore), GapFallbackHabitats (Habitat.Shore, Habitat.Reef), MinBiteDepth (15), DepthProbe
 (5000), bLegacySpotsWhenNoAreas (true), LegacySpotPriority (0), HotSpotTable (/Game/Data/DT_HotSpot), HotSpotCheckInterval
-(1), HotSpotPrewarmSeconds (45), MaxHotSpots (16), OpenWaterSpawnRadius (1800), HotSpotNearPlayerRadius (2500, 0 = off), HotSpotSpawnTries (12), HotSpotFadeSeconds
+(1), HotSpotPrewarmSeconds (45: the level-start check, and the most an area banks while nobody is near), MaxHotSpots (16), OpenWaterSpawnRadius (1800), HotSpotNearPlayerRadius (2500, 0 = off), HotSpotSpawnTries (12), HotSpotFadeSeconds
 (1.5). `ULureFishingSettings::OffSpotHabitat` is removed (DefaultWaterHabitat replaces it).
 
 ## 9. Layout schema (for the level-designer)

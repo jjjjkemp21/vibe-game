@@ -68,7 +68,8 @@ public:
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category="Hot Spots", meta=(ClampMin="0.1"))
 	float HotSpotCheckInterval = 1.f;
 
-	/** The first check after the level starts counts as this many seconds, so some hot spots are there at once. */
+	/** The level's first spawn check counts as this many seconds, so some hot spots are there at once; it is also the most a
+	 *  (row, area) pair banks while nobody can reach the area, rolled in full when a player arrives (T-027c). */
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category="Hot Spots", meta=(ClampMin="0"))
 	float HotSpotPrewarmSeconds = 45.f;
 
