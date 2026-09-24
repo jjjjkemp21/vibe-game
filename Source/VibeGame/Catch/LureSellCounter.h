@@ -68,6 +68,12 @@ public:
 	/** The fish lying on this counter (every machine) */
 	TArray<ALureFishItem*> GetFishOnCounter() const;
 
+	/**
+	 *  T-030h: a fingerprint of the fish on the counter (their records, order-free; never 0). Every machine computes the same
+	 *  value from the same replicated fish, so the one a client's Sell prompt was drawn from can be checked on the server.
+	 */
+	int32 GetContentsToken() const;
+
 	/** What selling everything on it would pay now */
 	UFUNCTION(BlueprintPure, Category="Sell Counter")
 	int32 QuoteAll() const;
@@ -94,6 +100,8 @@ public:
 	virtual double GetFocusHitDistance(const FVector& ViewLocation, const FVector& ViewDirection) const override;
 	virtual bool CanInteract(const APawn* Pawn) const override;
 	virtual FLureInteraction GetInteraction(const APawn* Pawn, ELureInteractKey Key) const override;
+	/** T-030h: Sell = GetContentsToken (the server sells only the fish the seller's prompt showed); other verbs 0 */
+	virtual int32 GetInteractionStateToken(const APawn* Pawn, ELureInteractVerb Verb) const override;
 	virtual bool PerformInteraction(APawn* Pawn, ELureInteractVerb Verb) override;
 
 	virtual void OnConstruction(const FTransform& Transform) override;

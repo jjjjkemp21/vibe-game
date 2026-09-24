@@ -115,7 +115,15 @@ public:
 	/** What Key does for Pawn now (Verb None = nothing; a prompt without a verb is shown as info). Every machine. */
 	virtual FLureInteraction GetInteraction(const APawn* Pawn, ELureInteractKey Key) const = 0;
 
-	/** Server only: does Verb for Pawn. ULureInteractionComponent::TryInteract has checked reach, CanInteract and the verb. */
+	/**
+	 *  T-030h: a fingerprint of what Verb would act on now, for verbs whose prompt shows contents that can change under it
+	 *  (the counter's "Sell N fish (X coins)": the fish on it). Every machine computes it from its own replicated view, the
+	 *  same way. The client sends the one it saw with the key; the server refuses when its own differs (a race changed the
+	 *  contents), so a verb never does more or less than the prompt showed. 0 = the verb has nothing like that (not checked).
+	 */
+	virtual int32 GetInteractionStateToken(const APawn* Pawn, ELureInteractVerb Verb) const { return 0; }
+
+	/** Server only: does Verb for Pawn. ULureInteractionComponent::TryInteract has checked reach, CanInteract, the verb and its state token. */
 	virtual bool PerformInteraction(APawn* Pawn, ELureInteractVerb Verb) = 0;
 
 	/** Extra reach (cm) the server accepts, for network lag between the client's check and the server's */

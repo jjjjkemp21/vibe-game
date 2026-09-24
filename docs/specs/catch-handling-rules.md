@@ -24,6 +24,13 @@ by the server; clients only ask ("I pressed E on this cooler, expecting Put in")
   (fish: a hand bone; cooler: the arms component) and drawn as a first-person primitive, so it never clips into walls;
   every other machine attaches it to the holder's body at a third-person offset. Offsets and sockets are settings
   (`ULureCatchSettings`), so the animation-artist's clips are matched without code.
+- **A fish in another player's hand (T-030k):** the owner's first-person pose seen from outside. `ThirdPersonFishOffset`
+  / `ThirdPersonFishRotation` are the grip frame (the first-person `hand_r_fish` frame) from the holder's eye point
+  (capsule center + `BaseEyeHeight`, the body's yaw; it follows crouch and prone every frame); default = the HoldFish
+  clip's frame 0, so the fish lies side-on in front at hand height, head to the holder's right, and sits in that frame
+  exactly as on the bone (`-S x Grip + (1 - S) x HeldFishContactPoint`). In a hand every machine plays the same clip
+  role: an adopted landed fight fish keeps its Landed state (Flop); the item's own skeletal fish plays
+  `ALureFishItem::GetInHandAnimState` (DT_FishVisual, phase Landed) through the fish anim class, and stops on release.
 - A free item stands at its `Placement` (actor root = the gameplay truth at once); the mesh flies there along a short
   arc (`DropArcTime`) on every machine, like the bobber.
 
@@ -164,6 +171,11 @@ by the server; clients only ask ("I pressed E on this cooler, expecting Put in")
 - Selling (server): every fish on the counter at its current price (freshness x market), money to the **seller**, the
   items are removed, and the seller sees "Sold N fish for X coins" (T-010 notice path `ClientFishSold`). XP is not given
   again. Fish on the counter keep spoiling until sold. The seller must be within `InteractionRadius` + 150 cm.
+- A sale sells exactly the fish the seller's prompt showed, or nothing (T-030h): the Sell request carries the counter's
+  contents token as the seller's machine saw it (`ALureSellCounter::GetContentsToken`: the fish records on it, order-free).
+  If the fish on the counter changed before the server ran it (another player took one back or put one on), the sale is
+  refused, the seller gets the notice "That just changed: nothing done. Now: Sell N fish (X coins)" and their prompt
+  refreshes; pressing E again sells what it shows now. The price can still move by spoiling between prompt and sale.
 - The counter replicates (dormant after its first send) and its four settings replicate once, so a counter spawned at
   runtime works like one placed in the level. Old maps: a CoreRedirect in `Config/DefaultEngine.ini` maps
   `LureSellPoint` to `LureSellCounter`.
@@ -171,7 +183,11 @@ by the server; clients only ask ("I pressed E on this cooler, expecting Put in")
 ## Focus and input
 - Keys: **Interact** (E / gamepad X, existing) and the new **AltInteract** (F / gamepad Y). LMB stays the fishing
   button (never drops a fish: habit clicks must not throw a catch away).
-- What a key does: the target you look at if it has a verb for that key; else the item in your hands; else your
+- **Your own hanging fish wins E first (T-030j):** while your own landed fish hangs on your line and you can grab it,
+  E takes it off the hook whatever you look at (a counter's Sell, a cooler, anything else); F keeps the rules below
+  (with a fish on the hook the counter and cooler offer nothing, so F lets it go). A friend's hanging fish never changes
+  your keys. Once your hook is empty (grabbed or let go), the counter's Sell prompt shows again.
+- What a key does otherwise: the target you look at if it has a verb for that key; else the item in your hands; else your
   hanging fish. The target you look at (registered interactables within their reach): **first what the view ray
   actually hits** (the nearest hit; each target's hit shape: a cooler its box, a counter its focus box, a fish or item
   its `GetFocusRadius` sphere), **else** the smallest angle between your view and the target's shape, at most
@@ -181,7 +197,9 @@ by the server; clients only ask ("I pressed E on this cooler, expecting Put in")
 - Network: the client sends `ServerInteract(Target, Key, Verb)`. The server checks the target (interactable, in its reach
   + `ServerRangeSlack` 150 cm) and that ITS own verb for that key is the same (so a stale prompt never does something
   else, e.g. two players taking the last fish: the second is refused), then performs it. The view angle is not
-  re-checked on the server.
+  re-checked on the server. T-030h: a verb whose prompt shows contents that can change under it has a state token
+  (`ILureInteractable::GetInteractionStateToken`; today only the counter's Sell): `ServerInteract(Target, Key, Verb,
+  ExpectedState)` sends the one the client saw and the server refuses a mismatch (with a notice). 0 = not checked.
 
 ## Network (what replicates, what each machine does)
 - Server-authoritative: every change goes through `Authority*` functions that refuse on clients (with a Warning).
@@ -206,7 +224,9 @@ by the server; clients only ask ("I pressed E on this cooler, expecting Put in")
   `Lure.CoolerSpawn` if the level has one (each player's cooler `StarterCoolerSpacing` further along its +Y, turned like
   the marker: point the marker's +X where players will stand), else at `StarterCoolerOffset` in the player start's frame
   with its front toward the start (players sharing one start, e.g. a map with one PlayerStart: the same row,
-  `StarterCoolerSpacing` apart along the start's +Y); dropped onto the floor below. One rule for both: a slot with a
+  `StarterCoolerSpacing` apart along the start's +Y), else (T-030i: no marker and no player start, where the engine
+  hands over its world settings at the origin) the same row at `StarterCoolerOffset` in the first player's pawn's yaw frame,
+  front toward that pawn, with a warning in the log; dropped onto the floor below. One rule for both: a slot with a
   cooler already standing in it (within half a spacing) is skipped, so starter coolers never stand inside each other. Respawns don't make another.
   `bSpawnStarterCooler` = False turns it off (settings).
 

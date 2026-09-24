@@ -17,6 +17,7 @@
 #include "Engine/StaticMeshSocket.h"
 #include "Engine/World.h"
 #include "Fish/FightFishVisual.h"
+#include "Fish/FishAnimInstance.h"
 #include "Fish/LureFightFishSubsystem.h"
 #include "Fishing/FishingSpots.h"
 #include "Fishing/LureFishingComponent.h"
@@ -205,6 +206,7 @@ bool ALureFishItem::AdoptVisual(AActor* Visual)
 	Visual->SetActorRelativeRotation(FRotator::ZeroRotator);
 	StaticFish->SetVisibility(false);
 	SkeletalFish->SetVisibility(false);
+	UpdateHandAnim(); // the visual plays its own (landed) state now
 	// The swing starts where the landed fish is (the line end), then settles under the rod tip: now if it already hangs
 	// (a client that got the item first), else when it is hooked (the server spawns the item, then hangs it).
 	SwingStart = MouthWorld;
@@ -547,6 +549,7 @@ void ALureFishItem::EnsureLook()
 		SkeletalFish->SetVisibility(false);
 	}
 	RefreshPresentation(); // the hold and rest offsets depend on the size
+	UpdateHandAnim();
 
 	// T-029 seam: a landed fight fish offered before this item arrived takes over the look.
 	if (bClaim && Subsystem)
@@ -599,12 +602,96 @@ FVector ALureFishItem::ComputeHeldFishLocation(const FVector& GripAtScale1, floa
 
 FTransform ALureFishItem::GetThirdPersonAttachment() const
 {
+	// The owner's first-person hold, seen from outside (T-030k): the grip frame hangs off the holder's eye point (capsule
+	// center + BaseEyeHeight, which follows crouch and prone), and the fish sits in it as it does on hand_r_fish.
 	const ULureCatchSettings* Settings = GetDefault<ULureCatchSettings>();
-	return FTransform(-GetGripOffset()) * FTransform(Settings->ThirdPersonFishRotation, Settings->ThirdPersonFishOffset);
+	const APawn* Holder = Hold.IsHeld() ? Hold.Holder.Get() : nullptr;
+	const float EyeHeight = (Holder && FMath::IsFinite(Holder->BaseEyeHeight)) ? Holder->BaseEyeHeight : 0.0f;
+	const FTransform InGrip(FQuat::Identity, ComputeHeldFishLocation(GripOffset, WeightScale, Settings->HeldFishContactPoint));
+	return InGrip * FTransform(Settings->ThirdPersonFishRotation, Settings->ThirdPersonFishOffset + FVector(0.0f, 0.0f, EyeHeight));
+}
+
+void ALureFishItem::UpdatePresentation(float DeltaSeconds)
+{
+	Super::UpdatePresentation(DeltaSeconds);
+	// Seen in another player's hand: keep up with their eye height (crouch, prone) without a new hold.
+	const APawn* Holder = (Hold.IsHeld() && Hold.Mode == ELureHoldMode::Hand) ? Hold.Holder.Get() : nullptr;
+	if (!Holder || !ItemRoot || !Holder->GetRootComponent() || ItemRoot->GetAttachParent() != Holder->GetRootComponent())
+	{
+		return;
+	}
+	const FTransform Wanted = GetThirdPersonAttachment();
+	if (!ItemRoot->GetRelativeTransform().Equals(Wanted, 0.01))
+	{
+		ItemRoot->SetRelativeTransform(Wanted);
+	}
+}
+
+FFishAnimState ALureFishItem::GetInHandAnimState() const
+{
+	ULureFightFishSubsystem* Visuals = ULureFightFishSubsystem::Get(this);
+	FFightFishAnimInput In;
+	In.Phase = EFightFishPhase::Landed;
+	return FFightFishVisual::ComputeAnimState(Visuals ? Visuals->GetVisualRow() : FFishVisualRow::GetFallbackRow(), In);
+}
+
+bool ALureFishItem::GetShownAnimState(FFishAnimState& OutState) const
+{
+	const USkeletalMeshComponent* Mesh = nullptr;
+	if (AdoptedVisual)
+	{
+		Mesh = AdoptedVisual->FindComponentByClass<USkeletalMeshComponent>();
+	}
+	else if (SkeletalFish && SkeletalFish->IsVisible())
+	{
+		Mesh = SkeletalFish;
+	}
+	const UFishAnimInstance* Anim = Mesh ? Cast<UFishAnimInstance>(Mesh->GetAnimInstance()) : nullptr;
+	if (!Anim)
+	{
+		return false;
+	}
+	OutState = Anim->GetAnimState();
+	return true;
+}
+
+void ALureFishItem::UpdateHandAnim()
+{
+	if (!SkeletalFish)
+	{
+		return;
+	}
+	const bool bWant = IsRenderingMachine() && !AdoptedVisual && Hold.IsHeld() && Hold.Mode == ELureHoldMode::Hand
+		&& SkeletalFish->GetSkeletalMeshAsset() && SkeletalFish->IsVisible();
+	if (!bWant)
+	{
+		if (bHandAnim)
+		{
+			bHandAnim = false;
+			SkeletalFish->SetAnimInstanceClass(nullptr); // back to the still mesh (on the ground, on the hook)
+		}
+		return;
+	}
+	if (!bHandAnim)
+	{
+		ULureFightFishSubsystem* Visuals = ULureFightFishSubsystem::Get(this);
+		UClass* AnimClass = Visuals ? Visuals->ResolveAnimClass() : nullptr;
+		if (!AnimClass || !AnimClass->IsChildOf(UFishAnimInstance::StaticClass()))
+		{
+			AnimClass = UFishAnimInstance::StaticClass(); // no graph: the pose stays still, the role is still the same
+		}
+		SkeletalFish->SetAnimInstanceClass(AnimClass);
+		bHandAnim = true;
+	}
+	if (UFishAnimInstance* Anim = Cast<UFishAnimInstance>(SkeletalFish->GetAnimInstance()))
+	{
+		Anim->SetAnimState(GetInHandAnimState()); // the owner is not a fight fish: nothing overwrites it
+	}
 }
 
 void ALureFishItem::OnHoldChanged(const FLureItemHold& OldHold)
 {
+	UpdateHandAnim();
 	const bool bWasHooked = OldHold.IsHeld() && OldHold.Mode == ELureHoldMode::Hook;
 	const bool bHooked = Hold.IsHeld() && Hold.Mode == ELureHoldMode::Hook;
 	if (!bHooked)

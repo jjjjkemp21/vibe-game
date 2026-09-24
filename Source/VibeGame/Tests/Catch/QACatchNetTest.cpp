@@ -642,8 +642,7 @@ namespace LureCatchQANet
 			return false;
 		}
 
-		// Client 0 takes the last fish back (F) while client 1 sells (E), in the same frame. Either order is legal; what must
-		// hold: each catch is sold XOR back in client 0's hand, and client 1 is paid for exactly the catches that were sold.
+		// Client 0 takes the last fish back (F) while client 1 sells (E), in the same frame.
 		constexpr int32 Taker = 0;
 		constexpr int32 Seller = 1;
 		for (int32 Client = 0; Client < 2; ++Client)
@@ -660,39 +659,58 @@ namespace LureCatchQANet
 		const bool bTakeSent = Net.Keys(Taker)->PressKey(KeyF);
 		const bool bSellSent = Net.Keys(Seller)->PressKey(KeyE);
 		TestTrue(TEXT("both clients send their request"), bTakeSent && bSellSent);
-		const bool bDone = Net.Until([&]() { return Counter->GetFishOnCounter().Num() == 0 && Money(Net.Players[Seller]) != Money0[Seller]; });
+		// T-030h rule: the sale sells exactly what the seller's prompt showed (both fish) or nothing. Either order is legal.
+		const bool bSettled = Net.Until([&]() { return Money(Net.Players[Seller]) != Money0[Seller] || LCT::HandsOf(Net.Players[Taker])->GetHeldFish() != nullptr; });
 		Worlds.TickAll(20);
-		TestTrue(TEXT("the counter is empty and the seller was paid (server)"), bDone);
-
+		TestTrue(TEXT("one of the two requests ran on the server"), bSettled);
 		const ALureFishItem* Held = LCT::HandsOf(Net.Players[Taker])->GetHeldFish();
-		int32 SoldCount = 0;
-		int32 SoldValue = 0;
-		for (int32 Index = 0; Index < 2; ++Index)
-		{
-			const int32 ServerCopies = Copies(Net.Server, Catches[Index]);
-			const bool bInHand = Held && IsCatch(Held->GetFish(), Catches[Index]);
-			TestTrue(FString::Printf(TEXT("catch %d is sold (0 copies) XOR in the taker's hand (1 copy): %d copies, in hand %d"), Index, ServerCopies, bInHand ? 1 : 0),
-				(ServerCopies == 0 && !bInHand) || (ServerCopies == 1 && bInHand));
-			SoldCount += ServerCopies == 0 ? 1 : 0;
-			SoldValue += ServerCopies == 0 ? Price[Index] : 0;
-		}
-		AddInfo(FString::Printf(TEXT("%s ran first: %d fish sold for %d coins"), Held ? TEXT("the take-back") : TEXT("the sale"), SoldCount, SoldValue));
-		TestTrue(TEXT("if the take-back won, it took the last fish put on the counter (client 1's)"), !Held || IsCatch(Held->GetFish(), Catches[1]));
-		TestTrue(TEXT("the sale sold at least the fish the take-back couldn't take"), SoldCount >= 1);
-		TestEqual(TEXT("the seller is paid exactly the oracle price of the fish sold"), Money(Net.Players[Seller]) - Money0[Seller], SoldValue);
 		TestEqual(TEXT("the taker is paid nothing"), Money(Net.Players[Taker]) - Money0[Taker], 0);
-		for (int32 Index = 0; Index < 2; ++Index)
+		if (!Held)
 		{
-			const bool bSold = Copies(Net.Server, Catches[Index]) == 0;
-			Net.Settles(*this, Catches[Index], bSold ? 0 : 1, FString::Printf(TEXT("catch %d (%s)"), Index, bSold ? TEXT("sold") : TEXT("taken back")));
+			AddInfo(TEXT("the sale ran first: the whole prompt is sold"));
+			TestEqual(TEXT("sale first: the seller is paid the full prompt (both fish)"), Money(Net.Players[Seller]) - Money0[Seller], Price[0] + Price[1]);
+			for (int32 Index = 0; Index < 2; ++Index)
+			{
+				TestEqual(FString::Printf(TEXT("sale first: catch %d is sold (0 copies)"), Index), Copies(Net.Server, Catches[Index]), 0);
+				Net.Settles(*this, Catches[Index], 0, FString::Printf(TEXT("catch %d (sold)"), Index));
+			}
+			TestTrue(TEXT("the counter is empty on every machine"), Net.Until([&]() { return Net.On(0, Counter)->GetFishOnCounter().Num() == 0 && Net.On(1, Counter)->GetFishOnCounter().Num() == 0; }));
+			const FString Notice = FString::Printf(TEXT("Sold 2 fish for %d coins"), Price[0] + Price[1]);
+			TestTrue(FString::Printf(TEXT("the seller's machine shows '%s'"), *Notice), Net.Until([&]() { return LCT::NoticesOf(Net.Mine(Seller)).Contains(Notice); }));
+			return true;
 		}
-		TestTrue(TEXT("the counter is empty on every machine"), Net.Until([&]() { return Net.On(0, Counter)->GetFishOnCounter().Num() == 0 && Net.On(1, Counter)->GetFishOnCounter().Num() == 0; }));
-		const FString Notice = FString::Printf(TEXT("Sold %d fish for %d coins"), SoldCount, SoldValue);
+
+		AddInfo(TEXT("the take-back ran first: the stale sale must sell nothing"));
+		TestTrue(TEXT("the take-back took the last fish put on the counter (client 1's)"), IsCatch(Held->GetFish(), Catches[1]));
+		TestEqual(TEXT("take-back first: the seller is paid nothing"), Money(Net.Players[Seller]) - Money0[Seller], 0);
+		TestEqual(TEXT("take-back first: the first catch is still on the counter (1 copy)"), Copies(Net.Server, Catches[0]), 1);
+		TestEqual(TEXT("take-back first: the counter holds exactly 1 fish (server)"), Counter->GetFishOnCounter().Num(), 1);
+		TestFalse(FString::Printf(TEXT("no partial sale notice (%s)"), *LCT::NoticesOf(Net.Mine(Seller))), LCT::NoticesOf(Net.Mine(Seller)).Contains(TEXT("Sold")));
+		TestTrue(FString::Printf(TEXT("the seller sees 'That just changed: nothing done. Now: Sell 1 fish (...)' (%s)"), *LCT::NoticesOf(Net.Mine(Seller))),
+			Net.Until([&]() { return LCT::NoticesOf(Net.Mine(Seller)).Contains(TEXT("That just changed: nothing done. Now: Sell 1 fish (")); }));
+		TestTrue(TEXT("the taker's machine shows the fish in its own hand"), Net.Until([&]() { const ALureFishItem* Own = Net.Mine(Taker)->GetHands()->GetHeldFish(); return Own && IsCatch(Own->GetFish(), Catches[1]); }));
+		TestTrue(TEXT("the seller's counter shows 1 fish"), Net.Until([&]() { return Net.On(Seller, Counter)->GetFishOnCounter().Num() == 1; }));
+
+		// Second E: sells exactly what the refreshed prompt shows.
+		const FLureResolvedInteraction Again = Net.Keys(Seller)->ResolveInteraction(KeyE);
+		const FString AgainPrompt = Again.Prompt.ToString();
+		int32 PromptCoins = -1;
+		FString Left, Right;
+		if (AgainPrompt.Split(TEXT("("), &Left, &Right))
+		{
+			PromptCoins = FCString::Atoi(*Right);
+		}
+		TestTrue(FString::Printf(TEXT("the refreshed prompt is 'Sell 1 fish (N coins)' (%s)"), *AgainPrompt), Again.Verb == EVerb::SellCounter && AgainPrompt.StartsWith(TEXT("Sell 1 fish (")) && PromptCoins > 0);
+		TestTrue(FString::Printf(TEXT("the refreshed prompt's price is the remaining fish's price (%d vs %d)"), PromptCoins, Price[0]), FMath::Abs(PromptCoins - Price[0]) <= 1);
+		const int32 MoneyBefore = Money(Net.Players[Seller]);
+		TestTrue(TEXT("the second Sell is sent"), Net.Keys(Seller)->PressKey(KeyE));
+		TestTrue(TEXT("the second Sell empties the counter (server)"), Net.Until([&]() { return Counter->GetFishOnCounter().Num() == 0 && Money(Net.Players[Seller]) != MoneyBefore; }));
+		Worlds.TickAll(10);
+		TestEqual(TEXT("the second Sell pays exactly the prompt's total"), Money(Net.Players[Seller]) - MoneyBefore, PromptCoins);
+		Net.Settles(*this, Catches[0], 0, TEXT("catch 0 (sold on the second E)"));
+		Net.Settles(*this, Catches[1], 1, TEXT("catch 1 (taken back)"));
+		const FString Notice = FString::Printf(TEXT("Sold 1 fish for %d coins"), PromptCoins);
 		TestTrue(FString::Printf(TEXT("the seller's machine shows '%s'"), *Notice), Net.Until([&]() { return LCT::NoticesOf(Net.Mine(Seller)).Contains(Notice); }));
-		if (Held)
-		{
-			TestTrue(TEXT("the taker's machine shows the fish in its own hand"), Net.Until([&]() { const ALureFishItem* Own = Net.Mine(Taker)->GetHands()->GetHeldFish(); return Own && IsCatch(Own->GetFish(), Catches[1]); }));
-		}
 		return true;
 	}
 

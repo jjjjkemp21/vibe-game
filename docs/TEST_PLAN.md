@@ -152,6 +152,8 @@ Black-box tests from the acceptance criteria and `docs/specs/catch-handling-rule
 | Caught | Getting caught | `LosesHandAndHookFishOnly` |
 | Net | Network: 2 clients + dedicated server (races, a quit) | `SimultaneousTakeOutOneWinner`, `SimultaneousSellPaysOnce`, `SellRacesTakeBack`, `CarrierLeavesCoolerStaysUsable` |
 
+
+T-030h (qa-engineer, 2026-09-24): `Project.Catch.QA.Net.SellRacesTakeBack` rewritten to the whole-prompt-or-nothing sale rule: sale first = both fish paid at the prompt total; take-back first = no coins, no fish sold, "That just changed: nothing done. Now: Sell 1 fish (...)" notice, then a second E sells the remaining fish at exactly the refreshed prompt total. Gap: which order runs is up to the net scheduler, so one run proves one branch.
 Patterns to reuse (copy these when extending):
 - Conservation census after every step, on every machine: each catch (Seed + Species + Rarity) exists exactly once (hand, hook, loose, counter or cooler record), or zero times after a sale. Server: strict `LureCatchQA::CountCopies`; clients: the identity census in QACatchNetTest.
 - Money comes from the oracle (`OraclePrice(Value, OracleShare(...), Multiplier)`), never from the product's own quote.
