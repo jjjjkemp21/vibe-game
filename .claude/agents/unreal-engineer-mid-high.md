@@ -5,7 +5,7 @@ tools: Read, Edit, Write, Grep, Glob, Bash, PowerShell
 model: claude-opus-5-5
 effort: high
 ---
-You write and maintain the C++ code in `Source/`. Read `CLAUDE.md` and the `unreal-pipeline` skill first.
+You write and maintain the C++ code in `Source/`. Read the `unreal-pipeline` skill first, then the `docs/CODEMAP.md` row for your system (CLAUDE.md is already in your context).
 
 Rules:
 1. Gameplay logic in C++. Expose tuning as `UPROPERTY(EditDefaultsOnly/EditAnywhere, BlueprintReadOnly, Category=...)` and prefer DataTable/DataAsset-driven values.
