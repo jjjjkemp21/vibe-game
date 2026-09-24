@@ -20,6 +20,7 @@
 #include "Fishing/LureHotSpotSpawner.h"
 #include "GameFramework/PlayerController.h"
 #include "HAL/IConsoleManager.h"
+#include "Misc/ScopeExit.h"
 #include "Tests/Fishing/QAFishingTestUtils.h"
 
 #if WITH_EDITOR
@@ -466,6 +467,61 @@ bool FQAHotSpotCaps::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FQAHotSpotFarAreaNeedsPlayer, "Project.Fishing.Water.QA.HotSpot.FarAreaSpawnsOnlyWhenAPlayerComesNear", Flags)
+bool FQAHotSpotFarAreaNeedsPlayer::RunTest(const FString& Parameters)
+{
+	// Spec 5/8 (T-027b): with players present, a bounded area farther than HotSpotNearPlayerRadius from all of them gets no
+	// hot spots; once a player stands next to it, it fills.
+	ULureWaterSettings* Settings = GetMutableDefault<ULureWaterSettings>();
+	const float SavedNear = Settings->HotSpotNearPlayerRadius;
+	ON_SCOPE_EXIT { GetMutableDefault<ULureWaterSettings>()->HotSpotNearPlayerRadius = SavedNear; };
+	Settings->HotSpotNearPlayerRadius = 2500.f;
+	QAFishing::FScene Scene;
+	if (!Scene.Create(*this, /*bDock*/ false))
+	{
+		return false;
+	}
+	QAHot::DeepSea(Scene.World);
+	const FVector2D AreaCenter(8000.0, 0.0);
+	QAHot::CircleArea(Scene.World, TEXT("qa_far"), TEXT("Habitat.Reef"), AreaCenter, 1000.f);
+	const TStrongObjectPtr<UDataTable> Rows(QAHot::Table({ { TEXT("QA_Reef"), QAHot::Row(0.01f, 3, { TEXT("Habitat.Reef") }) } }));
+	ALureHotSpotSpawner* Spawner = QAHot::Spawner(Scene.World, Rows.Get(), 4242);
+	ALurePlayerCharacter* Players[2] = { Scene.Spawn(*this, FVector(0.f, -500.f, 100.f)), Scene.Spawn(*this, FVector(0.f, 500.f, 100.f)) };
+	if (!TestNotNull(TEXT("spawner"), Spawner) || !TestNotNull(TEXT("player 0"), Players[0]) || !TestNotNull(TEXT("player 1"), Players[1]))
+	{
+		return false;
+	}
+	Spawner->MaxHotSpots = 50;
+	auto InArea = [&Scene]()
+	{
+		return QAHot::Live(Scene.World).FilterByPredicate([](const ALureHotSpot* Spot) { return Spot->GetState().AreaId == TEXT("qa_far"); }).Num();
+	};
+	for (ALurePlayerCharacter* Player : Players)
+	{
+		TestTrue(TEXT("setup: the area's edge is beyond 2500 cm from each player"), FVector2D::Distance(FVector2D(Player->GetActorLocation()), AreaCenter) - 1000.0 > 2500.0);
+	}
+	for (int32 Check = 0; Check < 30; ++Check)
+	{
+		Spawner->SpawnStep(100.f);
+	}
+	TestEqual(TEXT("players present, all far: no hot spots in the far area"), InArea(), 0);
+
+	Players[1]->SetActorLocation(FVector(AreaCenter.X - 1500.0, 0.0, 100.0), false, nullptr, ETeleportType::TeleportPhysics);
+	for (int32 Check = 0; Check < 30; ++Check)
+	{
+		Spawner->SpawnStep(100.f);
+	}
+	TestEqual(TEXT("a player next to it: the area fills to MaxPerArea (3)"), InArea(), 3);
+	for (ALureHotSpot* Spot : QAHot::Live(Scene.World))
+	{
+		if (Spot->GetState().AreaId == TEXT("qa_far"))
+		{
+			TestTrue(TEXT("each spawn point is within 2500 cm of the near player"), FVector::Dist2D(FVector(Spot->GetState().Anchor), Players[1]->GetActorLocation()) <= 2500.0 + 0.1);
+		}
+	}
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FQAHotSpotLifetime, "Project.Fishing.Water.QA.HotSpot.LifetimeWithinRowThenGone", Flags)
 bool FQAHotSpotLifetime::RunTest(const FString& Parameters)
 {
@@ -906,7 +962,30 @@ bool FQAHotSpotNet2PReplication::RunTest(const FString& Parameters)
 	{
 		QAHot::Box(Client.GetWorld(), FVector(0.f, 0.f, 50.f), FVector(400.f, 400.f, 50.f)); // each machine loads the level geometry
 	}
-	QAHot::CircleArea(Server, TEXT("qa_net_reef"), TEXT("Habitat.Reef"), FVector2D(4000.0, 3000.0), 1500.f);
+	// T-027b: hot spots only spawn within HotSpotNearPlayerRadius of a player, so the area goes next to where the clients'
+	// pawns actually stand on the server (measured, not assumed), off to +Y so it stays clear of the later cast along +X.
+	TArray<FVector2D> PawnXY;
+	for (FConstPlayerControllerIterator It = Server->GetPlayerControllerIterator(); It; ++It)
+	{
+		if (const APawn* Pawn = It->Get() ? It->Get()->GetPawn() : nullptr)
+		{
+			PawnXY.Add(FVector2D(Pawn->GetActorLocation()));
+			AddInfo(FString::Printf(TEXT("pawn %s at (%.0f, %.0f)"), *Pawn->GetName(), Pawn->GetActorLocation().X, Pawn->GetActorLocation().Y));
+		}
+	}
+	if (!TestEqual(TEXT("harness: both clients have a pawn on the server"), PawnXY.Num(), 2))
+	{
+		return false;
+	}
+	const FVector2D PawnCenter = (PawnXY[0] + PawnXY[1]) * 0.5;
+	const FVector2D AreaCenter = PawnCenter + FVector2D(0.0, 1800.0);
+	const float AreaRadius = 1000.f;
+	for (const FVector2D& Pawn : PawnXY)
+	{
+		TestTrue(TEXT("setup: the area is within HotSpotNearPlayerRadius of each pawn"),
+			FVector2D::Distance(Pawn, AreaCenter) - AreaRadius < GetDefault<ULureWaterSettings>()->HotSpotNearPlayerRadius);
+	}
+	QAHot::CircleArea(Server, TEXT("qa_net_reef"), TEXT("Habitat.Reef"), AreaCenter, AreaRadius);
 	FLureHotSpotRow Row = QAHot::Row(0.01f, 3, {}, 0.f);
 	Row.DriftRange = 300.f;
 	Row.DriftSpeed = 30.f;

@@ -261,6 +261,7 @@ object, read into the copy, RepNotifies called on change), not a property copy.
     `OverlapNearestRelativeToRadius`.
   - Net (I, FTestWorlds): `Net2P.SpawnerHotSpotsAndBobberWaterReachClients` (same drift on server/client), `Net2P.DevCommandsOnClientAreSafe`.
   - Data (D): `Data.HotSpotRowsValid` (DT_HotSpot.json), `Data.HotSpotValidateCatchesBadRows`, `Data.LayoutWaterAreasFollowSchema` (every data/levels layout).
+  - T-027b near-player rule (QA): `QA.HotSpot.FarAreaSpawnsOnlyWhenAPlayerComesNear` (far bounded area empty with players present, fills once one comes near); the Net2P test now places its area next to the measured pawn positions.
 
 ### T-027 open bugs (failing test = regression test)
 - `HotSpot.DriftNeverCrossesLand`: the spawner checks only 8 points on the wander ring (spec rule), so a rock inside the drift disc between
