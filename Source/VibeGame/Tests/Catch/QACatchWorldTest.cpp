@@ -1221,6 +1221,82 @@ namespace LureCatchQAWorld
 		return true;
 	}
 
+	IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCatchQAStarterShared, "Project.Catch.QA.Save.FallbackStartersDoNotOverlap", LCT::Flags)
+	bool FCatchQAStarterShared::RunTest(const FString& Parameters)
+	{
+		FRig Rig;
+		if (!Rig.Create(*this, true))
+		{
+			return false;
+		}
+		// Two players who spawn at the same player start (a map with one PlayerStart, e.g. PIE with 2 players).
+		AActor* Start = Rig.W.SpawnMarker(FVector(-300.0f, 0.0f, Z + 92.0f), 0.0f);
+		ALureCoolerActor* CoolerA = ULureCatchLibrary::EnsureStarterCooler(Rig.A->GetPlayerState(), Start);
+		ALureCoolerActor* CoolerB = ULureCatchLibrary::EnsureStarterCooler(Rig.B->GetPlayerState(), Start);
+		if (!TestTrue(TEXT("QA setup: both starter coolers spawned"), CoolerA && CoolerB))
+		{
+			return false;
+		}
+		Rig.W.Tick(2);
+		const FBox BoxA = CoolerA->GetCollisionBox()->Bounds.GetBox().ExpandBy(-0.5);
+		const FBox BoxB = CoolerB->GetCollisionBox()->Bounds.GetBox().ExpandBy(-0.5);
+		TestFalse(FString::Printf(TEXT("the two coolers don't stand inside each other (%s and %s)"), *CoolerA->GetActorLocation().ToCompactString(), *CoolerB->GetActorLocation().ToCompactString()),
+			BoxA.Intersect(BoxB));
+		return true;
+	}
+
+	IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCatchQASaveReapplyAfterTakeOut, "Project.Catch.QA.Save.ReapplyAfterTakeOutNoDupes", LCT::Flags)
+	bool FCatchQASaveReapplyAfterTakeOut::RunTest(const FString& Parameters)
+	{
+		FRig Rig;
+		if (!Rig.Create(*this, false))
+		{
+			return false;
+		}
+		UWorld* World = Rig.World();
+		APlayerState* Owner = Rig.A->GetPlayerState();
+		const TArray<FFishInstance> Fish = { LureCatchQA::Roll(*this, Rig.W.FishTables, TEXT("Bonefish"), 2401),
+			LureCatchQA::Roll(*this, Rig.W.FishTables, TEXT("CoralSnapper"), 2402), LureCatchQA::Roll(*this, Rig.W.FishTables, TEXT("Bonefish"), 2403) };
+		ALureCoolerActor* Cooler = Rig.W.SpawnCooler(FVector(150.0f, 0.0f, Z), 180.0f, TEXT("Starter"), Owner);
+		if (!TestTrue(TEXT("QA setup"), Owner && Cooler))
+		{
+			return false;
+		}
+		Fill(Cooler, Fish, Rig.W.Now());
+		const TArray<FLureCoolerSaveData> Saved = ULureCatchLibrary::GetCoolerSaveData(Owner);
+		if (!TestTrue(TEXT("QA setup: the save holds the cooler with its 3 fish"), Saved.Num() == 1 && Saved[0].Fish.Num() == 3))
+		{
+			return false;
+		}
+
+		// After the save a fish is taken out (it is in A's hand now), then the same save is applied again (a reconnect).
+		TestTrue(TEXT("QA setup: lid opens"), Cooler->AuthoritySetLidOpen(true));
+		ALureFishItem* Taken = Cooler->AuthorityTakeFishOut(Rig.A);
+		if (!TestTrue(TEXT("QA setup: one fish taken out"), Taken && Cooler->GetNumFish() == 2))
+		{
+			return false;
+		}
+		const FFishInstance TakenFish = Taken->GetFish();
+		TestEqual(TEXT("re-applying the save while the cooler exists"), ULureCatchLibrary::ApplyCoolerSaveData(Owner, Saved), 1);
+		Rig.W.Tick(2);
+		TestEqual(TEXT("... still exactly one cooler"), LureCatchQA::CountCoolers(World), 1);
+		for (int32 Index = 0; Index < Fish.Num(); ++Index)
+		{
+			TestEqual(FString::Printf(TEXT("... fish %d exists exactly once"), Index), LureCatchQA::CountCopies(World, Fish[Index]), 1);
+		}
+		TestTrue(TEXT("... the live cooler wins: same actor, its 2 fish, lid still open, still the owner's"), IsValid(Cooler) && !Cooler->IsActorBeingDestroyed()
+			&& Cooler->GetNumFish() == 2 && Cooler->IsLidOpen() && Cooler->GetOwningPlayerState() == Owner);
+		TestTrue(TEXT("... the taken fish is still the item out of the cooler"), IsValid(Taken) && !Taken->IsActorBeingDestroyed() && FishQA::Same(Taken->GetFish(), TakenFish));
+
+		// Again (a second reconnect): still no copies.
+		TestEqual(TEXT("re-applying once more"), ULureCatchLibrary::ApplyCoolerSaveData(Owner, Saved), 1);
+		for (int32 Index = 0; Index < Fish.Num(); ++Index)
+		{
+			TestEqual(FString::Printf(TEXT("... fish %d still exists exactly once"), Index), LureCatchQA::CountCopies(World, Fish[Index]), 1);
+		}
+		return true;
+	}
+
 	// =====================================================================================================================
 	// 6. Falling in and getting caught
 	// =====================================================================================================================

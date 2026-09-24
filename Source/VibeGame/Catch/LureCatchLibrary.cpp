@@ -33,6 +33,44 @@ namespace LureCatchLibraryPrivate
 		}
 		return nullptr;
 	}
+
+	/**
+	 *  The starter-cooler row (one rule for the Lure.CoolerSpawn marker and the player-start fallback): slot i stands
+	 *  StarterCoolerSpacing * i along Frame's +Y from Base (in Frame). From FirstIndex on, the first slot with no cooler
+	 *  standing within half a spacing of it (2D) is used, so two players' starter coolers never stand inside each other.
+	 */
+	FVector StarterRowSlot(const UWorld* World, const FTransform& Frame, const FVector& Base, int32 FirstIndex)
+	{
+		const float Spacing = GetDefault<ULureCatchSettings>()->StarterCoolerSpacing;
+		auto SlotAt = [&](int32 Index) { return Frame.TransformPositionNoScale(Base + FVector(0.0f, Spacing * static_cast<float>(Index), 0.0f)); };
+		if (Spacing <= KINDA_SMALL_NUMBER)
+		{
+			return SlotAt(FirstIndex);
+		}
+		TArray<FVector> Taken;
+		if (const ULureCatchSubsystem* Subsystem = ULureCatchSubsystem::Get(World))
+		{
+			for (const ALureCarryableItem* Item : Subsystem->GetItems())
+			{
+				if (IsValid(Item) && !Item->IsActorBeingDestroyed() && Item->IsA<ALureCoolerActor>())
+				{
+					Taken.Add(Item->GetActorLocation());
+				}
+			}
+		}
+		const double Clear = FMath::Square(0.5 * static_cast<double>(Spacing));
+		// Each cooler blocks at most two slots, so a free one is always found within this many.
+		const int32 Last = FirstIndex + 2 * Taken.Num();
+		for (int32 Index = FirstIndex; Index < Last; ++Index)
+		{
+			const FVector Slot = SlotAt(Index);
+			if (!Taken.ContainsByPredicate([&Slot, Clear](const FVector& Other) { return FVector::DistSquared2D(Slot, Other) < Clear; }))
+			{
+				return Slot;
+			}
+		}
+		return SlotAt(Last);
+	}
 }
 
 FLureFishLandedResult ULureCatchLibrary::HandleFishLanded(AActor* Context, const FFishInstance& Fish)
@@ -138,12 +176,13 @@ ALureCoolerActor* ULureCatchLibrary::EnsureStarterCooler(APlayerState* PlayerSta
 			}
 		}
 		const AActor* Marker = Spots[Starters % Spots.Num()];
-		const float Along = Settings->StarterCoolerSpacing * static_cast<float>(Starters / Spots.Num());
-		Spot = FTransform(FRotator(0.0f, Marker->GetActorRotation().Yaw, 0.0f), Marker->GetActorTransform().TransformPositionNoScale(FVector(0.0f, Along, 0.0f)));
+		const FVector Location = LureCatchLibraryPrivate::StarterRowSlot(World, Marker->GetActorTransform(), FVector::ZeroVector, Starters / Spots.Num());
+		Spot = FTransform(FRotator(0.0f, Marker->GetActorRotation().Yaw, 0.0f), Location);
 	}
 	else if (StartSpot)
 	{
-		const FVector Location = StartSpot->GetActorTransform().TransformPositionNoScale(Settings->StarterCoolerOffset);
+		// Players sharing one start (a map with one PlayerStart): the same row rule, starting at StarterCoolerOffset.
+		const FVector Location = LureCatchLibraryPrivate::StarterRowSlot(World, StartSpot->GetActorTransform(), Settings->StarterCoolerOffset, 0);
 		// Its front (+X, the latch) toward the player's start (the offset is to the side too, so not just the start's yaw + 180).
 		Spot = FTransform(FRotator(0.0f, ALureCoolerActor::GetYawFacing(Location, StartSpot), 0.0f), Location);
 	}
@@ -207,9 +246,11 @@ int32 ULureCatchLibrary::ApplyCoolerSaveData(APlayerState* PlayerState, const TA
 		{
 			continue;
 		}
-		if (Existing && !Existing->IsFree())
+		if (Existing)
 		{
-			// Someone carries it (a reconnect while a friend holds it): leave it with them, only the owner is updated.
+			// Already in the world (a mid-session reconnect or a re-apply): the live cooler wins. Its saved fish are NOT
+			// restored: fish taken out since the save still exist (hand, counter, ground), so restoring would copy them.
+			// Only the owner is updated (a reconnect brings a new player state).
 			Existing->AuthoritySetOwningPlayerState(PlayerState);
 		}
 		else

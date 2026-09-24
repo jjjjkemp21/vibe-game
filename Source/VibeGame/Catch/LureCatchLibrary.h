@@ -46,7 +46,8 @@ public:
 	/**
 	 *  A starter cooler (ULureProgressionSettings DefaultCoolerId) for PlayerState if it owns none and
 	 *  ULureCatchSettings bSpawnStarterCooler is on: at an actor tagged CoolerSpawnTag (players' coolers StarterCoolerSpacing
-	 *  apart along its +Y), else at StarterCoolerOffset in StartSpot's frame, set on the floor below. Null otherwise.
+	 *  apart along its +Y), else at StarterCoolerOffset in StartSpot's frame (players sharing one start: the same row along
+	 *  its +Y; slots with a cooler already in them are skipped), set on the floor below. Null otherwise.
 	 */
 	static ALureCoolerActor* EnsureStarterCooler(APlayerState* PlayerState, const AActor* StartSpot);
 
@@ -59,8 +60,8 @@ public:
 	static TArray<FLureCoolerSaveData> GetCoolerSaveData(const APlayerState* PlayerState);
 
 	/**
-	 *  Restores PlayerState's coolers: a cooler with the saved guid in the world is updated (a reconnect), a missing one is
-	 *  spawned; the empty automatic starter cooler is removed when the save has coolers of its own. Returns the coolers applied.
+	 *  Restores PlayerState's coolers: a cooler with the saved guid still in the world wins (a reconnect or re-apply: only
+	 *  its owner is set, its saved fish are never restored, so no fish is ever copied), a missing one is spawned with its fish; the empty automatic starter cooler is removed when the save has coolers of its own. Returns the coolers applied.
 	 */
 	static int32 ApplyCoolerSaveData(APlayerState* PlayerState, const TArray<FLureCoolerSaveData>& Coolers);
 

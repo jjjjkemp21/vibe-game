@@ -186,7 +186,9 @@ by the server; clients only ask ("I pressed E on this cooler, expecting Put in")
   no cooler, a cooler of ULureProgressionSettings `DefaultCoolerId` (Starter) is spawned for them: at an actor tagged
   `Lure.CoolerSpawn` if the level has one (each player's cooler `StarterCoolerSpacing` further along its +Y, turned like
   the marker: point the marker's +X where players will stand), else at `StarterCoolerOffset` in the player start's frame
-  with its front toward the start; dropped onto the floor below. Respawns don't make another.
+  with its front toward the start (players sharing one start, e.g. a map with one PlayerStart: the same row,
+  `StarterCoolerSpacing` apart along the start's +Y); dropped onto the floor below. One rule for both: a slot with a
+  cooler already standing in it (within half a spacing) is skipped, so starter coolers never stand inside each other. Respawns don't make another.
   `bSpawnStarterCooler` = False turns it off (settings).
 
 ## Leaving, falling in, getting caught
@@ -202,8 +204,11 @@ by the server; clients only ask ("I pressed E on this cooler, expecting Put in")
   disk: T-019 isn't built). The player state still copies it for seamless travel and reconnects.
 - World items: `ULureCatchLibrary::GetCoolerSaveData(PlayerState)` / `ApplyCoolerSaveData(PlayerState, Coolers)`
   save each cooler the player owns: guid, row, transform, lid, and every fish with its exposure evaluated at save time
-  (the anchor is rebuilt from the lid on load). Apply matches coolers by guid (a reconnect reuses the one in the world),
-  spawns missing ones, and removes this player's empty automatic starter cooler if the save has its own. Fish in hands,
+  (the anchor is rebuilt from the lid on load). Apply matches coolers by their stable `CoolerGuid`: a cooler already in
+  the world (a mid-session reconnect or a re-apply) wins and is skipped, its saved fish are NOT restored (fish taken out
+  since the save still exist in a hand, on a counter or the ground, so restoring would copy them; only its owner is
+  updated); only missing coolers are spawned from the save, with their fish. Apply never creates a second copy of a
+  fish. It also removes this player's empty automatic starter cooler if the save has its own. Fish in hands,
   on hooks or lying around are not saved (saving happens at docks; T-019 may add them). `FLurePlayerSaveData` bundles
   both for T-019. Reconnects and travel copy progression only, never world items (no duplicated fish).
 
