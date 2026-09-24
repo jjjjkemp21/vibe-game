@@ -1116,7 +1116,8 @@ FPARMS_IK = {"ik_bone": "hand_l", "effector": "hand_l_crank", "joint": "lowerarm
 FPARMS_AIM_NOTE = (
     "Rod aim (T-028), on the Hold Rod branch only. C++ UFPArmsAnimInstance sets RodAimYaw (-1 tip left .. +1 right) and "
     "RodAimPitch (-1 dipped .. +1 pulled back) during a fight, 0 otherwise (0,0 = HoldRod_Idle exactly).\n"
-    "AO_FPArms_RodAim: 9 Mesh Space additive poses on a 2 x 2 grid, Use Grid on (bilinear, as the poses were authored). "
+    "AO_FPArms_RodAim: 9 Mesh Space additive poses on a 3 x 3 grid (2 divisions per axis), Use Grid on (bilinear, as "
+    "the poses were authored). "
     "Two Bone IK: hand_l to hand_l_crank (Bone Space, rotation from the crank); joint target lowerarm_l (Bone Space) keeps "
     "the pose's elbow. Class default bRodAimOffsetInGraph = true: the fishing code no longer turns the rod itself.\n"
     "Rebuild: pipeline_unreal fparms_rod_aim_offset(), then fparms_abp_wire_rod_aim().")
