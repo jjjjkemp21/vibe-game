@@ -187,10 +187,12 @@ struct FLureCoolerDisplaySlot
 {
 	GENERATED_BODY()
 
-	/** cm, relative to the Contents socket (cooler axes: +X front, +Y along the long side, +Z up) */
+	/** cm, relative to the Contents socket (the liner floor center; cooler axes: +X the front with the latch, +Z up). X, Y =
+	 *  the fish's origin; Z = the bed it lies on (the row's LieOffsetCm x the fish's shown scale is added on top). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Display")
 	FVector Location = FVector::ZeroVector;
 
+	/** Pitch 0, Yaw, Roll (+90 = the fish's right side down, -90 = its left side down) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Display")
 	FRotator Rotation = FRotator::ZeroRotator;
 };
@@ -217,10 +219,16 @@ struct FLureCoolerDisplayRow : public FTableRowBase
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Display", meta=(ClampMin="0", DataTableImportOptional))
 	float PoseTime = 0.0f;
 
-	/** Shown fish are drawn at their weight's size but at most this scale (1 = reference size), so a big catch fits, > 0.
-	 *  The record keeps its real weight. */
+	/** Shown fish are drawn at their weight's size, (Weight / ReferenceWeight)^(1/3), but at most this scale (1 = reference
+	 *  size; "MaxDisplayScale" in SK_Fish.anim.md), so a big catch fits under the lid, > 0. The record keeps its real weight. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Display", meta=(ClampMin="0.05"))
 	float MaxFishScale = 1.0f;
+
+	/** cm at reference size: how high a lying fish's origin sits above its bed (half its thickness); a shown fish goes to its
+	 *  slot's Z + LieOffsetCm x its shown scale, 0..50. SK_Fish.anim.md: Bonefish 4.24, CoralSnapper 4.26 (one value per
+	 *  cooler row until the species table has per-species look columns). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Display", meta=(ClampMin="0", DataTableImportOptional))
+	float LieOffsetCm = 4.25f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Display", meta=(MultiLine=true, DataTableImportOptional))
 	FString DevComment;

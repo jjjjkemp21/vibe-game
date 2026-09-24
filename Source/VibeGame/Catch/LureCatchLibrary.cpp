@@ -143,9 +143,9 @@ ALureCoolerActor* ULureCatchLibrary::EnsureStarterCooler(APlayerState* PlayerSta
 	}
 	else if (StartSpot)
 	{
-		const FTransform Start = StartSpot->GetActorTransform();
-		// Facing the player: its front (+X) back toward the start.
-		Spot = FTransform(FRotator(0.0f, StartSpot->GetActorRotation().Yaw + 180.0f, 0.0f), Start.TransformPositionNoScale(Settings->StarterCoolerOffset));
+		const FVector Location = StartSpot->GetActorTransform().TransformPositionNoScale(Settings->StarterCoolerOffset);
+		// Its front (+X, the latch) toward the player's start (the offset is to the side too, so not just the start's yaw + 180).
+		Spot = FTransform(FRotator(0.0f, ALureCoolerActor::GetYawFacing(Location, StartSpot), 0.0f), Location);
 	}
 	else
 	{

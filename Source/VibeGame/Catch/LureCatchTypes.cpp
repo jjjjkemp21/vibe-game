@@ -1,6 +1,7 @@
 // Lure: catch handling types (T-030).
 
 #include "Catch/LureCatchTypes.h"
+#include "Animation/AnimSequenceBase.h"
 #include "Engine/World.h"
 #include "GameFramework/GameStateBase.h"
 
@@ -144,6 +145,11 @@ bool FLureCoolerDisplayRow::Validate(FString& OutProblem) const
 		OutProblem = FString::Printf(TEXT("PoseTime %g must be >= 0"), PoseTime);
 		return false;
 	}
+	if (!FMath::IsFinite(LieOffsetCm) || LieOffsetCm < 0.0f || LieOffsetCm > 50.0f)
+	{
+		OutProblem = FString::Printf(TEXT("LieOffsetCm %g must be in [0, 50]"), LieOffsetCm);
+		return false;
+	}
 	for (int32 Index = 0; Index < Slots.Num(); ++Index)
 	{
 		if (Slots[Index].Location.ContainsNaN() || Slots[Index].Rotation.ContainsNaN() || Slots[Index].Location.GetAbsMax() > 500.0)
@@ -157,18 +163,27 @@ bool FLureCoolerDisplayRow::Validate(FString& OutProblem) const
 
 FLureCoolerDisplayRow FLureCoolerDisplayRow::GetFallbackRow()
 {
+	// The shipped Starter row (a data test keeps them equal): the slot table of SK_Fish.anim.md "Cooler display"
+	// (art/recipes/anim_fish_cooler.py), curled fish on alternating sides, bottom of the pile first, Z = the bed.
+	struct FSlotData
+	{
+		float X, Y, BedZ, Yaw, Roll;
+	};
+	static const FSlotData Table[] = { { 7.5f, -2.5f, 0.0f, 95.0f, 90.0f }, { 5.5f, -2.0f, 6.28f, -125.0f, -90.0f },
+		{ 6.5f, 1.0f, 12.35f, 140.0f, 90.0f }, { 10.0f, 2.5f, 18.72f, -100.0f, -90.0f } };
 	FLureCoolerDisplayRow Row;
-	// Straight fish on their sides along the long side (yaw 90), two layers of two, small enough for the starter liner.
-	const FRotator OnSide(0.0f, 90.0f, 90.0f);
-	for (const FVector& Location : { FVector(-8.0f, 0.0f, 4.0f), FVector(8.0f, 0.0f, 4.0f), FVector(-8.0f, 0.0f, 12.0f), FVector(8.0f, 0.0f, 12.0f) })
+	for (const FSlotData& Data : Table)
 	{
 		FLureCoolerDisplaySlot Slot;
-		Slot.Location = Location;
-		Slot.Rotation = OnSide;
+		Slot.Location = FVector(Data.X, Data.Y, Data.BedZ);
+		Slot.Rotation = FRotator(0.0f, Data.Yaw, Data.Roll);
 		Row.Slots.Add(Slot);
 	}
-	Row.MaxFishScale = 0.6f;
-	Row.DevComment = TEXT("Built-in display layout (DT_CoolerDisplay or the cooler's row is missing)");
+	Row.FishPose = TSoftObjectPtr<UAnimSequenceBase>(FSoftObjectPath(TEXT("/Game/Art/Fish/A_Fish_Curled.A_Fish_Curled")));
+	Row.PoseTime = 0.0f;
+	Row.MaxFishScale = 1.0f;
+	Row.LieOffsetCm = 4.25f;
+	Row.DevComment = TEXT("Built-in display layout = the shipped Starter row (DT_CoolerDisplay or the cooler's row is missing)");
 	return Row;
 }
 

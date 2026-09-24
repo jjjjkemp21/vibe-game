@@ -91,18 +91,27 @@ by the server; clients only ask ("I pressed E on this cooler, expecting Put in")
 
 - **Carry:** both hands, arms pose **CarryCooler**, rod stowed (no fishing), move speed x `CarrySpeedMultiplier` of
   the row on land (Starter 0.8; sprint too). The lid closes when you pick it up. Put down = in front of you at
-  `PutDownDistance`, on the floor found below (`PutDownMaxFall`), only on dry, walkable ground where the box fits
-  (tries 100 % and 85 % of the distance, then just clear of your capsule); else "No room to put the cooler down here"
-  and you keep carrying. An open cooler must be closed (F) before F picks it up.
+  `PutDownDistance`, **its front (+X, the latch) toward you** (the lid hinges at the back and opens away from you), on
+  the floor found below (`PutDownMaxFall`), only on dry, walkable ground **at most a step above your feet** (the
+  movement's `MaxStepHeight` + 5 cm: never on a counter, table or crate top; in the air, from the ground below you, so a
+  jump doesn't raise the limit) and **never in a sell counter's area**,
+  where the box fits (tries 100 % and 85 % of the distance, then just clear of your capsule); else "No room to put the
+  cooler down here" and you keep carrying. An open cooler must be closed (F) before F picks it up.
 - Automatic put-down (server): going **prone** puts it down in front of you (hide first, come back for it); falling into
-  the **water** puts it down at your last dry ground spot. It is never lost. Lying prone you can't pick a cooler up
-  (F shows "Stand up to carry the cooler"); E still opens it.
+  the **water** puts it down at your last dry ground spot. Both turn its front toward you
+  (`ALureCoolerActor::GetYawFacing`). It is never lost. Lying prone you can't pick a cooler up (F shows "Stand up to
+  carry the cooler"); E still opens it.
 - **Contents display (cosmetic, every rendering machine):** while the lid is open and the cooler stands, the top fish
-  of the pile show inside, curled and stacked: the DT_CoolerDisplay row named like the cooler type (`Slots` =
-  transforms relative to the body's `Contents` socket, bottom of the pile first; `FishPose` + `PoseTime` = the held
-  pose, e.g. `A_Fish_Curled`; `MaxFishScale` = the largest size drawn, the record keeps its weight). No row = a built-in
-  layout; a missing pose = straight fish. A fish put into a closed cooler makes the lid open and shut around it (a
-  replicated pulse id).
+  of the pile show inside, curled and stacked: the DT_CoolerDisplay row named like the cooler type. `Slots` = the
+  animation-artist's slot table (`art/export/Fish/SK_Fish.anim.md` "Cooler display"), relative to the body's
+  `Contents` socket, bottom of the pile first (slot 0 = the lowest shown fish; taking one out re-seats the rest). A
+  fish goes to its slot's X, Y and bed Z + `LieOffsetCm` x its shown scale, turned by the slot (pitch 0, yaw, roll
+  +-90 = which side is down). Shown scale = (Weight / ReferenceWeight)^(1/3), at most `MaxFishScale` (1.0: four fish
+  fit under the lid; the record keeps its weight). `FishPose` + `PoseTime` = the held pose (`A_Fish_Curled`). The
+  layout is made for the cooler **on the floor with its front toward a standing player** (eye 1.65 m, 0.6 m away);
+  seen from beside a counter the liner's front wall hides most fish, which is why a put-down faces you and refuses
+  raised tops. No row = the built-in layout (= the shipped Starter row); a missing pose = straight fish. A fish put
+  into a closed cooler makes the lid open and shut around it (a replicated pulse id).
 
 ## Freshness (`FLureFreshness`, DT_Freshness)
 - Time zero is the landing (server time). Each record keeps `ExposedSeconds` (seconds spent spoiling, rate-weighted)
@@ -166,8 +175,9 @@ by the server; clients only ask ("I pressed E on this cooler, expecting Put in")
 ## Starting cooler (data)
 - When a player's pawn first spawns at a player start (`ALureGameMode::RestartPlayerAtPlayerStart`, server) and they own
   no cooler, a cooler of ULureProgressionSettings `DefaultCoolerId` (Starter) is spawned for them: at an actor tagged
-  `Lure.CoolerSpawn` if the level has one (each player's cooler `StarterCoolerSpacing` further along its +Y), else at
-  `StarterCoolerOffset` in the player start's frame; dropped onto the floor below. Respawns don't make another.
+  `Lure.CoolerSpawn` if the level has one (each player's cooler `StarterCoolerSpacing` further along its +Y, turned like
+  the marker: point the marker's +X where players will stand), else at `StarterCoolerOffset` in the player start's frame
+  with its front toward the start; dropped onto the floor below. Respawns don't make another.
   `bSpawnStarterCooler` = False turns it off (settings).
 
 ## Leaving, falling in, getting caught
@@ -201,9 +211,11 @@ by the server; clients only ask ("I pressed E on this cooler, expecting Put in")
 - `data/tables/DT_Catch.csv` (FLureCatchRow, row Default): HangLineLength 40 cm, HangDamping 1.2 /s, ReachDistance
   250 cm, FocusAngleDeg 20, DropForward 60 cm, DropArcTime 0.35 s, PutDownDistance 80 cm,
   PutDownMaxFall 300 cm, LidOpenPitch 100 deg, LidOpenTime 0.25 s.
-- `data/tables/DT_CoolerDisplay.json` (FLureCoolerDisplayRow, rows Starter and Large): 4 slots each (a placeholder
-  layout until the animation-artist's table in SK_Fish.anim.md lands), FishPose `/Game/Art/Fish/A_Fish_Curled`,
-  PoseTime 0, MaxFishScale 0.75. A validator checks that every row names a DT_Cooler row.
+- `data/tables/DT_CoolerDisplay.json` (FLureCoolerDisplayRow, rows Starter and Large): the 4-slot table of
+  SK_Fish.anim.md (`anim_fish_cooler.py`, 2026-09-23), FishPose `/Game/Art/Fish/A_Fish_Curled`, PoseTime 0,
+  MaxFishScale 1.0, LieOffsetCm 4.25 (Bonefish 4.24, CoralSnapper 4.26: one value until the species table has look
+  columns). Large reuses the starter slots (its top 4 fish show) until it has its own model. A validator checks that
+  every row names a DT_Cooler row and that LieOffsetCm is in [0, 50].
 - Project Settings > Game > Catch Handling (`[/Script/VibeGame.LureCatchSettings]`): table paths, the fish mesh search
   (the species row's `Mesh`, else `/Game/Art/Fish/SK_<Species>`, else `SM_<Species>`), attach sockets and offsets, the
   starter cooler spawn. Keys: `AltInteractKeys` in Lure Character settings.

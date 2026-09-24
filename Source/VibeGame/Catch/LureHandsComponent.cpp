@@ -330,7 +330,7 @@ int32 ULureHandsComponent::AuthorityDropEverything(bool bLoseFish)
 	}
 	if (ALureCoolerActor* Cooler = GetCarriedCooler())
 	{
-		Cooler->AuthorityPutDownAt(Spot, static_cast<float>(Pawn->GetActorRotation().Yaw) + 180.0f);
+		Cooler->AuthorityPutDownAt(Spot, ALureCoolerActor::GetYawFacing(Spot, Pawn)); // its front toward you
 	}
 	else if (ALureCarryableItem* Other = GetHeldItem())
 	{
@@ -406,7 +406,8 @@ void ULureHandsComponent::ApplyForcedDrops()
 			// Hide first, come back for it: a cooler can't be carried crawling.
 			if (!Cooler->AuthorityPutDown())
 			{
-				Cooler->AuthorityPutDownAt(GetForcedDropSpot(), static_cast<float>(Lure->GetActorRotation().Yaw) + 180.0f);
+				const FVector Spot = GetForcedDropSpot();
+				Cooler->AuthorityPutDownAt(Spot, ALureCoolerActor::GetYawFacing(Spot, Lure)); // its front toward you
 			}
 			RefreshFromItems();
 		}

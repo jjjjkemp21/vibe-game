@@ -369,8 +369,11 @@ bool FCatchSaveRoundTrip::RunTest(const FString& Parameters)
 		TestTrue(TEXT("A: both fish, in order"), SA->Fish.Num() == 2 && SA->Fish[0].Fish.Seed == 1 && SA->Fish[1].Fish.Seed == 2);
 		TestTrue(FString::Printf(TEXT("A: their exposure now (open lid, ~2 s: %.2f)"), SA->Fish.Num() ? SA->Fish[0].Freshness.ExposedSeconds : -1.0f),
 			SA->Fish.Num() == 2 && FMath::IsNearlyEqual(SA->Fish[0].Freshness.ExposedSeconds, 2.0f, 0.15f));
-		TestTrue(TEXT("B (carried): saved standing at its carrier's last dry spot, facing them"), SB->CoolerId == TEXT("Large") && SB->Location.Equals(FVector(-100.0f, 50.0f, LCT::DockTop), 0.1)
-			&& !SB->bLidOpen && !SB->bStarter && FMath::IsNearlyEqual(FRotator::NormalizeAxis(SB->Rotation.Yaw - (P.Pawn->GetActorRotation().Yaw + 180.0)), 0.0, 0.5));
+		// Its front (+X, the latch) toward the carrier, like any forced put-down (they stand away from that spot here).
+		const FVector ToCarrier = P.Pawn->GetActorLocation() - FVector(-100.0f, 50.0f, LCT::DockTop);
+		TestTrue(TEXT("B (carried): saved standing at its carrier's last dry spot, its front toward them"), SB->CoolerId == TEXT("Large") && SB->Location.Equals(FVector(-100.0f, 50.0f, LCT::DockTop), 0.1)
+			&& !SB->bLidOpen && !SB->bStarter && ToCarrier.SizeSquared2D() > 100.0
+			&& FMath::IsNearlyEqual(FRotator::NormalizeAxis(SB->Rotation.Yaw - FMath::RadiansToDegrees(FMath::Atan2(ToCarrier.Y, ToCarrier.X))), 0.0, 0.5));
 		TestTrue(TEXT("B: its fish, still fresh (closed)"), SB->Fish.Num() == 1 && SB->Fish[0].Fish.Seed == 3 && SB->Fish[0].Freshness.ExposedSeconds == 0.0f);
 
 		// The save format: only SaveGame fields travel (the freshness anchor and rate are rebuilt at load).
@@ -511,7 +514,10 @@ bool FCatchStarter::RunTest(const FString& Parameters)
 	const FVector Expected = Start->GetActorTransform().TransformPositionNoScale(Settings->StarterCoolerOffset);
 	TestTrue(FString::Printf(TEXT("... next to the start, on the floor (%s)"), *First->GetActorLocation().ToCompactString()),
 		FVector2D::Distance(FVector2D(First->GetActorLocation()), FVector2D(Expected)) < 0.5f && FMath::IsNearlyEqual(First->GetActorLocation().Z, LCT::DockTop, 0.5));
-	TestTrue(TEXT("... facing the start"), FMath::Abs(FRotator::NormalizeAxis(static_cast<float>(First->GetActorRotation().Yaw) - 180.0f)) < 0.5f);
+	// Its front (+X, the latch) toward the start, which is behind and to the side of it (not just the start's yaw + 180).
+	const FVector ToStart = Start->GetActorLocation() - Expected;
+	TestTrue(TEXT("... its front toward the start"), FMath::Abs(FRotator::NormalizeAxis(static_cast<float>(First->GetActorRotation().Yaw)
+		- static_cast<float>(FMath::RadiansToDegrees(FMath::Atan2(ToStart.Y, ToStart.X))))) < 0.5f);
 	TestTrue(TEXT("... theirs, a starter, the default row, empty"), First->GetOwningPlayerState() == P1.State && First->IsStarter() && First->GetCoolerId() == TEXT("Starter") && First->GetNumFish() == 0);
 	TestNull(TEXT("only once per player"), ULureCatchLibrary::EnsureStarterCooler(P1.State, Start));
 	TestEqual(TEXT("... one cooler"), ULureCatchLibrary::GetOwnedCoolers(P1.State).Num(), 1);
@@ -585,6 +591,33 @@ bool FCatchDisplay::RunTest(const FString& Parameters)
 		}
 	}
 	TestEqual(TEXT("the shown fish hang under the Contents point"), Checked, Large->GetNumDisplayedFish());
+	// Each shown fish lies in its slot of the table, raised by the lie offset x its shown size (6 kg fish are over the
+	// reference size, so they show at the cap).
+	auto ShownAt = [](const ALureCoolerActor* Cooler)
+	{
+		TArray<FTransform> Out;
+		TInlineComponentArray<UPrimitiveComponent*> Parts(Cooler);
+		for (const UPrimitiveComponent* Part : Parts)
+		{
+			const USceneComponent* Parent = Part->GetAttachParent();
+			if (Parent && Parent->GetFName() == TEXT("ContentsRoot") && Part->IsVisible())
+			{
+				Out.Add(Part->GetRelativeTransform());
+			}
+		}
+		return Out;
+	};
+	const TArray<FTransform> LargeShown = ShownAt(Large);
+	for (int32 Slot = 0; Slot < FMath::Min(Row.Slots.Num(), LargeShown.Num()); ++Slot)
+	{
+		const FVector Expected = Row.Slots[Slot].Location + FVector(0.0, 0.0, Row.LieOffsetCm * Row.MaxFishScale);
+		const FTransform* Match = LargeShown.FindByPredicate([&Expected](const FTransform& Candidate) { return Candidate.GetLocation().Equals(Expected, 0.05); });
+		TestTrue(FString::Printf(TEXT("slot %d: a fish at %s (its bed + the lie offset)"), Slot, *Expected.ToCompactString()), Match != nullptr);
+		if (Match)
+		{
+			TestTrue(FString::Printf(TEXT("slot %d: turned like the slot"), Slot), Match->GetRotation().Equals(Row.Slots[Slot].Rotation.Quaternion(), 1.0e-3));
+		}
+	}
 	FLureCaughtFish Record;
 	Large->GetStorage()->GetFishAt(0, Record);
 	TestEqual(TEXT("the records keep their real weight"), Record.Fish.WeightKg, 6.0f);
@@ -606,6 +639,39 @@ bool FCatchDisplay::RunTest(const FString& Parameters)
 	TestTrue(FString::Printf(TEXT("... the lid lifts (%.1f deg)"), Starter->GetLidPitch()), Starter->GetLidPitch() > 5.0f && !Starter->IsLidOpen());
 	W.Tick(60);
 	TestEqual(TEXT("... and shuts"), Starter->GetLidPitch(), 0.0f, 0.5f);
+
+	// The same species at another size: taking the top fish out re-seats the pile (slot 0 = the lowest shown fish) and each
+	// shown fish is drawn at its own record's size.
+	ALureCoolerActor* Pile = W.SpawnCooler(FVector(-150.0f, 150.0f, LCT::DockTop), 0.0f, TEXT("Large"));
+	if (TestNotNull(TEXT("a second Large cooler"), Pile))
+	{
+		Pile->GetStorage()->AddFish(FLureCaughtFish::Landed(LCT::MakeFish(TEXT("Bonefish"), 10, 1, 0.2f, 400), W.Now()));
+		for (int32 Index = 0; Index < 4; ++Index)
+		{
+			Pile->GetStorage()->AddFish(FLureCaughtFish::Landed(LCT::MakeFish(TEXT("Bonefish"), 10, 1, 6.0f, 401 + Index), W.Now()));
+		}
+		Pile->AuthoritySetLidOpen(true);
+		W.Tick(30);
+		auto BottomZ = [&ShownAt, &Row](const ALureCoolerActor* Cooler)
+		{
+			for (const FTransform& Part : ShownAt(Cooler))
+			{
+				if (FVector2D(Part.GetLocation()).Equals(FVector2D(Row.Slots[0].Location), 0.05))
+				{
+					return static_cast<float>(Part.GetLocation().Z);
+				}
+			}
+			return -1.0f;
+		};
+		TestEqual(TEXT("the top four (6 kg) show: slot 0 holds a big one"), BottomZ(Pile), static_cast<float>(Row.Slots[0].Location.Z) + Row.LieOffsetCm * Row.MaxFishScale, 0.05f);
+		FLureCaughtFish Top;
+		TestTrue(TEXT("the top fish comes out"), Pile->GetStorage()->RemoveLastFish(Top));
+		W.Tick(5);
+		const float Reference = ULureCatchSubsystem::Get(W.World)->GetSpeciesReferenceWeight(TEXT("Bonefish"));
+		const float Small = FMath::Min(FMath::Pow(0.2f / FMath::Max(Reference, 0.01f), 1.0f / 3.0f), Row.MaxFishScale);
+		TestEqual(FString::Printf(TEXT("the small bonefish is now in slot 0, at its own size (%.2f)"), Small), BottomZ(Pile),
+			static_cast<float>(Row.Slots[0].Location.Z) + Row.LieOffsetCm * Small, 0.05f);
+	}
 	return true;
 }
 

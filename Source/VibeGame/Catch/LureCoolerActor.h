@@ -93,6 +93,11 @@ public:
 	/** Puts it down on the floor under Spot without the room check (forced: prone, water, caught, leaving) */
 	void AuthorityPutDownAt(const FVector& Spot, float Yaw);
 
+	/** The yaw that turns a cooler standing at Spot so its front (+X, the latch) faces Viewer (a player, a player start): the
+	 *  lid hinges at the back and opens away from them, the view the contents display is made for. Viewer's yaw + 180 when
+	 *  Viewer stands on the spot. */
+	static float GetYawFacing(const FVector& Spot, const AActor* Viewer);
+
 	/** Save/load: the row, the lid, the contents (exposure as saved, re-anchored now), the place and the identity */
 	void AuthorityRestore(const FLureCoolerSaveData& Data);
 
@@ -101,7 +106,8 @@ public:
 	/** For a save: identity, row, where it stands (a carried cooler: its carrier's last dry ground), lid, contents with the exposure now */
 	FLureCoolerSaveData GetSaveData() const;
 
-	/** Where a put-down in front of Carrier would go (floor, dry, walkable, room for the box). False = no room. */
+	/** Where a put-down in front of Carrier would go, its front toward them: dry, walkable floor at most a step above their
+	 *  feet (not a counter, table or crate top, nor a sell counter's area), with room for the box. False = no room. */
 	bool FindPutDownSpot(const APawn* Carrier, FTransform& OutTransform) const;
 
 	// ---- Display (rendering machines) ----
@@ -202,7 +208,8 @@ private:
 	float LidPulseTimeLeft = 0.0f;
 	uint8 LastLidPulseId = 0;
 	bool bDisplayVisible = false;
-	TArray<FName> DisplaySpecies;
+	/** Which fish are shown (species, seed and weight per slot): the display is rebuilt when this changes */
+	TArray<uint32> DisplayKeys;
 
 	void RefreshLook();
 	void RefreshDisplay();

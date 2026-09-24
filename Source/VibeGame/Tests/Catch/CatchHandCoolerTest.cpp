@@ -6,6 +6,7 @@
 
 #if WITH_DEV_AUTOMATION_TESTS
 
+#include "Catch/LureSellCounter.h"
 #include "Catch/LureCatchLibrary.h"
 #include "Catch/LureCatchSubsystem.h"
 #include "Catch/LureCoolerActor.h"
@@ -503,6 +504,43 @@ bool FCatchCoolerPutDownRoom::RunTest(const FString& Parameters)
 	Wall->Destroy();
 	Rig.W.Tick(1);
 	TestTrue(TEXT("room again without the wall"), Cooler->FindPutDownSpot(Rig.Player, Spot));
+	TestTrue(TEXT("... its front (+X, the latch) toward the player"),
+		FMath::Abs(FRotator::NormalizeAxis(static_cast<float>(Spot.Rotator().Yaw - Rig.Player->GetActorRotation().Yaw) - 180.0f)) < 1.0f);
+
+	// Only on the floor you stand on (an open cooler is looked into from above, standing): a table top more than a step up
+	// and a sell counter's area are refused like no room. The table is under every spot tried (PutDownDistance, 85 %, the
+	// capsule clearance), clear of the player, so only the height rule can refuse it, whatever the tuning.
+	const float Ahead = ULureCatchSubsystem::GetTuningFor(Rig.W.World).PutDownDistance;
+	AActor* Table = Rig.W.AddBox(FVector(Ahead + 10.0f, 0.0f, LCT::DockTop + 45.0f), FVector(40.0f, 150.0f, 45.0f));
+	Rig.W.Tick(1);
+	TestFalse(TEXT("a table in front: not on its top"), Cooler->FindPutDownSpot(Rig.Player, Spot));
+	// In the air (a jump) the step is measured from the ground below, not the raised feet.
+	const FVector Standing = Rig.Player->GetActorLocation();
+	Rig.Player->SetActorLocation(Standing + FVector(0.0f, 0.0f, 60.0f), false, nullptr, ETeleportType::TeleportPhysics);
+	Rig.Player->GetLureMovement()->SetMovementMode(MOVE_Falling);
+	TestFalse(TEXT("mid-jump, a table in front: still not on its top"), Cooler->FindPutDownSpot(Rig.Player, Spot));
+	Rig.Player->SetActorLocation(Standing, false, nullptr, ETeleportType::TeleportPhysics);
+	Rig.Player->GetLureMovement()->SetMovementMode(MOVE_Walking);
+	Table->Destroy();
+	ALureSellCounter* Counter = Rig.W.SpawnCounter(FVector(80.0f, 0.0f, LCT::DockTop), 180.0f);
+	Rig.W.Tick(1);
+	TestTrue(TEXT("a sell counter's area in front: not there"), Counter && !Cooler->FindPutDownSpot(Rig.Player, Spot));
+	if (Counter)
+	{
+		Counter->Destroy();
+	}
+	Rig.W.Tick(1);
+	TestTrue(TEXT("room again"), Cooler->FindPutDownSpot(Rig.Player, Spot));
+
+	// A forced put-down (prone without room, falling in, caught) turns the front toward the player too.
+	const FVector At = Rig.Player->GetActorLocation();
+	const float PlayerYaw = static_cast<float>(Rig.Player->GetActorRotation().Yaw);
+	TestEqual(TEXT("a spot behind the player faces forward, to them"),
+		FRotator3f::NormalizeAxis(ALureCoolerActor::GetYawFacing(At - Rig.Player->GetActorForwardVector() * 100.0f, Rig.Player) - PlayerYaw), 0.0f, 0.5f);
+	TestEqual(TEXT("a spot on the player's left faces right, to them"),
+		FRotator3f::NormalizeAxis(ALureCoolerActor::GetYawFacing(At - Rig.Player->GetActorRightVector() * 100.0f, Rig.Player) - PlayerYaw - 90.0f), 0.0f, 0.5f);
+	TestEqual(TEXT("a spot under the player: their yaw + 180"),
+		FRotator3f::NormalizeAxis(ALureCoolerActor::GetYawFacing(At, Rig.Player) - PlayerYaw - 180.0f), 0.0f, 0.5f);
 
 	LCT::PlaceAt(Rig.Player, FVector(LCT::DockHalf - 40.0f, 0.0f, LCT::DockTop), 0.0f);
 	Rig.W.Tick(3);

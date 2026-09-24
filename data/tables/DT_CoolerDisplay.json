@@ -2,27 +2,29 @@
 	{
 		"Name": "Starter",
 		"Slots": [
-			{ "Location": { "X": -7.0, "Y": 0.0, "Z": 4.0 }, "Rotation": { "Pitch": 0.0, "Yaw": 90.0, "Roll": 90.0 } },
-			{ "Location": { "X": 7.0, "Y": 0.0, "Z": 4.0 }, "Rotation": { "Pitch": 0.0, "Yaw": -90.0, "Roll": 90.0 } },
-			{ "Location": { "X": -7.0, "Y": 0.0, "Z": 13.0 }, "Rotation": { "Pitch": 0.0, "Yaw": -90.0, "Roll": 90.0 } },
-			{ "Location": { "X": 7.0, "Y": 0.0, "Z": 13.0 }, "Rotation": { "Pitch": 0.0, "Yaw": 90.0, "Roll": 90.0 } }
+			{ "Location": { "X": 7.5, "Y": -2.5, "Z": 0.0 }, "Rotation": { "Pitch": 0.0, "Yaw": 95.0, "Roll": 90.0 } },
+			{ "Location": { "X": 5.5, "Y": -2.0, "Z": 6.28 }, "Rotation": { "Pitch": 0.0, "Yaw": -125.0, "Roll": -90.0 } },
+			{ "Location": { "X": 6.5, "Y": 1.0, "Z": 12.35 }, "Rotation": { "Pitch": 0.0, "Yaw": 140.0, "Roll": 90.0 } },
+			{ "Location": { "X": 10.0, "Y": 2.5, "Z": 18.72 }, "Rotation": { "Pitch": 0.0, "Yaw": -100.0, "Roll": -90.0 } }
 		],
 		"FishPose": "/Game/Art/Fish/A_Fish_Curled.A_Fish_Curled",
 		"PoseTime": 0.0,
-		"MaxFishScale": 0.75,
-		"DevComment": "T-030: the fish shown inside the OPEN starter cooler, curled and stacked (cosmetic). PLACEHOLDER slots relative to the Contents socket until the animation-artist's slot table (art/export/Fish/SK_Fish.anim.md) replaces them; the pose clip A_Fish_Curled is coming (missing = straight fish)."
+		"MaxFishScale": 1.0,
+		"LieOffsetCm": 4.25,
+		"DevComment": "T-030: the fish shown inside the OPEN starter cooler, curled (A_Fish_Curled) and stacked, bottom of the pile first. Slot table from art/export/Fish/SK_Fish.anim.md 'Cooler display' (art/recipes/anim_fish_cooler.py slots_ue, 2026-09-23): X, Y, bed Z relative to the Contents socket, rotation (0, Yaw, Roll); a fish goes to Z + LieOffsetCm x its shown scale (4.24 Bonefish / 4.26 CoralSnapper). Made for the cooler on the floor, front (+X, latch) toward a standing player 0.6 m away; scale capped at 1.0 so 4 fish fit under the lid."
 	},
 	{
 		"Name": "Large",
 		"Slots": [
-			{ "Location": { "X": -7.0, "Y": 0.0, "Z": 4.0 }, "Rotation": { "Pitch": 0.0, "Yaw": 90.0, "Roll": 90.0 } },
-			{ "Location": { "X": 7.0, "Y": 0.0, "Z": 4.0 }, "Rotation": { "Pitch": 0.0, "Yaw": -90.0, "Roll": 90.0 } },
-			{ "Location": { "X": -7.0, "Y": 0.0, "Z": 13.0 }, "Rotation": { "Pitch": 0.0, "Yaw": -90.0, "Roll": 90.0 } },
-			{ "Location": { "X": 7.0, "Y": 0.0, "Z": 13.0 }, "Rotation": { "Pitch": 0.0, "Yaw": 90.0, "Roll": 90.0 } }
+			{ "Location": { "X": 7.5, "Y": -2.5, "Z": 0.0 }, "Rotation": { "Pitch": 0.0, "Yaw": 95.0, "Roll": 90.0 } },
+			{ "Location": { "X": 5.5, "Y": -2.0, "Z": 6.28 }, "Rotation": { "Pitch": 0.0, "Yaw": -125.0, "Roll": -90.0 } },
+			{ "Location": { "X": 6.5, "Y": 1.0, "Z": 12.35 }, "Rotation": { "Pitch": 0.0, "Yaw": 140.0, "Roll": 90.0 } },
+			{ "Location": { "X": 10.0, "Y": 2.5, "Z": 18.72 }, "Rotation": { "Pitch": 0.0, "Yaw": -100.0, "Roll": -90.0 } }
 		],
 		"FishPose": "/Game/Art/Fish/A_Fish_Curled.A_Fish_Curled",
 		"PoseTime": 0.0,
-		"MaxFishScale": 0.75,
-		"DevComment": "Placeholder: the Large cooler uses the starter model for now, so it shows the top 4 fish like the starter cooler."
+		"MaxFishScale": 1.0,
+		"LieOffsetCm": 4.25,
+		"DevComment": "Placeholder: the Large cooler uses the starter model and slots for now, so it shows the top 4 of its 8 fish until it has its own model and slot rows (rerun anim_fish_cooler.py against its liner)."
 	}
 ]

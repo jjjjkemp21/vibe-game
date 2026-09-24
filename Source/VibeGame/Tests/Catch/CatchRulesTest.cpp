@@ -285,6 +285,24 @@ namespace LureCatchRulesTest
 		if (TestNotNull(TEXT("DT_CoolerDisplay dresses the Starter cooler"), StarterDisplay) && Starter)
 		{
 			TestEqual(TEXT("one display slot per starter fish"), StarterDisplay->Slots.Num(), Starter->Slots);
+			TestEqual(TEXT("fish show at most at reference size (SK_Fish.anim.md: 4 fish at 1.0 fit under the lid)"), StarterDisplay->MaxFishScale, 1.0f);
+			TestEqual(TEXT("the lie offset of the reference fish (4.24 / 4.26 cm)"), StarterDisplay->LieOffsetCm, 4.25f, 0.02f);
+			if (StarterDisplay->Slots.Num() == 4)
+			{
+				TestTrue(TEXT("slot 2 is the table's (6.5, 1, 12.35), yaw 140, roll 90"), StarterDisplay->Slots[2].Location.Equals(FVector(6.5, 1.0, 12.35), 1.0e-3)
+					&& StarterDisplay->Slots[2].Rotation.Equals(FRotator(0.0f, 140.0f, 90.0f), 1.0e-3f));
+			}
+			// A cooler type without a row gets the built-in layout: the shipped Starter row.
+			const FLureCoolerDisplayRow BuiltinDisplay = FLureCoolerDisplayRow::GetFallbackRow();
+			bool bSameSlots = BuiltinDisplay.Slots.Num() == StarterDisplay->Slots.Num();
+			for (int32 Index = 0; bSameSlots && Index < BuiltinDisplay.Slots.Num(); ++Index)
+			{
+				bSameSlots = BuiltinDisplay.Slots[Index].Location.Equals(StarterDisplay->Slots[Index].Location, 1.0e-3)
+					&& BuiltinDisplay.Slots[Index].Rotation.Equals(StarterDisplay->Slots[Index].Rotation, 1.0e-3f);
+			}
+			TestTrue(TEXT("the built-in display layout = the shipped Starter slots"), bSameSlots);
+			TestTrue(TEXT("... the same pose, size cap and lie offset"), BuiltinDisplay.FishPose.ToSoftObjectPath() == StarterDisplay->FishPose.ToSoftObjectPath()
+				&& BuiltinDisplay.MaxFishScale == StarterDisplay->MaxFishScale && FMath::IsNearlyEqual(BuiltinDisplay.LieOffsetCm, StarterDisplay->LieOffsetCm));
 		}
 		return true;
 	}
@@ -340,6 +358,7 @@ namespace LureCatchRulesTest
 		TestTrue(TEXT("a zero fish scale"), AnyContains(Display(TEXT("[{\"Name\":\"Starter\",\"Slots\":[],\"MaxFishScale\":0}]"), Coolers.Get()), TEXT("MaxFishScale")));
 		TestTrue(TEXT("a display row for a cooler type that doesn't exist"), AnyContains(Display(TEXT("[{\"Name\":\"Startr\",\"Slots\":[],\"MaxFishScale\":1}]"), Coolers.Get()), TEXT("Startr")));
 		TestTrue(TEXT("a slot 10 m away"), AnyContains(Display(TEXT("[{\"Name\":\"Starter\",\"Slots\":[{\"Location\":{\"X\":1000,\"Y\":0,\"Z\":0},\"Rotation\":{\"Pitch\":0,\"Yaw\":0,\"Roll\":0}}],\"MaxFishScale\":1}]"), Coolers.Get()), TEXT("slot 0")));
+		TestTrue(TEXT("a negative lie offset"), AnyContains(Display(TEXT("[{\"Name\":\"Starter\",\"Slots\":[],\"MaxFishScale\":1,\"LieOffsetCm\":-1}]"), Coolers.Get()), TEXT("LieOffsetCm")));
 		return true;
 	}
 

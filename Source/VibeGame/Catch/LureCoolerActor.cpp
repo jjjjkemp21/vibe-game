@@ -7,6 +7,7 @@
 #include "Catch/LureCatchSubsystem.h"
 #include "Catch/LureFishItem.h"
 #include "Catch/LureHandsComponent.h"
+#include "Catch/LureSellCounter.h"
 #include "Character/LurePlayerCharacter.h"
 #include "CollisionQueryParams.h"
 #include "Components/BoxComponent.h"
@@ -20,6 +21,7 @@
 #include "Fishing/FishingSpots.h"
 #include "Fishing/LureFishingSettings.h"
 #include "GameFramework/Character.h"
+#include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerState.h"
 #include "Misc/PackageName.h"
@@ -360,6 +362,8 @@ bool ALureCoolerActor::FindPutDownSpot(const APawn* Carrier, FTransform& OutTran
 	const FVector Forward = FRotator(0.0f, Yaw, 0.0f).Vector();
 	float CapsuleRadius = 34.0f;
 	float CapsuleHalfHeight = 90.0f;
+	float MaxStepUp = 45.0f;
+	bool bOnGround = true;
 	if (const ACharacter* Character = Cast<ACharacter>(Carrier))
 	{
 		if (const UCapsuleComponent* Capsule = Character->GetCapsuleComponent())
@@ -367,7 +371,23 @@ bool ALureCoolerActor::FindPutDownSpot(const APawn* Carrier, FTransform& OutTran
 			CapsuleRadius = Capsule->GetScaledCapsuleRadius();
 			CapsuleHalfHeight = Capsule->GetScaledCapsuleHalfHeight();
 		}
+		if (const UCharacterMovementComponent* Movement = Character->GetCharacterMovement())
+		{
+			MaxStepUp = Movement->MaxStepHeight;
+			bOnGround = Movement->IsMovingOnGround();
+		}
 	}
+	// Only the floor you stand on (a step up at most): an open cooler is looked into from above by a standing player, the
+	// view its contents display is made for (SK_Fish.anim.md "Cooler display"), never from beside a counter or table top.
+	// In the air (a jump, a climb) that is the ground below you, not your raised feet: a jump can't lift the limit to a table.
+	constexpr float GroundBelowReach = 400.0f; // well past a jump's height (about 90 cm) or a drop off the dock
+	double FeetZ = Carrier->GetActorLocation().Z - CapsuleHalfHeight;
+	FHitResult Ground;
+	if (!bOnGround && FindFloor(Carrier->GetActorLocation(), CapsuleHalfHeight + GroundBelowReach, Ground, Carrier))
+	{
+		FeetZ = FMath::Min(FeetZ, static_cast<double>(Ground.ImpactPoint.Z));
+	}
+	const double MaxFloorZ = FeetZ + MaxStepUp + 5.0;
 	// Face the player (the front and latch toward them); the box's depth along the view is its X half size.
 	const FRotator Rotation(0.0f, Yaw + 180.0f, 0.0f);
 	const float MinDistance = CapsuleRadius + BoxHalfExtent.X + 4.0f;
@@ -389,6 +409,14 @@ bool ALureCoolerActor::FindPutDownSpot(const APawn* Carrier, FTransform& OutTran
 		if (Floor.ImpactNormal.Z < 0.7)
 		{
 			continue; // not walkable (too steep)
+		}
+		if (Floor.ImpactPoint.Z > MaxFloorZ)
+		{
+			continue; // a raised top (counter, table, crate), not the floor
+		}
+		if (ALureSellCounter::FindCounterAt(World, Floor.ImpactPoint))
+		{
+			continue; // a sell counter's top is for the fish on sale
 		}
 		float WaterZ = 0.0f;
 		if (FLureFishingSpots::FindWaterSurfaceZ(World, FVector2D(Floor.ImpactPoint.X, Floor.ImpactPoint.Y), *FishingSettings, WaterZ)
@@ -442,6 +470,20 @@ void ALureCoolerActor::AuthorityPutDownAt(const FVector& Spot, float Yaw)
 	UE_LOG(LogLureCatch, Log, TEXT("%s: %s put down at %s (forced)."), *GetNameSafe(Carrier), *GetName(), *Rest.ToCompactString());
 }
 
+float ALureCoolerActor::GetYawFacing(const FVector& Spot, const AActor* Viewer)
+{
+	if (!Viewer)
+	{
+		return 0.0f;
+	}
+	const FVector ToViewer = Viewer->GetActorLocation() - Spot;
+	if (ToViewer.SizeSquared2D() < FMath::Square(10.0))
+	{
+		return FRotator::NormalizeAxis(static_cast<float>(Viewer->GetActorRotation().Yaw) + 180.0f);
+	}
+	return static_cast<float>(FMath::RadiansToDegrees(FMath::Atan2(ToViewer.Y, ToViewer.X)));
+}
+
 void ALureCoolerActor::AuthoritySetOwningPlayerState(APlayerState* InOwner)
 {
 	if (HasAuthority())
@@ -466,7 +508,7 @@ FLureCoolerSaveData ALureCoolerActor::GetSaveData() const
 		const ULureHandsComponent* Hands = ULureHandsComponent::Get(Carrier);
 		FVector Spot;
 		Data.Location = (Hands && Hands->GetLastDryGround(Spot)) ? Spot : Carrier->GetActorLocation();
-		Data.Rotation = FRotator(0.0f, Carrier->GetActorRotation().Yaw + 180.0f, 0.0f);
+		Data.Rotation = FRotator(0.0f, GetYawFacing(Data.Location, Carrier), 0.0f);
 	}
 	const double Now = FLureFreshness::GetServerTime(this);
 	if (Storage)
@@ -744,7 +786,7 @@ void ALureCoolerActor::RefreshLook()
 		CollisionBox->SetBoxExtent(BoxHalfExtent);
 		CollisionBox->SetRelativeLocation(BoxCenter);
 	}
-	DisplaySpecies.Reset(); // the slots may have moved: rebuild the shown fish
+	DisplayKeys.Reset(); // the slots may have moved: rebuild the shown fish
 }
 
 void ALureCoolerActor::SetDisplayVisible(bool bVisible)
@@ -784,14 +826,15 @@ void ALureCoolerActor::RefreshDisplay()
 	const TArray<FLureCaughtFish>& Fish = Storage->GetFish();
 	const int32 Shown = FMath::Min(Fish.Num(), Row.Slots.Num());
 
-	// Rebuild only when the shown species change (the pile order matters: the top ones are shown).
-	TArray<FName> Wanted;
+	// Rebuild only when the shown fish change: the top ones of the pile are shown, slot 0 the lowest of them (taking one
+	// out re-seats the rest), and a fish of the same species at another weight is another size.
+	TArray<uint32> Wanted;
 	for (int32 Index = 0; Index < Shown; ++Index)
 	{
-		const FLureCaughtFish& Record = Fish[Fish.Num() - Shown + Index];
-		Wanted.Add(Record.Fish.SpeciesId);
+		const FFishInstance& Instance = Fish[Fish.Num() - Shown + Index].Fish;
+		Wanted.Add(HashCombine(HashCombine(GetTypeHash(Instance.SpeciesId), GetTypeHash(Instance.Seed)), GetTypeHash(Instance.WeightKg)));
 	}
-	const bool bSame = Wanted == DisplaySpecies && DisplayFish.Num() == Shown;
+	const bool bSame = Wanted == DisplayKeys && DisplayFish.Num() == Shown;
 	if (!bSame)
 	{
 		for (UPrimitiveComponent* Old : DisplayFish)
@@ -802,7 +845,7 @@ void ALureCoolerActor::RefreshDisplay()
 			}
 		}
 		DisplayFish.Reset();
-		DisplaySpecies = Wanted;
+		DisplayKeys = Wanted;
 		UAnimSequenceBase* Pose = LureCoolerPrivate::LoadIfExists(Row.FishPose);
 		for (int32 Index = 0; Index < Shown; ++Index)
 		{
@@ -837,7 +880,8 @@ void ALureCoolerActor::RefreshDisplay()
 			Shown3D->SetGenerateOverlapEvents(false);
 			Shown3D->SetCanEverAffectNavigation(false);
 			Shown3D->SetupAttachment(ContentsRoot);
-			Shown3D->SetRelativeLocationAndRotation(Slot.Location, Slot.Rotation);
+			// The slot's X, Y and bed; the fish's origin lies its lie offset (at its shown size) above the bed.
+			Shown3D->SetRelativeLocationAndRotation(Slot.Location + FVector(0.0f, 0.0f, Row.LieOffsetCm * Scale), Slot.Rotation);
 			Shown3D->RegisterComponent();
 			if (USkeletalMeshComponent* Skeletal = Cast<USkeletalMeshComponent>(Shown3D); Skeletal && Pose)
 			{
