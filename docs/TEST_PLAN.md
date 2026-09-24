@@ -245,6 +245,40 @@ object, read into the copy, RepNotifies called on change), not a property copy.
 - The binary assets (DT_Gear, DT_FightPattern, DT_FishFight) don't exist until the editor-operator imports them in main; the settings path then
   replaces the built-in fallbacks. After the import, check once in main that the component resolves the imported tables (no fallback warning).
 
+## T-029 fighting fish visual (lane eng3)
+Implementer tests: `Tests/FishVisual/FightFishVisualTest.cpp`, `Project.FishVisual.*`, 9 tests (unreal-engineer).
+Independent tests: `Tests/FishVisual/FightFishVisualQA*.cpp` + `FightFishVisualQATestUtils.h`, `Project.FishVisual.QA.*`, 29 tests (qa-engineer,
+2026-09-23), written from `docs/specs/fight-fish-visual.md` and the header contracts. Two drivers: `FRealScene` (a real server fight, T-007 rules;
+outcomes forced with one-move patterns and a short-spool line) and `FPuppet` (a SimulatedProxy copy whose replicated FightNet/NetState/HookedFish
+the test writes, so any sequence of ids, moves and endings is cheap). Tables from the text sources only.
+
+| Area | Tests (`Project.FishVisual.QA.` + ...) | Level | What they prove |
+|---|---|---|---|
+| Lifecycle | Lifecycle.{EveryFightOutcome, SwimmingCutsTheFight, ClimbingCutsTheFight, NoLeaksAfterManyFights, FightIdsWrapAndRestart, PlayerLeavesMidFight} | I | Landed/snapped/spooled/thrown/reeled in/cancelled/swim/climb: no fish before the hook, exactly one (the hooked record) during the fight, landed = one event + destroyed, lost = SwimFast escape then removed after EscapeTime; 18 real fights and 300 puppet fights (id wrap 250..255,0.., new id mid-fight, same id after an end) leave no fish actor, entry or other actor; a player leaving mid-fight takes its fish |
+| One per machine | Multiplayer.{TwoPlayersFightAtOnce, OneFishPerMachine} | I | Two players at once: two fish, each on its own line end and record, landing one leaves the other untouched. Two worlds (server + client fed by FRepLayout): one fish in each, same record/size/id, one landed event in each |
+| Dedicated server | Net.{OnlyInGameWorlds, NoFishOnDedicatedServer} | I | Subsystem only in Game worlds; a world in the PIE dedicated-server net mode runs the fight but never spawns a fish or fires the event |
+| Landed hand-off | Landed.{HandOffContract, BlueprintSeam} | I/U | Event once per landing with (fishing, fish whose GetMouthLocation is at the line end, Flop alpha 1, the hooked record), for every listener; KeepLandedFish refuses null / another player's fish / after the event; kept = alive, uncounted, never moved; keep twice ok; a listener may destroy it; escaped = no event; LastResult Landed alone = landed. Reflection: BlueprintAssignable (Fishing, Fish, Landed), KeepLandedFish callable, GetMouthLocation pure, fish not replicated |
+| Size | Size.{FormulaEdges, SpawnedFishEdges} | U/I | Weight 0/negative/NaN/Inf and ReferenceWeight 0/negative/NaN/Inf = 1; exact 64x and 1/64 clamps +-5 %; overflow finite; monotone over 12 decades; spawned fish: reference, 8x, 0 kg, clamps, ReferenceWeight 0, unknown species |
+| Clip roles | Roles.{EveryMoveFromTheTable, ThrashWindowAndPriorities, PlayRateAndAlphaEdges, TableDrivesTheActor} | U/I | Every MoveRoles line (read from the JSON), unknown = UnknownMoveRole; thrash window +-1 ms, 0 = off, thrash before tired, tired over every move, Landed/Escaping over everything; swim rates at the Min/Max clamps +-1 %; garbage inputs stay finite (rate >= 0, alpha 0..1); a remapped fixture table drives a live actor with no code |
+| Fallbacks | Fallback.{VisualTableMissingOrBroken, MeshMissing} | I | Invalid row / no Default row / wrong row struct / empty table = built-in row; the settings' table = JSON numbers; a valid fixture moves the fish (SurfaceDepth 77). Missing species mesh = SK_Bonefish fallback with a UFishAnimInstance and the Mouth bone at the line end; no mesh at all = hidden but moves, thrashes and lands |
+| Placement | Placement.{TargetRules, RealFightUnderTheLineEnd, UsesThisFramesFightState, EscapeSwimsAwayAndSinks} | U/I | Nose at the line end, never above the surface (depth -1000..10000, floor above the water), monotone deeper and capped, floor clearance, facing/pitch clamp/roll/SmoothAlpha; a real dive-only Coral Snapper fight: every frame under the water, target depth = formula, nose within 8 cm of the line end; placed from this frame's fight state; escape at EscapeSpeed/EscapeSinkSpeed, removed at EscapeTime (0 = at once) |
+| Adapter | Adapter.{OnlyReaderOfFightStructs, EveryStateAndEnding} | U | Source scan (comments/strings stripped): the visual files never name the fight structs, getters or enums or include the fight headers; the adapter does. Every line state x active x outcome x result |
+| Data | Data.{FishVisualEveryRow, SpeciesLookColumns, ImportedAssetsMatch} | D | DT_FishVisual rows against restated ranges; no Flop for a move; every DT_FightPattern move mapped; 6 bad JSON rows refused. Species look ranges; the SK_ mesh loads on SKEL_Fish with the Mouth bone and a fish-sized length; 6 bad look values refused; the 3 columns are optional. Main only: DT_FishVisual asset = JSON, ABP_Fish is a UFishAnimInstance (skips in lanes) |
+
+### T-029 open bugs (failing tests; owner unreal-engineer)
+- T029-B1 (minor) `Size.SpawnedFishEdges`: a fish whose species is not in DT_FishSpecies gets scale cbrt(Weight / 1 kg) (8 kg shows at 2x), because
+  FLureFightFishSetup defaults ReferenceWeightKg to 1. The subsystem's own log says "scale 1"; a missing ReferenceWeight should be neutral (1).
+- T029-B2 (minor) `Placement.UsesThisFramesFightState`: on the server / standalone the fish is placed from the PREVIOUS frame's fight state
+  (544 of 544 moving frames). The subsystem ticks in FTickableGameObject::TickObjects, before TG_PostUpdateWork where ULureFishingComponent
+  steps the fight. The spec says it moves after the fight; ends are also seen one frame late. Matters for T-032 (the line to GetMouthLocation).
+
+### T-029 gaps
+- ABP_Fish graph and the clips playing (editor-operator asset): playtester + designer; `Data.ImportedAssetsMatch` checks the class in main.
+- Shallow water clarity (material): playtester/designer screenshots.
+- A real dedicated-server process (IsRunningDedicatedServer) can't run in editor tests; only the PIE dedicated net mode is covered.
+- Binding the dynamic OnFightFishLanded from a Blueprint (tests can't declare a UFUNCTION listener): reflection-checked only.
+- Escaping fish sink with no floor clamp (60 cm in 1 s): in very shallow water they may pass through the sand; the playtester should look.
+
 ## Rules
 - Every new behavior gets at least one test written by someone other than its implementer (qa-engineer).
 - Every gameplay DataTable gets a data-validation test (D) when it is created.
