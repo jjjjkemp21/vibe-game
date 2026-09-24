@@ -1,7 +1,7 @@
 """SM_Cooler_Starter + SM_Cooler_Starter_Lid: the beginner's beat-up fishing cooler (T-030, holds 4 fish).
 
 Art pass after the designer review (Saved/AgentLogs/design/20260923-170000-cooler-review.md): a sun-faded sea-glass
-body (off the water hues), an aged-white lid with 3 small sun-faded patches and a scuff, a chipped lid corner, a grimy base band with
+body (off the water hues), an aged-white lid with handling grime and a scuff by the latch, a chipped lid corner, a grimy base band with
 dirt creeping up the wall, thick rope-wrapped handles for the two-hand first-person carry, a weathered fish sticker with
 a peeled corner, a strip of old tape over the lid's front edge and a darker liner. Two meshes so the lid can swing open.
 
@@ -60,14 +60,14 @@ VARIANTS = {
         "M_Cooler_Band": "#415F55",       # the raised stripe and the sticker's fish, deeper sea-glass
         "M_Cooler_Grime": "#4E4330",      # murky mud: the grimy base band
         "M_Cooler_Lid": "#E0D4BC",        # aged, warm white (a step down so it doesn't bloom butter-yellow in sun)
-        "M_Cooler_LidFaded": "#EAE1CF",   # sun-faded patches: ~5% lighter and less yellow than the lid
+        "M_Cooler_LidWear": "#D3C6AC",    # handling grime on the lid top: ~6% darker and a touch browner than the lid
     },
     "white": {
         "M_Cooler_Body": "#E3DCCB",
         "M_Cooler_Band": "#4A7F7B",
         "M_Cooler_Grime": "#4E4330",
         "M_Cooler_Lid": "#4A827E",
-        "M_Cooler_LidFaded": "#6B9A94",
+        "M_Cooler_LidWear": "#3F716D",
     },
 }
 SHARED = {
@@ -82,8 +82,8 @@ PRESETS = {"M_Cooler_Rope": "wood", "M_Cooler_Lashing": "wood"}
 BODY_SLOTS = ["M_Cooler_Body", "M_Cooler_Band", "M_Cooler_Liner", "M_Cooler_Dark", "M_Cooler_Rope",
               "M_Cooler_Sticker", "M_Cooler_Grime", "M_Cooler_Lashing"]
 BODY, BAND, LINER, DARK, ROPE, STICKER, GRIME, LASH = range(len(BODY_SLOTS))
-LID_SLOTS = ["M_Cooler_Lid", "M_Cooler_Dark", "M_Cooler_Liner", "M_Cooler_LidFaded", "M_Cooler_Sticker"]
-L_LID, L_DARK, L_LINER, L_FADED, L_TAPE = range(len(LID_SLOTS))
+LID_SLOTS = ["M_Cooler_Lid", "M_Cooler_Dark", "M_Cooler_Liner", "M_Cooler_LidWear", "M_Cooler_Sticker"]
+L_LID, L_DARK, L_LINER, L_WEAR, L_TAPE = range(len(LID_SLOTS))
 L_CHIP = L_LINER            # the chip's broken faces show the duller inner plastic
 
 # Shape
@@ -347,17 +347,14 @@ CHIP_RINGS = {1: (0.009, 0.007), 2: (0.017, 0.015)}   # ring (side top, chamfer 
 # of the lid area and split over several triangles. (x, y) corners seen from above, slot.
 def _lid_wear():
     return [
-        # sun-faded patches: irregular, different sizes, a small step lighter and less yellow than the lid
-        ([(0.010, -0.150), (0.045, -0.168), (0.085, -0.150), (0.105, -0.118), (0.080, -0.110), (0.062, -0.125),
-          (0.030, -0.118)], L_FADED),
-        ([(-0.095, -0.010), (-0.060, -0.030), (-0.035, -0.012), (-0.020, 0.028), (-0.048, 0.022), (-0.058, 0.050),
-          (-0.088, 0.035)], L_FADED),
-        ([(-0.110, 0.130), (-0.080, 0.122), (-0.066, 0.140), (-0.085, 0.150), (-0.078, 0.176), (-0.104, 0.166)],
-         L_FADED),
-        # a grey scuff at the panel's front edge beside the latch: seen from the first-person carry (the front faces
-        # the player in CarryCooler) and at the counter
-        ([(0.110, -0.098), (0.124, -0.104), (0.138, -0.076), (0.137, -0.046), (0.128, -0.040), (0.121, -0.066)],
-         L_LINER),
+        # darker handling grime where hands and dirt touch the lid (reads naturally from the first-person carry, which
+        # looks down at the lid's front edge): along the front edge right of the latch, and in both back corners
+        ([(0.126, 0.030), (0.136, 0.045), (0.138, 0.095), (0.130, 0.112), (0.120, 0.090), (0.122, 0.055)], L_WEAR),
+        ([(-0.126, 0.150), (-0.110, 0.165), (-0.100, 0.188), (-0.112, 0.195), (-0.122, 0.175)], L_WEAR),
+        ([(-0.124, -0.142), (-0.104, -0.160), (-0.098, -0.184), (-0.110, -0.192), (-0.126, -0.170)], L_WEAR),
+        # a scrape at the panel's front edge left of the latch (continues as a thin scrape on the lid's front band)
+        ([(0.116, -0.098), (0.126, -0.104), (0.138, -0.076), (0.137, -0.050), (0.130, -0.046), (0.125, -0.068)],
+         L_WEAR),
     ]
 
 
@@ -426,10 +423,10 @@ def build_lid(mats):
 
     # The scuff continues on the lid's front band beside the latch (the band is what the carry pose shows)
     band = []
-    for y, z in ((-0.108, 0.343), (-0.090, 0.340), (-0.062, 0.344), (-0.050, 0.352), (-0.058, 0.361),
-                 (-0.080, 0.357), (-0.101, 0.362)):
+    for y, z in ((-0.112, 0.349), (-0.094, 0.347), (-0.066, 0.350), (-0.052, 0.355), (-0.070, 0.357),
+                 (-0.092, 0.355), (-0.108, 0.358)):
         band.append((se_x(y, hx, hy) + 0.0008, y, z))
-    decal(mb, band, L_LINER, (1, 0, 0))
+    decal(mb, band, L_WEAR, (1, 0, 0))
 
     # Old masking tape over the lid's front edge near the +Y corner, a little skewed.
     cols = []
