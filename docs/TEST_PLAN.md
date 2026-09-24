@@ -332,6 +332,29 @@ object, read into the copy, RepNotifies called on change), not a property copy.
 - `HotSpot.DriftNeverCrossesLand`: the spawner checks only 8 points on the wander ring (spec rule), so a rock inside the drift disc between
   the points is accepted and the bubbles drift over land (a cast into them lands NotWater). Fix: sample the disc densely or stop drift over land.
 
+### T-027c hot spots spawn near players (per-pair clock, reach sampling, due retries)
+- Implementer: `Project.Fishing.Water.HotSpot.{ClockBanksWhileNobodyIsNear, ClockKeepsADueSpawn, SpawnsInTheReachablePartOfABigArea,
+  StepStatsAndVerboseLog}` (`FishingHotSpotClockTest.cpp`) and real-map `Project.Level.PalmKey.HotSpots.*` (`Tests/Level/`).
+- QA, `Tests/Fishing/QAHotSpotSpawnTest.cpp` (helpers in namespace `LureWaterQA::QASpawn`), `Project.Fishing.Water.QA.HotSpotSpawn.*`, 10 tests,
+  from spec sections 5 and 8 and the spawner header (seams `SpawnStep`, `GetLastStepStats`, `GetBankedSeconds`, `GetDueRetries`, `SetRandomSeed`):
+  - `SettingsMatchSpec` (U): shipped check 1 s, prewarm 45, max 16, open radius 1800, near radius 2500, tries 12, DueRetryChecks 3.
+  - `BankCapsAtPrewarmWhileOutOfReach` (I): bank after 1/10/44/45/46/200 one-second checks = 1/10/44/45/45/45, no roll or spawn while out of
+    reach; a 100 s check is its own cap; prewarm 10 moves the cap.
+  - `FullAreaResetsLevelFullBanks` (I): a level at its max banks (to 45) and rolls when there is room; a full area stays at 0; restarts from 0.
+  - `ArrivalBurstIsCappedAtPrewarm` (I, 2 x 200 seeds): arrival pass rate after 150 s away = the 45 s chance (0.535 vs 0.528; uncapped 0.918),
+    after 20 s = 0.290 vs 0.283; exactly one roll, which empties the bank.
+  - `ReachBoundaryAndArrival` (I): 2510 cm from the outline waits (OutOfReach), 2490 cm rolls; arrival fills the area near the player.
+  - `NoPlayersUnboundedWaits` (I): no players: a bounded area fills, an `everywhere` area waits and banks; a player appears -> open-water
+    spawns within 1800 cm.
+  - `EveryPointInReachOnFishableWater` (I): 54 spawns, 2 players, islands: each within 2500 cm of a player, on water, deep enough, in its winning area.
+  - `FailedPlacementRetriedThreeChecksThenDropped` (I): a passed roll on an all-land area -> 3 due retries (no roll), check 5 rolls again;
+    out-of-reach checks keep the retries; a retry after the land is gone spawns without a roll.
+  - `DeterministicWithSeed` (I): same seed -> identical step stats and hot spots (incl. an arrival burst after 30 s away); another seed differs.
+  - `ClientSpawnerNeverSpawns` (I, FTestWorlds): an NM_Client spawner with water, a reef and auto Tick spawns nothing, no local hot spot;
+    the server control spawns.
+- Gaps: Palm Key spawn timing only in the implementer's real-map `Project.Level.PalmKey.HotSpots.*`; the Verbose log format only in the
+  implementer's `StepStatsAndVerboseLog`; whether a pair banks during its due retries is unspecified (not asserted).
+
 ### T-027 gaps
 - /Game/Data/DT_HotSpot is not imported in the lane (built-in Bubbles fallback); after the import in main, check once that no fallback warning shows.
 - Bubble/ripple visuals, the HUD hot-spot line and feel of spawn rates: playtester and designer. Real 2-player PIE latency: playtester.
