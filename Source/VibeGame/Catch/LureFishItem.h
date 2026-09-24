@@ -13,6 +13,8 @@ class ULureFishingLineComponent;
 
 /** A fish item started (bHooked true) or stopped hanging on a hook, on this machine (every machine: server, owner, others) */
 DECLARE_MULTICAST_DELEGATE_TwoParams(FLureFishHookedChanged, ALureFishItem* /*Fish*/, bool /*bHooked*/);
+/** A fish item adopted a landed fight fish as its look (T-029 seam), on this machine; VisualWorld = where that fish was just before */
+DECLARE_MULTICAST_DELEGATE_TwoParams(FLureFishVisualAdopted, ALureFishItem* /*Fish*/, const FTransform& /*VisualWorld*/);
 class USkeletalMeshComponent;
 class UStaticMeshComponent;
 
@@ -121,6 +123,9 @@ public:
 	bool AdoptVisual(AActor* Visual);
 
 	AActor* GetAdoptedVisual() const { return AdoptedVisual; }
+
+	/** Fires after AdoptVisual on every rendering machine: where T-032's hanging line re-seats its end (ULureCatchLinkSubsystem) */
+	static FLureFishVisualAdopted OnLandedVisualAdopted;
 
 	// ---- T-032 seam (optional): an external hang driver (the physics line's end) ----
 

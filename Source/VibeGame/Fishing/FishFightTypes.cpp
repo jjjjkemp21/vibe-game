@@ -339,6 +339,44 @@ bool FLureFishFightRow::Validate(FString& OutProblem) const
 		OutProblem = FString::Printf(TEXT("SimRate %d must be in [10, 240]"), SimRate);
 		return false;
 	}
+	return ValidateRodSteering(OutProblem);
+}
+
+bool FLureFishFightRow::ValidateRodSteering(FString& OutProblem) const
+{
+	// T-028 columns (reel-fight-rules.md "Rod steering").
+	if (!LureFightTypesPrivate::AllFiniteNonNegative({ RodAimUpDeg, RodAimDownDeg, RodAimSideDeg, PitchBackPressure, PitchDipPressure, SideMinShare,
+		SideLeverage, SideTurnRate, SideTurnPull, SideDrain, ReelSpeedMin, ReelSpeedMax, ReelLoadPerSpeed, CameraFollowTime, CameraRodYawShare,
+		CameraRodPitchShare, RodAimLookPitchDeg, RodAimLookYawDeg, RodAimBlendTime }))
+	{
+		OutProblem = TEXT("every rod-steering value must be a finite number >= 0");
+		return false;
+	}
+	if (RodAimUpDeg < 1.f || RodAimDownDeg < 1.f || RodAimSideDeg < 1.f)
+	{
+		OutProblem = TEXT("RodAimUpDeg, RodAimDownDeg and RodAimSideDeg must be >= 1 degree");
+		return false;
+	}
+	if (PitchDipPressure > 0.95f || SideLeverage > 0.95f || SideTurnPull > 0.95f)
+	{
+		OutProblem = TEXT("PitchDipPressure, SideLeverage and SideTurnPull must be <= 0.95 (the rod and the fish keep some power)");
+		return false;
+	}
+	if (SideMinShare > 1.f || CameraRodYawShare > 1.f || CameraRodPitchShare > 1.f)
+	{
+		OutProblem = TEXT("SideMinShare, CameraRodYawShare and CameraRodPitchShare must be in [0, 1]");
+		return false;
+	}
+	if (ReelSteps < 1 || ReelSteps > 9 || ReelDefaultStep < 1 || ReelDefaultStep > ReelSteps)
+	{
+		OutProblem = FString::Printf(TEXT("ReelSteps %d must be in [1, 9] and ReelDefaultStep %d in [1, ReelSteps]"), ReelSteps, ReelDefaultStep);
+		return false;
+	}
+	if (ReelSpeedMin < 0.05f || ReelSpeedMax < ReelSpeedMin)
+	{
+		OutProblem = TEXT("ReelSpeedMin must be >= 0.05 and ReelSpeedMax >= ReelSpeedMin");
+		return false;
+	}
 	return true;
 }
 

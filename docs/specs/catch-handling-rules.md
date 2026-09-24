@@ -49,6 +49,15 @@ by the server; clients only ask ("I pressed E on this cooler, expecting Put in")
   (`ClaimLandedVisual` in its look setup). The adopted actor is attached to the item's visual root, the item's own meshes
   hide, the swing starts where the landed fish's mouth was, and the adopted actor is destroyed with the item. An offer
   nobody claims is destroyed after `LandedVisualTimeout` (5 s). The visual must stop moving itself once offered.
+- **The glue (`ULureCatchLinkSubsystem`, every drawing machine, cosmetic):** binds the two seams above. The landed fight
+  fish is offered; it is kept (`KeepLandedFish`) when an item adopts it at once (the server hangs the item earlier in the
+  same frame) or on a network client (the item may replicate later); else the offer is withdrawn and T-029 removes the fish.
+  A hooked item hangs on its holder's line if this machine has one (`ULureFishingComponent::GetLine`), else it keeps its
+  pendulum. **Same frame:** T-029 places the fight fish in TG_LastDemotable, after the line's update (TG_PostUpdateWork).
+  When the item adopts the landed fish (`ALureFishItem::OnLandedVisualAdopted`, fired inside that later event or when the
+  item replicates), the item is put where the landed fish is drawn and the line is laid again from the rod tip to its mouth
+  (Hide + DetachEndActor + AttachEndActor), so the line ends at this frame's fish mouth, not last frame's bobber point. From
+  then on the line moves the fish inside its own update, so the fish and the line end never differ within a frame.
 - While a fish hangs, casting is refused (reason `Busy`, "the line is already out": it is, with a fish on it). The rod
   stays in hand. A second landing (debug) drops the older hanging fish below the hook.
 - Only the angler can use their hanging fish: **E = Grab** (into the hand), **F = Let it go** (it drops; see Drop).
@@ -186,8 +195,7 @@ by the server; clients only ask ("I pressed E on this cooler, expecting Put in")
 - **Leaving the game / pawn removed:** the same (nothing is lost).
 - **Caught (T-017 calls `ULureCatchLibrary::HandlePlayerCaught(Pawn)`, server):** the fish in your hand and on your hook
   are lost; a carried cooler is put down at your last dry ground spot; coolers stay where they are (their fish spoil only
-  if the lid is open). Money, XP and level are kept (progression-rules.md). Note for the lead: GAME_DESIGN.md "Vertical
-  slice definition" still says "Getting caught means losing the cooler"; the Win/lose section and this spec keep it.
+  if the lid is open). Money, XP and level are kept (progression-rules.md).
 
 ## Save (T-019)
 - `FLureProgressSaveData` v2 is money, XP and level only (the abstract cooler fields are gone; v1 was never written to

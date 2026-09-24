@@ -23,6 +23,8 @@ struct FLureInputActionNames
 	static const FName Prone;	// Boolean
 	static const FName Cast;	// Boolean: the fishing button (T-006): hold + release casts; a press while the line is out hooks
 	static const FName Hook;	// Boolean: hook only (no default key; the Cast button hooks too)
+	static const FName ReelFaster;	// Boolean: T-028, one reel speed step faster while a fish is on (mouse wheel up, right bumper)
+	static const FName ReelSlower;	// Boolean: T-028, one reel speed step slower (mouse wheel down, left bumper)
 
 	static TArray<FName> All();
 };
@@ -51,7 +53,7 @@ public:
 	/** The engine's instance (null before engine init or after shutdown). */
 	static ULureInputSubsystem* Get();
 
-	/** The input action for Move, Look, Jump, Sprint, Crouch, Prone, Interact, AltInteract, Cast or Hook; null for any other name. Same object every call. */
+	/** The input action for Move, Look, Jump, Sprint, Crouch, Prone, Interact, AltInteract, Cast, Hook, ReelFaster or ReelSlower; null for any other name. Same object every call. */
 	UFUNCTION(BlueprintCallable, Category="Lure|Input")
 	static UInputAction* GetInputActionByName(FName ActionName);
 

@@ -21,10 +21,12 @@ const FName FLureInputActionNames::Crouch(TEXT("Crouch"));
 const FName FLureInputActionNames::Prone(TEXT("Prone"));
 const FName FLureInputActionNames::Cast(TEXT("Cast"));
 const FName FLureInputActionNames::Hook(TEXT("Hook"));
+const FName FLureInputActionNames::ReelFaster(TEXT("ReelFaster"));
+const FName FLureInputActionNames::ReelSlower(TEXT("ReelSlower"));
 
 TArray<FName> FLureInputActionNames::All()
 {
-	return { Move, Look, Jump, Sprint, Crouch, Prone, Interact, AltInteract, Cast, Hook };
+	return { Move, Look, Jump, Sprint, Crouch, Prone, Interact, AltInteract, Cast, Hook, ReelFaster, ReelSlower };
 }
 
 void ULureInputSubsystem::Initialize(FSubsystemCollectionBase& Collection)
@@ -83,6 +85,8 @@ void ULureInputSubsystem::CreateActions()
 		{ FLureInputActionNames::Prone, EInputActionValueType::Boolean },
 		{ FLureInputActionNames::Cast, EInputActionValueType::Boolean },
 		{ FLureInputActionNames::Hook, EInputActionValueType::Boolean },
+		{ FLureInputActionNames::ReelFaster, EInputActionValueType::Boolean },
+		{ FLureInputActionNames::ReelSlower, EInputActionValueType::Boolean },
 	};
 
 	Actions.Reset();
@@ -186,4 +190,7 @@ void ULureInputSubsystem::BuildMappings(UInputMappingContext& Context, const TMa
 	const ULureFishingSettings* Fishing = GetDefault<ULureFishingSettings>();
 	Map(FLureInputActionNames::Cast, Fishing->CastKeys, NoModifiers);
 	Map(FLureInputActionNames::Hook, Fishing->HookKeys, NoModifiers);
+	// Reel speed steps while a fish is on (T-028); the look input steers the rod then (ALurePlayerCharacter::DoLook).
+	Map(FLureInputActionNames::ReelFaster, Fishing->ReelFasterKeys, NoModifiers);
+	Map(FLureInputActionNames::ReelSlower, Fishing->ReelSlowerKeys, NoModifiers);
 }

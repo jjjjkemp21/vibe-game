@@ -32,6 +32,7 @@
 #define LOCTEXT_NAMESPACE "LureFishItem"
 
 FLureFishHookedChanged ALureFishItem::OnHookedChanged;
+FLureFishVisualAdopted ALureFishItem::OnLandedVisualAdopted;
 
 namespace LureFishItemPrivate
 {
@@ -216,6 +217,7 @@ bool ALureFishItem::AdoptVisual(AActor* Visual)
 		SetFirstPersonRendering(true); // include the visual's primitives
 	}
 	UE_LOG(LogLureCatch, Verbose, TEXT("%s adopted the landed fish visual %s."), *GetName(), *Visual->GetName());
+	OnLandedVisualAdopted.Broadcast(this, VisualWorld);
 	return true;
 }
 

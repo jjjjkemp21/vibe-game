@@ -15,6 +15,10 @@
  *  (The first version blended two players by bHoldingRod; that still works until the graph is rebuilt.)
  *  ALurePlayerCharacter plays A_FPArms_StanceDip in the StanceAdditive slot on stance changes and landings;
  *  fishing plays its cast/hook montages (if set) in DefaultSlot.
+ *  Rod aim (T-028): an Aim Offset AO_FPArms_RodAim (additive, base A_FPArms_HoldRod_Idle; 9 poses A_FPArms_RodAim_Center,
+ *  _Up, _Down, _Left, _Right, _UpLeft, _UpRight, _DownLeft, _DownRight) after the pose blend, horizontal axis RodAimYaw
+ *  (-1 left .. +1 right), vertical axis RodAimPitch (-1 dipped .. +1 pulled back). Set bRodAimOffsetInGraph in the class
+ *  defaults once it is wired: the fishing code then stops turning the rod itself.
  */
 UCLASS(Transient, Blueprintable, BlueprintType)
 class UFPArmsAnimInstance : public UAnimInstance
@@ -42,6 +46,21 @@ public:
 	/** True while the owner is in the water (T-026; optional use in the graph, e.g. a swim pose). */
 	UPROPERTY(Transient, BlueprintReadOnly, Category="Lure|Arms")
 	bool bSwimming = false;
+
+	/** T-028: the rod aim while a fish is on, -1 (dipped toward the fish) .. +1 (pulled back/up); eased, 0 outside a fight. */
+	UPROPERTY(Transient, BlueprintReadOnly, Category="Lure|Arms")
+	float RodAimPitch = 0.f;
+
+	/** T-028: the rod aim, -1 (tip to the left) .. +1 (tip to the right) of the line; eased, 0 outside a fight. */
+	UPROPERTY(Transient, BlueprintReadOnly, Category="Lure|Arms")
+	float RodAimYaw = 0.f;
+
+	/**
+	 *  Class default (ABP_FPArms): true once the graph plays the rod-aim aim offset from RodAimPitch / RodAimYaw. Until then
+	 *  the fishing component turns the rod mesh itself (placeholder, DT_FishFight RodAimLook*Deg).
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Lure|Arms")
+	bool bRodAimOffsetInGraph = false;
 
 	virtual void NativeUpdateAnimation(float DeltaSeconds) override;
 };

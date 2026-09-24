@@ -122,12 +122,14 @@ Implementer tests (unreal-engineer): `Tests/Catch/Catch{Rules,HandCooler,Counter
 | Counter | Counter.{PlaceSellAndTakeBack, FreshnessLowersPrice, DroppedFishCounts} | I | Place with E at spaced spots; fish on the counter can't be grabbed one by one; F takes the last one back; E sells all at the current (freshness) price to the seller, "Sold N fish for X coins", no XP; market multiplier (x1.5, rounding); out of reach sells nothing; a dropped fish landing on the counter is for sale |
 | Focus, caught, save, starter, display, seams | Interact.FocusPromptsAndStaleVerbs; Caught.LosesHandFishKeepsCoolers; Save.{CoolersRoundTrip, UnknownRowKeepsFish}; Starter.SpawnsOncePerPlayer; Display.ShowsFishWhileOpen; Seams.LandedVisualAndHangDriver | I | Focus by view angle and reach, both-key prompt, stale/other-key/out-of-reach/non-interactable requests refused, someone else's hanging fish untouchable; caught loses hand + hook fish, coolers and progression kept, a carried cooler goes to the last dry spot; leaving loses nothing; save: owned coolers only, carried cooler saved at the dry spot facing its carrier, SaveGame archive round trip, load in a fresh world replaces the empty starter, exposure kept, reconnect updates in place; an unknown saved row loads as Starter keeping all 6 fish; starter cooler once per player, facing its player start, marker row turned like the marker, off switch; the open cooler shows up to its display slots at <= MaxFishScale, each in its slot of the SK_Fish.anim.md table raised by the lie offset x its size, re-seated at each record's own size when a fish comes out (same species too), none closed or carried, the lid pulse on put-in; T-029 offer before/after the item, the swing starts from the landed fish, unclaimed offers removed after 5 s; T-032 OnHookedChanged on/off, an external driver keeps the built-in swing off and is cleared off the hook |
 | Network (real server + 2 clients) | Net.{ReplicationSetup, HandOffAndCoolerReplicate, CounterPaysTheSeller, ClientsCannotCheat} | I | Replicated properties and conditions (storage to everyone now), RPC flags; landing/grab/put-in/take-out/carry/put-down seen identically on both clients (first-person vs third-person attachment, poses, predicted carry speed, freshness within 0.25 s); a friend opens the angler's cooler and takes the fish (shared), can't take a carried cooler; the seller (not the angler) is paid, XP stays; wrong-verb, wrong-key, other's fish, far-away and client-side Authority calls all change nothing |
+| Integration with T-029 + T-032 (`Tests/Catch/CatchLinkTest.cpp`, `ULureCatchLinkSubsystem`) | Link.{LandedFishHangsSwingsAndGoesIntoTheHand, LineEndIsThisFramesFishMouth} | I | A real cast, fight and landing: the landed T-029 fight fish becomes the hanging item's look in the landing frame (kept, not destroyed) and the T-032 line holds the item; in that frame the line already ends at the landed fish's mouth (T-029 moves its fish in TG_LastDemotable, after the line's TG_PostUpdateWork); every frame after, the fish's mouth is the line's end (<= 0.1 cm); it swings in and settles on HangLineLength under the rod tip, lags behind a step aside and swings back; grabbed: the line lets go and hides, the look goes into the hand and is destroyed with the item. Both replication orders (item hung first then the look arrives; the look first then the item hangs) seat the line at the landed fish's mouth before any tick, laid from the rod tip and reeled up to HangLineLength; a second landing drops the older fish and the line lets go of it |
 
 Retired with T-030 (the abstract player-state cooler and `ALureSellPoint` no longer exist; each rule moved to a `Project.Catch.*` test above):
 - `Project.Progression.{Landed.XpAndCooler, Cooler.Limits, Cooler.UpgradeAndDowngrade, Caught.ClearsCoolerKeepsProgress, Save.UnknownCoolerUsesDefaultRow, Sell.SellAllAndOneAtSellPoint, Interact.SellPointFlow, Interact.DestroyedSellPointSellsNothing, Interact.CharacterBindsInteract, Net.ReplicationSetup}` (implementer) -> Landing.HangsOnHookWithXp, Cooler.*, Caught.*, Save.UnknownRowKeepsFish, Counter.*, Interact.*, Data.SettingsAndKeys, Net.ReplicationSetup. `Project.Progression.Landed.XpOnLanding` replaces the XP part.
 - `Project.Progression.QA.{Cooler.ShippedBasicFullReleasesNinthKeepsXp, Cooler.KeepsRealCatchRecordsExactlyInOrder, Sell.EmptyCoolerPaysNothingAndFiresNoEvents, Sell.RealCatchAtPalmKeyDockPaysRolledValue, Sell.UnknownMarketIdPaysTimesOne, Sell.InvalidMarketRowFallsBackToTimesOne, Sell.MoneySaturatesAtMaxOnSale, Authority.ClientCannotSellAnyWay, Interact.PromptRangeIsTheRadius, Interact.ServerAcceptsWithinSlackRefusesBeyond, Interact.BadTargetsAndSlotsRefused, Interact.PawnWithoutPlayerStateSellsNothing, Net.TwoPlayersSellOnlyTheirOwnCooler, Save.RealCatchRoundTripsExactly, Save.UnknownCoolerRowKeepsFish}` (qa-engineer; each retired with a comment in its file) -> the Catch tests above cover the implementer side.
 - Renamed: `Project.Fishing.Fight.Landing.GoesToCoolerAndXp` -> `...HangsOnHookWithXp`; `Project.Dev.GiveFish.LandsInCoolerWithXp` -> `...LandsOnHookWithXp`.
 - Adapted to the hook rule (a landed fish hangs on the hook; a cast is Busy until it is grabbed or let go): `Project.Fishing.Fight.LandedHandsOffAndLogs`, `Project.Fishing.Fight.QA.Landing.OnFishLandedFiresOnce`, `Project.Fishing.Fight.QA.Pipeline.HookedFishFromTheRollPipeline` and `Project.Fishing.QA.Hook.HookedAndLandedFishIsTheBite` take the landed fish off the hook (`ULureHandsComponent::AuthorityReleaseHanging`) before their next cast; two of them also check it hangs there.
+- Adapted at the merge with main (T-028/T-029/T-032, `ULureCatchLinkSubsystem`): after a real landing the T-029 fight fish is either destroyed or kept as the hanging item's look, and goes when the item goes. `Project.FishVisual.Lifecycle.SpawnsAndDespawnsWithTheFight`, `Project.FishVisual.QA.Lifecycle.{EveryFightOutcome, NoLeaksAfterManyFights}` (via `FRealScene::RunOutcome`), `Project.FishVisual.QA.Multiplayer.{OneFishPerMachine, TwoPlayersFightAtOnce}` and `Project.Fishing.Fight.Rod.QA.Input.LookReturns.Landed` check that hand-off (`LureFightFishQA::LandedFishHandedOff`) and take the landed fish off the hook (`ClearHangingCatch`) before the next cast or the no-leak check. The puppet and contract tests (`QA.Landed.HandOffContract`) are unchanged: without a hanging item the link withdraws its offer and T-029 destroys the fish as before.
 
 ### T-030 requests for independent QA tests (qa-engineer)
 - Re-cover the retired QA rules on the new model, black-box from the spec: the sell counter with real rolled catches at PalmKeyDock, unknown/invalid market rows, money saturation on a sale, an empty counter firing no events, a pawn without a player state selling nothing, the prompt range and the server slack for the counter and coolers, the save archive round trip with real catches.
@@ -271,6 +273,78 @@ object, read into the copy, RepNotifies called on change), not a property copy.
 - The binary assets (DT_Gear, DT_FightPattern, DT_FishFight) don't exist until the editor-operator imports them in main; the settings path then
   replaces the built-in fallbacks. After the import, check once in main that the component resolves the imported tables (no fallback warning).
 
+## T-029 fighting fish visual (lane eng3)
+Implementer tests: `Tests/FishVisual/FightFishVisualTest.cpp`, `Project.FishVisual.*`, 10 tests (unreal-engineer; the 10th,
+`Adapter.FollowsRodSteeredFight`, added at the T-028 merge: a rod steered against a Bonefish's runs turns it, and the view's line end
+stays on the bobber and the fight's SideDeg, tension = the fight's, fish on the line end every frame).
+Independent tests: `Tests/FishVisual/FightFishVisualQA*.cpp` + `FightFishVisualQATestUtils.h`, `Project.FishVisual.QA.*`, 29 tests (qa-engineer,
+2026-09-23), written from `docs/specs/fight-fish-visual.md` and the header contracts. Two drivers: `FRealScene` (a real server fight, T-007 rules;
+outcomes forced with one-move patterns and a short-spool line) and `FPuppet` (a SimulatedProxy copy whose replicated FightNet/NetState/HookedFish
+the test writes, so any sequence of ids, moves and endings is cheap). Tables from the text sources only.
+
+| Area | Tests (`Project.FishVisual.QA.` + ...) | Level | What they prove |
+|---|---|---|---|
+| Lifecycle | Lifecycle.{EveryFightOutcome, SwimmingCutsTheFight, ClimbingCutsTheFight, NoLeaksAfterManyFights, FightIdsWrapAndRestart, PlayerLeavesMidFight} | I | Landed/snapped/spooled/thrown/reeled in/cancelled/swim/climb: no fish before the hook, exactly one (the hooked record) during the fight, landed = one event + destroyed, lost = SwimFast escape then removed after EscapeTime; 18 real fights and 300 puppet fights (id wrap 250..255,0.., new id mid-fight, same id after an end) leave no fish actor, entry or other actor; a player leaving mid-fight takes its fish |
+| One per machine | Multiplayer.{TwoPlayersFightAtOnce, OneFishPerMachine} | I | Two players at once: two fish, each on its own line end and record, landing one leaves the other untouched. Two worlds (server + client fed by FRepLayout): one fish in each, same record/size/id, one landed event in each |
+| Dedicated server | Net.{OnlyInGameWorlds, NoFishOnDedicatedServer} | I | Subsystem only in Game worlds; a world in the PIE dedicated-server net mode runs the fight but never spawns a fish or fires the event |
+| Landed hand-off | Landed.{HandOffContract, BlueprintSeam} | I/U | Event once per landing with (fishing, fish whose GetMouthLocation is at the line end, Flop alpha 1, the hooked record), for every listener; KeepLandedFish refuses null / another player's fish / after the event; kept = alive, uncounted, never moved; keep twice ok; a listener may destroy it; escaped = no event; LastResult Landed alone = landed. Reflection: BlueprintAssignable (Fishing, Fish, Landed), KeepLandedFish callable, GetMouthLocation pure, fish not replicated |
+| Size | Size.{FormulaEdges, SpawnedFishEdges} | U/I | Weight 0/negative/NaN/Inf and ReferenceWeight 0/negative/NaN/Inf = 1; exact 64x and 1/64 clamps +-5 %; overflow finite; monotone over 12 decades; spawned fish: reference, 8x, 0 kg, clamps, ReferenceWeight 0, unknown species |
+| Clip roles | Roles.{EveryMoveFromTheTable, ThrashWindowAndPriorities, PlayRateAndAlphaEdges, TableDrivesTheActor} | U/I | Every MoveRoles line (read from the JSON), unknown = UnknownMoveRole; thrash window +-1 ms, 0 = off, thrash before tired, tired over every move, Landed/Escaping over everything; swim rates at the Min/Max clamps +-1 %; garbage inputs stay finite (rate >= 0, alpha 0..1); a remapped fixture table drives a live actor with no code |
+| Fallbacks | Fallback.{VisualTableMissingOrBroken, MeshMissing} | I | Invalid row / no Default row / wrong row struct / empty table = built-in row; the settings' table = JSON numbers; a valid fixture moves the fish (SurfaceDepth 77). Missing species mesh = SK_Bonefish fallback with a UFishAnimInstance and the Mouth bone at the line end; no mesh at all = hidden but moves, thrashes and lands |
+| Placement | Placement.{TargetRules, RealFightUnderTheLineEnd, UsesThisFramesFightState, EscapeSwimsAwayAndSinks} | U/I | Nose at the line end, never above the surface (depth -1000..10000, floor above the water), monotone deeper and capped, floor clearance, facing/pitch clamp/roll/SmoothAlpha; a real dive-only Coral Snapper fight: every frame under the water, target depth = formula, nose within 8 cm of the line end; placed from this frame's fight state; escape at EscapeSpeed/EscapeSinkSpeed, removed at EscapeTime (0 = at once) |
+| Adapter | Adapter.{OnlyReaderOfFightStructs, EveryStateAndEnding} | U | Source scan (comments/strings stripped): the visual files never name the fight structs, getters or enums or include the fight headers; the adapter does. Every line state x active x outcome x result |
+| Data | Data.{FishVisualEveryRow, SpeciesLookColumns, ImportedAssetsMatch} | D | DT_FishVisual rows against restated ranges; no Flop for a move; every DT_FightPattern move mapped; 6 bad JSON rows refused. Species look ranges; the SK_ mesh loads on SKEL_Fish with the Mouth bone and a fish-sized length; 6 bad look values refused; the 3 columns are optional. Main only: DT_FishVisual asset = JSON, ABP_Fish is a UFishAnimInstance (skips in lanes) |
+
+### T-029 bugs (fixed in 98cacba by unreal-engineer-junior-medium; the tests below are their regression tests)
+- T029-B1 (minor) `Size.SpawnedFishEdges`: a fish whose species is not in DT_FishSpecies gets scale cbrt(Weight / 1 kg) (8 kg shows at 2x), because
+  FLureFightFishSetup defaults ReferenceWeightKg to 1. The subsystem's own log says "scale 1"; a missing ReferenceWeight should be neutral (1).
+- T029-B2 (minor) `Placement.UsesThisFramesFightState`: on the server / standalone the fish is placed from the PREVIOUS frame's fight state
+  (544 of 544 moving frames). The subsystem ticks in FTickableGameObject::TickObjects, before TG_PostUpdateWork where ULureFishingComponent
+  steps the fight. The spec says it moves after the fight; ends are also seen one frame late. Matters for T-032 (the line to GetMouthLocation).
+
+### T-029 gaps
+- ABP_Fish graph and the clips playing (editor-operator asset): playtester + designer; `Data.ImportedAssetsMatch` checks the class in main.
+- Shallow water clarity (material): playtester/designer screenshots.
+- A real dedicated-server process (IsRunningDedicatedServer) can't run in editor tests; only the PIE dedicated net mode is covered.
+- Binding the dynamic OnFightFishLanded from a Blueprint (tests can't declare a UFUNCTION listener): reflection-checked only.
+- Escaping fish sink with no floor clamp: fixed in 98cacba (FFightFishVisual::EscapeStep keeps FloorClearance above the seabed; test Placement.EscapeStaysAboveTheSeabed).
+
+## T-032 physics fishing line (lane eng5)
+Spec `docs/specs/fishing-line.md`. Implementer: 17 tests `Project.Fishing.Line.{Rules,Data,Sim,Component,Fishing}.*` (`Tests/Fishing/FishingLineTest.cpp`) + T-006 `Line.AtLeastTwoPixels`.
+QA (independent, black-box from the spec and headers): 25 tests `Project.Fishing.Line.QA.*` in `Tests/Fishing/QAFishingLineTest.cpp` (namespace LureQALineTest).
+
+| Area | Tests (Project.Fishing.Line.QA.) | Level | What they prove |
+|---|---|---|---|
+| Sag vs tension | Sag.{MonotoneAcrossTensionRange, StraightensOverTimeWithoutPop} | U/I | 21 tension levels via SetTension, raised and lowered: more tension = straighter, same shape either way (2 cm + 2 %), 0 / 0.5 / 0.9 clearly different; slack appears at once; straightening is smooth (no pop, never sags back, <= 25 % of the sag left at 0.5 s) |
+| Snap threshold | Taut.ExactlyStraightAtSnapThreshold | I | 5 geometries (level, dock to a fish under water, straight down, 30 m, 50 cm) x 2/12/64 segments x tension 1 / 1.5 / 1e6: < 0.1 cm off straight, polyline = rest length = chord, even spacing, pinned ends |
+| Water | Water.{FloatsAtTheGivenWaterZ, FollowsWaterLevelChanges, FallbackSeaLevel, LooksUpWaterAtItsEnd} | I | Floats at WaterZ + FloatHeight at 0 / 2500 / -1200, nothing under; follows 0 -> 80 -> -60 -> 0; ClearWaterSurfaceZ uses the settings' fallback sea (37 via a guarded CDO), none when the fallback is off; tagged water under the end, the owner's height wins, moving 30 m into another pond re-looks it up |
+| Length | Length.ConservedWithinTolerance | U/I | Rest length = chord x (1 + SlackShare x (1 - tautness)) at 5 tensions x 4/12/32 segments; no segment stretched > 1 % at rest; slack line to an end at the shipped deepest bobber (DT_FishFight MaxDepth x DiveBobberShare = 30 cm) <= 3 %; a fish zig-zagging at up to 10 m/s <= 3 % |
+| Extreme inputs | Extreme.{ZeroLengthLine, HugeDistances, NonFiniteInputsKeepLastGood, RapidTeleportsNoExplosion} | U/I | Tip = end at every tension and a 0 cm hang; 200 m, 500 km, 1e30 and FLT_MAX coordinates (finite, within MaxCoordinate, recovers); NaN/Inf ends, tension, slack, water, viewer, width rule and dt through the component (last good ends kept, positive widths, follows again); 3000-frame fixed-seed fuzz (small/fast moves, teleports, hitches, 0 s frames, too-short lengths, free phases): finite, pins exact, no point beyond its tether (+5 % + 5 cm) |
+| Snap | Snap.{RecoilThenGone, NoLeakAfterManyCasts} | I | End whips back (< 50 % of its reach), length shrinks toward RecoilLengthShare, still there at 90 % of RecoilTime, gone after it, tick off, a second Snap harmless; 120 casts ending every way (snap, Hide, re-cast during a recoil, hung fish destroyed, SetLine): same segment components, no new owner components, same point count |
+| Idle cost | Cost.NothingRunsWhileTheLineIsIn | I | Never used; setters/Detach/Snap alone; after Hide, a recoil, a detach, a destroyed hung actor: no tick for 2 s, nothing moves |
+| API contract | Api.{PinnedEndPointContract, AttachEndActorContract} | I | GetStartPoint/GetEndPoint = this frame's inputs exactly every frame (fast fish, a 40 m jump); GetEndDirection = unit vector up the last segment; hanging: hook point on the end every frame, bOrientAlongLine false leaves the rotation alone, true points +X up the line, a longer line reels up smoothly to HangLength, a shorter one drops at once, detach to pinned/none, hostile hang lengths stay finite |
+| Proxies | Net.{SameInputsSameLine, ProxyLineMatchesServer, ProxyShowsTheSnap} | U/I | Bit-identical lines for identical inputs (two solvers incl. a snap; Authority / Autonomous / Simulated owners); a SimulatedProxy copy fed only the replicated state (wire format) matches the server's line (Waiting <= 10 cm, fight <= 30 cm; measured 5.6 / 1.2 cm; tension equal allowing one frame of lag) and comes in on reel-in; a server snap plays the recoil on the proxy, then it is gone |
+| Data | Data.{EveryRowValid, ValidateMatchesFieldRanges, TuningComesFromTheTable} | D | Raw CSV: header = struct fields, numbers/integers only, unique names; rows inside ClampMin/ClampMax, Validate agrees, design relations (Wait <= Cast, Wait < Bite <= Hooked < 1, 30 fps covered, RecoilLengthShare < 1, ...); Validate accepts every field's ClampMin/ClampMax, refuses just outside, NaN, Inf; component tuning = imported row or the built-in row = source row; imported asset = source (main only) |
+| Allocations | Alloc.SteadyStateEveryMode | U/I | Solver, 900 frames (water, tension changes, teleport resets, NaN inputs, snap recoil, hanging with kicks, hitches): 0 allocations; component per-frame API incl. legacy SetLine and the ClearWaterSurfaceZ lookup cache: 0 allocations |
+| Back-compat | Compat.SetLineAndHideStillWork | I | SetLine sag 0/0.05/0.1/0.2: length = chord x (1 + 8/3 sag^2), droop ~ sag x length (25 %), monotone, 13 points/widths, >= 2.5 px; Hide stops it; SetLine restarts; NaN/negative/Inf sag stay finite |
+
+### T-032 open bugs (failing tests; each test is the regression test for its bug; owner unreal-engineer)
+- T032-B1 (low; acceptance "exactly straight at the snap threshold"): through the component, a line at tension >= 1 stays 0.68 cm off straight at 15 m and 1.33 cm at 30 m, for any segment count (even 2). Measured cause: the rest length follows its target in float and stalls 5 float steps above the chord (rest - chord = 0.000610 cm at 1500 cm); the solver turns any excess into sag (+1 ulp = 0.30 cm, +5 ulp = 0.68 cm). The implementer's 0.00 cm was measured on the solver with an exact rest length. Failing: `Taut.ExactlyStraightAtSnapThreshold`, `Sag.MonotoneAcrossTensionRange` (its last check). Fix idea: FollowRestLength snaps to Target within ~1e-5 x Target, or the solver treats RestLength <= chord x (1 + 1e-5) as taut. Sub-pixel on screen.
+
+### T-032 observations (no failing test; for the lead)
+- T032-O1: SetTension(+Inf) is treated as 0 (slack), not clamped to 1 as "out-of-range values are clamped" suggests (1.5 and 1e6 clamp to 1). Not reachable (the fight snaps at 1).
+- T032-O2 (risk for T-029 / data): the float rule runs after the no-stretch constraints, so a slack line to an end deeper than the shipped 30 cm stretches its last segments: 100 cm 7 %, 250 cm 44 %, 400 cm 89 % (recorded by Length.ConservedWithinTolerance). If T-029 pins the line to a fish deeper than the bobber, or MaxDepth x DiveBobberShare grows, change the order (float before the constraint passes, or one pass after it).
+- T032-O3 (feel): straightening is slower than the spec's "~0.3-0.5 s": 15 m line, off straight 216 -> 58 / 30 / 11 / 1.2 cm at 0.25 / 0.5 / 1.0 / 1.75 s (LengthResponse 6/s, sag ~ sqrt(slack)). A data knob; for the playtester/Jimmy.
+- Slack line resting on the water depends on its history (one-sided constraints): a late-joining proxy's line converges to within ~6 cm of the server's, not bit-identical. Identical input histories give identical lines (Net.SameInputsSameLine).
+- Review of the implementer's tests: they prove the rules, the solver and the component's main paths, but (1) "straight at the threshold" was measured only on the solver with an exact rest length (missed B1); (2) floating only with a fixed water Z on the solver (not the lookup, fallback, level changes); (3) nothing proved proxies (only the unchanged T-006 net test); (4) NoNaNAtExtremeInputs checks finiteness, not bounds; (5) no many-cast leak check; (6) Fishing.CastWaitFightSnap's taut check is only "straighter than slack".
+
+### T-032 gaps (not covered by automation)
+- No ground collision (known limit in the spec): a slack line can pass through a dock or beach between the rod and the water. Untested by design; the playtester looks at dock-edge casts.
+- One water height per line (a line across two water levels floats at the end's); a line turned away from the bobber runs back over the rod (no wrap).
+- Real rendering cost (render proxies, one render command per segment) and the look (>= 2 px at 10-20 m, no popping, attachment to the drawn rod tip when turning fast, TG_PostUpdateWork ordering with a real camera): playtester + designer in PIE.
+- Real 2-player PIE (net driver, latency): the proxy tests use the wire format in one world; other players' lines start at an estimated rod tip.
+- `/Game/Data/DT_FishingLine` import: Data.EveryRowValid / Data.TuningComesFromTheTable compare it with the source only in main after the editor-operator's import (lanes log "skipped").
+
 ## Rules
 - Every new behavior gets at least one test written by someone other than its implementer (qa-engineer).
 - Every gameplay DataTable gets a data-validation test (D) when it is created.
@@ -280,3 +354,55 @@ object, read into the copy, RepNotifies called on change), not a property copy.
 - `Project.Dev.*` (8, implementer): teleport by marker/tag/spot id/XYZ, PlayerId, stance, GiveFish args + rolls, driver API.
 - `Project.Dev.QA.ClientConsoleRefuses` (QA): on an NM_Client world Teleport and GiveFish refuse, nothing moves or rolls.
 - Gap: a real networked client console (no replicated relay yet) is untested.
+
+## T-028 mouse-steered rod fight + reel speed (lane eng2, FULL gate)
+Implementer: `Project.Fishing.Fight.Rod.*` (11, RodFightTest.cpp). Independent QA (41): `Project.Fishing.Fight.Rod.QA.*` in
+`Tests/FishFight/RodQA{Math,Data,World,Net,Balance}Test.cpp`; shared fixtures in `RodQATestUtils.h` (namespace LureRodQA: owner pawn in a
+test world, hook-and-fight, fixture tables, HUD line lookup, input firing, water volume).
+- Math (13): `Sim.StepMatchesSpecWithRodInput` is an independent oracle of FishFight.h steps 1-6 with the rod factors: 162 fixtures, ~119k
+  steps compared exactly, random rod input incl. NaN/Inf/out of range, random rod tuning inside the validated ranges, every outcome reached.
+  Edges: pitch -1/0/+1, yaw +-1 and the run direction at SideMinShare / an exhausted run, side pressure for every pitch x yaw x run
+  combination (factors and in a running fight), a random-side run flips and the side score follows, reel steps (spacing, clamp, load
+  floor), the drag cap for every rod input, snap and slack timers in whole steps when the rod crosses the threshold, the wire byte packing
+  for all 256 values (127 = exactly 0), hostile input clamped inside the step, HUD words at the zone edges (nextafter on both sides).
+- Data (3): the rod/reel columns in the shipped CSVs are numeric and in playable ranges; every rod column is optional (defaults apply);
+  bad cells are rejected by Validate and the fishing component falls back to the built-in tuning with a warning.
+- World (19): look vs rod input - the mouse steers the rod only while the owner fights a hooked fish; look is the view again after every
+  ending (landed, snapped, spooled, threw the hook, reeled in, falling in, pulling up a ledge), when the pawn is destroyed or another pawn
+  is possessed mid-fight, and after a teleport on land; only the owner steers; ReelFaster/ReelSlower are mapped and bound; wheel spam
+  clamps and sends the last step; the step is kept for the next fight; the aim send is rate-limited at 30/60/144 fps and a lost aim is
+  repaired by the resend; the camera follows the fish plus a share of the rod and lets go; HUD lines follow the fight; the run side
+  matches the view.
+- Net (3, dedicated server + 2 clients in process): the owner steers over the wire and the other client sees the rod; dropped and delayed
+  aim is repaired; foreign-fight, stale and hostile packets are ignored or clamped (the RPC carries 4 bytes; tension and outcome stay on
+  the server).
+- Balance (3, scripted players with a 0.3 s reaction): the design advice (rod back, against a seen run, ease off at 90 %) loses 0 of 200
+  bonefish vs 70 when holding reel and is faster (more with the wheel); the rod with the run loses ground; the snapper is harder than the
+  bonefish for every player (holding: 87 vs 45 lost of 100; advice: 5 vs 0, about twice as long).
+
+### T-028 review of the implementer-changed tests (all legitimate contract updates)
+- `ServerAuthority` (FishFightTest.cpp): 4 -> 5 RPCs and ServerSetFightInput must be unreliable; ServerSetReeling stays reliable with one
+  bool (stronger than before).
+- `OnlyChargeAndYawCrossTheWire` (QAFishingNetTest.cpp): plain uint8 parameters are now allowed (enum bytes still rejected); the name is
+  stale. The 4-byte signature is pinned by the implementer's `ServerAuthorityOverTheRod` and by `Rod.QA.Net2P.*`.
+- `AllSixActionsResolveByName` (QAMovementNetInputTest.cpp): ReelFaster/ReelSlower added to the exact list; their keys and bindings are
+  checked by `Rod.QA.Input.ReelKeysMappedAndBound`, key clashes by `Movement.QA.Input.NoKeyBoundToTwoActions`.
+
+### T-028 observations (no failing test; for the lead)
+- T028-O1 (balance): a fixed posture (rod fully dipped + fastest reel + hold reel + steer against the run) is as good as the advice on the
+  bonefish (0 of 200 lost, faster than holding) without watching the bar: the dip cost and the reel-speed cost cancel.
+- T028-O2 (feel): reeling with the rod dipped at the slowest step counts as slack, so the fish throws the hook while the player cranks
+  (160 of 200 bonefish); the HUD then shows "Reeling. Release to let it run." and the slack warning together.
+- T028-O3 (cosmetic, T-029): a turned fish swings past the middle (-12 -> +16 deg in 4 s) while the HUD still says "Fish runs LEFT: pull right".
+- T028-O4: a teleport on land mid-fight keeps the fight (no distance rule; the fish follows the player); only swimming and climbing cut the line.
+- T028-O5: possessing another pawn leaves the old pawn's fight running with nobody steering (matters for a future boat).
+- T028-O6: a twitching wheel sends up to 60 step updates/s (step changes go at once by spec); the server has no rate limit (O(1), low risk).
+- T028-O7 (data): text in number cells imports silently and passes Validate (SideDrain 'fast' -> 0, PitchBackPressure '0.3x' -> 0.3,
+  RodAimSideDeg '45deg' -> 45, ReelSteps 'three' -> 2); only the QA raw CSV scan catches it.
+- T028-O8: Validate doesn't require the default reel step's speed to be 1 (only the shipped data keeps the neutral reel equal to T-007).
+- After a respawn the reel step goes back to the default (the spec is silent).
+
+### T-028 gaps (not covered by automation)
+- Listen-server host, 2-player PIE with latency, a real gamepad stick, the ABP_FPArms aim offset and rod visuals (not imported in lanes): playtester.
+- Random packet loss (PktLoss emulation) is not used; drop and delay are deterministic.
+- The HUD slack wording (unspecified).

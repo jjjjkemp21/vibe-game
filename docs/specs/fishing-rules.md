@@ -84,8 +84,9 @@ The lead may overrule any of these; a change is a data edit unless marked (code)
   ProneTuck (tuck at once, untuck after RodStillDelay); prone ArmsPitchFollowUp 0 (the arms stay down when looking up);
   RodHoldClearance 130 cm: a still prone player facing a wall keeps the tuck unless a line is out.
 - Bobber: SM_Bobber at BobberScale (3x), pivot on the water surface, bobs and wobbles.
-- Line: spline-mesh segments from the rod's `LineTip` (moved to where the first-person rod is drawn) to the bobber's
-  `LineAttach`, sagging LineSag while waiting, taut when a fish pulls. Width per point = LinePixelWidth (2.5 px) at the
+- Line: a simulated rope (T-032, docs/specs/fishing-line.md: sags and floats when slack, straight at the snap threshold,
+  recoils when it snaps) drawn as spline-mesh segments from the rod's `LineTip` (moved to where the first-person rod is
+  drawn) to the bobber's `LineAttach`. Width per point = LinePixelWidth (2.5 px) at the
   viewer's distance on a 1920-wide view (never under 2 px at 1080p; designer B-S3). Other players see the line from an
   estimated rod tip (RodTipOffsetFromEye) until they get a visible body and rod.
 - Cast motion: placeholder rod swing (CastSwing* columns). Setting `CastMontage`/`HookMontage` (arms montages from the

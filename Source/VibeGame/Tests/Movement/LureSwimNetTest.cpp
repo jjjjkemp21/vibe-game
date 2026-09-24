@@ -20,6 +20,7 @@
 #include "Character/LureCharacterMovementComponent.h"
 #include "Character/LureMovementTypes.h"
 #include "Character/LurePlayerCharacter.h"
+#include "Character/LureLadder.h"
 #include "Character/LureWaterVolume.h"
 #include "Components/BoxComponent.h"
 #include "Components/CapsuleComponent.h"
@@ -921,6 +922,248 @@ bool FLureSwimNetTeleportMidClimbTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("client: walking on the land"), ClientMovement->IsMovingOnGround());
 	TestTrue(TEXT("server: walking on the land"), ServerMovement->IsMovingOnGround());
 	TestEqual(TEXT("client: one swim event, out"), LureSwimNet::EventsText(Listener), FString(TEXT("out")));
+	return true;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Playtest 2026-09-23 bug 2: Jump held before reaching a ladder (or a climbable edge) climbs on arrival
+// ---------------------------------------------------------------------------------------------------------------------
+
+namespace LureSwimNet
+{
+	/** Start of the approach: 160 cm of water between the capsule's front and the face, outside the ladder's 80 cm grab zone. */
+	constexpr float ApproachX = FaceX - 34.f - 160.f;
+
+	/** Enough moves to swim the approach at 170 cm/s (plus the acceleration) and climb a 150 cm dock. */
+	constexpr int32 ApproachAndClimbMoves = 200;
+
+	/** An owning-client move with input: the player swims forward (+X, toward the dock) at full acceleration. */
+	FSavedMovePtr ClientMoveForward(ALurePlayerCharacter* Character)
+	{
+		ULureCharacterMovementComponent* Movement = Character->GetLureMovement();
+		FNetworkPredictionData_Client_Character& ClientData = ClientDataOf(Character);
+		Character->CheckJumpInput(Dt);
+		ClientData.CurrentTimeStamp += Dt;
+		FSavedMovePtr Move = ClientData.CreateSavedMove();
+		// Forward while in the water; the climb and the dock need no input (walking on would carry it off the far side).
+		const FVector Input = Movement->IsSwimming() ? FVector(Movement->GetMaxAcceleration(), 0.f, 0.f) : FVector::ZeroVector;
+		Move->SetMoveFor(Character, Dt, Input, ClientData);
+		FAccess::SetInputAcceleration(*Movement, Move->Acceleration.GetClampedToMaxSize(Movement->GetMaxAcceleration()));
+		FAccess::PerformMovement(*Movement, Move->DeltaTime);
+		Move->PostUpdate(Character, FSavedMove_Character::PostUpdate_Record);
+		ClientData.SavedMoves.Push(Move);
+		return Move;
+	}
+
+	bool HasJumpFlag(const FSavedMove_Character& Move)
+	{
+		return (Move.GetCompressedFlags() & FSavedMove_Character::FLAG_JumpPressed) != 0;
+	}
+
+	ALureLadder* AddLadder(FMachine& Machine)
+	{
+		// On the dock face at the water line, +X pointing out over the water (yaw 180), default 300 cm climb height.
+		const FTransform Transform(FRotator(0.f, 180.f, 0.f), FVector(FaceX, 0.f, 0.f));
+		ALureLadder* Ladder = Machine.World->SpawnActorDeferred<ALureLadder>(ALureLadder::StaticClass(), Transform, nullptr, nullptr,
+			ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+		if (Ladder)
+		{
+			Ladder->FinishSpawning(Transform);
+		}
+		return Ladder;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLureSwimNetHeldJumpLadderTest, "Project.Movement.Swim.Net.HeldJumpClimbsTheLadderOnArrival", LureSwimNet::Flags)
+
+bool FLureSwimNetHeldJumpLadderTest::RunTest(const FString& Parameters)
+{
+	// The player presses Jump in open water and keeps holding it while swimming into a ladder's grab zone (150 cm dock).
+	// Before the fix only a fresh press climbed. Now every move while swimming with Jump held carries the Jump flag, and
+	// the climb is queued in the move that reaches the ladder: predicted on the client, planned again by the server
+	// from the saved moves' flags, the same result on both.
+	UDataTable* Table = LureSwimNet::ShippedTable(*this);
+	FGCObjectScopeGuard KeepTable(Table);
+	LureSwimNet::FMachine ClientMachine;
+	LureSwimNet::FMachine ServerMachine;
+	if (!Table || !ClientMachine.Create(*this, 150.f) || !ServerMachine.Create(*this, 150.f))
+	{
+		return false;
+	}
+	ALureLadder* ClientLadder = LureSwimNet::AddLadder(ClientMachine);
+	ALureLadder* ServerLadder = LureSwimNet::AddLadder(ServerMachine);
+	if (!TestNotNull(TEXT("client ladder spawns"), ClientLadder) || !TestNotNull(TEXT("server ladder spawns"), ServerLadder))
+	{
+		return false;
+	}
+	ALurePlayerCharacter* Client = ClientMachine.SpawnSwimmer(*this, Table, LureSwimNet::ApproachX);
+	ALurePlayerCharacter* Server = ServerMachine.SpawnSwimmer(*this, Table, LureSwimNet::ApproachX);
+	if (!Client || !Server)
+	{
+		return false;
+	}
+	ClientMachine.Tick(LureSwimNet::SettleFrames);
+	ServerMachine.Tick(LureSwimNet::SettleFrames);
+	Client->SetRole(ROLE_AutonomousProxy);
+	ULureCharacterMovementComponent* ClientMovement = Client->GetLureMovement();
+	ULureCharacterMovementComponent* ServerMovement = Server->GetLureMovement();
+	TestTrue(TEXT("both copies swim"), ClientMovement->IsSwimming() && ServerMovement->IsSwimming());
+	TestFalse(TEXT("the approach starts outside the ladder's grab zone"), ClientLadder->IsInGrabZone(Client->GetActorLocation()));
+	TestTrue(TEXT("both copies start at the same place"), LureSwimNet::Distance(Client, Server) < LureSwimNet::SamePlace);
+
+	// Jump goes down in open water and stays held (the player's input: DoJumpStart, no DoJumpEnd).
+	Client->DoJumpStart();
+	TestTrue(TEXT("Jump is held"), Client->IsJumpHeld());
+	int32 ArrivalMove = INDEX_NONE;
+	bool bFlagOnEverySwimMove = true;
+	bool bNoClimbBeforeTheZone = true;
+	float WorstError = 0.f;
+	bool bSameModes = true;
+	for (int32 Index = 0; Index < LureSwimNet::ApproachAndClimbMoves; ++Index)
+	{
+		const bool bWasSwimming = ClientMovement->IsSwimming();
+		const bool bWasInZone = ClientLadder->IsInGrabZone(Client->GetActorLocation());
+		const FSavedMovePtr Move = LureSwimNet::ClientMoveForward(Client);
+		if (bWasSwimming)
+		{
+			bFlagOnEverySwimMove &= LureSwimNet::HasJumpFlag(*Move);
+		}
+		if (ArrivalMove == INDEX_NONE && ClientMovement->IsClimbingOut())
+		{
+			ArrivalMove = Index;
+			bNoClimbBeforeTheZone &= bWasInZone;
+		}
+		LureSwimNet::ServerMove(Server, *Move);
+		WorstError = FMath::Max(WorstError, LureSwimNet::Distance(Client, Server));
+		bSameModes &= ServerMovement->PackNetworkMovementMode() == Move->EndPackedMovementMode;
+	}
+	TestTrue(TEXT("the held Jump climbs the ladder on arrival (no fresh press)"), ArrivalMove != INDEX_NONE);
+	TestTrue(FString::Printf(TEXT("after swimming there first (climb started on move %d)"), ArrivalMove), ArrivalMove > 10);
+	TestTrue(TEXT("the climb starts only once the swimmer is in the grab zone"), bNoClimbBeforeTheZone);
+	TestTrue(TEXT("every move in the water with Jump held carries FLAG_JumpPressed"), bFlagOnEverySwimMove);
+	TestTrue(FString::Printf(TEXT("client and server agree on every move (worst %.4f cm)"), WorstError), WorstError < LureSwimNet::SamePlace);
+	TestTrue(TEXT("client and server agree on the mode of every move"), bSameModes);
+	LureSwimNet::TestStandingOnDock(*this, Client, 150.f, TEXT("client"));
+	LureSwimNet::TestStandingOnDock(*this, Server, 150.f, TEXT("server"));
+
+	// Still holding Jump on the dock: out of the water a held Jump does nothing new (no jump, no ledge climb).
+	TestTrue(TEXT("Jump is still held on the dock"), Client->IsJumpHeld());
+	bool bNoJumpFlagOnLand = true;
+	for (int32 Index = 0; Index < 30; ++Index)
+	{
+		bNoJumpFlagOnLand &= !LureSwimNet::HasJumpFlag(*LureSwimNet::ClientMove(Client));
+	}
+	TestTrue(TEXT("on land a held Jump sends no new Jump flags"), bNoJumpFlagOnLand);
+	TestTrue(TEXT("on land a held Jump doesn't jump again"), ClientMovement->IsMovingOnGround());
+	Client->DoJumpEnd();
+	TestFalse(TEXT("released"), Client->IsJumpHeld());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLureSwimNetHeldJumpEdgeReplayTest, "Project.Movement.Swim.Net.HeldJumpClimbsTheEdgeOnArrivalAndReplays", LureSwimNet::Flags)
+
+bool FLureSwimNetHeldJumpEdgeReplayTest::RunTest(const FString& Parameters)
+{
+	// The same for a 60 cm edge (no ladder; the same queue in DoJump): Jump held while swimming there climbs on arrival.
+	// A correction for a move before the arrival makes the client replay the approach from its saved moves: the replay
+	// re-plans the climb from the saved Jump flags and ends where the prediction did. Held Jump in open water, or a Jump
+	// released before arrival, never climbs.
+	UDataTable* Table = LureSwimNet::ShippedTable(*this);
+	FGCObjectScopeGuard KeepTable(Table);
+	LureSwimNet::FMachine ClientMachine;
+	LureSwimNet::FMachine ServerMachine;
+	if (!Table || !ClientMachine.Create(*this, 60.f) || !ServerMachine.Create(*this, 60.f))
+	{
+		return false;
+	}
+	ALurePlayerCharacter* Client = ClientMachine.SpawnSwimmer(*this, Table, LureSwimNet::ApproachX);
+	ALurePlayerCharacter* Server = ServerMachine.SpawnSwimmer(*this, Table, LureSwimNet::ApproachX);
+	ALurePlayerCharacter* Released = ServerMachine.SpawnSwimmer(*this, Table, LureSwimNet::ApproachX, 300.f);
+	ALurePlayerCharacter* OpenWater = ServerMachine.SpawnSwimmer(*this, Table, -1500.f, -300.f);
+	if (!Client || !Server || !Released || !OpenWater)
+	{
+		return false;
+	}
+	ClientMachine.Tick(LureSwimNet::SettleFrames);
+	ServerMachine.Tick(LureSwimNet::SettleFrames);
+	Client->SetRole(ROLE_AutonomousProxy);
+	ULureCharacterMovementComponent* ClientMovement = Client->GetLureMovement();
+	TestTrue(TEXT("the client swims"), ClientMovement->IsSwimming());
+
+	// 1. Predicted: hold Jump from open water, swim to the edge, climb on arrival.
+	Client->DoJumpStart();
+	// What each move's RPC carries, copied: acknowledged saved moves go back to the engine's pool and get reused.
+	struct FSentMove
+	{
+		float TimeStamp = 0.f;
+		float DeltaTime = 0.f;
+		uint8 Flags = 0;
+		FVector Acceleration = FVector::ZeroVector;
+	};
+	TArray<FSentMove> Moves;
+	int32 ArrivalMove = INDEX_NONE;
+	for (int32 Index = 0; Index < LureSwimNet::ApproachAndClimbMoves && !ClientMovement->IsMovingOnGround(); ++Index)
+	{
+		const FSavedMovePtr Move = LureSwimNet::ClientMoveForward(Client);
+		Moves.Add({ Move->TimeStamp, Move->DeltaTime, Move->GetCompressedFlags(), Move->Acceleration });
+		// The server acks the oldest moves as good, as it would in play: the engine flushes the saved moves at 96.
+		FNetworkPredictionData_Client_Character& ClientData = LureSwimNet::ClientDataOf(Client);
+		if (ClientData.SavedMoves.Num() > 80)
+		{
+			ClientData.AckMove(0, *ClientMovement);
+		}
+		if (ArrivalMove == INDEX_NONE && ClientMovement->IsClimbingOut())
+		{
+			ArrivalMove = Index;
+		}
+	}
+	TestTrue(FString::Printf(TEXT("the held Jump climbs the 60 cm edge on arrival (move %d)"), ArrivalMove), ArrivalMove != INDEX_NONE && ArrivalMove > 10);
+	LureSwimNet::TestStandingOnDock(*this, Client, 60.f, TEXT("predicted"));
+	if (ArrivalMove == INDEX_NONE || ArrivalMove < 5)
+	{
+		return false;
+	}
+	const FVector Predicted = Client->GetActorLocation();
+
+	// 2. The server runs the moves up to a few before the arrival and corrects the client there: the replay of the rest
+	//    (saved moves, bClientUpdating) must climb from the saved Jump flags alone.
+	const int32 CorrectedMove = ArrivalMove - 5;
+	for (int32 Index = 0; Index <= CorrectedMove; ++Index)
+	{
+		const FSentMove& Sent = Moves[Index];
+		LureSwimNet::FAccess::MoveAutonomous(*Server->GetLureMovement(), Sent.TimeStamp, Sent.DeltaTime, Sent.Flags, Sent.Acceleration);
+	}
+	TestTrue(TEXT("server: still swimming before the arrival"), Server->GetLureMovement()->IsSwimming());
+	Client->DoJumpEnd(); // the player has let go by the time the correction arrives: the replay must not depend on it
+	if (!LureSwimNet::SendReply(*this, Server, Client, Moves[CorrectedMove].TimeStamp))
+	{
+		return false;
+	}
+	TestTrue(TEXT("the correction puts the client back in the water"), ClientMovement->IsSwimming());
+	LureSwimNet::FAccess::ReplayUnacknowledgedMoves(*ClientMovement);
+	LureSwimNet::TestStandingOnDock(*this, Client, 60.f, TEXT("replayed"));
+	const float Off = static_cast<float>((Client->GetActorLocation() - Predicted).Size());
+	TestTrue(FString::Printf(TEXT("the replay ends where the prediction did (%.4f cm)"), Off), Off < LureSwimNet::SamePlace);
+
+	// 3. Released before arrival: swims into the edge and stays in the water (a climb needs Jump held or a fresh press).
+	Released->DoJumpStart();
+	LureSwimNet::ClientMoveForward(Released);
+	Released->DoJumpEnd();
+	for (int32 Index = 0; Index < 120; ++Index)
+	{
+		LureSwimNet::ClientMoveForward(Released);
+	}
+	TestTrue(TEXT("Jump released before the edge: no climb"), Released->GetLureMovement()->IsSwimming());
+	TestTrue(TEXT("and it did reach the edge"), Released->GetActorLocation().X > LureSwimNet::FaceX - 34.f - 10.f);
+
+	// 4. Held in open water: no edge, nothing happens (no jump out of the water).
+	OpenWater->DoJumpStart();
+	for (int32 Index = 0; Index < 60; ++Index)
+	{
+		LureSwimNet::ClientMove(OpenWater);
+	}
+	TestTrue(TEXT("Jump held in open water: still swimming"), OpenWater->GetLureMovement()->IsSwimming());
+	OpenWater->DoJumpEnd();
 	return true;
 }
 

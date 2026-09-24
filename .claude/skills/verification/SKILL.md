@@ -44,6 +44,6 @@ Say concretely what you see. Check for: default/checker materials, objects float
 
 ## Reporting
 - To the lead: PASS/FAIL per check with evidence paths (status JSON, test report dir, screenshot path).
-- Progress folder: the lead copies the best verified images to `Progress/` (see CLAUDE.md, "Working with Jimmy").
+- Progress folder: the lead copies the best verified images to `Progress/` (see docs/LEAD.md, "Working with Jimmy").
 - To Jimmy: plain language, short. What changed, what to try, what you need from him. No code.
 - Commit after verification with a message that states what was verified.
