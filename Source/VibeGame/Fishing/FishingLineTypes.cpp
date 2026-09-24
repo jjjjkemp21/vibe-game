@@ -58,7 +58,8 @@ bool FLureFishingLineRow::Validate(FString& OutProblem) const
 {
 	const float Values[] = { SubstepRate, GravityScale, AirDrag, WaterDrag, SlackShare, TautExponent, LengthResponse, StraightenTime, CastTension,
 		WaitTension, BiteTension, HookedTension, FloatStrength, FloatHeight, WaterRefreshDistance, RecoilSpeed, RecoilTime,
-		RecoilLengthShare, HangEndMass, HangDrag, TeleportDistance };
+		RecoilLengthShare, HangEndMass, HangDrag, HangReelSpeed, HangMaxSwingDeg, TeleportDistance, CollisionRadius, GroundFriction,
+		CollisionQueryMargin, CollisionRefreshTime };
 	for (const float Value : Values)
 	{
 		if (!FMath::IsFinite(Value) || Value < 0.f)
@@ -99,6 +100,22 @@ bool FLureFishingLineRow::Validate(FString& OutProblem) const
 	if (LengthResponse < 0.1f || RecoilTime < 0.05f || HangEndMass < 1.f || WaterRefreshDistance < 1.f || TeleportDistance < 1.f)
 	{
 		return Fail(TEXT("LengthResponse >= 0.1, RecoilTime >= 0.05, HangEndMass >= 1, WaterRefreshDistance >= 1 and TeleportDistance >= 1"));
+	}
+	if (HangReelSpeed < 1.f)
+	{
+		return Fail(FString::Printf(TEXT("HangReelSpeed %.2f must be >= 1 cm/s"), HangReelSpeed));
+	}
+	if (HangMaxSwingDeg < 10.f || HangMaxSwingDeg > 90.f)
+	{
+		return Fail(FString::Printf(TEXT("HangMaxSwingDeg %.2f must be in [10, 90] degrees"), HangMaxSwingDeg));
+	}
+	if (CollisionRadius > 50.f)
+	{
+		return Fail(FString::Printf(TEXT("CollisionRadius %.2f must be in [0, 50] cm"), CollisionRadius));
+	}
+	if (CollisionQueryMargin < 10.f || CollisionRefreshTime < 0.02f)
+	{
+		return Fail(TEXT("CollisionQueryMargin >= 10 cm and CollisionRefreshTime >= 0.02 s"));
 	}
 	return true;
 }
@@ -167,6 +184,34 @@ float FLureFishingLineRules::TightenRestLength(float Current, float Target, floa
 	const double NextX = FMath::Max(TargetX, X - Speed * Dt);
 	const float Steady = ShrinkStep(C * (1.0 + NextX * NextX), Current, SafeTarget);
 	return FMath::Min(Exponential, Steady);
+}
+
+float FLureFishingLineRules::CarryRestLength(float Current, float LastChord, float Chord)
+{
+	if (!FMath::IsFinite(Current) || !FMath::IsFinite(LastChord) || !FMath::IsFinite(Chord) || LastChord < 1.f || Chord < 0.f)
+	{
+		return Current;
+	}
+	const double Share = FMath::Clamp(static_cast<double>(Current) / LastChord, 1.0, 2.0);
+	return static_cast<float>(Chord * Share);
+}
+
+float FLureFishingLineRules::ReelInRestLength(float Current, float Target, float DeltaTime, const FLureFishingLineRow& Row)
+{
+	const float SafeTarget = FMath::IsFinite(Target) ? FMath::Max(0.f, Target) : 0.f;
+	if (!FMath::IsFinite(Current) || Current <= SafeTarget)
+	{
+		return SafeTarget; // a shorter line drops at once (or a first frame)
+	}
+	const double Dt = FMath::IsFinite(DeltaTime) ? FMath::Max(0.0, static_cast<double>(DeltaTime)) : 0.0;
+	double Speed = FMath::IsFinite(Row.HangReelSpeed) ? FMath::Max(1.0, static_cast<double>(Row.HangReelSpeed)) : 500.0;
+	const double Gravity = 980.0 * (FMath::IsFinite(Row.GravityScale) ? FMath::Clamp(static_cast<double>(Row.GravityScale), 0.0, 10.0) : 1.0);
+	if (Gravity > 0.0)
+	{
+		// Slows at half of gravity toward the end: the actor (slowed by gravity at twice that) never overtakes the reel.
+		Speed = FMath::Min(Speed, FMath::Sqrt(2.0 * (0.5 * Gravity) * (static_cast<double>(Current) - SafeTarget)));
+	}
+	return LureFishingLineTypesPrivate::ShrinkStep(static_cast<double>(Current) - Speed * Dt, Current, SafeTarget);
 }
 
 float FLureFishingLineRules::StateTension(ELureFishingState State, bool bFightActive, float FightTension01, const FLureFishingLineRow& Row)

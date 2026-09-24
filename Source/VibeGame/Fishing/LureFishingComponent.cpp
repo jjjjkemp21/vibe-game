@@ -1482,7 +1482,7 @@ void ULureFishingComponent::PlayFeedbackSound(const TSoftObjectPtr<USoundBase>& 
 void ULureFishingComponent::UpdateVisuals(float DeltaTime)
 {
 	EnsureRod();
-	UpdateRod();
+	UpdateRod(DeltaTime);
 	UpdateFightMontages();
 
 	if (IsLineOut())
@@ -1521,7 +1521,9 @@ void ULureFishingComponent::UpdateVisuals(float DeltaTime)
 			GetViewer(ViewLocation, Fov);
 			Line->SetViewer(ViewLocation, Fov);
 			Line->SetWidthRule(Row->LinePixelWidth, GetDefault<ULureFishingSettings>()->LineReferenceScreenWidth, Row->LineMinWidth);
-			Line->SetTension(FLureFishingLineRules::StateTension(NetState.State, FightNet.bActive, FightNet.GetTension01(), Line->GetTuning()));
+			// In a fight the line is straight from DT_FishFight TautTension of the line's strength (T-032b; FLureFight::LineTension).
+			Line->SetTension(FLureFishingLineRules::StateTension(NetState.State, FightNet.bActive,
+				FLureFight::LineTension(FightNet.GetTension01(), GetFightTuning()), Line->GetTuning()));
 			if (NetState.bOnWater)
 			{
 				Line->SetWaterSurfaceZ(static_cast<float>(NetState.BobberRest.Z)); // the bobber rests on the surface
@@ -1581,7 +1583,7 @@ void ULureFishingComponent::EnsureRod()
 	RodMesh->SetRelativeLocationAndRotation(FVector::ZeroVector, FRotator::ZeroRotator);
 }
 
-void ULureFishingComponent::UpdateRod()
+void ULureFishingComponent::UpdateRod(float DeltaTime)
 {
 	if (!RodMesh)
 	{
@@ -1619,10 +1621,20 @@ void ULureFishingComponent::UpdateRod()
 			}
 		}
 	}
+	// Placeholder rod bend (T-007): the tip dips toward the fish with the tension and shakes over the line's strength. When the
+	// fight ends the rod straightens over TensionFallTime, not in one frame (T-032b: that jerk flung the landed fish over the tip).
 	if (NetState.State == ELureFishingState::Hooked && FightNet.bActive)
 	{
-		// Placeholder rod bend (T-007): the tip dips toward the fish with the tension and shakes over the line's strength.
-		Pitch += FLureFight::RodPitch(FightNet.GetTension01(), static_cast<float>(GetLocalTime()), GetFightTuning());
+		RodBendTension01 = FMath::IsFinite(FightNet.GetTension01()) ? FMath::Max(0.f, FightNet.GetTension01()) : 0.f;
+	}
+	else
+	{
+		RodBendTension01 = FLureFight::EaseTension(FMath::Min(RodBendTension01, 1.f), 0.f, DeltaTime, GetFightTuning());
+		RodBendTension01 = RodBendTension01 < 1.0e-3f ? 0.f : RodBendTension01;
+	}
+	if (RodBendTension01 > 0.f)
+	{
+		Pitch += FLureFight::RodPitch(RodBendTension01, static_cast<float>(GetLocalTime()), GetFightTuning());
 	}
 	// T-028: the rod follows the player's aim (placeholder turn, until the arms play the rod-aim aim offset and carry it).
 	const FRotator Aim = ArmsPlayRodAim() ? FRotator::ZeroRotator : FLureRodControl::RodLook(RodAimVisual.Y, RodAimVisual.X, GetFightTuning());
