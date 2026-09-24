@@ -148,7 +148,7 @@ Independent tests: `Tests/Fishing/QAFishing*.cpp` + `QAFishingTestUtils.{h,cpp}`
 | Spot (16) | Spot.{BobberOnLandInsideSpotNoBite, ContextFromSpotAndEnvironment, DeepestSpotWins, LayoutMarkersParseCleanly, MarkerDataReachesTheRoll, MarkersAreReadLive, NoFitHintAfterHintDelay, NoFitSpotBitesWhenTimeFits, NoFitSpotShowsNoNibbles, NoSpotNoBiteEver, OffSpotHabitatSettingEnablesBites, ParseMalformedTagsNeverBreak, ParseRadiusRules, ParseSoftProblemsKeepTheSpot, RadiusBoundaryIs2D, TaggedWaterSurface} | U/I | Spot tag parsing (malformed, radius, soft problems), layout markers, 2D radius edge, deepest spot wins, context reaches the roll, no spot / no fit / land never bite, live markers, the off-spot habitat setting, tagged water. |
 | Interrupt (11) | Interrupt.{JumpKeepsTheLine, PawnDestroyedAtEveryStage, ProneCrawlEndsEveryStage, ProneStillKeepsEveryStage, RodPutAwayEndsEveryStage, SpotLostWhileFishing, SprintEndsEveryStage, SprintHeldStandingStillKeepsTheLine, StanceChangesKeepTheLine, SwimEndsEveryStage, TooFarFromTheBobber} | U/I | Every stage x sprint/prone crawl/swim/rod put away/pawn destroyed/spot lost/too far ends the line; stance changes, prone still, jump and sprint held standing still keep it. |
 | Pose (9) | Pose.{ArmsCounterPitchFormula, CharacterPoseFollowsStanceAndMotion, ClearanceTraceBoundaries, ColumnsDriveThePoseAndTheLineRules, PitchFollowUpEases, ShippedRowsPerStanceAndMotion, SwitchHysteresisEdges, WallAheadTucksUnlessFishing, WallTuckRules} | U/I | Rod pose switch rule and hysteresis edges, wall tuck (unless fishing), counter-pitch formula, clearance trace boundaries, data columns drive the pose. |
-| Net (7) | Net.{BiteStaysSecretUntilHooked, ClientCopyCannotDecide, ClientFollowsServerAtEveryStage, NetStateWireRoundTrip, OnlyChargeAndYawCrossTheWire, ReplicatedToEveryone, ServerRpcsClampHostileRequests} | U/I | Only charge and yaw cross the wire; replication conditions; NetState FRepLayout round trip; a client copy cannot decide; the bite stays secret until hooked; hostile RPC values are clamped. |
+| Net (7) | Net.{BiteStaysSecretUntilHooked, ClientCopyCannotDecide, ClientFollowsServerAtEveryStage, NetStateWireRoundTrip, ServerRpcsTakeOnlyPlainNumbers, ReplicatedToEveryone, ServerRpcsClampHostileRequests} | U/I | Server RPCs take only plain numbers (T-028b rename of OnlyChargeAndYawCrossTheWire); replication conditions; NetState FRepLayout round trip; a client copy cannot decide; the bite stays secret until hooked; hostile RPC values are clamped. |
 | Net2P (1) | Net2P.{ServerDecidesClientsFollow} | I | A real in-process dedicated server with 2 clients: the server decides, both clients follow. |
 | Input (2) | Input.{BoundActionsDriveFishing, KeysFromSettings} | U/I | Keys come from settings; bound actions drive fishing. |
 
@@ -355,8 +355,8 @@ test world, hook-and-fight, fixture tables, HUD line lookup, input firing, water
 ### T-028 review of the implementer-changed tests (all legitimate contract updates)
 - `ServerAuthority` (FishFightTest.cpp): 4 -> 5 RPCs and ServerSetFightInput must be unreliable; ServerSetReeling stays reliable with one
   bool (stronger than before).
-- `OnlyChargeAndYawCrossTheWire` (QAFishingNetTest.cpp): plain uint8 parameters are now allowed (enum bytes still rejected); the name is
-  stale. The 4-byte signature is pinned by the implementer's `ServerAuthorityOverTheRod` and by `Rod.QA.Net2P.*`.
+- `OnlyChargeAndYawCrossTheWire` (QAFishingNetTest.cpp; renamed `ServerRpcsTakeOnlyPlainNumbers` in T-028b): plain uint8 parameters are now allowed (enum bytes still rejected).
+  The 4-byte signature is pinned by the implementer's `ServerAuthorityOverTheRod` and by `Rod.QA.Net2P.*`.
 - `AllSixActionsResolveByName` (QAMovementNetInputTest.cpp): ReelFaster/ReelSlower added to the exact list; their keys and bindings are
   checked by `Rod.QA.Input.ReelKeysMappedAndBound`, key clashes by `Movement.QA.Input.NoKeyBoundToTwoActions`.
 
@@ -378,3 +378,9 @@ test world, hook-and-fight, fixture tables, HUD line lookup, input firing, water
 - Listen-server host, 2-player PIE with latency, a real gamepad stick, the ABP_FPArms aim offset and rod visuals (not imported in lanes): playtester.
 - Random packet loss (PktLoss emulation) is not used; drop and delay are deterministic.
 - The HUD slack wording (unspecified).
+
+## T-028b: rod follow-ups (unreal-engineer, 2026-09-23)
+`Source/VibeGame/Tests/FishFight/RodFollowUpTest.cpp`, `Project.Fishing.Fight.Rod.T028b.*` (9 tests, one per QA observation):
+DipIsReliefNotReeling and DippedFastPostureLosesToSkilledPlay (O1, C++ balance with QA's players), OneSlackRule and
+HudNeverContradictsItself (O2), TeleportEndsTheFight (O4), PawnSwitchEndsTheOldFight (O5), ServerRateLimitsReelSteps (O6),
+TextInANumberCellFailsValidation (O7), DefaultReelStepMustBeSpeedOne (O8). Numbers and contract changes: docs/specs/reel-fight-rules.md "T-028b".

@@ -184,6 +184,17 @@ public:
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category="Controls", meta=(ClampMin="0.05"))
 	float FightInputResendSeconds = 0.25f;
 
+	/**
+	 *  T-028b: the server's rate limit on reel-step changes (a token bucket): up to FightReelStepBurst changes at once (a quick flick
+	 *  of the wheel), then FightReelStepsPerSecond, so a twitching wheel can't change the fight's reel every frame. A change over the
+	 *  limit waits and applies as soon as the limit allows: the owner's last step always wins. FightReelStepsPerSecond 0 = no limit.
+	 */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category="Controls", meta=(ClampMin="1"))
+	int32 FightReelStepBurst = 4;
+
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category="Controls", meta=(ClampMin="0"))
+	float FightReelStepsPerSecond = 10.f;
+
 	/** Seconds a result or a refusal stays in the placeholder HUD text. */
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category="Controls", meta=(ClampMin="0"))
 	float HudMessageSeconds = 2.5f;

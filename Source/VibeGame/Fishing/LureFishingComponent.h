@@ -235,6 +235,12 @@ public:
 	/** Brings the line in; Reason None = the player's choice. A hooked fish is lost. */
 	void AuthorityReelIn(ELureCastBlock Reason = ELureCastBlock::None);
 
+	/** Server: the owner was teleported (ALurePlayerCharacter::TeleportSucceeded). A hooked fish is lost (reason Teleported). T-028b. */
+	void AuthorityOwnerTeleported();
+
+	/** Server: the owner's controller left the pawn (ALurePlayerCharacter::UnPossessed). A hooked fish is lost (reason Unpossessed). T-028b. */
+	void AuthorityOwnerUnpossessed();
+
 	/** Fish tables for bites (tests). Default: UFishSettings::LoadTables on the first bite. */
 	void SetFishTables(const FFishTables& InTables);
 
@@ -508,6 +514,12 @@ private:
 	float ServerRodPitch = 0.f;
 	float ServerRodYaw = 0.f;
 	int32 ServerReelStep = INDEX_NONE;
+	/** T-028b (O6): the server's reel-step rate limit (ULureFishingSettings::FightReelStepBurst / FightReelStepsPerSecond, a token bucket); a change over it waits here. */
+	int32 ServerPendingReelStep = INDEX_NONE;
+	float ServerReelStepTokens = -1.f; // < 0: not started (a full bucket)
+	double ServerReelStepTokenTime = 0.0;
+	/** Server: applies a held-back reel-step change once the rate limit allows it. */
+	void ApplyPendingReelStep(double Now);
 	FVector2D RodAimVisual = FVector2D::ZeroVector;
 	/** Resets the owner's aim when a new fight starts (FightNet.FightId changed); true while steering. */
 	bool SyncRodAimToFight();

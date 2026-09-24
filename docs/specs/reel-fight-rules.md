@@ -147,8 +147,10 @@ the mouse wheel / bumpers set the reel speed in steps, shown in the HUD text.
   as before, and every T-007 test and number above still holds.
 - **What the rod does** (each step; exact formulas in `FishFight.h`, `FLureFight::RodFactors`):
   - Pitch pressure `P = 1 + p x PitchBackPressure` (back) or `1 + p x PitchDipPressure` (dipped). It scales the tension you
-    apply (reeling: `(Pull x ReelStrain + RodPower x ReelLoad x ReelStepLoad) x P`) and the rod's power (line gained, line
-    taken while you reel). Letting it run: `min(Pull x P, Drag)`: **the drag still caps a running fish**, so letting it run
+    apply (reeling: `(Pull x ReelStrain + RodPower x ReelLoad x ReelStepLoad) x P`). The rod's power (line gained, line
+    taken while you reel) is `R = 1 + p x PitchBackPressure` (back) or `1 + p x PitchDipPower` (dipped; T-028b): **pull back =
+    pressure, dip = relief**. A dipped rod gives slack to save the line but barely works the fish (PitchDipPower 0.8 >
+    PitchDipPressure 0.5), so dipping is no longer a way to reel in fast (see T-028b below). Letting it run: `min(Pull x P, Drag)`: **the drag still caps a running fish**, so letting it run
     never snaps the line whatever the rod does.
   - Run direction: a move's `Side` share x its random side, when `|Side| >= SideMinShare`: the fish runs LEFT or RIGHT
     (dives, rests, straight runs and a tired fish have no side). Side score `S = -RodYaw x RunDir`: +1 = rod fully against
@@ -177,9 +179,9 @@ the mouse wheel / bumpers set the reel speed in steps, shown in the HUD text.
   `Fish runs LEFT: pull right`.
 
 **Tuning columns** (DT_FishFight, all optional: a CSV without them imports with these values): RodAimUpDeg 35, RodAimDownDeg
-35, RodAimSideDeg 45, PitchBackPressure 0.3, PitchDipPressure 0.5 (< 0.95), SideMinShare 0.15, SideLeverage 0.5 (< 0.95),
-SideTurnRate 1.0, SideTurnPull 0.2 (< 0.95), SideDrain 1.5, ReelSteps 3 (1-9), ReelDefaultStep 2 (1-based; its speed should
-be 1), ReelSpeedMin 0.5, ReelSpeedMax 1.5, ReelLoadPerSpeed 1.5 (steps: speed 0.5 / 1 / 1.5, cranking load x0.25 / x1 /
+35, RodAimSideDeg 45, PitchBackPressure 0.3, PitchDipPressure 0.5 (< 0.95), PitchDipPower 0.8 (< 0.95; T-028b), SideMinShare 0.15, SideLeverage 0.5 (< 0.95),
+SideTurnRate 1.0, SideTurnPull 0.2 (< 0.95), SideDrain 1.5, ReelSteps 3 (1-9), ReelDefaultStep 2 (1-based; its speed must
+be 1, Validate checks), ReelSpeedMin 0.5, ReelSpeedMax 1.5, ReelLoadPerSpeed 1.5 (steps: speed 0.5 / 1 / 1.5, cranking load x0.25 / x1 /
 x1.75), CameraFollowTime 0.35, CameraRodYawShare 0.5, CameraRodPitchShare 0.35, RodAimLookPitchDeg 20, RodAimLookYawDeg 25,
 RodAimBlendTime 0.1. DT_FightPattern and DT_Gear are unchanged.
 
@@ -206,6 +208,44 @@ the line, with the careful watcher on the reel button):
 | The snapper stays harder, skilled play no less safe | careful 7 % lost (17.6 s), skilled 6 % (15.7 s) | 100 rolls: skilled 5, careful 6 lost; skilled snapper 15.0 s vs bonefish 8.5 s |
 | Reef kit bonefish | hold 6.7 s, skilled 5.2 s (x0.77) | - |
 
+## T-028b: follow-ups of the T-028 senior QA (2026-09-23; QA report Saved/AgentLogs/qa/20260923-185837-T028.md)
+- **O1, rod-down posture closed.** Rod fully dipped + fastest reel + reel held + rod against the run matched skilled play
+  without watching the bar: the dip's tension relief cancelled the fast reel's extra load, and the dip cost only the same 0.5
+  of the rod's power. New column `PitchDipPower` 0.8 (the rod's power share lost when fully dipped; tension relief still
+  `PitchDipPressure`). Data only: `PitchDipPower = PitchDipPressure` restores the T-028 rod. The neutral rod is unchanged.
+  Tests: `Project.Fishing.Fight.Rod.T028b.DipIsReliefNotReeling`, `.DippedFastPostureLosesToSkilledPlay`.
+- **O2, one slack rule** (`FLureFight::IsSlack`): slack = NOT reeling and tension < `SlackShare` x base pull. It drives the
+  thrown-hook timer, the stamina recovery and the HUD. Reeling always takes up slack (whatever the rod and the reel step), so
+  reeling with the rod dipped at the slowest step never throws the hook, and the HUD never shows "Reeling." next to "Slack
+  line". Tests: `.OneSlackRule`, `.HudNeverContradictsItself`.
+- **O4 / O5.** A teleport (`APawn::TeleportTo`, e.g. `Lure.Teleport`; not a `bIsATest` probe) ends a fight: the fish is lost,
+  reason `Teleported` ("The fish got away (teleported)."). Unpossessing a pawn (a respawn, a pawn switch) ends its fight:
+  reason `Unpossessed` ("the player left"). A line with no fish on is not affected. Tests: `.TeleportEndsTheFight`,
+  `.PawnSwitchEndsTheOldFight`.
+- **O6, server rate limit on reel-step changes** (`ULureFishingSettings`, a token bucket): up to `FightReelStepBurst` (4)
+  changes at once, then `FightReelStepsPerSecond` (10; 0 = no limit). A change over the limit waits and applies when the
+  limit allows; the latest step asked for wins; asking for the step in use drops a waiting change. The aim is never held back.
+  Test: `.ServerRateLimitsReelSteps` (and `Rod.QA.Reel.WheelSpamClampsAndSendsTheLast`, updated for the wait).
+- **O7.** `FFishDataValidator::ValidateCsvSource(Csv, RowStruct, Table)` checks a CSV source's raw text: unknown columns, the
+  cell count, True/False for bools, plain numbers in number cells (whole numbers in int cells). The engine's importer
+  silently turns 'fast' into 0 or '45deg' into 45. Test: `.TextInANumberCellFailsValidation` (shipped DT_FishFight and DT_Gear pass).
+- **O8.** `Validate` requires the default reel step's speed to be 1 (`.DefaultReelStepMustBeSpeedOne`).
+- Renamed: `Project.Fishing.QA.Net.OnlyChargeAndYawCrossTheWire` -> `Project.Fishing.QA.Net.ServerRpcsTakeOnlyPlainNumbers`.
+
+**O1 numbers** (starter kit, lost / landed median; players react in 0.3 s; "advice" = QA's skilled player: rod against the
+run and a little back during a run, ease off at 90 % of the bar, reel again under 60 %; "posture" = rod fully dipped, fastest
+reel, reel held, rod against the run). Acceptance: the posture loses >= 3x as many fish or takes >= 30 % longer; skilled play
+within about 10 % of before.
+
+| | Before (T-028) | After (T-028b) |
+|---|---|---|
+| C++ bonefish 200 rolls (seed 31000): advice | 0 lost, 8.5 s | 0 lost, 8.5 s |
+| C++ bonefish: posture | 0 lost, 7.8 s | 7 lost, 12.7 s (x1.51) |
+| C++ snapper 100 rolls (seed 34000): advice | 5 lost, 18.1 s | 4 lost, 18.5 s |
+| C++ snapper: posture | - | 87 lost, 40.0 s (x2.17) |
+| Model bonefish 200 rolled: advice / posture | 0 lost 9.4 s / 1 lost 8.3 s | 0 lost 9.4 s / 3 lost 13.7 s |
+| Model snapper 200 rolled: advice / posture | 12 lost 16.4 s / 145 lost 12.5 s | 9 lost 16.3 s / 165 lost 31.0 s |
+
 ## Open questions (for Jimmy after playtest A)
 1. Snap speed: holding reel on a snapper with starter gear snaps the line in under a second. Too punishing, or the right
    "you need better gear" signal? (Knob: SnapGraceTime.)
@@ -229,5 +269,12 @@ the line, with the careful watcher on the reel button):
 - T-028: re-import `DT_FishFight.csv` (22 new optional columns; an old asset still works with the defaults). Wire the aim
   offset `AO_FPArms_RodAim` in ABP_FPArms (see "Arms" above) and set its class default `bRodAimOffsetInGraph` = true.
   Tests pinning the old contract, updated: `Project.Fishing.Fight.ServerAuthority` (5 server RPCs),
-  `Project.Fishing.QA.Net.OnlyChargeAndYawCrossTheWire` (byte parameters are plain numbers),
+  `Project.Fishing.QA.Net.OnlyChargeAndYawCrossTheWire` (byte parameters are plain numbers; renamed in T-028b to
+  `Project.Fishing.QA.Net.ServerRpcsTakeOnlyPlainNumbers`),
   `Project.Movement.QA.Input.AllSixActionsResolveByName` (ReelFaster, ReelSlower).
+- T-028b: re-import `DT_FishFight.csv` (new optional column PitchDipPower; an old asset uses the default 0.8). Tests updated
+  for the new contract: the QA rod oracle (`Rod.QA.Sim.StepMatchesSpecWithRodInput`: dip power, one slack rule, O8-valid
+  random tuning), the T-007 oracle (`Fight.QA.Sim.StepMatchesSpecFormulas`: one slack rule), `Rod.QA.Timers.SlackWholeStepsWhenTheRodDips` (reeling dipped
+  never throws), `Rod.QA.Data.*` (PitchDipPower range), `Rod.PitchScalesTension` (dip power) and `Rod.QA.Reel.WheelSpamClampsAndSendsTheLast`
+  (the rate limit). The rod oracle's side knife-edge skip now ignores straight moves (Side 0 never runs, whatever
+  SideMinShare): with SideMinShare 0 it skipped every straight step (33 skipped of 139,736 now).

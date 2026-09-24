@@ -782,7 +782,7 @@ namespace LureFightQA
 			{
 				return EResult::Skipped;
 			}
-			const bool bSlack = Tension < Slack;
+			const bool bSlack = !bReel && Tension < Slack; // T-028b: one slack rule, reeling is never slack
 			const double Energy = Pre.Stamina * Pool - Tension * Dt + (bSlack ? Pool * T.StaminaRecovery * Dt : 0.0);
 			const double Stamina = FMath::Clamp(Energy / Pool, 0.0, 1.0);
 			if (!Pre.bExhausted && Near(Stamina, T.ExhaustedStamina))

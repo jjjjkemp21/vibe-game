@@ -7,6 +7,7 @@
 #include "Dom/JsonValue.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
+#include "Serialization/Csv/CsvParser.h"
 #include "UObject/UnrealType.h"
 
 namespace FishValidatorPrivate
@@ -507,6 +508,106 @@ TArray<FString> FFishDataValidator::ValidateJsonSource(const FString& Json, cons
 		(*Row)->TryGetStringField(TEXT("Name"), Name);
 		const FString Where = FString::Printf(TEXT("%s row '%s'"), *TableName, Name.IsEmpty() ? *FString::Printf(TEXT("#%d"), i) : *Name);
 		CheckJsonObject(**Row, RowStruct, Where, Out);
+	}
+	return Out;
+}
+
+namespace FishValidatorPrivate
+{
+	/** A plain decimal number: optional sign, digits, at most one '.', at least one digit; ints take no '.'. */
+	static bool IsPlainNumber(const FString& Text, bool bInteger)
+	{
+		int32 Index = 0;
+		if (Text.Len() > 0 && (Text[0] == TEXT('-') || Text[0] == TEXT('+')))
+		{
+			++Index;
+		}
+		bool bDigit = false;
+		bool bDot = false;
+		for (; Index < Text.Len(); ++Index)
+		{
+			const TCHAR Char = Text[Index];
+			if (FChar::IsDigit(Char))
+			{
+				bDigit = true;
+			}
+			else if (Char == TEXT('.') && !bDot && !bInteger)
+			{
+				bDot = true;
+			}
+			else
+			{
+				return false;
+			}
+		}
+		return bDigit;
+	}
+}
+
+TArray<FString> FFishDataValidator::ValidateCsvSource(const FString& Csv, const UScriptStruct* RowStruct, const FString& TableName)
+{
+	using namespace FishValidatorPrivate;
+	TArray<FString> Out;
+	if (!RowStruct)
+	{
+		Out.Add(TableName + TEXT(": no row struct given"));
+		return Out;
+	}
+	const FCsvParser Parser(Csv);
+	const FCsvParser::FRows& Rows = Parser.GetRows();
+	if (Rows.Num() < 2 || Rows[0].Num() < 2)
+	{
+		Out.Add(TableName + TEXT(": the source needs a header and at least one row"));
+		return Out;
+	}
+	TArray<const FProperty*> Columns;
+	for (int32 Column = 0; Column < Rows[0].Num(); ++Column)
+	{
+		const FString Name = FString(Rows[0][Column]).TrimStartAndEnd();
+		const FProperty* Property = Column == 0 ? nullptr : RowStruct->FindPropertyByName(FName(*Name));
+		if (Column > 0 && !Property)
+		{
+			Out.Add(FString::Printf(TEXT("%s: column '%s' is not a field of %s"), *TableName, *Name, *RowStruct->GetName()));
+		}
+		Columns.Add(Property);
+	}
+	for (int32 RowIndex = 1; RowIndex < Rows.Num(); ++RowIndex)
+	{
+		const TArray<const TCHAR*>& Cells = Rows[RowIndex];
+		if (Cells.Num() == 0 || (Cells.Num() == 1 && FString(Cells[0]).TrimStartAndEnd().IsEmpty()))
+		{
+			continue; // a blank line
+		}
+		const FString RowName = FString(Cells[0]).TrimStartAndEnd();
+		if (Cells.Num() != Columns.Num())
+		{
+			Out.Add(FString::Printf(TEXT("%s row '%s': %d cells for %d columns"), *TableName, *RowName, Cells.Num(), Columns.Num()));
+		}
+		for (int32 Column = 1; Column < FMath::Min(Cells.Num(), Columns.Num()); ++Column)
+		{
+			const FProperty* Property = Columns[Column];
+			if (!Property)
+			{
+				continue;
+			}
+			const FString Cell = FString(Cells[Column]).TrimStartAndEnd();
+			const FString Where = FString::Printf(TEXT("%s row '%s' %s = '%s'"), *TableName, *RowName, *Property->GetName(), *Cell);
+			if (CastField<FBoolProperty>(Property))
+			{
+				if (!Cell.Equals(TEXT("True"), ESearchCase::IgnoreCase) && !Cell.Equals(TEXT("False"), ESearchCase::IgnoreCase))
+				{
+					Out.Add(Where + TEXT(": must be True or False"));
+				}
+			}
+			else if (const FNumericProperty* Numeric = CastField<FNumericProperty>(Property); Numeric && !Numeric->IsEnum())
+			{
+				const bool bInteger = Numeric->IsInteger();
+				if (!IsPlainNumber(Cell, bInteger))
+				{
+					Out.Add(Where + (bInteger ? TEXT(": must be a whole number") : TEXT(": must be a number")));
+				}
+			}
+		}
 	}
 	return Out;
 }

@@ -770,6 +770,24 @@ void ALurePlayerCharacter::NotifyControllerChanged()
 	AddMappingContextTo(NewController);
 }
 
+void ALurePlayerCharacter::TeleportSucceeded(bool bIsATest)
+{
+	Super::TeleportSucceeded(bIsATest);
+	if (!bIsATest && Fishing)
+	{
+		Fishing->AuthorityOwnerTeleported(); // server only inside: a fish on is lost (T-028b)
+	}
+}
+
+void ALurePlayerCharacter::UnPossessed()
+{
+	Super::UnPossessed();
+	if (Fishing)
+	{
+		Fishing->AuthorityOwnerUnpossessed(); // server only inside: the old pawn's fight ends (T-028b)
+	}
+}
+
 void ALurePlayerCharacter::PawnClientRestart()
 {
 	Super::PawnClientRestart(); // creates the input component and calls SetupPlayerInputComponent for the local player

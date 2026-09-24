@@ -351,7 +351,10 @@ bool FLureRodPitchScalesTension::RunTest(const FString& Parameters)
 			FLureFight::TargetTension(Pull, true, Starter, T, F), FLureFight::TargetTension(Pull, true, Starter, T) * FLureFight::PitchPressure(Pitch, T), 1.0e-4f);
 		TestNearlyEqual(FString::Printf(TEXT("letting it run, pitch %+.1f: target = min(Pull x P, Drag)"), Pitch),
 			FLureFight::TargetTension(Pull, false, Starter, T, F), FMath::Min(Pull * FLureFight::PitchPressure(Pitch, T), Starter.Drag), 1.0e-4f);
-		TestNearlyEqual(FString::Printf(TEXT("pitch %+.1f: the rod's power x P"), Pitch), F.Power, FLureFight::PitchPressure(Pitch, T), 1.0e-6f);
+		// T-028b: the rod's power follows the pressure when pulled back, and drops by PitchDipPower (more than the tension) when dipped.
+		const float PowerPitch = Pitch >= 0.f ? FLureFight::PitchPressure(Pitch, T) : 1.f + Pitch * T.PitchDipPower;
+		TestNearlyEqual(FString::Printf(TEXT("pitch %+.1f: the rod's power x PitchPower"), Pitch), F.Power, PowerPitch, 1.0e-6f);
+		TestNearlyEqual(FString::Printf(TEXT("pitch %+.1f: PitchPower helper"), Pitch), FLureFight::PitchPower(Pitch, T), PowerPitch, 1.0e-6f);
 	}
 	const FLureRodFactors Back = FLureFight::RodFactors(Rod(true, 1.f), nullptr, 1.f, T);
 	const FLureRodFactors Dipped = FLureFight::RodFactors(Rod(true, -1.f), nullptr, 1.f, T);
