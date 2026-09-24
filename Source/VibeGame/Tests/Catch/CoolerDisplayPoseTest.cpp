@@ -201,7 +201,9 @@ bool FCoolerDisplayPoseFallback::RunTest(const FString& Parameters)
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FFishHeldPoseApi, "Project.FishVisual.HeldPose.Api", LCT::Flags)
 bool FFishHeldPoseApi::RunTest(const FString& Parameters)
 {
-	UFishAnimInstance* Anim = NewObject<UFishAnimInstance>(GetTransientPackage());
+	// An anim instance lives inside a skeletal mesh component (its ClassWithin).
+	USkeletalMeshComponent* Mesh = NewObject<USkeletalMeshComponent>(GetTransientPackage());
+	UFishAnimInstance* Anim = NewObject<UFishAnimInstance>(Mesh);
 	TestFalse(TEXT("a fresh instance holds nothing"), Anim->HasHeldPose());
 	TestFalse(TEXT("a null pose is ignored"), Anim->SetHeldPose(nullptr, 0.0f));
 	TestTrue(TEXT("... the role is unchanged"), Anim->Role == EFishAnimRole::SwimIdle && !Anim->HasHeldPose());
