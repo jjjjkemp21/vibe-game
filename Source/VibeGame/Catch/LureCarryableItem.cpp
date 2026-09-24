@@ -227,6 +227,17 @@ void ALureCarryableItem::SetFirstPersonRendering(bool bFirstPerson)
 		return;
 	}
 	bFirstPersonRendering = bFirstPerson;
+	if (!bFirstPerson)
+	{
+		for (const TWeakObjectPtr<UPrimitiveComponent>& Primitive : FirstPersonShadowOff)
+		{
+			if (Primitive.IsValid())
+			{
+				Primitive->SetCastShadow(true);
+			}
+		}
+		FirstPersonShadowOff.Reset();
+	}
 	// The item's own primitives and those of actors attached to it (e.g. an adopted landed fish visual, T-029 seam).
 	TArray<AActor*> Actors = { this };
 	GetAttachedActors(Actors, /*bResetArray*/ false, /*bRecursivelyIncludeAttachedActors*/ true);
@@ -236,6 +247,11 @@ void ALureCarryableItem::SetFirstPersonRendering(bool bFirstPerson)
 		for (UPrimitiveComponent* Primitive : Primitives)
 		{
 			Primitive->SetFirstPersonPrimitiveType(bFirstPerson ? EFirstPersonPrimitiveType::FirstPerson : EFirstPersonPrimitiveType::None);
+			if (bFirstPerson && bNoShadowInFirstPerson && Primitive->CastShadow)
+			{
+				Primitive->SetCastShadow(false);
+				FirstPersonShadowOff.Add(Primitive);
+			}
 		}
 	}
 }

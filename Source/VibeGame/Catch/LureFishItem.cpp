@@ -134,6 +134,9 @@ ALureFishItem::ALureFishItem()
 	SkeletalFish->SetCanEverAffectNavigation(false);
 	SkeletalFish->SetVisibility(false);
 
+	// In the owner's hand it is a first-person primitive like the rod: no shadow from its eye-scaled place (HoldFish spec).
+	bNoShadowInFirstPerson = true;
+
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> Sphere(TEXT("/Engine/BasicShapes/Sphere.Sphere"));
 	if (Sphere.Succeeded())
 	{
@@ -569,23 +572,29 @@ bool ALureFishItem::GetFirstPersonAttachment(const APawn* Holder, USceneComponen
 		return false;
 	}
 	const ULureCatchSettings* Settings = GetDefault<ULureCatchSettings>();
-	const FTransform GripToOrigin(-GetGripOffset());
 	USkeletalMeshComponent* Arms = Lure->GetFirstPersonArms();
 	if (Arms && Arms->GetSkeletalMeshAsset() && !Settings->HeldFishSocket.IsNone() && Arms->DoesSocketExist(Settings->HeldFishSocket))
 	{
+		// The HoldFish clip's hand_r_fish frame is the fish's Grip frame: rotation 0, the throat on the right palm at any size.
+		// GripOffset is the unscaled Grip (GetGripOffset() is already x WeightScale): scale it once, in the formula.
 		OutParent = Arms;
 		OutSocket = Settings->HeldFishSocket;
-		OutRelative = GripToOrigin * FTransform(Settings->HeldFishRotation, Settings->HeldFishOffset);
+		OutRelative = FTransform(FQuat::Identity, ComputeHeldFishLocation(GripOffset, WeightScale, Settings->HeldFishContactPoint));
 		return true;
 	}
 	if (UCameraComponent* Camera = Lure->GetFirstPersonCamera())
 	{
 		OutParent = Camera;
 		OutSocket = NAME_None;
-		OutRelative = GripToOrigin * FTransform(Settings->HeldFishCameraRotation, Settings->HeldFishCameraOffset);
+		OutRelative = FTransform(-GetGripOffset()) * FTransform(Settings->HeldFishCameraRotation, Settings->HeldFishCameraOffset);
 		return true;
 	}
 	return false;
+}
+
+FVector ALureFishItem::ComputeHeldFishLocation(const FVector& GripAtScale1, float Scale, const FVector& Contact)
+{
+	return -Scale * GripAtScale1 + (1.0f - Scale) * Contact;
 }
 
 FTransform ALureFishItem::GetThirdPersonAttachment() const

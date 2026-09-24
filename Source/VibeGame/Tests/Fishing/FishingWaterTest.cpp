@@ -10,6 +10,7 @@
 #include "Dom/JsonValue.h"
 #include "EngineUtils.h"
 #include "Fish/FishDataValidator.h"
+#include "Fishing/LureHotSpotVisualComponent.h" // TSoftClassPtr<>::LoadSynchronous needs the full type (unity-group independent)
 #include "HAL/FileManager.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"

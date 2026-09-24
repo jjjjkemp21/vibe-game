@@ -20,10 +20,9 @@ ULureCatchSettings::ULureCatchSettings()
 
 	FishMeshPaths = { TEXT("/Game/Art/Fish/SK_{Species}.SK_{Species}"), TEXT("/Game/Art/Fish/SM_{Species}.SM_{Species}") };
 
-	// First person: the fist frame of SK_FPArms (the rod bone) until the HoldFish clip names its own socket.
-	HeldFishSocket = TEXT("hand_r_rod");
-	HeldFishOffset = FVector(4.0f, 0.0f, 0.0f);
-	HeldFishRotation = FRotator(-20.0f, -70.0f, 0.0f);
+	// First person: the HoldFish attach bone and the right palm's contact under the gills (SK_FPArms.anim.md "HoldFish").
+	HeldFishSocket = TEXT("hand_r_fish");
+	HeldFishContactPoint = FVector(7.6f, 2.9f, -4.2f);
 	HeldFishCameraOffset = FVector(45.0f, 16.0f, -24.0f);
 	HeldFishCameraRotation = FRotator(0.0f, -70.0f, 0.0f);
 	// The cooler's top shows at the bottom of a 90 degree view (pivot = bottom center, long side left-right).
