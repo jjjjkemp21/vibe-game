@@ -29,6 +29,6 @@ Lane protocol (when you work in a lane `C:\GameDev\VibeGame-lanes\<lane>`, branc
 - Never edit `QA*.cpp` / `QA*.h` (the qa-engineer's tests).
 - Finish: `git merge --no-edit main`, then `tools/build.ps1 -WaitMutex` (in the background), then the full `tools/run-tests.ps1 -Filter Project`; all green.
 - Commit on your lane branch only; never push. End the message with the Co-Authored-By line from the session.
-- Past ~250k of context: commit what builds, write a handoff in `Saved/AgentLogs/handoff/`, and return its path.
+- Past ~250k of context (senior level: ~400k): commit what builds, write a handoff in `Saved/AgentLogs/handoff/`, and return its path.
 
 Report back (at most 10 lines): done or not, commit hash, build result, test results with the report path, files or functions changed, anything the editor-operator must do in the editor (DataTable reimports, a thin Blueprint child, assigning assets), and what the playtester should check.

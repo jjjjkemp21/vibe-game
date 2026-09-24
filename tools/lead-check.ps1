@@ -1,13 +1,14 @@
 # lead-check.ps1: the lead's housekeeping check (Jimmy, 2026-09-23: keep agent context small, clean up disk regularly).
 # Reports:
 #   - each subagent of the newest Claude session that wrote in the last -ActiveMinutes, with its context size;
-#     flags HANDOFF when context > -ContextLimitK (the lead then asks it to write a handoff and starts a fresh agent)
+#     flags HANDOFF when context > -ContextLimitK (250k; senior agents -SeniorContextLimitK 400k) (the lead then asks it to write a handoff and starts a fresh agent)
 #   - Saved/ size per checkout (main + worktree lanes) and hours since the last janitor run;
 #     flags JANITOR when any Saved/ > -SavedLimitMB or the last run is older than -JanitorHours
 # Read-only. Writes Saved/AgentLogs/status/lead-check.json.
 param(
     [int]$ActiveMinutes = 20,
     [int]$ContextLimitK = 250,
+    [int]$SeniorContextLimitK = 400,  # *-senior-* agents (Jimmy, 2026-09-24)
     [int]$SavedLimitMB = 500,
     [double]$JanitorHours = 3
 )
@@ -52,7 +53,8 @@ if (Test-Path $projDir) {
                 $a = [ordered]@{ id = $id; type = $meta.agentType; description = $meta.description; contextK = $ctx
                                  lastWrite = $_.LastWriteTime.ToString('HH:mm'); done = $done }
                 $agents += $a
-                $mark = if ($done) { 'done' } elseif ($ctx -gt $ContextLimitK) { 'HANDOFF' } else { 'ok' }
+                $limit = if ($meta.agentType -like '*-senior-*') { $SeniorContextLimitK } else { $ContextLimitK }
+                $mark = if ($done) { 'done' } elseif ($ctx -gt $limit) { 'HANDOFF' } else { 'ok' }
                 if ($mark -eq 'HANDOFF') { $flags += "HANDOFF $id ($($meta.agentType): $($meta.description)) ~${ctx}k" }
                 $lines += ('{0,-8} {1,-18} ~{2,4}k  {3}  {4} [{5}]' -f $mark, $id, $ctx, $a.lastWrite, $meta.description, $meta.agentType)
             }

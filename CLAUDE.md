@@ -72,7 +72,7 @@ Every script writes `Saved/AgentLogs/status/<script>.json` (state, message, log 
 - Search narrowly: Grep with a path or glob and a specific pattern; Read big files with offset/limit. Never Read all of `docs/TASKS.md` or `docs/TEST_PLAN.md`: grep for your task id or section.
 - Filter command output (`tail`, `grep`, `head`, `--stat`). Run long builds and test runs in the background and read `Saved/AgentLogs/status/<script>.json` rather than full logs.
 - Don't re-read a file you just edited. Read an image only when you must judge it; never paste base64 images.
-- Work in stages. If your context grows past ~250k, or the lead asks for a handoff: commit what builds, write `Saved/AgentLogs/handoff/<yyyyMMdd-HHmmss>-<task>.md` (done, remaining steps, files, build/test state, decisions), stop and return its path.
+- Work in stages. If your context grows past ~250k (senior agents: ~400k), or the lead asks for a handoff: commit what builds, write `Saved/AgentLogs/handoff/<yyyyMMdd-HHmmss>-<task>.md` (done, remaining steps, files, build/test state, decisions), stop and return its path.
 - Reports: write the full report to `Saved/AgentLogs/<area>/<yyyyMMdd-HHmmss>-<topic>.md` (e.g. `qa/`, `playtest/`, `build/`) and RETURN only a short summary within the brief's line limit (at most ~25 lines): verdict, key numbers, commit hash, blockers, report path. No full test lists, no pasted file contents. If writing the report file is refused, return the report as text; the lead saves it.
 - Name throwaway experiment renders `exp_*` under `Saved/AgentLogs/previews/` (cleaned automatically).
 

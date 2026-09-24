@@ -36,7 +36,7 @@ Lane protocol (when you work in a lane `C:\GameDev\VibeGame-lanes\<lane>`, branc
 - Never edit production code (see "What you own").
 - Finish: `git merge --no-edit main`, then `tools/build.ps1 -WaitMutex` (in the background), then the full `tools/run-tests.ps1 -Filter Project`; all green.
 - Commit only your test files and TEST_PLAN.md, on your lane branch only; never push. End the message with the Co-Authored-By line from the session.
-- Past ~250k of context: commit what builds, write a handoff in `Saved/AgentLogs/handoff/`, and return its path.
+- Past ~250k of context (senior level: ~400k): commit what builds, write a handoff in `Saved/AgentLogs/handoff/`, and return its path.
 
 Full report (write it to `Saved/AgentLogs/qa/<yyyyMMdd-HHmmss>-<topic>.md`): overall PASS or FAIL; tests added (names and what each proves); the full-suite result with its report dir; failures with exact error lines, a minimal repro and your best guess at the cause; and coverage gaps you could not close.
 

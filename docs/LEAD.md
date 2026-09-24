@@ -30,7 +30,7 @@ Agents already get CLAUDE.md, their own agent file (with its standard protocol a
 2. **Where**: the lane or checkout; the 2-5 files or sections to read first (exact paths, section names, line ranges when known); the spec.
 3. **Decided already**: lead or Jimmy decisions, so the agent doesn't re-derive or re-ask them.
 4. **Parallel work**: only when relevant, which other lanes touch nearby files and what to stay off.
-5. **Anything non-standard**: extra verification, a stage stop point for big jobs (one agent stays under ~250k), extra report items.
+5. **Anything non-standard**: extra verification, a stage stop point for big jobs (one agent stays under ~250k; seniors ~400k), extra report items.
 Pick the agent level from the job (table below). For small follow-ups, resume the same agent only if its context is small and relevant; otherwise start a fresh agent with pointers to the relevant files.
 
 ## Agent levels, models and effort
@@ -87,12 +87,12 @@ Model and effort per agent. They are pinned in each agent's frontmatter (`model`
   New agents (whenever Jimmy asks for one, or the lead adds one) get `model: claude-opus-5-5` and an effort chosen like this: high for math, geometry, code or tricky logic; medium for known procedures; low for checklists, reviews and chores. Add junior/senior levels where the role's work varies in difficulty, then name each level `<role>-<level>-<effort>`, add it to this table and tell Jimmy.
   Changing a model, or upgrading to a newer one, needs Jimmy's OK.
 - **Housekeeping is automatic; Jimmy should never have to ask (Jimmy, 2026-09-23).**
-  - Auto-compaction is lowered to about 30% of the context window (`CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=30` in `.claude/settings.local.json`, kept out of git). It applies to the lead and to subagents.
+  - Auto-compaction is set to 45% of the context window (`CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=45`, raised from 30 on 2026-09-24 so senior agents reach their 400k handoff before compacting in `.claude/settings.local.json`, kept out of git). It applies to the lead and to subagents.
   - At the start of every session the lead schedules the housekeeping tick: a recurring CronCreate job every 30 minutes that runs `tools/lead-check.ps1` and acts on its flags. The job is session-only, so re-create it in each new session. The lead also runs the script at every agent hand-back.
-  - HANDOFF (a running agent's context is over 250k): the lead asks the agent to finish if it is within about 10 tool calls. Otherwise the agent commits what builds, writes `Saved/AgentLogs/handoff/<ts>-<task>.md` (done, remaining steps, files, build/test state, decisions) and stops. A fresh agent of the same type continues from the handoff.
+  - HANDOFF (a running agent's context is over 250k; over 400k for senior agents, Jimmy 2026-09-24): the lead asks the agent to finish if it is within about 10 tool calls. Otherwise the agent commits what builds, writes `Saved/AgentLogs/handoff/<ts>-<task>.md` (done, remaining steps, files, build/test state, decisions) and stops. A fresh agent of the same type continues from the handoff.
   - Janitor schedule (Jimmy, 2026-09-23; moved here from CLAUDE.md 2026-09-24): run it without being asked after each push to GitHub, after each lane merge batch, at milestones, and whenever `tools/lead-check.ps1` flags JANITOR (last run over 3 h ago, or a Saved/ over 500 MB and the last run over 1 h ago). Artists name throwaway renders `exp_*` under `Saved/AgentLogs/previews/`; the script clears them like scratch after an hour.
   - JANITOR: the lead runs `tools/cleanup.ps1` directly (dry run, glance at the reasons, then -Apply; default 60-minute keep window; no agent needed). `janitor-low` runs after each push and at milestones, for Progress photo pruning and a review of what else can go. Don't brief a janitor with a 3-hour window during a busy day: it frees nothing.
-  - Brief long tasks in stages, so that one agent does not run past ~250k.
+  - Brief long tasks in stages, so that one agent does not run past ~250k (seniors ~400k). Big jobs are split into separate agents first; the higher senior limit is for single hard tasks that need the whole picture.
 
 ## Working with Jimmy
 - He playtests. Feedback notes land in `Saved/Playtest/` once the feedback key exists (see `playtest-feedback` skill). Turn each note into a task in `docs/TASKS.md`.
