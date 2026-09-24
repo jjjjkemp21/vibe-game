@@ -8,7 +8,7 @@ Last processed playtest folder: (none)
 main 85479c9 (unpushed since 4d64f2c): ALL A2 code merged: T-027, T-028+T-028b, T-029, T-032, T-030 + T-030c/d. Lane eng6 (merged main + eng4) 987/987 (eng6 tests/20260923-210130). Main not yet rebuilt (the editor is busy).
 - Editor (main): A2 import batch DONE a3dc44d (guards 22/22). Now: ABP_FPArms aim offset + IK and ABP_Fish (editor-operator-senior-max, stage 1).
 - Next: close the editor, build main, full tests, relaunch; import DT_Catch (+HoldFishScaleSmall/Large), DT_Freshness, DT_CoolerDisplay, re-import DT_Cooler; stage 2 pins (HoldFish Blend by HoldFishSizeAlpha, CarryCooler); rebuild both levels (sell counter); full A2 playtest (1P + 2P), designer, push, janitor.
-Waiting on Jimmy: was the ThirdPerson template level deleted on purpose? (The deletions are unstaged; nobody stages them.)
+ThirdPerson template level: Jimmy deleted it on purpose; removal committed cfe7e38.
 
 ## Now: foundation (after setup)
 
