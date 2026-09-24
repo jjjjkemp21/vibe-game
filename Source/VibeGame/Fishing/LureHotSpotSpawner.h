@@ -21,10 +21,13 @@ class UDataTable;
  *  allowed and fewer than MaxPerArea hot spots of that row live in it, a spawn happens with chance
  *  1 - exp(-seconds / SpawnInterval). A spawn tries HotSpotSpawnTries random points: inside the area's outline (bounded
  *  areas), or within OpenWaterSpawnRadius of a random player (the default water and "everywhere" areas). A point is good
- *  if it is fishable water (not land) whose winning area is that area, whose habitat and depth the row allows (and at
- *  least MinBiteDepth), MinSpacing away from every live hot spot, and whose drift circle (DriftRange + Radius / 2, eight
- *  points) is fishable water of an allowed habitat too. The first check counts as HotSpotPrewarmSeconds, so a level
- *  starts with some hot spots. At most MaxHotSpots live at once.
+ *  if it is within HotSpotNearPlayerRadius of some player (when there are players and the radius is > 0), fishable water
+ *  (not land) whose winning area is that area, whose habitat and depth the row allows (and at least MinBiteDepth),
+ *  MinSpacing away from every live hot spot, and its whole wander area (the center plus 3 rings out to DriftRange +
+ *  Radius / 2) is fishable water of an allowed habitat too. Then its actual drift path is walked over its lifetime: the
+ *  disc (center + Radius) must stay on fishable water; at the first step where it would touch land the hot spot's life
+ *  ends before it (it stops there and fades out), and a candidate left shorter than LifetimeMin is rejected. The first
+ *  check counts as HotSpotPrewarmSeconds, so a level starts with some hot spots. At most MaxHotSpots live at once.
  */
 UCLASS(Blueprintable)
 class ALureHotSpotSpawner : public AActor
@@ -96,6 +99,18 @@ private:
 	/** The water rules for a candidate point (see the class comment). */
 	bool IsGoodPoint(const FVector2D& XY, FName AreaId, const FLureHotSpotRow& Row, TConstArrayView<FLureWaterAreaInfo> Areas,
 		const FGameplayTag& DefaultHabitat, const TArray<ALureHotSpot*>& Live, double Now, float& OutWaterZ) const;
+
+	/** One point of a hot spot's wander area or disc: fishable water at least MinBiteDepth deep, on the water level WaterZ,
+	 *  of a habitat the row allows. */
+	bool IsFishableAt(const FVector2D& Point, float WaterZ, const FLureHotSpotRow& Row, TConstArrayView<FLureWaterAreaInfo> Areas,
+		const FGameplayTag& DefaultHabitat) const;
+
+	/**
+	 *  Walks the drift path of a hot spot (Row, Seed) anchored at Anchor for Lifetime seconds; returns how long its disc
+	 *  (center + Radius) stays on fishable water: Lifetime, or the time of the last safe step before it would touch land.
+	 */
+	float SafeLifetime(const FVector2D& Anchor, float WaterZ, const FLureHotSpotRow& Row, int32 Seed, float Lifetime,
+		TConstArrayView<FLureWaterAreaInfo> Areas, const FGameplayTag& DefaultHabitat) const;
 
 	/** X/Y of every player's pawn (player controllers first; else every ALurePlayerCharacter, e.g. in tests). */
 	TArray<FVector2D> GetPlayerLocations() const;

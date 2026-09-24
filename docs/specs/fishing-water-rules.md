@@ -95,12 +95,23 @@ When the bobber lands (`LandBobber`) and at every bite check (`TryBite`), `FLure
   with some): for each row (sorted) and each water area (sorted by id, the default water last, and only if some water is
   default): if the area's habitat is allowed and it has fewer than MaxPerArea of that row, spawn with chance
   `1 - exp(-seconds / SpawnInterval)`. A spawn tries `HotSpotSpawnTries` (12) random points: inside the area's outline, or
-  within `OpenWaterSpawnRadius` (30 m) of a random player for unbounded water (default water, `everywhere` areas). A
-  point is good when: it is fishable water (a water surface and no solid ground above it, docks included); its winning area
-  is that area; the row allows its habitat and depth, and it is at least MinBiteDepth deep; it is MinSpacing from every live
-  hot spot; and 8 points on the circle it may wander over (DriftRange + Radius / 2) are fishable water of an allowed habitat
-  on the same water level. At most `MaxHotSpots` (16, or the marker's `max`) live at once. Seeded RNG (the marker's `seed`,
-  0 = random).
+  within `OpenWaterSpawnRadius` (18 m, inside casting reach) of a random player for unbounded water (default water,
+  `everywhere` areas). A point is good when:
+  - **near a player (T-027b):** it is within `HotSpotNearPlayerRadius` (25 m; 0 = off) of some player. A bounded area whose
+    outline is farther than that from every player is skipped (no hot spots, and no cap slots, out of everyone's reach).
+    With no player in the world (an empty server, test maps) this rule is skipped;
+  - it is fishable water (a water surface and no solid ground above it, docks included); its winning area is that area; the
+    row allows its habitat and depth, and it is at least MinBiteDepth deep; it is MinSpacing from every live hot spot;
+  - **its whole wander area is water (B1):** the center plus 3 rings of 8 points (1/3, 2/3 and all of DriftRange +
+    Radius / 2; the middle ring turned half a step) are fishable water, at least MinBiteDepth deep, of an allowed
+    habitat on the same water level;
+  - **its drift never touches land (B1):** its real drift path (the row's drift and the rolled seed) is walked over its
+    rolled lifetime; the disc (the center and 8 points at Radius) is probed each time the center has moved Radius / 4. At
+    the first step where the disc would touch land (or leave allowed water) the hot spot stops there: its life ends at the
+    step before (it fades out instead of drifting on). If that leaves less than LifetimeMin, the point is rejected. The
+    drift itself stays the pure function below (no movement is replicated).
+
+  At most `MaxHotSpots` (16, or the marker's `max`) live at once. Seeded RNG (the marker's `seed`, 0 = random).
 - **Drift** (`FLureWaterRules::DriftOffset`): a smooth wander that starts at the anchor (where it was placed): two sine
   waves with a seeded frequency ratio (0.62-0.92), turned by a seeded angle; the distance from the anchor never exceeds
   DriftRange and the RMS speed equals DriftSpeed. A pure function of (range, speed, seed, age): every machine computes the
@@ -134,7 +145,7 @@ When the bobber lands (`LandBobber`) and at every bite check (`TryBite`), `FLure
 ## 8. Settings (`ULureWaterSettings`, Project Settings > Game > Lure Water)
 DefaultWaterHabitat (Habitat.Shore), GapFallbackHabitats (Habitat.Shore, Habitat.Reef), MinBiteDepth (15), DepthProbe
 (5000), bLegacySpotsWhenNoAreas (true), LegacySpotPriority (0), HotSpotTable (/Game/Data/DT_HotSpot), HotSpotCheckInterval
-(1), HotSpotPrewarmSeconds (45), MaxHotSpots (16), OpenWaterSpawnRadius (3000), HotSpotSpawnTries (12), HotSpotFadeSeconds
+(1), HotSpotPrewarmSeconds (45), MaxHotSpots (16), OpenWaterSpawnRadius (1800), HotSpotNearPlayerRadius (2500, 0 = off), HotSpotSpawnTries (12), HotSpotFadeSeconds
 (1.5). `ULureFishingSettings::OffSpotHabitat` is removed (DefaultWaterHabitat replaces it).
 
 ## 9. Layout schema (for the level-designer)

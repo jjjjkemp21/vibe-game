@@ -34,6 +34,17 @@ namespace LureHotSpotSpawnerPrivate
 		}
 		return false;
 	}
+
+	/** XY is within Radius of some player (Radius <= 0 or no players: the rule is off). */
+	bool IsNearAPlayer(const FVector2D& XY, const TArray<FVector2D>& PlayerXY, float Radius)
+	{
+		if (!(Radius > 0.f) || PlayerXY.Num() == 0)
+		{
+			return true;
+		}
+		const double RadiusSquared = static_cast<double>(Radius) * static_cast<double>(Radius);
+		return PlayerXY.ContainsByPredicate([&XY, RadiusSquared](const FVector2D& Player) { return FVector2D::DistSquared(XY, Player) <= RadiusSquared; });
+	}
 }
 
 ALureHotSpotSpawner::ALureHotSpotSpawner()
@@ -229,14 +240,32 @@ int32 ALureHotSpotSpawner::SpawnStep(float Seconds)
 ALureHotSpot* ALureHotSpotSpawner::TrySpawn(FName TypeId, const FLureHotSpotRow& Row, const FLureWaterAreaInfo* Area, TConstArrayView<FLureWaterAreaInfo> Areas,
 	const FGameplayTag& DefaultHabitat, const TArray<FVector2D>& PlayerXY, TArray<ALureHotSpot*>& Live, double Now)
 {
-	const int32 Tries = FMath::Max(1, GetDefault<ULureWaterSettings>()->HotSpotSpawnTries);
+	using namespace LureHotSpotSpawnerPrivate;
+	const ULureWaterSettings* Settings = GetDefault<ULureWaterSettings>();
+	const int32 Tries = FMath::Max(1, Settings->HotSpotSpawnTries);
 	const FName AreaId = Area ? Area->AreaId : NAME_None;
+	const float NearPlayer = Settings->HotSpotNearPlayerRadius;
+	if (Area && Area->Shape != ELureWaterAreaShape::Everywhere && NearPlayer > 0.f && PlayerXY.Num() > 0)
+	{
+		// A bounded area nobody is near: don't try (it would take a cap slot out of every player's reach).
+		const FBox2D Bounds = Area->GetBounds();
+		const double NearSquared = static_cast<double>(NearPlayer) * static_cast<double>(NearPlayer);
+		if (Bounds.bIsValid && !PlayerXY.ContainsByPredicate([&Bounds, NearSquared](const FVector2D& Player) { return Bounds.ComputeSquaredDistanceToPoint(Player) <= NearSquared; }))
+		{
+			return nullptr;
+		}
+	}
+	const float MinLifetime = FLureWaterRules::LifetimeFromRoll(Row, 0.f);
 	for (int32 Try = 0; Try < Tries; ++Try)
 	{
 		FVector2D XY;
 		if (!SamplePoint(Area, PlayerXY, XY))
 		{
 			return nullptr;
+		}
+		if (!IsNearAPlayer(XY, PlayerXY, NearPlayer))
+		{
+			continue;
 		}
 		float WaterZ = 0.f;
 		if (!IsGoodPoint(XY, AreaId, Row, Areas, DefaultHabitat, Live, Now, WaterZ))
@@ -245,7 +274,13 @@ ALureHotSpot* ALureHotSpotSpawner::TrySpawn(FName TypeId, const FLureHotSpotRow&
 		}
 		const float Lifetime = FLureWaterRules::LifetimeFromRoll(Row, Rng.FRand());
 		const int32 Seed = static_cast<int32>(Rng.GetUnsignedInt());
-		return ALureHotSpot::SpawnHotSpot(GetWorld(), HotSpotClass, TypeId, Row, AreaId, FVector(XY.X, XY.Y, WaterZ), Seed, Now, Lifetime);
+		// Walk its real drift path: it stops (its life ends, it fades out) before its disc would touch land.
+		const float Safe = SafeLifetime(XY, WaterZ, Row, Seed, Lifetime, Areas, DefaultHabitat);
+		if (Safe < MinLifetime)
+		{
+			continue;
+		}
+		return ALureHotSpot::SpawnHotSpot(GetWorld(), HotSpotClass, TypeId, Row, AreaId, FVector(XY.X, XY.Y, WaterZ), Seed, Now, FMath::Min(Lifetime, Safe));
 	}
 	UE_LOG(LogLureWater, Verbose, TEXT("Hot spots: no good point for %s in %s after %d tries."), *TypeId.ToString(),
 		AreaId.IsNone() ? TEXT("the default water") : *AreaId.ToString(), Tries);
@@ -337,26 +372,93 @@ bool ALureHotSpotSpawner::IsGoodPoint(const FVector2D& XY, FName AreaId, const F
 			return false;
 		}
 	}
-	// Where it will wander: fishable water of an allowed habitat on the same water level all the way round.
-	const double Ring = static_cast<double>(Row.DriftRange) + 0.5 * Row.Radius;
-	if (Ring >= 1.0)
+	// Its whole wander area: the center (above) and 3 rings (1/3, 2/3 and all of DriftRange + Radius / 2), 8 points
+	// each. A rock inside the area but between the points is caught by the drift path walk (SafeLifetime).
+	const double Outer = static_cast<double>(Row.DriftRange) + 0.5 * Row.Radius;
+	if (Outer >= 1.0)
 	{
-		for (int32 Step = 0; Step < 8; ++Step)
+		for (int32 RingIndex = 1; RingIndex <= 3; ++RingIndex)
 		{
-			const double Angle = UE_DOUBLE_TWO_PI * Step / 8.0;
-			const FVector2D Point = XY + FVector2D(FMath::Cos(Angle), FMath::Sin(Angle)) * Ring;
-			float PointZ = 0.f;
-			float PointDepth = 0.f;
-			if (!FLureWaterQuery::ProbeWater(World, Point, PointZ, PointDepth) || PointDepth < MinBiteDepth || FMath::Abs(PointZ - OutWaterZ) > 1.f)
+			const double Ring = Outer * RingIndex / 3.0;
+			const int32 Points = 8;
+			for (int32 Step = 0; Step < Points; ++Step)
 			{
-				return false;
-			}
-			const int32 PointIndex = FLureWaterRules::FindAreaIndex(Areas, Point, PointDepth);
-			if (!AllowsHabitat(Row, PointIndex != INDEX_NONE ? Areas[PointIndex].HabitatTag : DefaultHabitat))
-			{
-				return false;
+				const double Angle = UE_DOUBLE_TWO_PI * (Step + (RingIndex == 2 ? 0.5 : 0.0)) / Points; // the middle ring turned half a step
+				if (!IsFishableAt(XY + FVector2D(FMath::Cos(Angle), FMath::Sin(Angle)) * Ring, OutWaterZ, Row, Areas, DefaultHabitat))
+				{
+					return false;
+				}
 			}
 		}
 	}
 	return true;
+}
+
+bool ALureHotSpotSpawner::IsFishableAt(const FVector2D& Point, float WaterZ, const FLureHotSpotRow& Row, TConstArrayView<FLureWaterAreaInfo> Areas,
+	const FGameplayTag& DefaultHabitat) const
+{
+	using namespace LureHotSpotSpawnerPrivate;
+	const float MinBiteDepth = FMath::Max(0.f, GetDefault<ULureWaterSettings>()->MinBiteDepth);
+	float PointZ = 0.f;
+	float PointDepth = 0.f;
+	if (!FLureWaterQuery::ProbeWater(GetWorld(), Point, PointZ, PointDepth) || PointDepth < MinBiteDepth || FMath::Abs(PointZ - WaterZ) > 1.f)
+	{
+		return false;
+	}
+	const int32 PointIndex = FLureWaterRules::FindAreaIndex(Areas, Point, PointDepth);
+	return AllowsHabitat(Row, PointIndex != INDEX_NONE ? Areas[PointIndex].HabitatTag : DefaultHabitat);
+}
+
+float ALureHotSpotSpawner::SafeLifetime(const FVector2D& Anchor, float WaterZ, const FLureHotSpotRow& Row, int32 Seed, float Lifetime,
+	TConstArrayView<FLureWaterAreaInfo> Areas, const FGameplayTag& DefaultHabitat) const
+{
+	// The same numbers ALureHotSpot::SpawnHotSpot keeps in its state.
+	const double Radius = FMath::Max(1.0, FMath::IsFinite(Row.Radius) ? static_cast<double>(Row.Radius) : 1.0);
+	const float Range = FMath::IsFinite(Row.DriftRange) ? FMath::Max(0.f, Row.DriftRange) : 0.f;
+	const float Speed = FMath::IsFinite(Row.DriftSpeed) ? FMath::Max(0.f, Row.DriftSpeed) : 0.f;
+	if (!(Range > 0.f && Speed > 0.f && Lifetime > 0.f))
+	{
+		return Lifetime; // it stays at its anchor, which IsGoodPoint checked
+	}
+	// The disc is the center and 8 points on its edge, probed whenever the center has moved a quarter radius since the last
+	// probe. Time steps are short enough that the center never moves more than that between two steps (its peak speed is at
+	// most sqrt(2) x the RMS DriftSpeed, FLureWaterRules::DriftOffset).
+	const double Spacing = FMath::Max(5.0, 0.25 * Radius);
+	const double MaxStep = Spacing / (UE_DOUBLE_SQRT_2 * Speed);
+	const int32 Steps = FMath::Clamp(FMath::CeilToInt32(Lifetime / MaxStep), 1, 4096);
+	const double Dt = static_cast<double>(Lifetime) / Steps;
+	auto DiscIsFishable = [&](const FVector2D& Center)
+	{
+		if (!IsFishableAt(Center, WaterZ, Row, Areas, DefaultHabitat))
+		{
+			return false;
+		}
+		for (int32 Point = 0; Point < 8; ++Point)
+		{
+			const double Angle = UE_DOUBLE_TWO_PI * Point / 8.0;
+			if (!IsFishableAt(Center + FVector2D(FMath::Cos(Angle), FMath::Sin(Angle)) * Radius, WaterZ, Row, Areas, DefaultHabitat))
+			{
+				return false;
+			}
+		}
+		return true;
+	};
+	FVector2D LastProbed = Anchor;
+	bool bProbed = false;
+	for (int32 Step = 0; Step <= Steps; ++Step)
+	{
+		const double Age = Step * Dt;
+		const FVector2D Center = Anchor + FLureWaterRules::DriftOffset(Range, Speed, Seed, Age);
+		if (bProbed && FVector2D::DistSquared(Center, LastProbed) < Spacing * Spacing)
+		{
+			continue;
+		}
+		if (!DiscIsFishable(Center))
+		{
+			return static_cast<float>(FMath::Max(0.0, Age - Dt)); // the last step before it would touch land
+		}
+		LastProbed = Center;
+		bProbed = true;
+	}
+	return Lifetime;
 }

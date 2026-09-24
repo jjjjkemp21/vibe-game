@@ -78,7 +78,14 @@ public:
 
 	/** Unbounded water (the default water, "everywhere" areas) gets hot spots within this distance of a player, cm. */
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category="Hot Spots", meta=(ClampMin="0"))
-	float OpenWaterSpawnRadius = 3000.f;
+	float OpenWaterSpawnRadius = 1800.f;
+
+	/**
+	 *  Every hot spot spawns within this distance of some player, cm (bounded areas too), so none appear out of casting reach or
+	 *  in an area nobody is near. 0 = off. With no player in the world (an empty server, test maps) the rule is skipped.
+	 */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category="Hot Spots", meta=(ClampMin="0"))
+	float HotSpotNearPlayerRadius = 2500.f;
 
 	/** Random points tried per spawn before giving up until the next check. */
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category="Hot Spots", meta=(ClampMin="1"))

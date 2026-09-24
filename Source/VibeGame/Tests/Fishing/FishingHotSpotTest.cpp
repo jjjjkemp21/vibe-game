@@ -11,6 +11,7 @@
 #include "Fishing/LureHotSpotSpawner.h"
 #include "Fishing/LureHotSpotVisualComponent.h"
 #include "HAL/IConsoleManager.h"
+#include "Misc/ScopeExit.h"
 #include "Net/RepLayout.h"
 #include "Net/UnrealNetwork.h"
 #include "UObject/CoreNet.h"
@@ -524,7 +525,77 @@ bool FLureHotSpotSpawnerOpenWater::RunTest(const FString& Parameters)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLureHotSpotDriftInWorld, "Project.Fishing.Water.HotSpot.LifetimeAndDriftInWorld", LureWaterTest::Flags)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLureHotSpotSpawnerNearPlayerRadius, "Project.Fishing.Water.HotSpot.SpawnerNearPlayerRadius", LureWaterTest::Flags)
+bool FLureHotSpotSpawnerNearPlayerRadius::RunTest(const FString& Parameters)
+{
+	// T-027b: with players in the world, every hot spot spawns within HotSpotNearPlayerRadius of one (bounded areas too): a
+	// reef area straddling the radius only gets hot spots inside it, and an area beyond it gets none. 0 turns the rule off.
+	using namespace HotSpotLocal;
+	ULureWaterSettings* Settings = GetMutableDefault<ULureWaterSettings>();
+	const float SavedNear = Settings->HotSpotNearPlayerRadius;
+	ON_SCOPE_EXIT { GetMutableDefault<ULureWaterSettings>()->HotSpotNearPlayerRadius = SavedNear; };
+	Settings->HotSpotNearPlayerRadius = 2500.f;
+
+	FWaterWorld World;
+	if (!World.Create(*this))
+	{
+		return false;
+	}
+	World.AddSeabed(-500.f, FVector2D(0.0, 0.0), 9000.f);
+	World.AddCircleArea(TEXT("qa_straddle"), TEXT("Habitat.Reef"), FVector2D(2500.0, 0.0), 1500.f);
+	World.AddCircleArea(TEXT("qa_far"), TEXT("Habitat.Reef"), FVector2D(-7000.0, 0.0), 1200.f);
+	FLureHotSpotRow Reef = SpawnRow(0.5f, 6, { TEXT("Habitat.Reef") });
+	Reef.Radius = 100.f;
+	Reef.MinSpacing = 200.f;
+	const TStrongObjectPtr<UDataTable> Table(MakeTable({ { TEXT("QA_Reef"), Reef } }));
+	ALureHotSpotSpawner* Spawner = MakeSpawner(World, Table.Get(), 27);
+	ALurePlayerCharacter* Player = World.Spawn(*this);
+	if (!TestNotNull(TEXT("the spawner"), Spawner) || !TestNotNull(TEXT("the player"), Player))
+	{
+		return false;
+	}
+	Spawner->MaxHotSpots = 50;
+	const FVector2D PlayerXY(Player->GetActorLocation().X, Player->GetActorLocation().Y);
+	auto CountIn = [&World](FName AreaId)
+	{
+		int32 Count = 0;
+		for (const ALureHotSpot* HotSpot : ALureHotSpotSpawner::GetLiveHotSpots(World.World, World.Now()))
+		{
+			Count += HotSpot->GetState().AreaId == AreaId ? 1 : 0;
+		}
+		return Count;
+	};
+
+	for (int32 Step = 0; Step < 10; ++Step)
+	{
+		Spawner->SpawnStep(10.f);
+	}
+	const TArray<ALureHotSpot*> Near = ALureHotSpotSpawner::GetLiveHotSpots(World.World, World.Now());
+	TestTrue(FString::Printf(TEXT("radius 2500: hot spots in the straddling area (%d)"), CountIn(TEXT("qa_straddle"))), CountIn(TEXT("qa_straddle")) >= 3);
+	TestEqual(TEXT("radius 2500: none in the area beyond it"), CountIn(TEXT("qa_far")), 0);
+	int32 Beyond = 0;
+	for (const ALureHotSpot* HotSpot : Near)
+	{
+		const FVector Anchor(HotSpot->GetState().Anchor);
+		Beyond += FVector2D::Distance(FVector2D(Anchor.X, Anchor.Y), PlayerXY) > 2500.0 + 0.1 ? 1 : 0;
+	}
+	TestEqual(TEXT("radius 2500: every spawn point is within it of the player (farther ones are rejected)"), Beyond, 0);
+
+	// 0 = off: the far area gets hot spots too.
+	for (ALureHotSpot* HotSpot : Near)
+	{
+		HotSpot->Destroy();
+	}
+	Settings->HotSpotNearPlayerRadius = 0.f;
+	for (int32 Step = 0; Step < 10; ++Step)
+	{
+		Spawner->SpawnStep(10.f);
+	}
+	TestTrue(FString::Printf(TEXT("radius 0 (off): hot spots in the far area (%d)"), CountIn(TEXT("qa_far"))), CountIn(TEXT("qa_far")) >= 3);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLureHotSpotDriftInWorld,"Project.Fishing.Water.HotSpot.LifetimeAndDriftInWorld", LureWaterTest::Flags)
 bool FLureHotSpotDriftInWorld::RunTest(const FString& Parameters)
 {
 	// In a world the actor follows its drift (within DriftRange), fades in and out, and is gone at its end time.
