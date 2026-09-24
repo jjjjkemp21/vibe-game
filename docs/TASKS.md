@@ -4,15 +4,16 @@ Format: `- [ ] T-### Title (owner) - acceptance: ... In progress: <agent>, start
 Done tasks move to "Done" as one line; their full text and old Status blocks are in docs/TASKS_ARCHIVE.md. Grep for "In progress" before starting work (don't read the whole file).
 Last processed playtest folder: (none)
 
-## Status 2026-09-23 ~18:15 (lead): see the memory snapshot for agent IDs
+## Status 2026-09-23 ~19:20 (lead): see the memory snapshot for agent IDs
 A2 lanes:
-- eng1 T-027: built 740/740; QA plus water-area painting running
-- eng2 T-028: senior QA PASS (73817be, 41 tests, 766/766); merging main into eng2 + adapting T-029's FightFishViewAdapter (unreal-engineer-mid-high); then T-028b fixes
+- eng1 T-027: built 740/740; water areas + hot spots painted (cbab532); QA running; then T-027b (hot spots within reach)
+- eng2 T-028: senior QA PASS (73817be); MERGED to main (787a1b9, 855/856 in lane, only the DT_FishSpecies guard). T-028b fixes running in eng2 (unreal-engineer-mid-high)
 - eng3 T-029: MERGED to main (55ad039), 802/803 after merging main (only the DT_FishSpecies binary guard, fixed by the re-import)
 - eng4 T-030: building (senior)
 - eng5 T-032: MERGED to main (b799ae6), 763/763 after merging main
 Curled fish in the cooler: designer APPROVED (1b725ad; Saved/AgentLogs/design/20260923-190000-curled-fish-rereview.md). Shop view: cooler on the floor, front (latch) toward the player. Import A_Fish_Curled with the other art.
 Then: merge all (git merge main in each lane, then ff), editor imports + ABP work, level rebuild, full A2 playtest, designer, push.
+Agent efficiency (Jimmy): lead-only rules moved to docs/LEAD.md, TASKS archive, docs/CODEMAP.md in progress (unreal-engineer-junior-medium, main); housekeeping tick every 30 min.
 
 ## Now: foundation (after setup)
 
