@@ -13,6 +13,7 @@
 #include "Fishing/FishingSpots.h"
 #include "GameFramework/Pawn.h"
 #include "Interaction/LureInteractionSubsystem.h"
+#include "Misc/Crc.h"
 #include "Net/UnrealNetwork.h"
 #include "Progression/LureProgressionComponent.h"
 #include "Progression/LureProgressionLibrary.h"
@@ -220,6 +221,20 @@ FTransform ALureSellCounter::GetPlacementSpot() const
 	return FTransform(FRotator(0.0f, GetActorRotation().Yaw + 90.0f, 0.0f), Chosen);
 }
 
+int32 ALureSellCounter::GetContentsToken() const
+{
+	// Per fish: the CRC of its record summary (species, rarity, modifiers, weight, level, value, seed...), lower case (an FName
+	// may arrive on a client in another casing). Sorted, so the order the items registered in doesn't matter; duplicates count.
+	TArray<uint32> Fish;
+	for (const ALureFishItem* Item : GetFishOnCounter())
+	{
+		Fish.Add(FCrc::StrCrc32(*Item->GetFish().ToString().ToLower()));
+	}
+	Fish.Sort();
+	const uint32 Token = FCrc::MemCrc32(Fish.GetData(), Fish.Num() * sizeof(uint32), static_cast<uint32>(Fish.Num()));
+	return Token == 0u ? 1 : static_cast<int32>(Token);
+}
+
 // ---- Server ----
 
 FLureSaleResult ALureSellCounter::AuthoritySell(APawn* Seller)
@@ -347,6 +362,11 @@ FLureInteraction ALureSellCounter::GetInteraction(const APawn* Pawn, ELureIntera
 			FText::Format(LOCTEXT("Sell", "Sell {0} fish ({1} coins)"), FText::AsNumber(OnCounter.Num()), FText::AsNumber(QuoteAll())));
 	}
 	return FLureInteraction::Make(ELureInteractVerb::TakeFishFromCounter, LOCTEXT("TakeBack", "Take a fish back")); // the last one put there (server order)
+}
+
+int32 ALureSellCounter::GetInteractionStateToken(const APawn* Pawn, ELureInteractVerb Verb) const
+{
+	return Verb == ELureInteractVerb::SellCounter ? GetContentsToken() : 0;
 }
 
 bool ALureSellCounter::PerformInteraction(APawn* Pawn, ELureInteractVerb Verb)

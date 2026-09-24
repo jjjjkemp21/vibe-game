@@ -4,6 +4,7 @@
 #include "Animation/AnimClassInterface.h"
 #include "Animation/AnimSequenceBase.h"
 #include "AnimNodes/AnimNode_BlendListByEnum.h"
+#include "Animation/AnimNode_SequencePlayer.h"
 #include "Fish/LureFightFish.h"
 
 void UFishAnimInstance::SetAnimState(const FFishAnimState& State)
@@ -52,7 +53,49 @@ bool UFishAnimInstance::SetHeldPose(UAnimSequenceBase* Pose, float Time)
 	DisplayPose = Pose;
 	DisplayPoseTime = FMath::IsFinite(Time) ? FMath::Max(0.f, Time) : 0.f;
 	bHeldPose = true;
+	// The Curled player reads Start Position only when its pin (re)activates: a fish already Curled would keep the old
+	// time. Seek it on the next update (game thread, before the graph updates; T-030l).
+	bHeldPoseSeekPending = true;
 	return true;
+}
+
+bool UFishAnimInstance::SeekHeldPosePlayer()
+{
+	const UClass* AnimClass = GetClass();
+	const IAnimClassInterface* AnimInterface = AnimClass ? IAnimClassInterface::GetFromClass(AnimClass) : nullptr;
+	if (!AnimInterface)
+	{
+		return false;
+	}
+	const TArray<FStructProperty*>& Nodes = AnimInterface->GetAnimNodeProperties();
+	const FArrayProperty* BlendPoseProperty = FindFProperty<FArrayProperty>(FAnimNode_BlendListBase::StaticStruct(), TEXT("BlendPose"));
+	const int32 Value = static_cast<int32>(EFishAnimRole::Curled);
+	bool bSeeked = false;
+	for (const FStructProperty* Property : Nodes)
+	{
+		if (!BlendPoseProperty || !Property || !Property->Struct || !Property->Struct->IsChildOf(FAnimNode_BlendListByEnum::StaticStruct()))
+		{
+			continue;
+		}
+		const FAnimNode_BlendListByEnum* Blend = Property->ContainerPtrToValuePtr<FAnimNode_BlendListByEnum>(this);
+		const TArray<int32>& EnumToPose = Blend->GetEnumToPoseIndex();
+		const int32 PoseIndex = EnumToPose.IsValidIndex(Value) ? EnumToPose[Value] : 0;
+		// BlendPose is protected: read it through reflection. A pose link's LinkID indexes the node list directly (as
+		// FPoseLinkBase::AttemptRelink does; only node ids are reversed).
+		FScriptArrayHelper Links(BlendPoseProperty, BlendPoseProperty->ContainerPtrToValuePtr<void>(Blend));
+		if (PoseIndex <= 0 || !Links.IsValidIndex(PoseIndex))
+		{
+			continue;
+		}
+		const FPoseLink* Link = reinterpret_cast<const FPoseLink*>(Links.GetRawPtr(PoseIndex));
+		const FStructProperty* Linked = Nodes.IsValidIndex(Link->LinkID) ? Nodes[Link->LinkID] : nullptr;
+		if (Linked && Linked->Struct && Linked->Struct->IsChildOf(FAnimNode_SequencePlayerBase::StaticStruct()))
+		{
+			Linked->ContainerPtrToValuePtr<FAnimNode_SequencePlayerBase>(this)->SetAccumulatedTime(DisplayPoseTime);
+			bSeeked = true;
+		}
+	}
+	return bSeeked;
 }
 
 bool UFishAnimInstance::CanPlayRole(EFishAnimRole InRole) const
@@ -92,5 +135,10 @@ void UFishAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 	if (!bHeldPose)
 	{
 		UpdateFromOwner();
+	}
+	else if (bHeldPoseSeekPending)
+	{
+		bHeldPoseSeekPending = false;
+		SeekHeldPosePlayer();
 	}
 }
