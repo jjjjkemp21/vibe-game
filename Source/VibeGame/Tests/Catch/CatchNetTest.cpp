@@ -459,4 +459,96 @@ bool FCatchNetNoCheats::RunTest(const FString& Parameters)
 	return true;
 }
 
+// T-030h: a sale that races a take-back sells exactly what the seller's prompt showed, or nothing (then says so and the
+// prompt refreshes). The Sell request carries the counter's contents token from the seller's machine.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCatchNetSaleMatchesPrompt, "Project.Catch.Net.SaleSellsWhatThePromptShowed", LCT::Flags)
+bool FCatchNetSaleMatchesPrompt::RunTest(const FString& Parameters)
+{
+	UE::Net::FTestWorlds Worlds(TEXT("/Engine/Maps/Entry"), TEXT("/Script/VibeGame.LureGameMode"));
+	LureCatchNetTest::FNet Net(Worlds);
+	if (!Net.Create(*this))
+	{
+		return false;
+	}
+	constexpr int32 Taker = 0;
+	constexpr int32 Seller = 1;
+	ALureSellCounter* Counter = Net.SpawnCounter(FVector(150.0f, 0.0f, LCT::DockTop), 180.0f);
+	if (!TestNotNull(TEXT("counter"), Counter) || !TestTrue(TEXT("the counter reaches the clients"), Net.Until([&]() { return Net.On(0, Counter) && Net.On(1, Counter); })))
+	{
+		return false;
+	}
+	// Server shortcut: Player lands Fish, takes it in hand and puts it on the counter (the keys are tested elsewhere).
+	auto PutOn = [&](int32 Player, const FFishInstance& Fish) -> ALureFishItem*
+	{
+		ALureFishItem* Item = Cast<ALureFishItem>(ULureCatchLibrary::HandleFishLanded(Net.Players[Player], Fish).FishItem);
+		return (Item && LCT::HandsOf(Net.Players[Player])->AuthorityTakeInHand(Item) && Counter->AuthorityPlaceFish(Net.Players[Player], Item)) ? Item : nullptr;
+	};
+	auto BothSee = [&](int32 Num) { return Net.Until([&]() { return Net.On(0, Counter)->GetFishOnCounter().Num() == Num && Net.On(1, Counter)->GetFishOnCounter().Num() == Num; }); };
+	auto SellPrompt = [&]() { return Net.Keys(Seller)->ResolveInteraction(ELureInteractKey::Primary).Prompt.ToString(); };
+	ULureProgressionComponent* SellerProgress = LCT::ProgressionOf(Net.Players[Seller]);
+	ULureProgressionComponent* TakerProgress = LCT::ProgressionOf(Net.Players[Taker]);
+
+	// The seller's Bonefish first, the taker's snapper last (take-back takes the last one put on).
+	ALureFishItem* A = PutOn(Seller, LCT::MakeFish(TEXT("Bonefish"), 45, 1, 1.5f, 801));
+	ALureFishItem* B = PutOn(Taker, LCT::MakeFish(TEXT("CoralSnapper"), 20, 1, 1.0f, 802));
+	if (!TestNotNull(TEXT("both fish on the counter"), A) || !B || !TestTrue(TEXT("both clients see 2 fish"), BothSee(2)))
+	{
+		return false;
+	}
+	for (int32 Client = 0; Client < 2; ++Client)
+	{
+		Net.LookAt(Client, Net.On(Client, Counter)->GetActorLocation());
+	}
+	Worlds.TickAll(2);
+	TestEqual(TEXT("the seller's prompt"), SellPrompt(), FString(TEXT("Sell 2 fish (65 coins)")));
+
+	// 1. The take-back reaches the server first; the seller's E was pressed on the 2-fish prompt (its machine hasn't heard yet).
+	const int32 Money0 = SellerProgress->GetMoney();
+	const int32 TakerMoney0 = TakerProgress->GetMoney();
+	TestTrue(TEXT("server: the taker takes the snapper back"), Counter->AuthorityTakeBack(Net.Players[Taker]));
+	TestEqual(TEXT("the seller's machine still shows 2 fish"), Net.On(Seller, Counter)->GetFishOnCounter().Num(), 2);
+	TestTrue(TEXT("the seller presses E"), Net.Keys(Seller)->PressKey(ELureInteractKey::Primary));
+	const bool bTold = Net.Until([&]() { return LCT::NoticesOf(Net.Mine(Seller)).Contains(TEXT("That just changed: nothing done")); });
+	TestTrue(FString::Printf(TEXT("the seller is told, with the new offer (%s)"), *LCT::NoticesOf(Net.Mine(Seller))),
+		bTold && LCT::NoticesOf(Net.Mine(Seller)).Contains(TEXT("Sell 1 fish (45 coins)")));
+	Worlds.TickAll(10);
+	TestEqual(TEXT("... nothing paid (not 45 for 1 of the 2 fish shown)"), SellerProgress->GetMoney(), Money0);
+	TestTrue(TEXT("... the Bonefish still lies on the counter (server)"), IsValid(A) && A->GetCounter() == Counter && Counter->GetFishOnCounter().Num() == 1);
+	TestFalse(TEXT("... no sale notice"), LCT::NoticesOf(Net.Mine(Seller)).Contains(TEXT("Sold")));
+	TestTrue(TEXT("the seller's prompt refreshes"), Net.Until([&]() { return SellPrompt() == TEXT("Sell 1 fish (45 coins)"); }));
+	TestTrue(TEXT("E again"), Net.Keys(Seller)->PressKey(ELureInteractKey::Primary));
+	TestTrue(TEXT("... sells what it shows"), Net.Until([&]() { return SellerProgress->GetMoney() == Money0 + 45; }));
+	TestTrue(TEXT("... \"Sold 1 fish for 45 coins\""), Net.Until([&]() { return LCT::NoticesOf(Net.Mine(Seller)).Contains(TEXT("Sold 1 fish for 45 coins")); }));
+	TestTrue(TEXT("the snapper is in the taker's hand on its machine"), Net.Until([&]() { return Net.Mine(Taker)->GetHands()->GetHeldFish() != nullptr; }));
+
+	// 2. Both keys in the same frame: whichever the server runs first, the seller gets all the prompt showed or nothing.
+	ALureFishItem* C = PutOn(Seller, LCT::MakeFish(TEXT("Bonefish"), 30, 1, 1.5f, 803));
+	TestTrue(TEXT("server: the taker puts the snapper back (last)"), C && Counter->AuthorityPlaceFish(Net.Players[Taker], B));
+	if (!TestTrue(TEXT("both clients see 2 fish again"), BothSee(2)))
+	{
+		return false;
+	}
+	Worlds.TickAll(2);
+	TestEqual(TEXT("the seller's prompt"), SellPrompt(), FString(TEXT("Sell 2 fish (50 coins)")));
+	TestEqual(TEXT("the taker's F"), LCT::VerbName(Net.Keys(Taker)->ResolveInteraction(ELureInteractKey::Secondary).Verb), LCT::VerbName(ELureInteractVerb::TakeFishFromCounter));
+	const int32 Money1 = SellerProgress->GetMoney();
+	TestTrue(TEXT("both press in the same frame"), Net.Keys(Taker)->PressKey(ELureInteractKey::Secondary) && Net.Keys(Seller)->PressKey(ELureInteractKey::Primary));
+	Worlds.TickAll(60);
+	const int32 Paid = SellerProgress->GetMoney() - Money1;
+	const bool bTakenBack = LCT::HandsOf(Net.Players[Taker])->GetHeldFish() == B;
+	AddInfo(FString::Printf(TEXT("%s ran first: paid %d"), bTakenBack ? TEXT("the take-back") : TEXT("the sale"), Paid));
+	TestTrue(FString::Printf(TEXT("the seller is paid the whole prompt or nothing (%d)"), Paid), Paid == 50 || Paid == 0);
+	if (Paid == 50)
+	{
+		TestTrue(TEXT("sold: the counter is empty and the take-back did nothing"), Counter->GetFishOnCounter().Num() == 0 && !bTakenBack);
+	}
+	else
+	{
+		TestTrue(TEXT("refused: the snapper in the taker's hand, the Bonefish on the counter"), bTakenBack && IsValid(C) && C->GetCounter() == Counter);
+		TestTrue(TEXT("... and the seller is told"), Net.Until([&]() { return LCT::NoticesOf(Net.Mine(Seller)).Contains(TEXT("Sell 1 fish (30 coins)")); }));
+	}
+	TestEqual(TEXT("the taker is never paid"), TakerProgress->GetMoney(), TakerMoney0);
+	return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS && WITH_EDITOR

@@ -165,7 +165,14 @@ FLureResolvedInteraction ULureInteractionComponent::ResolveInteraction(ELureInte
 bool ULureInteractionComponent::PressKey(ELureInteractKey Key)
 {
 	const FLureResolvedInteraction Resolved = ResolveInteraction(Key);
-	return Resolved.HasVerb() && RequestInteract(Resolved.Target, Key, Resolved.Verb);
+	if (!Resolved.HasVerb())
+	{
+		return false;
+	}
+	// T-030h: what the prompt acts on, as this machine sees it now (the prompt drawn this frame), e.g. the fish on the counter.
+	const ILureInteractable* Interactable = Cast<ILureInteractable>(Resolved.Target);
+	const int32 SeenState = Interactable ? Interactable->GetInteractionStateToken(GetPawn(), Resolved.Verb) : 0;
+	return RequestInteract(Resolved.Target, Key, Resolved.Verb, SeenState);
 }
 
 void ULureInteractionComponent::HandleInteractPressed()
@@ -178,7 +185,7 @@ void ULureInteractionComponent::HandleAltInteractPressed()
 	PressKey(ELureInteractKey::Secondary);
 }
 
-bool ULureInteractionComponent::RequestInteract(AActor* Target, ELureInteractKey Key, ELureInteractVerb Verb)
+bool ULureInteractionComponent::RequestInteract(AActor* Target, ELureInteractKey Key, ELureInteractVerb Verb, int32 ExpectedState)
 {
 	const AActor* Owner = GetOwner();
 	if (!Target || !Owner || Verb == ELureInteractVerb::None)
@@ -187,18 +194,18 @@ bool ULureInteractionComponent::RequestInteract(AActor* Target, ELureInteractKey
 	}
 	if (Owner->HasAuthority())
 	{
-		return TryInteract(Target, Key, Verb);
+		return TryInteract(Target, Key, Verb, ExpectedState);
 	}
-	ServerInteract(Target, Key, Verb);
+	ServerInteract(Target, Key, Verb, ExpectedState);
 	return true;
 }
 
-void ULureInteractionComponent::ServerInteract_Implementation(AActor* Target, ELureInteractKey Key, ELureInteractVerb Verb)
+void ULureInteractionComponent::ServerInteract_Implementation(AActor* Target, ELureInteractKey Key, ELureInteractVerb Verb, int32 ExpectedState)
 {
-	TryInteract(Target, Key, Verb);
+	TryInteract(Target, Key, Verb, ExpectedState);
 }
 
-bool ULureInteractionComponent::TryInteract(AActor* Target, ELureInteractKey Key, ELureInteractVerb Verb)
+bool ULureInteractionComponent::TryInteract(AActor* Target, ELureInteractKey Key, ELureInteractVerb Verb, int32 ExpectedState)
 {
 	const AActor* Owner = GetOwner();
 	if (!Owner || !Owner->HasAuthority())
@@ -232,6 +239,23 @@ bool ULureInteractionComponent::TryInteract(AActor* Target, ELureInteractKey Key
 		UE_LOG(LogLureProgression, Verbose, TEXT("%s: %s no longer offers that (asked %d, now %d); refused."), *GetNameSafe(Pawn), *GetNameSafe(Target),
 			static_cast<int32>(Verb), static_cast<int32>(Now.Verb));
 		return false;
+	}
+	// T-030h: the same verb on changed contents (a fish taken back from the counter between the prompt and the key) would do
+	// more or less than the prompt showed: refused. The player's prompt refreshes from replication; the notice says why.
+	if (ExpectedState != 0)
+	{
+		const int32 NowState = Interactable->GetInteractionStateToken(Pawn, Verb);
+		if (NowState != ExpectedState)
+		{
+			UE_LOG(LogLureProgression, Log, TEXT("%s: %s changed since the prompt (verb %d, state %d, seen %d); refused."), *GetNameSafe(Pawn), *GetNameSafe(Target),
+				static_cast<int32>(Verb), NowState, ExpectedState);
+			if (ULureHandsComponent* Hands = ULureHandsComponent::Get(Pawn))
+			{
+				Hands->ClientNotice(Now.Prompt.IsEmpty() ? FString(TEXT("That just changed: nothing done"))
+					: FString::Printf(TEXT("That just changed: nothing done. Now: %s"), *Now.Prompt.ToString()));
+			}
+			return false;
+		}
 	}
 	return Interactable->PerformInteraction(Pawn, Verb);
 }
