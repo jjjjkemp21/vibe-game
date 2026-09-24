@@ -6,7 +6,7 @@ Last processed playtest folder: (none)
 
 ## Status 2026-09-23 ~19:20 (lead): see the memory snapshot for agent IDs
 A2 lanes:
-- eng1 T-027: built 740/740; water areas + hot spots painted (cbab532); QA running; then T-027b (hot spots within reach)
+- eng1 T-027: QA (36 tests, bcafb87; 777/778, Saved/AgentLogs/qa/20260923-192528-T027.md): FAIL on B1 (hot spots drift over rocks). Fixing B1 + T-027b reach (unreal-engineer-junior-medium)
 - eng2 T-028: senior QA PASS (73817be); MERGED to main (787a1b9, 855/856 in lane, only the DT_FishSpecies guard). T-028b fixes running in eng2 (unreal-engineer-mid-high)
 - eng3 T-029: MERGED to main (55ad039), 802/803 after merging main (only the DT_FishSpecies binary guard, fixed by the re-import)
 - eng4 T-030: building (senior)
