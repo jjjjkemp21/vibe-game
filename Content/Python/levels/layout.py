@@ -262,11 +262,11 @@ def on_screen_to_scene(hex_str, preset):
 # Expansion: blocks -> primitives
 # ---------------------------------------------------------------------------------------------------------------------
 def _prim(pid, shape, center, size, yaw=0.0, pitch=0.0, roll=0.0, mat="default", collision="block", shadow=True,
-          group="", tags=None, zone="", visible=True):
+          group="", tags=None, zone="", visible=True, step_up=True):
     return {
         "id": pid, "shape": shape, "center": v3(center), "size": v3(size), "yaw": float(yaw), "pitch": float(pitch),
         "roll": float(roll), "mat": mat, "collision": collision, "shadow": bool(shadow), "group": group,
-        "tags": list(tags or []), "zone": zone, "visible": bool(visible),
+        "tags": list(tags or []), "zone": zone, "visible": bool(visible), "step_up": bool(step_up),
     }
 
 
@@ -288,6 +288,7 @@ def _common(block):
         "tags": block.get("tags", []),
         "zone": block.get("zone", ""),
         "visible": block.get("visible", True),
+        "step_up": block.get("step_up", True),  # false: characters cannot step up onto it (thin posts, rims)
     }
 
 
@@ -370,7 +371,8 @@ def _expand_pier(block):
         pmat = posts.get("mat", common["mat"])
         count = max(1, int(round(run / spacing)))
         lateral = width / 2.0 + psize / 2.0
-        pcommon = dict(common, mat=pmat)
+        # Posts stick up past the deck edge: never let the player step up and perch on a post top.
+        pcommon = dict(common, mat=pmat, step_up=False)
         for i in range(count + 1):
             along = run * i / count
             for side, s in (("l", -1.0), ("r", 1.0)):
