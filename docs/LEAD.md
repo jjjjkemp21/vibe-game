@@ -7,6 +7,8 @@ The lead (the main Claude Code session) reads this at the start of every session
 2. Schedule the housekeeping tick (see Housekeeping below). It is session-only.
 3. `git worktree list` and each lane's `git log --oneline -3` to see the real state.
 
+GitHub: remote `origin` = private repo https://github.com/jjjjkemp21/vibe-game (`gh` at `C:\Program Files\GitHub CLI\gh.exe`). Only the lead pushes `main`, and only after the release gate (CLAUDE.md rule 10, full checklist in the `verification` skill).
+
 Lead-only scripts: `tools/lead-check.ps1` (running agents' context size + disk; flags HANDOFF / JANITOR) and `tools/codemap.ps1` (regenerates the generated part of docs/CODEMAP.md).
 
 ## Running the team
@@ -16,15 +18,23 @@ Lead-only scripts: `tools/lead-check.ps1` (running agents' context size + disk; 
 - Lanes (lead side): the main checkout is the editor lane (editor-operator, playtester, art commits, integration by the lead). The lead merges a lane into `main` after its tests pass (`git merge main` in the lane, then `git merge --ff-only lane/<x>` in main), then rebuilds the main checkout (editor closed briefly) before editor or playtest work. Use as many lanes and agents as the work needs for speed and accuracy (Jimmy, 2026-09-23). Give each lane one task, and pick parallel tasks that don't edit the same files; if two must share a file (e.g. DT_Movement), keep the edits additive and say so in both briefs. Create a lane with `git worktree add ../VibeGame-lanes/<lane> -b lane/<lane> <base>` and copy `tools/local.settings.json` into it. A QA lane (`qa1`) exists for independent test work while the editor runs in main. Anything touching the running editor, or closing/building/relaunching it, is serialized by the lead.
 - After each merge batch, rerun `tools/codemap.ps1` so docs/CODEMAP.md stays true.
 
+## Starting agents (optimized pipeline; Jimmy, 2026-09-24)
+- **Group by shared context, split by independence** (Jimmy, 2026-09-24; refines his earlier "don't stack one agent with many tasks"):
+  - Split into parallel agents when the pieces touch different files or systems and don't need each other's understanding: they finish faster side by side.
+  - Keep pieces with one agent, in order, when they share files or functions, depend on each other, or need the same big reading (e.g. T-032b parts B+C). A second agent would spend 50-100k re-reading.
+  - A follow-up in an area an agent just finished: resume that agent (SendMessage) if its context is under ~150k and still relevant; otherwise start a fresh agent with pointers.
+  - Never bundle past the context limit (250k; seniors 400k): stage it instead. Never bundle unrelated items just to have fewer agents (the first T-030h brief bundled 3 unrelated fixes).
+- Agents start lean by design: each agent file has a `tools:` allowlist (no Agent/Artifact/Workflow/connector tools), preloads its pipeline skill with `skills:`, and carries its role's standard protocol (lane start/finish, commit, handoff at ~250k, report format). Junior/senior files are generated from the mid file: edit the mid file, then run `tools/gen-agents.ps1`.
+- Steps: pick the level (table below) -> `tools/lane.ps1 -Free` gives a clean lane already at main (creates the next one if none is free; `-List` shows all) -> spawn with `run_in_background` -> add the task line to docs/TASKS.md and the agent to the memory snapshot table.
+- New lanes need a full first compile (slow, serialized by the build mutex); prefer reusing free lanes.
+
 ## Briefing agents (keep every brief lean; Jimmy, 2026-09-23)
-Agents already get CLAUDE.md and their own agent file. Never restate those. Point to files instead of pasting. A brief is usually 10-25 lines:
-1. **Goal**: the outcome in 1-2 lines, and the task id.
-2. **Where**: the checkout or lane; the 2-5 files or sections to read first (exact paths, section names, line ranges when known); the spec; the CODEMAP row if it helps.
+Agents already get CLAUDE.md, their own agent file (with its standard protocol and preloaded skill). Never restate those: no lane start/finish steps, commit rules, handoff rule, "no using namespace", "don't edit QA*", or the standard report fields. Point to files instead of pasting. A brief is usually 5-15 lines:
+1. **Goal**: the task id and the outcome in 1-2 lines (a bug: repro, expected, actual, evidence path).
+2. **Where**: the lane or checkout; the 2-5 files or sections to read first (exact paths, section names, line ranges when known); the spec.
 3. **Decided already**: lead or Jimmy decisions, so the agent doesn't re-derive or re-ask them.
-4. **Do**: numbered steps. Split big jobs into stages with a stop point (one agent should stay under ~250k context). Say what not to touch.
-5. **Verify**: the build, tests or previews expected, and the known expected failures (e.g. binary-asset guards).
-6. **Commit**: the message.
-7. **Report**: the line limit (5-15 lines) and exactly what to include.
+4. **Parallel work**: only when relevant, which other lanes touch nearby files and what to stay off.
+5. **Anything non-standard**: extra verification, a stage stop point for big jobs (one agent stays under ~250k; seniors ~400k), extra report items.
 Pick the agent level from the job (table below). For small follow-ups, resume the same agent only if its context is small and relevant; otherwise start a fresh agent with pointers to the relevant files.
 
 ## Agent levels, models and effort
@@ -48,7 +58,7 @@ Model and effort per agent. They are pinned in each agent's frontmatter (`model`
   | designer | - | `designer-low` | - |
   | janitor | - | `janitor-low` | - |
   Elsewhere in this file and in the skills, a plain role name (e.g. "editor-operator") means that role at any level.
-  Junior and senior agents are thin wrappers: they read and follow the role's mid-level file (e.g. `.claude/agents/unreal-engineer-mid-high.md`), so each role's rules live in one file.
+  Junior and senior agent files are generated from the role's mid-level file by `tools/gen-agents.ps1` (same tools, skills and body, plus a level paragraph), so each role's rules live in one file and no agent spends a step reading another agent file.
   A junior that finds the task bigger than briefed stops and reports back, and the lead re-assigns it to a senior.
   **Art is taken seriously (Jimmy, 2026-09-23).** A good-looking game in one art style matters as much as working systems.
     - Levels: anything the player sees often or up close (arms, rod, fish, cooler, boat, creatures, NPCs, anything held, carried or interacted with) goes to at least a mid artist. New shapes, species and hero assets go to senior. Junior artists only do fixes, re-exports, recolors, variants of approved assets and small background props.
@@ -81,11 +91,12 @@ Model and effort per agent. They are pinned in each agent's frontmatter (`model`
   New agents (whenever Jimmy asks for one, or the lead adds one) get `model: claude-opus-5-5` and an effort chosen like this: high for math, geometry, code or tricky logic; medium for known procedures; low for checklists, reviews and chores. Add junior/senior levels where the role's work varies in difficulty, then name each level `<role>-<level>-<effort>`, add it to this table and tell Jimmy.
   Changing a model, or upgrading to a newer one, needs Jimmy's OK.
 - **Housekeeping is automatic; Jimmy should never have to ask (Jimmy, 2026-09-23).**
-  - Auto-compaction is lowered to about 30% of the context window (`CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=30` in `.claude/settings.local.json`, kept out of git). It applies to the lead and to subagents.
+  - Auto-compaction is set to 45% of the context window (`CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=45`, raised from 30 on 2026-09-24 so senior agents reach their 400k handoff before compacting; set in `.claude/settings.local.json`, kept out of git). It applies to the lead and to subagents.
   - At the start of every session the lead schedules the housekeeping tick: a recurring CronCreate job every 30 minutes that runs `tools/lead-check.ps1` and acts on its flags. The job is session-only, so re-create it in each new session. The lead also runs the script at every agent hand-back.
-  - HANDOFF (a running agent's context is over 250k): the lead asks the agent to finish if it is within about 10 tool calls. Otherwise the agent commits what builds, writes `Saved/AgentLogs/handoff/<ts>-<task>.md` (done, remaining steps, files, build/test state, decisions) and stops. A fresh agent of the same type continues from the handoff.
+  - HANDOFF (a running agent's context is over 250k; over 400k for senior agents, Jimmy 2026-09-24): the lead asks the agent to finish if it is within about 10 tool calls. Otherwise the agent commits what builds, writes `Saved/AgentLogs/handoff/<ts>-<task>.md` (done, remaining steps, files, build/test state, decisions) and stops. A fresh agent of the same type continues from the handoff.
+  - Janitor schedule (Jimmy, 2026-09-23; moved here from CLAUDE.md 2026-09-24): run it without being asked after each push to GitHub, after each lane merge batch, at milestones, and whenever `tools/lead-check.ps1` flags JANITOR (last run over 3 h ago, or a Saved/ over 500 MB and the last run over 1 h ago). Artists name throwaway renders `exp_*` under `Saved/AgentLogs/previews/`; the script clears them like scratch after an hour.
   - JANITOR: the lead runs `tools/cleanup.ps1` directly (dry run, glance at the reasons, then -Apply; default 60-minute keep window; no agent needed). `janitor-low` runs after each push and at milestones, for Progress photo pruning and a review of what else can go. Don't brief a janitor with a 3-hour window during a busy day: it frees nothing.
-  - Brief long tasks in stages, so that one agent does not run past ~250k.
+  - Brief long tasks in stages, so that one agent does not run past ~250k (seniors ~400k). Big jobs are split into separate agents first; the higher senior limit is for single hard tasks that need the whole picture.
 
 ## Working with Jimmy
 - He playtests. Feedback notes land in `Saved/Playtest/` once the feedback key exists (see `playtest-feedback` skill). Turn each note into a task in `docs/TASKS.md`.

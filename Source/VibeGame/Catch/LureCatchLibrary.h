@@ -47,7 +47,9 @@ public:
 	 *  A starter cooler (ULureProgressionSettings DefaultCoolerId) for PlayerState if it owns none and
 	 *  ULureCatchSettings bSpawnStarterCooler is on: at an actor tagged CoolerSpawnTag (players' coolers StarterCoolerSpacing
 	 *  apart along its +Y), else at StarterCoolerOffset in StartSpot's frame (players sharing one start: the same row along
-	 *  its +Y; slots with a cooler already in them are skipped), set on the floor below. Null otherwise.
+	 *  its +Y; slots with a cooler already in them are skipped), else (no marker, and StartSpot null or the world settings
+	 *  the engine uses on a map with no PlayerStart) the same row next to the first player's pawn, with a warning. Set on
+	 *  the floor below. Null otherwise.
 	 */
 	static ALureCoolerActor* EnsureStarterCooler(APlayerState* PlayerState, const AActor* StartSpot);
 
