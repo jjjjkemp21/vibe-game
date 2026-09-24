@@ -11,7 +11,7 @@ A2 lanes:
 - eng3 T-029: MERGED to main (55ad039), 802/803 after merging main (only the DT_FishSpecies binary guard, fixed by the re-import)
 - eng4 T-030: building (senior)
 - eng5 T-032: MERGED to main (b799ae6), 763/763 after merging main
-Curled-fish art fixes running.
+Curled fish in the cooler: designer APPROVED (1b725ad; Saved/AgentLogs/design/20260923-190000-curled-fish-rereview.md). Shop view: cooler on the floor, front (latch) toward the player. Import A_Fish_Curled with the other art.
 Then: merge all (git merge main in each lane, then ff), editor imports + ABP work, level rebuild, full A2 playtest, designer, push.
 
 ## Status 2026-09-23 ~17:10 (lead)
