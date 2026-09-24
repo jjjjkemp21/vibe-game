@@ -66,7 +66,7 @@ Every script writes `Saved/AgentLogs/status/<script>.json` (state, message, log 
 - `level-designer`: designs maps and play spaces (flow, pacing, fishing spots, cover and sight lines, crawl routes): plan in `docs/levels/`, layout data in `data/levels/*.json` (the source of truth), a generic builder `Content/Python/levels/build_level.py` that the editor-operator runs, and Blender layout previews. It never calls unreal-mcp itself.
 - `qa-engineer`: senior QA. Writes independent unit, data-validation and integration tests (owns `Source/VibeGame/Tests/`, `docs/TEST_PLAN.md`), runs the full suite, reports PASS/FAIL with evidence; never changes production code.
 - `playtester`: plays the game in PIE (injected input + screenshots), runs the feature scenario and free play, reports bugs and feel notes; read-only.
-- `janitor`: housekeeping for Jimmy's disk (Jimmy, 2026-09-23). The lead runs it after each push to GitHub, at milestones, or when Saved/ passes ~500 MB. Deletes only through `tools/cleanup.ps1`.
+- `janitor`: housekeeping for Jimmy's disk (Jimmy, 2026-09-23). The lead runs it without being asked: after each push to GitHub, after each lane merge batch, at milestones, and whenever `tools/lead-check.ps1` flags JANITOR (last run over 3 h ago, or a Saved/ over 500 MB and the last run over 1 h ago). Deletes only through `tools/cleanup.ps1`.
 - `designer`: reviews playtester screenshots and previews against GAME_DESIGN.md / ART_STYLE.md and the mood boards; verdict + prioritized change requests; changes nothing.
 - Typical flow per task: implementer (unreal-engineer / model-artist / animation-artist / level-designer / editor-operator) -> qa-engineer tests -> playtester plays -> designer reviews -> lead fixes or accepts -> release gate before publishing.
 C++ work and Blender work (model-artist, animation-artist) can run in parallel; two Blender agents can too, as long as they work on different recipes.
@@ -130,7 +130,13 @@ C++ work and Blender work (model-artist, animation-artist) can run in parallel; 
   Never fan out editor work: unreal-mcp stays one agent at a time (rule 4). The workflow size guideline is set in /config ("Dynamic workflow size"; Jimmy can raise it).
   New agents (whenever Jimmy asks for one, or the lead adds one) get `model: claude-opus-5-5` and an effort chosen like this: high for math, geometry, code or tricky logic; medium for known procedures; low for checklists, reviews and chores. Add junior/senior levels where the role's work varies in difficulty, then name each level `<role>-<level>-<effort>`, add it to this table and tell Jimmy.
   Changing a model, or upgrading to a newer one, needs Jimmy's OK.
-- Subagent conversations end with their task; nothing to compact there. Keeping reports short is what saves tokens.
+- **Housekeeping is automatic; Jimmy should never have to ask (Jimmy, 2026-09-23).**
+  - Auto-compaction is lowered to about 30% of the context window (`CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=30` in `.claude/settings.local.json`, kept out of git). It applies to the lead and to subagents.
+  - At the start of every session the lead schedules the housekeeping tick: a recurring CronCreate job every 30 minutes that runs `tools/lead-check.ps1` and acts on its flags. The job is session-only, so re-create it in each new session. The lead also runs the script at every agent hand-back.
+  - HANDOFF (a running agent's context is over 250k): the lead asks the agent to finish if it is within about 10 tool calls. Otherwise the agent commits what builds, writes `Saved/AgentLogs/handoff/<ts>-<task>.md` (done, remaining steps, files, build/test state, decisions) and stops. A fresh agent of the same type continues from the handoff.
+  - JANITOR: run `janitor-low` (see the janitor line above).
+  - Brief long tasks in stages, so that one agent does not run past ~250k.
+- Keeping reports short is what saves tokens.
 
 ## Working with Jimmy
 - He playtests. Feedback notes land in `Saved/Playtest/` once the feedback key exists (see `playtest-feedback` skill). Turn each note into a task in `docs/TASKS.md`.
