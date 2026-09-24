@@ -37,7 +37,11 @@ What gets spawned (all tagged "LureLayout", "LureLayout=<id>", "LureId=<element 
 
 Materials: /Game/Materials/Level/M_LevelPalette (params Color, Roughness, Emissive) is created once;
 MI_Lvl_<mat id> instances are created or updated from the layout's "materials" (sRGB hex -> linear).
-Material ids are global across layouts: the same id must mean the same color.
+Material ids are global across layouts: the same id must mean the same values in every layout.
+Water ids (ids starting with "water", or "water": true) get MI_Lvl_<id> under /Game/Materials/Level/M_LevelWater
+instead (T-029): clear, depth-faded Thin Translucent water, built and versioned by this file (see "Water" below for
+the model, the layout keys shallow_color / deep_color / tint_color / opacity_min / opacity_max / fade_depth /
+tint_depth / specular / coverage / sort_priority, and the rule "one water surface per body of water").
 """
 import math
 import os
@@ -165,9 +169,296 @@ def ensure_palette_instance(mat_id, spec, parent):
     return mi
 
 
+# --- Water (T-029: "the water has to be clear to see the fish being reeled in") ---------------------------------------
+# M_LevelWater is the parent of every water material id (is_water_material). Unlike M_LevelPalette it is REBUILT in
+# place whenever WATER_GRAPH_VERSION differs from the version stamped on the asset (metadata tag LureWaterVersion):
+# change the graph in _build_water_graph, bump the version, rebuild a level. Never edit the graph by hand in the editor.
+#
+# How it looks (the per-pixel model; all depths in cm):
+#   depth = vertical water depth under this surface pixel, reconstructed from the opaque scene behind it
+#           (seabed, fish, bobber, line: anything opaque) = (CameraZ - PixelZ) * (SceneDepth - PixelDepth) / PixelDepth.
+#           Vertical, not along the view ray, so a fish 50 cm down reads the same from the dock or from far away.
+#   f     = saturate(depth / FadeDepth)                 0 at the surface, 1 at FadeDepth and deeper
+#   body  = lerp(Color, DeepColor, f)                   the water's own (in-scattered) colour
+#   cover = lerp(OpacityMin, OpacityMax, f)             how much of the pixel is that body colour
+#   tint  = TintColor ^ (depth / TintDepth)             coloured filter on what is seen through the water (per channel,
+#                                                       Beer-Lambert): exactly TintColor at TintDepth; red fades first,
+#                                                       as in real water. Keep TintColor bluer than Color: a filter
+#                                                       with green > blue turns yellow sand green
+#   Shading model Thin Translucent (Substrate: coloured transmittance): the seabed is MULTIPLIED by tint * (1 - cover)
+#   and the lit body colour is added on top, so sand in the shallows turns turquoise instead of washing out to pale
+#   khaki (plain alpha blending cannot remove red from sand). Sun glints and sky reflection are always at full
+#   strength (Specular 0.25 = water's F0 0.02, Fresnel from the engine), so grazing views read as water, not glass.
+#   Coverage scales the whole layer (0 = invisible): use it for a water prim lying on top of another water surface.
+#
+# Parameters (layout material keys in brackets; defaults in WATER_DEFAULTS):
+#   Color [shallow_color, else color], DeepColor [deep_color, else color], TintColor [tint_color],
+#   OpacityMin [opacity_min], OpacityMax [opacity_max], FadeDepth [fade_depth], TintDepth [tint_depth],
+#   Roughness [roughness], Specular [specular], Coverage [coverage]. Colours are sRGB hex like the palette.
+#   One water surface per body of water: two water prims stacked on each other blend twice (darker, greener, double
+#   glints, visible seams at their edges). A prim that only marks an area on top of other water gets coverage 0.
+# Per-prim: translucent sort priority [sort_priority] (default WATER_SORT_PRIORITY): water draws before other
+#   translucency (bubbles, ripples, VFX at the surface), which then sorts on top of it.
+# Engine rules this relies on (UE 5.8, Substrate on): Thin Translucent needs blend mode Translucent + lighting mode
+# Surface ForwardShading + the ThinTranslucentMaterialOutput node (TransmittanceColor defaults to 0.5 grey if left
+# unconnected) and must not render "After Motion Blur". Fog is computed per pixel: the sea is one 800 m quad, and
+# per-vertex fog would fog it from its far corners.
+# Known: faint light streaks radiating from the camera on deep water come from Lumen's translucency GI volume (a
+# froxel grid lighting the body colour); r.Lumen.TranslucencyVolume.Enable 0 removes them (checked 2026-09-23). That
+# is a project renderer setting (it changes GI for all translucency), so it is left for the lead to decide.
+WATER_PARENT = PALETTE_DIR + "/M_LevelWater"
+# Bump when _build_water_graph changes. Tuning WATER_DEFAULTS alone needs no bump: every build re-applies all
+# parameters to the MI_Lvl_ instances; the master's own defaults (a copy of WATER_DEFAULTS at its last graph build)
+# only show in the material editor preview.
+WATER_GRAPH_VERSION = "4"
+WATER_VERSION_TAG = "LureWaterVersion"
+WATER_SORT_PRIORITY = -10
+WATER_DEFAULTS = {             # tropical defaults; another region's water sets its own keys (e.g. murky: a brown
+                               # tint_color, high opacity_min, short fade_depth)
+    "tint_color": "#40E0F8",   # white sand seen through TintDepth of water: red gone, blue kept (bluer than Color,
+                               # so yellow sand turns turquoise, not green)
+    "opacity_min": 0.12,       # at the surface: sand and a fish at 0-1.5 m stay visible (a 50 cm-deep bonefish reads
+                               # from the dock at 5 m and still shows at 10 m, the dock_end fight distance)
+    "opacity_max": 0.92,       # at FadeDepth and deeper: the 8 m sea floor is only a hint
+    "fade_depth": 450.0,
+    "tint_depth": 200.0,       # NB grazing views tint and darken faster: Substrate's thin slab raises the
+                               # transmittance to 1/cos(view angle), i.e. Beer-Lambert along the view ray
+    "roughness": 0.3,
+    "specular": 0.25,
+    "coverage": 1.0,
+}
+_WATER_VECTORS = [("DeepColor", "deep_color"), ("TintColor", "tint_color")]
+_WATER_SCALARS = [("OpacityMin", "opacity_min"), ("OpacityMax", "opacity_max"), ("FadeDepth", "fade_depth"),
+                  ("TintDepth", "tint_depth"), ("Roughness", "roughness"), ("Specular", "specular"),
+                  ("Coverage", "coverage")]
+
+
+def is_water_material(mat_id, spec):
+    """Water ids (T-029): ids starting with "water" or specs with "water": true use M_LevelWater."""
+    return mat_id.startswith("water") or bool(spec.get("water"))
+
+
+def _water_graph_version(mat):
+    try:
+        return unreal.EditorAssetLibrary.get_metadata_tag(mat, WATER_VERSION_TAG)
+    except Exception:
+        return ""
+
+
+def _build_water_graph(mat):
+    """Nodes and settings of M_LevelWater (see the model above). Positions only matter for reading it in the editor."""
+    mel = unreal.MaterialEditingLibrary
+
+    def node(cls, x, y, **props):
+        e = mel.create_material_expression(mat, cls, x, y)
+        for k, v in props.items():
+            e.set_editor_property(k, v)
+        return e
+
+    def scalar(name, default, x, y, prio):
+        return node(unreal.MaterialExpressionScalarParameter, x, y, parameter_name=name, default_value=float(default),
+                    group="Water", sort_priority=prio)
+
+    def vector(name, hex_str, x, y, prio):
+        return node(unreal.MaterialExpressionVectorParameter, x, y, parameter_name=name,
+                    default_value=hex_to_linear_color(hex_str), group="Water", sort_priority=prio)
+
+    def link(src, dst, pin, src_out=""):
+        if not mel.connect_material_expressions(src, src_out, dst, pin):
+            raise RuntimeError("M_LevelWater: could not connect %s -> %s.%s"
+                               % (src.get_class().get_name(), dst.get_class().get_name(), pin))
+
+    def op(cls, a, b, x, y):
+        e = node(cls, x, y)
+        link(a, e, "A")
+        link(b, e, "B")
+        return e
+
+    def mask(src, x, y, r=False, g=False, b=False):
+        e = node(unreal.MaterialExpressionComponentMask, x, y, r=r, g=g, b=b, a=False)
+        link(src, e, "")
+        return e
+
+    def const(v, x, y):
+        return node(unreal.MaterialExpressionConstant, x, y, r=float(v))
+
+    d = WATER_DEFAULTS
+    color = vector("Color", "#3ED1C4", -1500, -520, 0)       # master defaults only: instances always set both
+    deep = vector("DeepColor", "#0A5560", -1500, -380, 1)
+    tint_color = vector("TintColor", d["tint_color"], -1400, 380, 2)
+    op_min = scalar("OpacityMin", d["opacity_min"], -700, 120, 3)
+    op_max = scalar("OpacityMax", d["opacity_max"], -700, 200, 4)
+    fade_depth = scalar("FadeDepth", d["fade_depth"], -1100, 260, 5)
+    tint_depth = scalar("TintDepth", d["tint_depth"], -1100, 520, 6)
+    rough = scalar("Roughness", d["roughness"], -400, -120, 7)
+    spec = scalar("Specular", d["specular"], -400, -200, 8)
+    coverage = scalar("Coverage", d["coverage"], -400, 640, 9)
+
+    # depth = (CameraZ - PixelZ) * (SceneDepth - PixelDepth) / max(PixelDepth, 1)
+    cam_z = mask(node(unreal.MaterialExpressionCameraPositionWS, -2500, -40), -2300, -40, b=True)
+    pix_z = mask(node(unreal.MaterialExpressionWorldPosition, -2500, 60), -2300, 60, b=True)
+    height = op(unreal.MaterialExpressionSubtract, cam_z, pix_z, -2100, 0)
+    scene_depth = node(unreal.MaterialExpressionSceneDepth, -2500, 180)
+    pixel_depth = node(unreal.MaterialExpressionPixelDepth, -2500, 300)
+    behind = op(unreal.MaterialExpressionSubtract, scene_depth, pixel_depth, -2300, 200)
+    safe_pd = op(unreal.MaterialExpressionMax, pixel_depth, const(1.0, -2500, 380), -2300, 320)
+    ratio = op(unreal.MaterialExpressionDivide, behind, safe_pd, -2100, 240)
+    depth = op(unreal.MaterialExpressionMultiply, height, ratio, -1900, 100)
+    depth = op(unreal.MaterialExpressionMax, depth, const(0.0, -1900, 200), -1700, 120)  # camera below the surface
+
+    # f = saturate(depth / FadeDepth)
+    f = node(unreal.MaterialExpressionSaturate, -900, 160)
+    link(op(unreal.MaterialExpressionDivide, depth, fade_depth, -1000, 160), f, "")
+
+    # body colour and cover
+    body = node(unreal.MaterialExpressionLinearInterpolate, -700, -440)
+    link(color, body, "A")
+    link(deep, body, "B")
+    link(f, body, "Alpha")
+    cover = node(unreal.MaterialExpressionLinearInterpolate, -450, 150)
+    link(op_min, cover, "A")
+    link(op_max, cover, "B")
+    link(f, cover, "Alpha")
+
+    # tint = max(TintColor, 0.01) ^ (depth / TintDepth)   (per channel; the floor keeps pow() away from 0^0)
+    t_base = op(unreal.MaterialExpressionMax, mask(tint_color, -1150, 380, r=True, g=True, b=True),
+                const(0.01, -1150, 460), -950, 420)
+    tint_exp = op(unreal.MaterialExpressionDivide, depth, tint_depth, -900, 520)
+    tint = node(unreal.MaterialExpressionPower, -400, 420)
+    link(t_base, tint, "Base")
+    link(tint_exp, tint, "Exp")
+    tint_sat = node(unreal.MaterialExpressionSaturate, -250, 420)
+    link(tint, tint_sat, "")
+
+    thin = node(unreal.MaterialExpressionThinTranslucentMaterialOutput, 0, 500)
+    link(tint_sat, thin, "TransmittanceColor")
+    link(coverage, thin, "SurfaceCoverage")
+
+    mel.connect_material_property(body, "", unreal.MaterialProperty.MP_BASE_COLOR)
+    mel.connect_material_property(cover, "", unreal.MaterialProperty.MP_OPACITY)
+    mel.connect_material_property(rough, "", unreal.MaterialProperty.MP_ROUGHNESS)
+    mel.connect_material_property(spec, "", unreal.MaterialProperty.MP_SPECULAR)
+
+    mat.set_editor_property("shading_model", unreal.MaterialShadingModel.MSM_THIN_TRANSLUCENT)
+    mat.set_editor_property("blend_mode", unreal.BlendMode.BLEND_TRANSLUCENT)
+    mat.set_editor_property("translucency_lighting_mode",
+                            unreal.TranslucencyLightingMode.TLM_SURFACE_PER_PIXEL_LIGHTING)
+    mat.set_editor_property("translucency_pass", unreal.MaterialTranslucencyPass.MTP_BEFORE_DOF)
+    mat.set_editor_property("use_translucency_vertex_fog", True)   # "Apply Fogging"
+    mat.set_editor_property("compute_fog_per_pixel", True)
+    mat.set_editor_property("two_sided", False)  # seen from above only; the shallow discs' bottom caps stay culled
+
+
+def clear_material_graph(mat):
+    """Delete every expression of a material. Do NOT use MaterialEditingLibrary.delete_all_material_expressions:
+    in UE 5.8 it deletes while iterating the live expression array (MaterialEditingLibrary.cpp), so each call removes
+    only about half the nodes and the rest stay behind as orphans (duplicate parameters). Delete a snapshot instead,
+    repeated until the graph is empty."""
+    mel = unreal.MaterialEditingLibrary
+    for _ in range(8):
+        exprs = list(mel.get_material_expressions(mat))
+        if not exprs:
+            return
+        for e in exprs:
+            mel.delete_material_expression(mat, e)
+    raise RuntimeError("%s: could not clear the material graph" % mat.get_name())
+
+
+def _check_unique_parameters(mat):
+    """A graph rebuilt in place must hold each parameter once (orphans from an old graph would shadow defaults)."""
+    exprs = unreal.MaterialEditingLibrary.get_material_expressions(mat)
+    names = [str(e.get_editor_property("parameter_name")) for e in exprs
+             if isinstance(e, (unreal.MaterialExpressionScalarParameter, unreal.MaterialExpressionVectorParameter))]
+    dupes = sorted(set(n for n in names if names.count(n) > 1))
+    if dupes:
+        raise RuntimeError("%s: duplicate parameters %s (graph not cleared?)" % (mat.get_name(), dupes))
+    return names
+
+
+def ensure_water_parent(path=WATER_PARENT):
+    """M_LevelWater, created or rebuilt in place when its stamped graph version is not WATER_GRAPH_VERSION."""
+    eal = unreal.EditorAssetLibrary
+    mel = unreal.MaterialEditingLibrary
+    if eal.does_asset_exist(path):
+        mat = unreal.load_asset(path)
+        if _water_graph_version(mat) == WATER_GRAPH_VERSION:
+            return mat
+        # Each deleted node recompiles the half-removed old graph, so the log shows a few transient LogMaterial
+        # "Failed to compile ... Missing ... input / requires the ThinTranslucentMaterial output node" warnings here.
+        # Expected; what counts is the final recompile below (it raises on any error).
+        _log("M_LevelWater: rebuilding graph (version %r -> %s); transient compile warnings while the old graph is "
+             "removed are expected" % (_water_graph_version(mat), WATER_GRAPH_VERSION))
+        clear_material_graph(mat)
+    else:
+        folder, name = path.rsplit("/", 1)
+        mat = unreal.AssetToolsHelpers.get_asset_tools().create_asset(name, folder, unreal.Material,
+                                                                       unreal.MaterialFactoryNew())
+    _build_water_graph(mat)
+    _check_unique_parameters(mat)
+    errors = mel.recompile_material(mat)
+    if errors:
+        raise RuntimeError("M_LevelWater failed to compile:\n" + "\n".join(str(e) for e in errors))
+    mel.layout_material_expressions(mat)
+    eal.set_metadata_tag(mat, WATER_VERSION_TAG, WATER_GRAPH_VERSION)
+    eal.save_loaded_asset(mat, False)
+    return mat
+
+
+def water_params(spec):
+    """M_LevelWater parameter values for a layout water material. Colours: Color (shallow tint) = "shallow_color",
+    DeepColor = "deep_color", each falling back to "color" (so a water with only "color" is one colour that just
+    gets less clear with depth; "color" stays what the Blender preview maps draw). Every other key from the spec,
+    else WATER_DEFAULTS."""
+    p = dict(WATER_DEFAULTS)
+    p.update({k: v for k, v in spec.items() if k in WATER_DEFAULTS})
+    p["color"] = spec.get("shallow_color", spec["color"])
+    p["deep_color"] = spec.get("deep_color", spec["color"])
+    return p
+
+
+def ensure_water_instance(mat_id, spec, parent):
+    """MI_Lvl_<mat_id> as a child of M_LevelWater (re-parented from M_LevelPalette if it was made before T-029)."""
+    name = "MI_Lvl_" + mat_id
+    path = PALETTE_DIR + "/" + name
+    mel = unreal.MaterialEditingLibrary
+    if unreal.EditorAssetLibrary.does_asset_exist(path):
+        mi = unreal.load_asset(path)
+    else:
+        mi = unreal.AssetToolsHelpers.get_asset_tools().create_asset(name, PALETTE_DIR, unreal.MaterialInstanceConstant,
+                                                                     unreal.MaterialInstanceConstantFactoryNew())
+    mel.set_material_instance_parent(mi, parent)
+    # Drop overrides the old palette parent left behind (Emissive), so the instance holds exactly the water params.
+    mi.set_editor_property("scalar_parameter_values", [])
+    mi.set_editor_property("vector_parameter_values", [])
+    p = water_params(spec)
+    mel.set_material_instance_vector_parameter_value(mi, "Color", hex_to_linear_color(p["color"]))
+    for param, key in _WATER_VECTORS:
+        mel.set_material_instance_vector_parameter_value(mi, param, hex_to_linear_color(p[key]))
+    for param, key in _WATER_SCALARS:
+        mel.set_material_instance_scalar_parameter_value(mi, param, float(p[key]))
+    mel.update_material_instance(mi)
+    unreal.EditorAssetLibrary.save_loaded_asset(mi, False)
+    return mi
+
+
 def ensure_palette(layout):
+    """Every layout material -> MI_Lvl_<id>: water ids under M_LevelWater, all others under M_LevelPalette."""
     parent = ensure_palette_parent()
-    return {mid: ensure_palette_instance(mid, spec, parent) for mid, spec in layout["materials"].items()}
+    water_parent = None
+    mats = {}
+    for mid, spec in layout["materials"].items():
+        if is_water_material(mid, spec):
+            water_parent = water_parent or ensure_water_parent()
+            mats[mid] = ensure_water_instance(mid, spec, water_parent)
+        else:
+            mats[mid] = ensure_palette_instance(mid, spec, parent)
+    return mats
+
+
+def water_sort_priorities(layout):
+    """{water material id: translucent sort priority} for the prims that use them (see WATER_SORT_PRIORITY)."""
+    return {mid: int(spec.get("sort_priority", WATER_SORT_PRIORITY))
+            for mid, spec in layout["materials"].items() if is_water_material(mid, spec)}
 
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -218,8 +509,9 @@ def _configure_mesh_component(actor, mat, collision, shadow, visible):
         actor.set_actor_hidden_in_game(True)
 
 
-def spawn_prim(prim, layout_id, mats, cache):
-    """A basic-shape primitive placed by its bounding box (layout convention), or a prop mesh placed by its pivot."""
+def spawn_prim(prim, layout_id, mats, cache, sort_priorities=None):
+    """A basic-shape primitive placed by its bounding box (layout convention), or a prop mesh placed by its pivot.
+    sort_priorities: {material id: translucent sort priority} (water, see water_sort_priorities)."""
     rows = L.rot_rows(prim["yaw"], prim["pitch"], prim["roll"])
     rot = _rot(prim["yaw"], prim["pitch"], prim["roll"])
     if prim.get("mesh"):
@@ -246,6 +538,8 @@ def spawn_prim(prim, layout_id, mats, cache):
     actor = _eas().spawn_actor_from_object(mesh, _vec(loc), rot)
     actor.set_actor_scale3d(unreal.Vector(sx, sy, sz))
     _configure_mesh_component(actor, mats.get(prim["mat"]), prim["collision"], prim["shadow"], prim["visible"])
+    if sort_priorities and prim["mat"] in sort_priorities:
+        actor.static_mesh_component.set_translucent_sort_priority(sort_priorities[prim["mat"]])
     return _finish_actor(actor, layout_id, prim["id"], prim["id"].replace("/", "."),
                          "%s/%s" % (layout_id, prim.get("group") or prim.get("kind") or "blocks"), prim["tags"])
 
@@ -569,10 +863,11 @@ def build(layout_path, level_path=None, save=True, frame=True, labels=True, labe
     state = open_or_create_level(level_path)
     removed = destroy_actors_with_tag(layout_tag(layout_id))
     mats = ensure_palette(lay)
+    sort_priorities = water_sort_priorities(lay)
     cache = _MeshCache()
     counts = {"prims": 0, "props": 0, "lights": 0, "markers": 0, "labels": 0}
     for prim in ex["prims"]:
-        spawn_prim(prim, layout_id, mats, cache)
+        spawn_prim(prim, layout_id, mats, cache, sort_priorities)
         counts["props" if prim.get("mesh") else "prims"] += 1
     for light in ex["lights"]:
         if spawn_light(light, lay, layout_id) is not None:

@@ -1,4 +1,4 @@
-# SK_FPArms: rig + animation spec (T-004)
+# SK_FPArms: rig + animation spec (T-004; T-028 rod aim, T-030 hold fish / carry cooler)
 
 Source of truth: `art/recipes/anim_fp_arms.py` (rig + actions, built on the model-artist's `art/recipes/sk_fp_arms.py`
 mesh; SM_Rod_Basic from `art/recipes/sm_rod_basic.py` is staged only for checks and previews). Rerun:
@@ -13,6 +13,11 @@ Previews (`Saved/AgentLogs/previews/`; first-person frames are 1920x1080 over th
 (prone hold under a 60 cm ceiling), `SK_FPArms_prone_tuck_gap_fp.png` (tuck in the 60 cm gap),
 `SK_FPArms_prone_wall_fp.png` (tuck, wall 50 cm ahead), `SK_FPArms_prone_blend.png` (hold -> tuck crossfade and the
 rod-tip path), `SK_FPArms_prone_clearance.png` (side/top views with the ceiling, floor and wall lines).
+T-028 / T-030 (2026-09-23): `SK_FPArms_rodaim_fp.png` (the 9 rod-aim poses from the FP camera, laid out as the aim
+offset grid), `SK_FPArms_rodaim_upright_fp.png` (RodAim_UpRight full size), `SK_FPArms_rodaim_views.png` (simulated
+aim-offset blends in FP + side / top / outside views), `SK_FPArms_holdfish_fp.png` + `SK_FPArms_holdfish.png`
+(HoldFish_Idle with the reference-size Bonefish on `hand_r_fish`), `SK_FPArms_carrycooler_fp.png` +
+`SK_FPArms_carrycooler.png` (CarryCooler_Idle with SM_Cooler_Starter from its FBX on bone `cooler`).
 `SK_FPArms_cm_reimport.png` (2026-09-23 unit check: the old meter files, left, and the new cm files, right,
 re-imported and posed by HoldRod_Idle / Prone_TuckRod frame 0, eye and side views; identical, max 0.0004 mm).
 
@@ -20,18 +25,27 @@ re-imported and posed by HoldRod_Idle / Prone_TuckRod frame 0, eye and side view
 
 | File | Content | Import as |
 |---|---|---|
-| `SK_FPArms.fbx` | skinned mesh (1456 tris, 2 materials) + 16-bone skeleton, bind pose, **no animation** | Skeletal Mesh `SK_FPArms`, skeleton **`SKEL_FPArms`** |
+| `SK_FPArms.fbx` | skinned mesh (1456 tris, 2 materials) + 18-bone skeleton, bind pose, **no animation** | Skeletal Mesh `SK_FPArms`, skeleton **`SKEL_FPArms`** |
 | `A_FPArms_Idle.fbx` | armature only, one take `A_FPArms_Idle` | Animation on `SKEL_FPArms` |
 | `A_FPArms_HoldRod_Idle.fbx` | armature only, one take | Animation on `SKEL_FPArms` |
 | `A_FPArms_StanceDip.fbx` | armature only, one take | Animation on `SKEL_FPArms`, set **additive** (below) |
 | `A_FPArms_Prone_HoldRod_Idle.fbx` | armature only, one take | Animation on `SKEL_FPArms` |
 | `A_FPArms_Prone_TuckRod.fbx` | armature only, one take | Animation on `SKEL_FPArms` |
+| `A_FPArms_HoldFish_Idle.fbx` | armature only, one take (T-030) | Animation on `SKEL_FPArms` |
+| `A_FPArms_CarryCooler_Idle.fbx` | armature only, one take (T-030) | Animation on `SKEL_FPArms` |
+| `A_FPArms_RodAim_Center.fbx`, `_Up`, `_Down`, `_Left`, `_Right`, `_UpLeft`, `_UpRight`, `_DownLeft`, `_DownRight` | armature only, one take each, a single pose (T-028) | Animation on `SKEL_FPArms`, set **additive, Mesh Space** (below) |
 
 One clip per file, so the asset name = file name = take name.
 
 **2026-09-23: all six files re-exported in CENTIMETERS** (fix for the 100x `root` bone scale found at import). Same
 meshes, bones, rest pose, rolls, `hand_r_rod`/`hand_l_crank` frames, clips, names and timings; only the unit changed.
 All six must be re-imported (steps under "Unreal import").
+
+**2026-09-23 (T-028 / T-030): two new non-deforming bones, `hand_r_fish` and `cooler`**, appended after `hand_l_crank`
+(18 bones; the 16 existing bones keep their order, names, rest pose and every key). `SK_FPArms.fbx` must be
+re-imported so `SKEL_FPArms` gets them; the 11 new clips are imported new. The five existing clip files were re-exported
+with the two extra bone tracks (identical keys otherwise: re-import optional; without it the new bones just sit at their
+reference pose, which is all those clips need).
 
 ## Axes, scale, origin
 
@@ -57,7 +71,7 @@ All six must be re-imported (steps under "Unreal import").
   weights, key times and take names/ranges identical. Against the model-artist's static `sk_fp_arms.py` export: same
   vertices in Unreal space (max 3e-5 cm), same bounds x -12.4..67.9, y +-26.0, z -34.8..-16.1 cm, same -90 deg axis
   node, same forward axis.
-- Blender re-import check (RESULT_JSON `reimport_check`): 16 bones, bone heads and axes 0.0 mm / 0.0 deg off (the
+- Blender re-import check (RESULT_JSON `reimport_check`; 2026-09-23: 18 bones, all 16 clips, same results): 16 bones, bone heads and axes 0.0 mm / 0.0 deg off (the
   importer puts its cm -> m factor 0.01 on the armature object; bone heads in the armature are the source x100 with
   0.0 mm error; rest and posed bone scales 1.0 within 1.1e-6), mesh bounds identical, baked poses of all 5 clips
   0.0 mm / 0.0 deg off at frames 0/30/45/60/90, take ranges 0-90 / 0-90 / 0-8 / 0-90 / 0-90.
@@ -65,7 +79,7 @@ All six must be re-imported (steps under "Unreal import").
   `root` bone's local scale 1.0. **If the skeleton shows an extra `Armature` root bone, any bone has a scale other than
   1.0, or the bounds are 100x off, stop and report it**; don't fix it in the editor.
 
-## Skeleton `SKEL_FPArms` (16 bones, unchanged)
+## Skeleton `SKEL_FPArms` (18 bones: the T-004 16 + `hand_r_fish`, `cooler`)
 
 Bone heads in Unreal component space (cm, +Y = right). Blender bones run along their local Y axis (FBX default), so
 don't read bone "forward" as X.
@@ -82,6 +96,8 @@ don't read bone "forward" as X.
 | `thumb_l` / `_r` | hand | yes | (53.1, -+13.2, -19.5) | thumb |
 | **`hand_r_rod`** | hand_r | no | (54.1, 13.8, -24.1) | **rod attachment**: its frame IS SM_Rod_Basic's pivot frame (X tip, Z up, reel below). **Animated in `A_FPArms_Prone_TuckRod`** (see below); in every other clip it keeps its bind offset in the fist |
 | **`hand_l_crank`** | hand_r_rod | no | (50.5, 3.8, -30.9) | left-hand IK target: the `hand_l` transform that holds SM_Rod_Basic's crank knob (socket CrankKnob; checked against the B-M1 rod: 0.03 mm) |
+| **`hand_r_fish`** | hand_r | no | (54.1, 10.6, -27.9) | **fish-in-hand attach** (T-030): its frame is the held fish's frame at the fish's fishkit bone `Grip` (X = fish forward/head, Z = fish up/dorsal). Keyed in every clip, but it only moves with `hand_r` |
+| **`cooler`** | arms | no | (42.9, 0, -55.5) | **carried-cooler attach** (T-030): SM_Cooler_Starter's pivot (bottom center) with the cooler's own axes (front +X). Animated only in `A_FPArms_CarryCooler_Idle` (rides the breath); its reference pose = that clip's frame 0 |
 
 (`_l` values have -Y, `_r` values +Y.) Skin: 12 deform groups, max 2 influences per vertex, weights sum to 1.0,
 3-loop blends at elbows and wrists, plus a forearm twist ramp from the cuff to the wrist.
@@ -95,10 +111,15 @@ don't read bone "forward" as X.
 | `A_FPArms_StanceDip` | 0-8 | 0.267 s | one-shot, **additive** | only `arms` moves: drops 3.5 cm and pitches 3 deg forward at frame 3, overshoots at 6, rest at 8 |
 | `A_FPArms_Prone_HoldRod_Idle` | 0-90 | 3.0 s | loop | **prone and still**: fishing-ready, rod held low and nearly level (11.5 deg up, 2 deg right), tip just above the horizon; elbows tucked under the chest; steadier sway (+-0.6 deg pitch / +-0.5 deg yaw) |
 | `A_FPArms_Prone_TuckRod` | 0-90 | 3.0 s | loop | **prone and crawling**: rod turned around in the right fist (ice-pick grip near the butt), running back along the forearm and the body; both fists peek in at the bottom corners; breath only (the crawl rhythm is the procedural prone bob, below) |
+| `A_FPArms_HoldFish_Idle` | 0-90 | 3.0 s | loop | T-030, **rod stowed**: the right palm cradles the fish under its chest, out in front, fish side-on and level (head right, 10 deg up), thumb on the near flank, fingers up the far flank; left hand relaxed and lowered out of view; one slow breath (fish sways +-1.5 deg pitch / +-1 deg yaw) |
+| `A_FPArms_CarryCooler_Idle` | 0-90 | 3.0 s | loop | T-030, **no rod**: both fists on the cooler's rope handles, elbows out, the box across the body at belly height, lid top at the bottom 25 % of the view; box and hands breathe together (+-0.8 cm, +-0.6 deg), so no grip sliding |
+| `A_FPArms_RodAim_*` (9) | 0-1 | 1 pose | aim-offset pose, **additive Mesh Space** | T-028: `Center` = HoldRod_Idle frame 0 exactly; `Up` pulled back and high, `Down` dipped towards the water, `Left` / `Right` tip swung to that side, plus the 4 corners. Two identical keys; Unreal samples frame 0 |
 
-Notifies: none needed. All four loops are 3.0 s: put their players in one sync group `FPArmsBreath` so crossfades
+Notifies: none needed. All six loops are 3.0 s: put their players in one sync group `FPArmsBreath` so crossfades
 stay in phase. Motion check (RESULT_JSON `motion_check`): loops have max per-frame step <= 0.8 mm (rod tip <= 2.7 mm)
-and first/last delta 0.0 mm (no pop at the seam); StanceDip starts and ends exactly at rest.
+and first/last delta 0.0 mm (no pop at the seam); StanceDip starts and ends exactly at rest. The Blender re-import
+check reproduces every clip's baked pose (all 16 clip files, `hand_r_fish` and `cooler` included) with 0.0 mm / 0.0 deg
+error.
 
 ### HoldRod_Idle recomposed (designer B-S1)
 - `hand_r_rod` at frame 0, arms component space: **(42.9, 21.0, -23.0) cm, rotation P 35.1 / Y -4.8 / R 0.0**
@@ -139,6 +160,87 @@ fist's channel as a result; that's hidden inside the fist.
 `hand_r_rod` in Prone_TuckRod frame 0 (component space): (16.8, 32.7, -22.2) cm, P -2.4 / Y 139.3 / R -15.3 (the rod
 points back and out to the right). In Prone_HoldRod_Idle frame 0: (42.9, 21.0, -26.2) cm, P 11.0 / Y 1.8 / R 0.0.
 
+### HoldFish (T-030): the fish in the right hand
+- **Attach**: the held fish mesh (`SK_<Species>`, SKEL_Fish) attaches to bone **`hand_r_fish`** with
+  `SnapToTargetNotIncludingScale`, relative rotation 0, relative location = `-GripCS x FishScale`, where `GripCS` is the
+  fish's `Grip` bone in its own component space (`GetBoneLocation("Grip", EBoneSpaces::ComponentSpace)` on the fish at
+  scale 1, or the fish spec's value: Bonefish (9.43, 0, 0) cm, CoralSnapper (9.66, 0, 0) cm) and FishScale =
+  `(Weight / ReferenceWeight)^(1/3)` (fishkit rule). Same contract as `art/export/Fish/SK_Fish.anim.md` "In hand": Grip
+  never moves in any fish clip, so the head and tail can play Landed_Flop / Swim_Idle while the body stays in the palm.
+- The fish is held **by the chest, lying across the palm**, not by the jaw or tail: Grip is the only fish bone that is
+  still in every fish clip, and the mitten hand can't close on a jaw. The palm sits under the belly, the fingers curl up
+  the far flank, the thumb presses the near flank (`hand_r_fish` is 5.0 cm above the fist's rod-grip point along the
+  palm normal = the reference Bonefish's 5.9 cm belly depth at Grip, resting on the palm). Bigger fish sit a little
+  deeper in the fingers, smaller ones a little above the palm; both read fine at 0.8-1.3 scale.
+- Frame 0 in arms component space: `hand_r_fish` (46.9, 8.0, -11.4) cm, rotation P 8.8 / Y 79.6 / R -15.0 (head to the
+  right and a little forward, 10 deg up, rolled 15 deg so the near flank faces the eye). On screen (1920x1080, 90 deg):
+  the reference Bonefish spans x 16-75 %, top at 49 % (the dorsal tip on the horizon); the right hand under it at
+  x 55-70 %; the left hand is out of view.
+- The fish must be a **first-person primitive** like the rod (`FirstPersonPrimitiveType = FirstPerson`,
+  `SetOnlyOwnerSee(true)`, no collision, no shadow), or FirstPersonScale 0.6 puts the arms and the fish at different
+  depths. Hide the rod mesh while `HoldFish` is active (the clip keeps `hand_r_rod` in the fist, invisible).
+- Contact: 20 fish vertices sit up to 1.9 cm inside the curled fingers (the grip pressing into the flank, hidden by the
+  fish). The pectoral fin tip pokes through the thumb by a few mm at the head.
+
+### CarryCooler (T-030): both hands on SM_Cooler_Starter's handles
+- **Handles**: `Handle_L` (0, -31.25, 19.1) cm and `Handle_R` (0, 31.25, 19.1) cm in the cooler's space (the model's
+  sockets, checked against `art/export/Props/SM_Cooler_Starter.fbx`: 0.015 mm). Each fist's grip channel (the same
+  channel that holds the rod) is centered **exactly on its handle socket** (0.015 mm): **hands 62.5 cm apart, 19.1 cm
+  above the cooler's base, on the middle of each rope, the rope running front-back through the fist**.
+  Wrist bones in cooler space (Unreal axes, cm): `hand_l` (-3.1, -30.4, 25.7), `hand_r` (-3.1, 30.4, 25.7).
+- **Attach**: the carried cooler's mesh attaches to bone **`cooler`** with a zero relative transform (the bone is the
+  cooler's pivot, bottom center, front +X = the player's forward). Frame 0: (42.9, 0, -55.5) cm in arms component space
+  (pivot 55 cm below the eye, handles 36 cm below it), pitch -0.5 deg; it moves +-0.2 / +-0.8 cm and +-0.6 deg with
+  the breath and the hands move with it (no sliding). If the model's handle sockets move, re-run this recipe
+  (`COOLER_HANDLE_L`).
+- While carried: turn off the cooler's collision with its carrier (the box is 23-65 cm in front of the eye, touching the
+  capsule), and treat it like the rod for the owner: first-person primitive (same FirstPersonScale reason as the fish).
+  Other players see the replicated world cooler; a third-person carry needs a third-person body (later).
+- On screen: only the cooler shows, lid top from 75 % of the height down (x 10-90 %); the fists hold the handles below
+  the frame's bottom corners. Raising the box far enough to show the fists would cover the lower half of the view; the
+  height is one constant (`COOLER_POS`), a quick change if the designer wants it.
+- Contact: the heel of each hand touches the cooler wall by up to 1.4 cm (the rope is only 2.4 cm off the wall;
+  off-screen). Wrists 30 deg flex / 78 deg ulnar bend (the mitten grip, as on the rod; off-screen).
+
+### Rod aim offset (T-028)
+Nine single-pose clips, one per point of a 3x3 aim-offset grid. Each extreme moves the grip, turns the rod so its tip
+lands on a chosen point of the first-person frame, and turns the upper body (`arms` bone) partly with it; both hands are
+solved from the rod as in HoldRod_Idle, so every pose has the right fist on the grip and the left fist on the crank knob.
+Screen numbers for 1920x1080 at 90 deg; tip = SM_Rod_Basic's line tip.
+
+| Pose | Grip move (cm: fwd, left, up) | Rod pitch / yaw (deg, yaw + = left) | Body yaw / pitch (deg) | Tip on screen (x, y %) | Fists x % / top y % | `hand_r_rod` (component, cm) |
+|---|---|---|---|---|---|---|
+| Center | 0 | 35.1 / 4.8 (= HoldRod_Idle f0) | 0 / 0 | 52.7, 14.1 | 56-86 / 81 | (42.9, 21.0, -23.0) |
+| Up | -10, 0, +7 | 37.6 / 2.1 | 0 / 10 | 55, 4 | 58-98 / 73 | (32.9, 21.0, -16.0) |
+| Down | +7, 0, -3 | -1.0 / 7.3 | 0 / 0 | 50, 62 | 56-80 / 80 | (49.9, 21.0, -26.0) |
+| Left | +2, +6, 0 | 26.9 / 43.0 | 40 / 0 | 22, 20 | 47-77 / 80 | (44.9, 15.0, -23.0) |
+| Right | 0, -2, -2 | 14.8 / -47.0 | -35 / 0 | 96, 40 | 64-89 / 84 | (42.9, 23.0, -25.0) |
+| UpLeft | -8, +5, +7 | 31.9 / 38.9 | 40 / 10 | 25, 6 | 47-88 / 71 | (34.9, 16.0, -16.0) |
+| UpRight | -10, +1, +5 | 29.3 / -42.4 | -35 / 10 | 92, 10 | 63-96 / 79 | (32.9, 20.0, -18.0) |
+| DownLeft | +3, +6, -3 | 5.0 / 39.6 | 40 / 0 | 24, 56 | 48-75 / 84 | (45.9, 15.0, -26.0) |
+| DownRight | 0, -2, -4 | 2.0 / -46.0 | -35 / 0 | 95, 62 | 63-89 / 87 | (42.9, 23.0, -27.0) |
+
+- **Up** can't raise the rod much without the tip leaving the frame (the Center tip is already 14 % from the top), so it
+  reads through the fists: pulled 10 cm back towards the chest and 7 cm up (fists 8 % higher and bigger), the rod
+  2.5 deg steeper with the tip 4 % from the top edge. The game-driven rod bend under tension (later) adds to it.
+- The corners were added so the aim offset reaches full strength diagonally: with only 5 samples, input (1, 1) would
+  blend 50 % Up + 50 % Right. "Fish runs left: rod up and to the right" is exactly `UpRight`.
+- The body turn depends only on the yaw input (Left 40 deg, Right 35 deg) or only on the pitch input (Up 10 deg), so the
+  blend of the `arms` bone is separable and monotonic. The rod tip stays inside the frame over the whole input square
+  (9x9 grid simulated on HoldRod_Idle frames 0/22/45/67: 0 of 324 samples off-screen).
+- Blends (Unreal's mesh-space aim offset, simulated): between grid points the left fist drifts off the crank knob by up
+  to **4.0 cm** (worst at yaw +0.5, pitch 0; 0 at the 9 poses). **Fix: the Two Bone IK in the wiring below** (the crank
+  stays within 98.8 % of the left arm's reach everywhere, so the IK always lands). The right fist never drifts (the rod
+  is its child).
+- Off-screen compromise: the right wrist bends hard in the extremes (the mitten grip's 79 deg ulnar bend plus up to
+  ~100 deg of flex in Up / UpRight / DownRight). All of it is below or beside the frame; the outside views in
+  `SK_FPArms_rodaim_views.png` show it bent, not broken. The rod butt touches the right forearm by up to 4 cm in Down
+  (off-screen).
+- **Standing / crouched only.** On `Prone_HoldRod_Idle` the same deltas don't fit: the left fist drifts up to 22 cm,
+  `Up` lifts the rod to +22.5 cm above the eye (a 60 cm crawl gap allows +15), and the tip leaves the frame at the
+  right/down corners. Apply the aim offset only on the `HoldRod` branch (below); a prone fight keeps ProneHold still
+  (prone aim poses would be a follow-up).
+
 ## Unreal import (editor-operator)
 
 Import settings for these files (and every skeletal FBX from `pb.export_skeletal_fbx`): **Convert Scene ON** (axis
@@ -168,6 +270,31 @@ rotation/translation offset, normals imported, no physics asset. In `Content/Pyt
    - `A_FPArms_HoldRod_Idle` frame 0: `hand_r_rod` at (42.9, 21.0, -23.0) cm in component space;
    - PIE shot from the camera like `Saved/AgentLogs/editor/20260923-t004-import/pie_fp_rod.png`: same framing, and
      SM_Rod_Basic on `hand_r_rod` now at scale 1.0 even with a scale-inheriting attach rule.
+
+**T-028 / T-030 import (2026-09-23)**, all in `/Game/Art/Characters/FPArms/`, settings above:
+1. Re-import `SK_FPArms` (Convert Scene Unit OFF, **Update Skeleton Reference Pose ON**) so `SKEL_FPArms` gains
+   `hand_r_fish` (parent `hand_r`) and `cooler` (parent `arms`): 18 bones. The 16 existing bones keep their order and
+   reference pose, so `ABP_FPArms` and the existing clips stay valid (re-importing the five old clips is optional:
+   identical keys plus the two new bones at rest).
+2. Import the two new loops `A_FPArms_HoldFish_Idle`, `A_FPArms_CarryCooler_Idle`: animation only on `SKEL_FPArms`,
+   30 fps, frames 0-90, Enable Root Motion off, looping in their players.
+3. Import the nine `A_FPArms_RodAim_*` (Center, Up, Down, Left, Right, UpLeft, UpRight, DownLeft, DownRight): animation
+   only on `SKEL_FPArms`, frames 0-1 (one pose). On each: **Additive Anim Type = Mesh Space**, **Base Pose Type =
+   Selected animation frame**, Ref Pose Seq = `A_FPArms_RodAim_Center`, Ref Frame Index = 0 (Center is HoldRod_Idle
+   frame 0, so Center's own delta is zero).
+4. Create the aim offset `AO_FPArms_RodAim` (Aim Offset asset, Skeleton `SKEL_FPArms`, preview base pose
+   `A_FPArms_HoldRod_Idle`): horizontal axis **`RodAimYaw`, -1..1**, vertical axis **`RodAimPitch`, -1..1** (grid
+   divisions 2 on both; no smoothing needed, T-028 smooths the inputs). Samples: Center (0, 0), Up (0, 1), Down (0, -1),
+   Left (-1, 0), Right (1, 0), UpLeft (-1, 1), UpRight (1, 1), DownLeft (-1, -1), DownRight (1, -1).
+   Sign convention: **yaw +1 = rod tip to the player's RIGHT** (Unreal's positive yaw), **pitch +1 = Up** (pulled back
+   and high = more tension), -1 = dipped towards the water.
+5. Verify (stop and report if any fails): `skeleton_report()` shows 18 bones with `hand_r_fish` head at
+   (54.1, 10.6, -27.9) cm and `cooler` at (42.9, 0, -55.5) cm (component space); `A_FPArms_RodAim_Up` frame 0 has
+   `hand_r_rod` at (32.9, 21.0, -16.0) cm; the aim offset preview at (1, 1) matches `SK_FPArms_rodaim_upright_fp.png`
+   (rod up and on the right, tip near the top-right corner, both fists on the rod).
+6. Screenshot checks: SM_Rod_Basic on `hand_r_rod` with the aim offset at the 4 edge points; a Bonefish on
+   `hand_r_fish` (relative location (-9.43, 0, 0) cm) with HoldFish_Idle, like `SK_FPArms_holdfish_fp.png`;
+   SM_Cooler_Starter on `cooler` (zero transform) with CarryCooler_Idle: both fists on the rope handles.
 
 First-time import (a fresh project or a new copy), for reference:
 1. `SK_FPArms.fbx` -> `/Game/Art/Characters/FPArms/`, Skeletal Mesh, create a new skeleton and rename it
@@ -239,9 +366,24 @@ First-time import (a fresh project or a new copy), for reference:
 - **StanceDip** (unchanged): on every stance change and on landing,
   `PlaySlotAnimationAsDynamicMontage(StanceDip, "StanceAdditive", 0.0f, 0.05f, PlayRate)` (DT_Movement
   `StanceDipPlayRate`: 1.0, prone 0.85). Checked on top of both prone clips: it only lowers them.
-- **Left hand on the crank (later, reeling)**: in HoldRod_Idle and Prone_HoldRod_Idle `hand_l` sits exactly on
-  `hand_l_crank`. When a reel animation spins the crank, drive a Two Bone IK on `hand_l` (joint `lowerarm_l`) to the
-  `hand_l_crank` transform; disable that IK in `ProneTuck` (the left hand lets go there).
+- **Left hand on the crank (later, reeling)**: in HoldRod_Idle, Prone_HoldRod_Idle and all nine RodAim poses `hand_l`
+  sits exactly on `hand_l_crank`. When a reel animation spins the crank, the same Two Bone IK (below, T-028) keeps the
+  fist on it; it sits only on the HoldRod branch, so `ProneTuck` (the left hand lets go there) is unaffected.
+- **T-030 poses** (`EFPArmsPose` gets `HoldFish` and `CarryCooler`, added by the engineers): two more Sequence
+  Players into `Blend Poses by EFPArmsPose`, same sync group `FPArmsBreath`, same Standard / Linear blend and
+  `ArmsPoseBlendTime`: `HoldFish` -> `A_FPArms_HoldFish_Idle`, `CarryCooler` -> `A_FPArms_CarryCooler_Idle`. Rule:
+  `CarryCooler` while carrying a cooler (wins over everything; no rod, no fish), else `HoldFish` while a fish is in hand
+  (rod hidden), else the rod/idle rule above. Suggested blend time 0.25 s (data). Attach the fish to `hand_r_fish` and
+  the cooler to `cooler` as described in the HoldFish / CarryCooler sections; both first-person primitives for the
+  owner. The rod mesh is hidden (not detached) in both poses. StanceDip still plays on top (it moves the fish and the
+  cooler with the arms).
+- **T-028 rod aim offset**: `UFPArmsAnimInstance` exposes `float RodAimYaw, RodAimPitch` (-1..1, smoothed by T-028).
+  Graph: `A_FPArms_HoldRod_Idle` player -> **`AimOffset Player AO_FPArms_RodAim`** (Yaw pin `RodAimYaw`, Pitch pin
+  `RodAimPitch`, Alpha 1) -> **Two Bone IK** (IKBone `hand_l`, joint target none (keep the pose's elbow), Effector
+  Location Space = **Bone Space**, Effector Target `hand_l_crank`, **Take Rotation from Effector Space ON**, Allow
+  Stretching off) -> the `HoldRod` pin of `Blend Poses by EFPArmsPose`. Only the HoldRod branch gets the aim offset:
+  prone doesn't fit (see "Rod aim offset"), and the other poses have no rod. The IK closes the up-to-4 cm drift of the
+  left fist off the crank between grid points; at the 9 poses it is a no-op. Zero inputs = HoldRod_Idle exactly.
 - **Rod bend** under line tension: game-driven on a future skeletal rod (bone chain along the 20 blank rings), not a
   clip.
 - **Prone without a rod**: `Idle` is used, and it is not wall-safe (fingertips 68 cm ahead). If an empty-handed prone
