@@ -49,6 +49,7 @@ CONFIRMED in the editor 2026-09-23 (SM_Rod_Basic on SK_FPArms `hand_r_rod`, PIE 
 
 ## Characters and animation
 - First person: the player sees their own arms and the rod. Placeholder arms first, taken from Epic's first-person content or a simple blockout; stylized custom arms later.
+- First-person held items (lead decision 2026-09-23, from the designer's arm-clip review; Jimmy can change it): when the player holds anything (rod, fish, cooler, later gear), the hands are always visible, the item stays in the lower third of the view, and the centre 40% of the screen stays clear. The only exception is a short reward pose such as holding up a fresh catch. Carrying the cooler is a two-handed low carry, with both fists on the side handles in the lower corners.
 - Rod and line: the rod bends under tension; the line is a simulated or spline cable; the bobber bobs on the waves.
 - Fish: simple procedural swim animation (bone chain or vertex wiggle) made in Blender or in material; a fight animation while hooked.
 - Other players (co-op, later): a simple stylized fisher body with Unreal mannequin animations retargeted.

@@ -100,6 +100,10 @@ C++ work and Blender work (model-artist, animation-artist) can run in parallel; 
   Elsewhere in this file and in the skills, a plain role name (e.g. "editor-operator") means that role at any level.
   Junior and senior agents are thin wrappers: they read and follow the role's mid-level file (e.g. `.claude/agents/unreal-engineer-mid-high.md`), so each role's rules live in one file.
   A junior that finds the task bigger than briefed stops and reports back, and the lead re-assigns it to a senior.
+  **Art is taken seriously (Jimmy, 2026-09-23).** A good-looking game in one art style matters as much as working systems.
+    - Levels: anything the player sees often or up close (arms, rod, fish, cooler, boat, creatures, NPCs, anything held, carried or interacted with) goes to at least a mid artist. New shapes, species and hero assets go to senior. Junior artists only do fixes, re-exports, recolors, variants of approved assets and small background props.
+    - Briefs: give artists the palette and mood boards, the existing assets to match, and the distance and camera it's seen from.
+    - Review: every new visible asset or clip gets a designer review of its previews against ART_STYLE.md before the editor imports it, and the artist fixes the must-fix items. The lead also looks at the previews.
   **Mixed-difficulty tasks (Jimmy, 2026-09-23).** Split a task into parts by difficulty and give each part its own agent at the right level. Example: a senior designs and builds the core system; a mid adds the standard feature plumbing; a junior adds data rows, the placeholder text UI and routine tests. Give each part its own files or lane, brief the order and hand-offs (a junior starts from the senior's committed API), and list the parts on the task line in docs/TASKS.md.
   **Ultracode, used sparingly (Jimmy, 2026-09-23).** Only for the very toughest work, and only where a single senior (effort max) isn't enough. That means:
     (a) a foundational design that is expensive to undo later, such as the multiplayer sync model, the creature AI and senses foundation, or the noise/mic pipeline; or
@@ -110,12 +114,11 @@ C++ work and Blender work (model-artist, animation-artist) can run in parallel; 
     2. Implementation: one senior in a lane.
     3. Adversarial review: reviewers with different lenses try to break it, and a majority vote decides each finding.
     4. Fix and verify, then the normal QA, playtest and designer gate.
-  **Keep workflows small (Jimmy, 2026-09-23).** He stopped a T-026 review that took 31 agents and ~4M tokens because it used too many resources. Limits:
-    - At most ~8 agents per workflow.
-    - One skeptic per finding, and 3 only for a blocker.
-    - A review usually has 2-3 lenses, not 4.
-    - Set a time limit.
-    - Save partial results: a stopped run's findings can be read from its journal.
+  **Scale by need, at the right effort (Jimmy, 2026-09-23, clarified).** Use as many agents (and workflow agents) as the work needs to go fast and stay accurate. What Jimmy cares about is that EVERY agent runs at the effort its job needs.
+    - Pick the named level for each agent: junior, mid or senior.
+    - In workflows, set `agentType` to the right level for each stage, e.g. reviewers `<role>-senior-max` and verifiers or skeptics `qa-engineer-mid-medium` or `-junior-low`. Never leave stages on the default or max effort by accident.
+    - The T-026 review he stopped ran every agent at top effort. Count was never the problem.
+    - If a workflow is stopped, save its partial results from its journal.
   **Ultracode names (Jimmy, 2026-09-23).** Every ultracode run and agent has a set name, so the lead and Jimmy can tell who did what:
     - The workflow's `meta.name` is `ultracode-<task>-<phase>`, e.g. `ultracode-T026-review` or `ultracode-T016-design`.
     - Every agent() call gets `agentType` = a named team agent (e.g. `unreal-engineer-senior-max`) and `label` = `ultracode:<phase>:<agentType>:<job>`. Phases are design, judge, build, review, verify and fix; the job is the lens, approach or finding number. Examples:

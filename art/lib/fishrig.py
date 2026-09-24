@@ -617,6 +617,33 @@ def landed_flop(f):
     return p.pecs(TUCK_DEG + 20.0 * k, TUCK_DEG)
 
 
+# --- Curled: an iced catch in a cooler (T-030 display; a 1-frame pose, dead still). A reference fish (53-56 cm) is
+# longer than the starter cooler's liner (34 x 50 cm), so the displayed fish lies on its side curled into a C.
+# The bend is DORSO-VENTRAL (pitch), back concave: head and tail both bend toward the fish's back, the belly is the
+# outside of the C. Why pitch and not the lateral curl of Dart/Flop: a fish lies on its SIDE in the cooler, so its
+# lateral plane is vertical there; a lateral C would lift head and tail ~12 cm off the floor like a bowl (4 fish can't
+# stack under the lid), while a pitch curl stays in the flank plane: the fish stays flat (the same thickness and lie
+# offset as the straight fish, LieOffsetCm), the C is seen from above, and 4 fish stack in two layers. Back-concave
+# rather than belly-concave: the coral snapper's crest stays inside the C (a compact footprint instead of fanning
+# out 10 cm), and a stiff back-arched fish is the classic dead-fish read (a belly-concave arc reads as a leap).
+# Head: the neck (J1) is the only joint in front of the anchored chest, and the snapper's crest root sits 10 cm over
+# it on the concave side, so the head takes CURLED_HEAD_DEG (the crest folds past ~25 deg); the posterior joints take
+# the rest, smoothly (J2..J4 even, the tail root less so the caudal fin follows the curve instead of flicking up).
+# Fins relaxed: pectorals flat on the flank (TUCK_DEG). The pose is symmetric in the flank plane, so a fish lying on
+# its left side is the mirror image: slots alternate sides for variety.
+CURLED_HEAD_DEG = 24.0
+CURLED_POST_DEG = 106.0
+CURLED_POST_SHARE = {"Spine_02": 0.24, "Spine_03": 0.28, "Spine_04": 0.28, "Tail": 0.20}
+
+
+def curled(_f=0.0):
+    p = Pose()
+    p.pitch["Head"] -= CURLED_HEAD_DEG * DEG                  # nose toward the back (pitch + = nose down)
+    for b, share in CURLED_POST_SHARE.items():
+        p.pitch[b] += share * CURLED_POST_DEG * DEG           # tail toward the back (+ = tail up, see arch())
+    return p.pecs(TUCK_DEG, TUCK_DEG)
+
+
 def rest_pose_fn(_f):
     return Pose()
 
@@ -633,6 +660,8 @@ CLIPS = [
             notes="fight move Dive"),
     ClipDef("A_Fish_Fight_Dart", DART_N, fight_dart, "Dart", notes="fight move Dart: a dart left, then right"),
     ClipDef("A_Fish_Landed_Flop", FLOP_N, landed_flop, "Flop", notes="out of the water: in hand or on a dock"),
+    ClipDef("A_Fish_Curled", 1, curled, "Curled", loop=False,
+            notes="1-frame pose, dead still: the iced catch lying curled in a cooler (T-030 display slots)"),
 ]
 REST_CLIP = ClipDef("A_Fish_Rest", 1, rest_pose_fn, "Rest", notes="1-frame straight fish: the additive base pose")
 

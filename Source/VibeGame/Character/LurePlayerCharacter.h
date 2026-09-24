@@ -136,6 +136,17 @@ public:
 	UFUNCTION(BlueprintCallable, Category="Lure|Input")
 	void DoJumpEnd();
 
+	/** Jump is held down (between DoJumpStart and DoJumpEnd, on the machine that reads the input). */
+	bool IsJumpHeld() const { return bJumpInputHeld; }
+
+	/**
+	 *  Holding Jump in the water keeps asking to climb (playtest 2026-09-23 bug 2): while swimming with Jump held, the
+	 *  Jump flag is set again before each move, so swimming into a ladder or a climbable edge with Jump already held
+	 *  climbs on arrival. Only the flag changes (the netfix contract, docs/specs/swimming.md): the saved move carries it,
+	 *  the server plans its own climb, replays use the saved flag. Out of the water a held Jump does nothing new.
+	 */
+	virtual void CheckJumpInput(float DeltaTime) override;
+
 	// ---- State ----
 
 	UFUNCTION(BlueprintPure, Category="Lure|Movement")
@@ -320,6 +331,9 @@ private:
 	float SwimArmsAlpha = 0.f;
 	bool bSwimStrokePlaying = false;
 	bool bWasSwimming = false;
+
+	/** See IsJumpHeld. Set only by the local input (DoJumpStart / DoJumpEnd), never replicated. */
+	bool bJumpInputHeld = false;
 
 	// Input handlers.
 	void HandleMove(const FInputActionValue& Value);

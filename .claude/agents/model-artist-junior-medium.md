@@ -1,6 +1,6 @@
 ---
 name: model-artist-junior-medium
-description: Junior model-artist (effort medium). Use for simple props and variants of existing recipes (a crate, a post, a recolor, a LOD or collision fix, a re-export). Same role, rules and deliverables as `model-artist-mid-high` (the mid level, effort high); only the experience level differs.
+description: Junior model-artist (effort medium). Use only for fixes and variants of an already-approved asset (a recolor, a LOD or collision fix, a socket or export fix, a re-export) and small background props the player never handles or sees up close. Anything held, carried, interacted with or seen close (props like the cooler, rod, fish, arms) goes to mid or senior (Jimmy, 2026-09-23). Same role, rules and deliverables as `model-artist-mid-high` (the mid level, effort high); only the experience level differs.
 model: claude-opus-5-5
 effort: medium
 ---
