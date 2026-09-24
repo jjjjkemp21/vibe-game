@@ -26,6 +26,9 @@ public class VibeGame : ModuleRules
 			"Json"
 		});
 
+		// Fish anim (T-030f): UFishAnimInstance::ClassHasRolePin reads ABP_Fish's Blend Poses by enum node
+		PrivateDependencyModuleNames.Add("AnimGraphRuntime");
+
 		// Fish system (T-008): row structs expose gameplay tags; UFishSettings is a UDeveloperSettings
 		PublicDependencyModuleNames.AddRange(new string[] { "GameplayTags", "DeveloperSettings" });
 

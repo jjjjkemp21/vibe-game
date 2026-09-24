@@ -77,6 +77,16 @@ bool FFishVisualRow::Validate(FString& OutProblem) const
 			OutProblem = FString::Printf(TEXT("MoveRoles lists %s twice"), *Entry.MoveId.ToString());
 			return false;
 		}
+		if (Entry.Role == EFishAnimRole::Curled)
+		{
+			OutProblem = FString::Printf(TEXT("MoveRoles %s: Curled is the cooler's held pose, not a fight role"), *Entry.MoveId.ToString());
+			return false;
+		}
+	}
+	if (UnknownMoveRole == EFishAnimRole::Curled)
+	{
+		OutProblem = TEXT("UnknownMoveRole: Curled is the cooler's held pose, not a fight role");
+		return false;
 	}
 	TSet<EFishAnimRole> Roles;
 	for (const FFishRoleTailBeat& Beat : RoleTailBeats)

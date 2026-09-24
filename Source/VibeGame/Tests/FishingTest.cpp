@@ -11,6 +11,10 @@
 
 #include "Animation/AnimSequenceBase.h"
 #include "Camera/CameraComponent.h"
+#include "Catch/LureCatchLibrary.h"
+#include "Catch/LureCoolerActor.h"
+#include "Catch/LureFishItem.h"
+#include "Catch/LureHandsComponent.h"
 #include "Character/FPArmsAnimInstance.h"
 #include "Character/FPArmsPose.h"
 #include "Character/LureCharacterMovementComponent.h"
@@ -1124,8 +1128,10 @@ bool FLureFishingArmsPoseGraphPinOrder::RunTest(const FString& Parameters)
 	USkeletalMeshComponent* Arms = Character->GetFirstPersonArms();
 	const FName Bone = GetDefault<ULureFishingSettings>()->RodAttachBone;
 	const TCHAR* Folder = TEXT("/Game/Art/Characters/FPArms/");
-	const TCHAR* ClipNames[] = { TEXT("A_FPArms_Idle"), TEXT("A_FPArms_HoldRod_Idle"), TEXT("A_FPArms_Prone_HoldRod_Idle"), TEXT("A_FPArms_Prone_TuckRod") };
-	const EFPArmsPose Poses[] = { EFPArmsPose::Idle, EFPArmsPose::HoldRod, EFPArmsPose::ProneHold, EFPArmsPose::ProneTuck };
+	// One reference per clip; HoldFish is a two-way blend (HoldFish_Idle <-> HoldFish_Large_Idle, alpha HoldFishSizeAlpha),
+	// so it has two references: a small fish (alpha 0) must match the first, a trophy (alpha 1) the second.
+	const TCHAR* ClipNames[] = { TEXT("A_FPArms_Idle"), TEXT("A_FPArms_HoldRod_Idle"), TEXT("A_FPArms_Prone_HoldRod_Idle"), TEXT("A_FPArms_Prone_TuckRod"),
+		TEXT("A_FPArms_HoldFish_Idle"), TEXT("A_FPArms_HoldFish_Large_Idle"), TEXT("A_FPArms_CarryCooler_Idle") };
 	TArray<UAnimSequenceBase*> Clips;
 	for (const TCHAR* Name : ClipNames)
 	{
@@ -1137,73 +1143,130 @@ bool FLureFishingArmsPoseGraphPinOrder::RunTest(const FString& Parameters)
 		Controller->UnPossess();
 		return true;
 	}
+	// Every EFPArmsPose value is driven below (a new value without a case here fails this).
+	TestEqual(TEXT("EFPArmsPose has the 6 poses this test drives"), static_cast<int32>(StaticEnum<EFPArmsPose>()->GetMaxEnumValue()), 6);
 	Arms->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
 
-	// Reference poses: each clip sampled over its length on a plain copy of the mesh.
+	// Reference poses: each clip sampled over its length on a plain copy of the mesh (all bones, component space).
 	USkeletalMeshComponent* Ref = NewObject<USkeletalMeshComponent>(Character);
 	Ref->SetSkeletalMeshAsset(Arms->GetSkeletalMeshAsset());
 	Ref->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
 	Ref->RegisterComponent();
 	Ref->SetAnimationMode(EAnimationMode::AnimationSingleNode);
-	TArray<TArray<FTransform>> Refs;
+	TArray<TArray<TArray<FTransform>>> Refs;
 	for (UAnimSequenceBase* Clip : Clips)
 	{
-		TArray<FTransform>& Samples = Refs.AddDefaulted_GetRef();
+		TArray<TArray<FTransform>>& Samples = Refs.AddDefaulted_GetRef();
 		Ref->SetAnimation(Clip);
 		const float Length = Clip->GetPlayLength();
-		for (int32 Index = 0; Index < 10; ++Index)
+		for (int32 Index = 0; Index < 15; ++Index)
 		{
-			Ref->SetPosition(Length * Index / 10.f, false);
+			Ref->SetPosition(Length * Index / 15.f, false);
 			Ref->TickAnimation(0.f, false);
 			Ref->RefreshBoneTransforms();
-			Samples.Add(Ref->GetSocketTransform(Bone, RTS_Component));
+			Samples.Add(TArray<FTransform>(Ref->GetComponentSpaceTransforms()));
 		}
 	}
-	auto Error = [](const FTransform& A, const FTransform& B)
+	auto Error = [](TArrayView<const FTransform> A, TArrayView<const FTransform> B)
 	{
-		// cm + 0.25 x degrees (same scale as the editor probe: < ~1.5 same clip, > ~5 another clip).
-		return static_cast<float>(FVector::Dist(A.GetLocation(), B.GetLocation()) + 0.25 * FMath::RadiansToDegrees(A.GetRotation().AngularDistance(B.GetRotation())));
+		// mean over bones of cm + 0.25 x degrees (component space)
+		const int32 Num = FMath::Min(A.Num(), B.Num());
+		double Sum = 0.0;
+		for (int32 Index = 0; Index < Num; ++Index)
+		{
+			Sum += FVector::Dist(A[Index].GetLocation(), B[Index].GetLocation()) + 0.25 * FMath::RadiansToDegrees(A[Index].GetRotation().AngularDistance(B[Index].GetRotation()));
+		}
+		return Num > 0 ? static_cast<float>(Sum / Num) : TNumericLimits<float>::Max();
 	};
-	TestTrue(TEXT("the four clips put hand_r_rod in distinct places"), Error(Refs[1][0], Refs[2][0]) > 1.f && Error(Refs[2][0], Refs[3][0]) > 1.f && Error(Refs[0][0], Refs[1][0]) > 1.f);
+	for (int32 First = 0; First < Refs.Num(); ++First)
+	{
+		for (int32 Second = First + 1; Second < Refs.Num(); ++Second)
+		{
+			TestTrue(FString::Printf(TEXT("%s and %s are distinct poses"), ClipNames[First], ClipNames[Second]), Error(Refs[First][0], Refs[Second][0]) > 0.5f);
+		}
+	}
 
-	auto Check = [&](EFPArmsPose Expected, TFunctionRef<void()> Drive)
+	auto Check = [&](EFPArmsPose Expected, int32 ExpectedClip, TFunctionRef<void()> Drive)
 	{
 		for (int32 Frame = 0; Frame < 90; ++Frame) // 1.5 s: past the 0.3 s blend and any stance dip
 		{
 			Drive();
 			World.Tick(1);
 		}
-		const FString Label = PoseName(Expected);
-		TestEqual(Label + TEXT(": character pose"), PoseName(Character->GetArmsPose()), Label);
-		const FTransform Hand = Arms->GetSocketTransform(Bone, RTS_Component);
+		const FString Label = PoseName(Expected) + TEXT(" (") + ClipNames[ExpectedClip] + TEXT(")");
+		TestEqual(Label + TEXT(": character pose"), PoseName(Character->GetArmsPose()), PoseName(Expected));
+		const TArray<FTransform> Pose(Arms->GetComponentSpaceTransforms());
 		int32 Best = INDEX_NONE;
 		float BestError = TNumericLimits<float>::Max();
 		FString All;
 		for (int32 Clip = 0; Clip < Refs.Num(); ++Clip)
 		{
 			float ClipError = TNumericLimits<float>::Max();
-			for (const FTransform& Sample : Refs[Clip])
+			for (const TArray<FTransform>& Sample : Refs[Clip])
 			{
-				ClipError = FMath::Min(ClipError, Error(Hand, Sample));
+				ClipError = FMath::Min(ClipError, Error(Pose, Sample));
 			}
-			All += FString::Printf(TEXT(" %s %.2f"), *PoseName(Poses[Clip]), ClipError);
+			All += FString::Printf(TEXT(" %s %.2f"), ClipNames[Clip], ClipError);
 			if (ClipError < BestError)
 			{
 				BestError = ClipError;
 				Best = Clip;
 			}
 		}
-		AddInfo(FString::Printf(TEXT("%s: hand_r_rod errors%s"), *Label, *All));
-		TestEqual(Label + TEXT(": arms show its own clip"), Best != INDEX_NONE ? PoseName(Poses[Best]) : FString(), Label);
+		AddInfo(FString::Printf(TEXT("%s: pose errors%s"), *Label, *All));
+		TestEqual(Label + TEXT(": arms show its own clip"), Best != INDEX_NONE ? FString(ClipNames[Best]) : FString(), FString(ClipNames[ExpectedClip]));
 	};
 	// Rod put away (the fishing component re-sets it every tick from IsRodInHand, so pause it for this step).
 	Character->GetFishing()->SetComponentTickEnabled(false);
-	Check(EFPArmsPose::Idle, [Character]() { Character->SetHoldingRod(false); });
+	Check(EFPArmsPose::Idle, 0, [Character]() { Character->SetHoldingRod(false); });
 	Character->GetFishing()->SetComponentTickEnabled(true);
-	Check(EFPArmsPose::HoldRod, []() {});
+	Check(EFPArmsPose::HoldRod, 1, []() {});
 	Character->RequestStance(ELureStance::Prone);
-	Check(EFPArmsPose::ProneHold, []() {});
-	Check(EFPArmsPose::ProneTuck, [Character]() { Character->AddMovementInput(-FVector::ForwardVector, 1.f, true); });
+	Check(EFPArmsPose::ProneHold, 2, []() {});
+	Check(EFPArmsPose::ProneTuck, 3, [Character]() { Character->AddMovementInput(-FVector::ForwardVector, 1.f, true); });
+	Character->RequestStance(ELureStance::Stand);
+	World.Tick(60);
+
+	// Items in hand (server-side landing, as the catch tests do): a small fish, a trophy, then a cooler.
+	ULureHandsComponent* Hands = ULureHandsComponent::Get(Character);
+	auto FishOf = [](float WeightKg, int32 Seed)
+	{
+		FFishInstance Fish;
+		Fish.SpeciesId = TEXT("Bonefish");
+		Fish.RarityId = TEXT("Common");
+		Fish.WeightKg = WeightKg;
+		Fish.Level = 1;
+		Fish.Value = 1;
+		Fish.Xp = 1;
+		Fish.DifficultyRating = 1.f;
+		Fish.Seed = Seed;
+		return Fish;
+	};
+	auto TakeFish = [&](float WeightKg, int32 Seed) -> ALureFishItem*
+	{
+		ALureFishItem* Item = Cast<ALureFishItem>(ULureCatchLibrary::HandleFishLanded(Character, FishOf(WeightKg, Seed)).FishItem);
+		return (Item && Hands && Hands->AuthorityTakeInHand(Item)) ? Item : nullptr;
+	};
+	UFPArmsAnimInstance* ArmsAnim = Cast<UFPArmsAnimInstance>(Arms->GetAnimInstance());
+	if (TestNotNull(TEXT("hands"), Hands) && TestNotNull(TEXT("a small fish in hand"), TakeFish(0.5f, 901)))
+	{
+		Check(EFPArmsPose::HoldFish, 4, []() {});
+		TestEqual(TEXT("small fish: HoldFishSizeAlpha 0"), ArmsAnim->HoldFishSizeAlpha, 0.f, KINDA_SMALL_NUMBER);
+		Hands->AuthorityReleaseHeld();
+		World.Tick(2);
+		if (TestNotNull(TEXT("a trophy fish in hand"), TakeFish(40.f, 902)))
+		{
+			Check(EFPArmsPose::HoldFish, 5, []() {});
+			TestEqual(TEXT("trophy: HoldFishSizeAlpha 1"), ArmsAnim->HoldFishSizeAlpha, 1.f, KINDA_SMALL_NUMBER);
+			Hands->AuthorityReleaseHeld();
+			World.Tick(2);
+		}
+		ALureCoolerActor* Cooler = ALureCoolerActor::SpawnCooler(World.World, NAME_None, FTransform(StandAt + FVector(80.f, 0.f, 0.f)), nullptr);
+		if (TestNotNull(TEXT("cooler"), Cooler) && TestTrue(TEXT("cooler in hand"), Hands->AuthorityTakeInHand(Cooler)))
+		{
+			Check(EFPArmsPose::CarryCooler, 6, []() {});
+		}
+	}
 	Ref->DestroyComponent();
 	Controller->UnPossess();
 	return true;
