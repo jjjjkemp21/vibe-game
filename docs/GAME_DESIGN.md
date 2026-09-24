@@ -84,7 +84,7 @@ What one short, polished, playable level must contain to prove the game is fun (
 - **6 fish species** across shore, reef and deep-drop spots, with different levels and fight patterns; at least one dawn-only and one night-only fish.
 - **Progression**: a physical, carryable cooler (fish go bad outside it), selling fish by fish at the dock counter, shop with a few gear upgrades, XP and player level, fish journal with record sizes, and 3 short NPC requests.
 - **Day/night cycle** (compressed, about 20 real minutes per day).
-- **Tension**: a noise meter (actions + microphone, by proximity). A reef shark that gets curious when you're loud or fast near the water: it circles, steals fish off the line, and can knock you in. At the lagoon's edge, a huge dark shadow stirs if you get very loud; you must hide or go prone out of its sight line or get caught. Getting caught means losing the cooler and respawning at the dock.
+- **Tension**: a noise meter (actions + microphone, by proximity). A reef shark that gets curious when you're loud or fast near the water: it circles, steals fish off the line, and can knock you in. At the lagoon's edge, a huge dark shadow stirs if you get very loud; you must hide or go prone out of its sight line or get caught. Getting caught means losing the fish in your hands and on the hook and respawning at the dock; your physical cooler stays where you left it (see "Getting caught").
 - **Boat unlock** at the end of the slice: a basic boat (unlocked at a player level) to reach one second fishing spot or islet in the beginner zone.
 - **Save/load** of progress, a pause menu with settings (mic on/off, mic sensitivity), and the F8 feedback key for playtests.
 
