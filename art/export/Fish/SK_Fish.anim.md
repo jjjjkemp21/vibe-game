@@ -8,10 +8,13 @@ It is deterministic: two runs give structurally identical FBX files (every value
 time stamps change, so a rerun without a content change rewrites the binaries: don't commit that churn).
 All numbers below come from `Saved/AgentLogs/blender/anim_fish.result.json`.
 
-Previews (`Saved/AgentLogs/previews/`): `SK_Fish_anim.png` (both species x 7 clips, 3/4 view at each clip's tightest
+Previews (`Saved/AgentLogs/previews/`): `SK_Fish_anim.png` (both species x 8 clips, 3/4 view at each clip's tightest
 bend), `A_Fish_<Clip>_anim.png` (8 frames x Bonefish top/side, CoralSnapper top/side at amplitude 0.8),
 `SK_Fish_strobe.png` (midlines per clip + the ambient WPO wave), `SK_Fish_flop_dock.png` (Landed_Flop lying on dock
-planks), `SK_Fish_tuck.png`, `SK_Fish_pec.png` (pectoral close-ups), `SK_Fish_weights.png`.
+planks), `SK_Fish_tuck.png`, `SK_Fish_pec.png` (pectoral close-ups), `SK_Fish_weights.png`,
+`A_Fish_Curled_anim.png` (the cooler pose, both species) and `A_Fish_Curled_cooler*.png` (4 fish in the starter cooler:
+top view, first person at the counter and on the floor, the slot diagram, the 1.3x fish unclamped; recipe
+`art/recipes/anim_fish_cooler.py`, section "Cooler display" below).
 
 ## Files (art/export/Fish/)
 
@@ -21,6 +24,7 @@ planks), `SK_Fish_tuck.png`, `SK_Fish_pec.png` (pectoral close-ups), `SK_Fish_we
 | `SK_CoralSnapper.fbx` | skinned mesh (796 tris, 6 slots) + the same 11 bones at its own positions | Skeletal Mesh `SK_CoralSnapper` on **`SKEL_Fish`** |
 | `A_Fish_Rest.fbx` | armature only, the straight fish, 2 identical keys (frames 0-1) | Animation on `SKEL_Fish`: the **additive base**, not additive itself |
 | `A_Fish_Swim_Idle.fbx` ... `A_Fish_Landed_Flop.fbx` (7) | armature only, one take each (take name = file name) | Animation on `SKEL_Fish`, then **additive** (below) |
+| `A_Fish_Curled.fbx` | armature only, a 1-frame pose (2 identical keys, frames 0-1) | Animation on `SKEL_Fish`, **additive** like the clips, loop off |
 
 `SM_Bonefish` / `SM_CoralSnapper` (static, same folder) stay the ambient fish. SK and SM use the same material
 names (`M_Bonefish_*`, `M_CoralSnapper_*`, shared `M_Fish_Eye`): import everything into `/Game/Art/Fish` so the
@@ -34,7 +38,7 @@ importer reuses one set of materials.
   scale 1.0, no physics asset.
 - Unreal = Blender x 100 with Y negated: **+X = nose, +Y = the fish's RIGHT side, +Z = up** (Blender +Y is its left).
 - Origin = the body center (halfway nose tip to tail tips) on the spine line. No root motion; `root` never moves.
-- Blender re-import of all 10 files (RESULT_JSON `reimport_check`): 11 bones, bone heads and axes 0.0 mm / 0.0 deg
+- Blender re-import of all 11 files (RESULT_JSON `reimport_check`): 11 bones, bone heads and axes 0.0 mm / 0.0 deg
   off, rest bone scale 1.0, rest mesh identical vertex by vertex, only the 8 deform groups exported as skin, clip poses
   <= 0.0001 mm / 0.0 deg off at 6 frames each.
 
@@ -60,7 +64,7 @@ Component space, cm; `_L` has -Y, `_R` has +Y. Skin: linear blend, max 2 influen
 weighted by its X (fins move exactly with the body beside them); the pectorals hinge on their root strip.
 Bounds at rest: Bonefish 53.5 x 11.4 x 21.1 cm, CoralSnapper 56.3 x 12.5 x 28.9 cm (reference weight size).
 
-## Clips (30 fps, all loops, rotation-only, root motion none)
+## Clips (30 fps, all loops except the Curled pose, rotation-only, root motion none)
 
 | Asset | Frames | Length | Tail beat | What |
 |---|---|---|---|---|
@@ -72,6 +76,7 @@ Bounds at rest: Bonefish 53.5 x 11.4 x 21.1 cm, CoralSnapper 56.3 x 12.5 x 28.9 
 | `A_Fish_Fight_Dive` | 0-60 | 2.0 s | 2.0 Hz | digging strokes, head 12-14 deg nose-down, body arched, slow flank-flashing roll, head shakes f36-50 |
 | `A_Fish_Fight_Dart` | 0-36 | 1.2 s | - | C-start dart to the fish's LEFT (coil f0-4, power stroke f8, beats to f18), then to its RIGHT (f18-36) |
 | `A_Fish_Landed_Flop` | 0-90 | 3.0 s | - | out of water: curls up (f0-10), slaps flat (f13), rebound, tail flicks (f24-36), second flop (f44-66). Curls only toward the fish's LEFT |
+| `A_Fish_Curled` | 0-1 | pose | - | **not a loop**: 1-frame pose, dead still. The iced catch in a cooler: lying on its side, back-arched C in the flank plane (head 24 deg + tail 106 deg toward the back), pectorals flat. Bonefish 43.6 x 24.7 cm, CoralSnapper 46.4 x 29.3 cm footprint (from 53.5 / 56.3 cm straight), thickness unchanged (8.5 cm) |
 
 Loops: frame N equals frame 0 exactly and the motion is continuous across the seam (the seam's second difference is
 below each clip's median). Suggested notifies (audio/VFX, optional): Landed_Flop `FishSlap` at f13 and f55 (light at
@@ -89,7 +94,8 @@ import pipeline_unreal as pu
 
 SRC, DEST = "C:/GameDev/VibeGame/art/export/Fish/", "/Game/Art/Fish"
 CLIPS = ["A_Fish_Swim_Idle", "A_Fish_Swim_Fast", "A_Fish_Hooked_Thrash", "A_Fish_Fight_Run", "A_Fish_Fight_Dive",
-         "A_Fish_Fight_Dart", "A_Fish_Landed_Flop"]
+         "A_Fish_Fight_Dart", "A_Fish_Landed_Flop", "A_Fish_Curled"]
+NOT_LOOPING = ("A_Fish_Rest", "A_Fish_Curled")          # the base pose and the 1-frame cooler pose
 
 def opts(kind, skel=None):
     o = pu._fbx_options(kind, skel, import_materials=(kind == "skeletal"), update_ref_pose=False)
@@ -113,7 +119,7 @@ for name in ["A_Fish_Rest"] + CLIPS:                                # 3. animati
     paths = pu._run_import(SRC + name + ".fbx", DEST, name, options=o, factory=unreal.FbxFactory())
     anim = pu._rename(pu._first_of(paths, unreal.AnimSequence, DEST + "/" + name), name)
     anim.set_editor_property("enable_root_motion", False)
-    anim.set_editor_property("loop", name != "A_Fish_Rest")
+    anim.set_editor_property("loop", name not in NOT_LOOPING)
     pu._save(anim)
 
 rest = unreal.load_asset(DEST + "/A_Fish_Rest")                     # 4. additive on A_Fish_Rest frame 0
@@ -135,7 +141,10 @@ Verify before handing back (stop and report if any fails; don't fix it in the ed
    `c.get_ref_pose_position(c.get_bone_index("Mouth"))` = (14.11, 0, -2.45) (local to Head; Bonefish (13.16, 0,
    -1.11)), and `Tail` local to Spine_04 = (-6.15, 0, 0) (Bonefish (-5.78, 0, 0)).
 3. `anim_report` of each clip: `AAT_LOCAL_SPACE_BASE`, `ABPT_ANIM_FRAME`, loop True, root motion False, frames
-   60/24/90/30/60/36/90 (+1 key each), 11 tracks; `A_Fish_Rest` not additive, 1 frame.
+   60/24/90/30/60/36/90 (+1 key each), 11 tracks; `A_Fish_Curled` the same but loop False and 1 frame (+1 key);
+   `A_Fish_Rest` not additive, 1 frame.
+   Only adding A_Fish_Curled to an existing import: run steps 3-4 for `["A_Fish_Curled"]` only (nothing else
+   changed; the other FBX files are byte-for-byte the committed ones).
 4. Screenshot: the ABP preview (below) on SK_CoralSnapper with Role = Dart, paused at 0.13 s (frame 4): the head and
    tail both curl toward the fish's LEFT (Unreal -Y), the crest intact, the fish NOT stretched to the Bonefish's
    length. Expected component-space bone heads at Fight_Dart frame 4, alpha 1: Bonefish `Mouth` (24.54, -6.58,
@@ -154,12 +163,13 @@ BoneContainer.cpp:148-151), each species keeps its proportions. Don't use `ABPT_
 changes when a mesh is imported with Update Skeleton Reference Pose ON, and every clip would then carry wrong deltas.
 Checked end to end in Blender (RESULT_JSON `reimport_check.additive`): the re-imported A_Fish_Rest + each clip,
 applied as Local Space additives to each re-imported SK, match the source fish vertex by vertex within **0.0002 mm**
-for both species and all 7 clips.
+for both species and all 8 clips (the 7 motion clips and A_Fish_Curled).
 
 ## ABP_Fish (thin child of a C++ UFishAnimInstance; unreal-engineer + editor-operator)
 
 C++ `UFishAnimInstance` (the unreal-engineer) exposes, read by the graph only:
-`EFishAnimRole Role` (UENUM, in this order: `SwimIdle, SwimFast, Thrash, Run, Dive, Dart, Flop`), `float PlayRate`,
+`EFishAnimRole Role` (UENUM, in this order: `SwimIdle, SwimFast, Thrash, Run, Dive, Dart, Flop, Curled`; `Curled`
+is new for T-030, appended at the END so the existing Blend Poses pins keep their order), `float PlayRate`,
 `float Amplitude` (0..1), `float RoleBlendTime` (default 0.2 s), `float DartStartTime` (0.0 or 0.6).
 Graph, nothing else:
 `Local Space Ref Pose` -> **Apply Additive** (Base) <- Additive: **Blend Poses by EFishAnimRole** (one Sequence
@@ -183,6 +193,7 @@ and species scale down.
 | `bExhausted` (MoveId None, tired) | SwimIdle at rate 0.5, alpha x 0.5, plus an actor roll of ~70 deg onto its side | fixed | species x 0.5 |
 | `Outcome` Landed (in hand / on the dock) | Flop -> `A_Fish_Landed_Flop` | other | **1.0 always** |
 | `Outcome` Snapped / Escaped | SwimFast, then swim away and despawn | swim | species |
+| in a cooler (T-030 display, not a fight state) | Curled -> `A_Fish_Curled` (a still pose; a fish dropped in from the hand may blend in from the Flop over the usual 0.2 s, it reads as settling; a fish spawned into a cooler, e.g. on load, starts as Curled with no blend) | any | **1.0 always** |
 
 Proposed data (so new moves and species need no code): a new `AnimRole` field on `FLureFightMove` (T-007), with
 None falling back by move Id as above and SwimFast for unknown Ids; and DT_FishSpecies "Look" columns `AnimAmplitude`
@@ -205,6 +216,74 @@ Rules for the C++ side:
   nothing ever goes below the planks at alpha 1 (checked on every frame: 0.0 mm). At alpha 0.8 the lower pectoral would
   stick out 3.5 mm below the plank, which is why the Flop always plays at alpha 1.
 - **Line**: attach the line / hook to bone `Mouth` (its X axis = the fish's forward).
+
+## Cooler display: A_Fish_Curled + the 4 slots of SM_Cooler_Starter (T-030)
+
+A reference fish (53.5 / 56.3 cm) can't lie straight in the starter cooler (liner about 35 x 51 cm at the floor,
+28 cm deep). Fish shown in the cooler lie on their side, curled (`A_Fish_Curled`), stacked in 4 fixed slots.
+Source of truth: `art/recipes/anim_fish_cooler.py` (RESULT_JSON `Saved/AgentLogs/blender/anim_fish_cooler.result.json`,
+`slots_ue`); it is deterministic (fixed seed) and reruns to the same table.
+
+**The pose.** A back-arched C in the flank plane (pitch, not the lateral yaw of Dart/Flop): head 24 deg and tail
+106 deg toward the fish's back, pectorals flat. Lying on its side the fish stays flat, so its thickness (8.5 cm) and
+its lie offset are those of the straight fish (`LieOffsetCm` 4.24 Bonefish / 4.26 CoralSnapper, either side down).
+A lateral C lying on its side would lift head and tail ~12 cm like a bowl, and 4 of them don't fit under the lid.
+Verify in Unreal (component space, alpha 1): Bonefish `Mouth` (25.62, 0, 4.33), `Tail` (-5.52, 0, 14.69);
+CoralSnapper `Mouth` (27.50, 0, 3.50), `Tail` (-6.29, 0, 15.66). The two species must differ (additive base check).
+
+**The rule (unreal-engineer).** Per fish shown in the cooler, in the cooler's space:
+- shown scale `s = min((Weight / ReferenceWeight)^(1/3), MaxDisplayScale)`, `MaxDisplayScale` = **1.0** for the
+  starter cooler (below);
+- relative location to the cooler mesh's `Contents` socket = **(X, Y, BedZ + LieOffsetCm(species) x s)** cm;
+- relative rotation = **FRotator(Pitch 0, Yaw, Roll)** from the slot row (Roll +90 = the fish's right side down,
+  -90 = its left side down);
+- animation: ABP_Fish with Role `Curled`, alpha 1 (see the tables above). The pose never changes, so the component
+  can tick its animation rarely or pause after the first pose (engineer's choice of mechanism);
+- fill order slot 0, 1, 2, 3 (each slot rests on the ones below it). After a fish is taken out, re-seat the rest into
+  slots 0..n-1, so there is never a gap under a fish. The slots move with the cooler (carry, lid closed: the top fish
+  stays 14.8 mm under the closed lid).
+
+| Slot | X | Y | BedZ | Pitch | Yaw | Roll | Side down |
+|---|---|---|---|---|---|---|---|
+| 0 | -10.0 | 0.0 | 0.00 | 0 | -70 | 90 | right |
+| 1 | -10.0 | -0.5 | 6.42 | 0 | 75 | -90 | left |
+| 2 | -5.5 | -2.5 | 12.12 | 0 | -50 | 90 | right |
+| 3 | -6.5 | 3.0 | 18.00 | 0 | 45 | -90 | left |
+
+Units cm and degrees, Unreal axes, relative to the `Contents` socket (the liner floor center, 5 cm above the cooler's
+pivot; +X = the cooler's front, the latch side). X, Y locate the fish's origin (its body center); X is negative
+because a back-arched fish's origin sits off the middle of its C. Example: a CoralSnapper at s = 1.0 in slot 2 goes
+to (-5.5, -2.5, 12.12 + 4.26) = (-5.5, -2.5, 16.38).
+
+Suggested data (so a new cooler needs no code): a `DT_CoolerSlot` table, one row per slot, e.g.
+`Name,CoolerId,SlotIndex,Location,Rotation,MaxDisplayScale` with rows like
+`Starter_2,Starter,2,"(X=-5.5,Y=-2.5,Z=12.12)","(Pitch=0,Yaw=-50,Roll=90)",1.0`
+(Location Z = BedZ). A cooler shows at most as many fish as it has slot rows. A new cooler model gets its rows by
+rerunning `anim_fish_cooler.py` against its liner (the `Large` placeholder row reuses the starter mesh, so it can only
+show 4 of its 8 fish until it has its own model and slots).
+
+**Why a display cap of 1.0 and what happens to bigger fish.** Fish scale with weight (a 1.3x fish is 2.2x the
+reference weight: 57-60 cm long even curled). The geometric limit for 4 fish is **1.05**: at 1.1 the stack top reaches 32.2 cm
+(the closed lid's underside is at 33.0, with a 4 mm margin) and the fish cut 8 mm into the liner. At 1.05 they fit, but two of the lower fish are almost
+fully buried (6-17 % visible from above) and the cooler reads as 2-3 fish. At 1.0 every fish shows 20-31 % of its
+footprint from above (the top one all of it), so the cap is 1.0. Bigger fish are **shown at 1.0 in the cooler**
+(the display only; the instance keeps its weight and value). Unclamped, the 1.3x fish in slot 3 sticks 46 mm through
+the liner wall and 10 mm above the lid (preview `_big`). Smaller fish (tested down to 0.7) sit in the same slot on
+the same bed; where a small fish lies under a slot, the fish above rests up to (1 - s) x 8.5 cm higher than it needs
+to, a gap you could only see from the side, which the cooler wall hides.
+
+**Checked (RESULT_JSON `exact_checks`, 64 cases: all 16 species mixes at s = 1.0 and at 0.7, and 32 random mixes
+with each fish at its own scale in 0.7..1.0):** 0 triangle intersections between fish, every vertex at least 4.3 mm
+inside the liner wall, the top fish at least 14.8 mm under the closed lid, nothing below the floor. Pose metrics
+(anim_fish RESULT_JSON): cross-section >= 0.967 of rest, concave-side fold >= 0.365 (CoralSnapper, the crest root at
+the neck; limit 0.30), pectorals 0.0 mm into the flank.
+
+Previews (`Saved/AgentLogs/previews/`): `A_Fish_Curled_anim.png` (the pose, both species, on each side over the pale
+straight fish, from the back, 3/4); `A_Fish_Curled_cooler.png` (contact sheet) with `_fp_counter` (first person at
+the shop counter, the open cooler on the 0.9 m counter 0.55 m ahead, game FP camera 90 deg, 1920x1080), `_fp_floor`
+(the cooler on the floor 0.6 m ahead of a standing player), `_top` (straight down), `_big` (the 1.3x fish unclamped)
+and `_slots` (slot diagram with the Unreal axes). Shown mix: slot 0 Bonefish, 1 and 2 CoralSnapper, 3 a 1.3x
+Bonefish shown at the cap.
 
 ## Ambient swim: MF_FishSwim (static SM_ fish, world position offset)
 
@@ -229,14 +308,15 @@ against Swim_Idle in `SK_Fish_strobe.png`, and the reference implementation is `
 | weights | sum error 0.0, max 2 influences, 0 unweighted | sum 1, <= 3 |
 | skinned rest vs static mesh | 0.0 mm | 0.01 |
 | body cross-section (LBS pinch), worst frame of any clip | area >= 0.938 of rest | >= 0.80 |
-| concave-side fold (longitudinal compression) | >= 0.69 of rest | >= 0.30 |
+| concave-side fold (longitudinal compression) | >= 0.69 of rest in the motion clips; 0.365 in A_Fish_Curled (CoralSnapper crest root at the neck) | >= 0.30 |
 | pectoral blade inside the flank | <= 0.06 mm | <= 1.0 |
 | Landed_Flop below the dock plane (alpha 1) | 0.0 mm, both species | <= 1.0 |
 | loop seams | 0.0 mm; seam second difference below each clip's median | 0 |
 | keyed actions vs pose functions | 0.0 mm / 0.0 deg | 0.01 mm |
 | FBX units / scale | UnitScaleFactor 1.0, node and key scale 1.0 (<= 2.4e-7) | cm, 1.0 |
 | re-import (bones, mesh, clip poses) | <= 0.0001 mm / 0.0 deg | 0.05 mm |
-| additive emulation, both species x 7 clips | <= 0.0002 mm | 0.05 mm |
+| additive emulation, both species x 8 clips | <= 0.0002 mm | 0.05 mm |
+| A_Fish_Curled in the starter cooler (anim_fish_cooler RESULT_JSON, 64 mixes) | 0 fish-fish intersections, >= 4.3 mm inside the liner, >= 14.8 mm under the closed lid | 0, > 0, > 0 |
 
 ## Compromises (known, measured)
 
@@ -251,12 +331,20 @@ against Swim_Idle in `SK_Fish_strobe.png`, and the reference implementation is `
 - **Anchored chest.** The chest never yaws (so the Grip hold is steady), so the C-curl bends at the neck (head 30 deg)
   and along the tail (-64 deg at the tip). It reads as a C-start from above and as a tail-led flop on the dock.
 - The Flop must play at alpha 1 (dock clearance, above).
+- **A_Fish_Curled is more J than C.** The head can only bend at the neck (the one joint in front of the anchored
+  chest), and past ~25 deg the CoralSnapper's crest root folds (fold 0.29 at 27 deg). So the head takes 24 deg and
+  the tail 106 deg: from above it reads as a stiff, back-arched fish with its tail curled up, not a round C. Getting
+  the 53-56 cm fish under ~45 cm needs the full 130 deg; a gentler curl doesn't fit 4 fish in the starter cooler.
+- **Cooler display cap 1.0.** Fish bigger than the reference are shown at reference size in the cooler (details in
+  "Cooler display"). Adding a species changes the slot envelope: rerun `anim_fish_cooler.py` and update the slot
+  table (the recipe fails loudly if 4 fish no longer fit at 1.0).
 
 ## Extending (mid / junior agents)
 
 - **New fishkit species**: its mesh recipe (fishkit), then one line in `anim_fish.py` `SPECIES`. Rerun, check
   `pectoral_hinge_off_canon_deg` < 10 and the verdict, and import its SK on `SKEL_Fish` (step 2 of the snippet; no clip
-  changes). Add its `LieOffsetCm` from RESULT_JSON `species.<Name>.dock_lie` to DT_FishSpecies.
+  changes). Add its `LieOffsetCm` from RESULT_JSON `species.<Name>.dock_lie` to DT_FishSpecies. Then rerun
+  `anim_fish_cooler.py` (the cooler slots are designed for every species at once) and update the slot table.
 - **New clip**: a function `f -> Pose` plus a `ClipDef` in `fishrig.CLIPS`. Use `Keys` for choreographed channels,
   keep it rotation-only, and don't yaw or pitch the chest. Rerun, look at its strip, and check the verdict. Then import
   it as step 3-4 and add a role.
