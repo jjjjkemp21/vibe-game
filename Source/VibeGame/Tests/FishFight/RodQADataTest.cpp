@@ -13,8 +13,8 @@ namespace LureRodQA
 	{
 		/** The T-028 columns (every one optional: DataTableImportOptional). */
 		const TCHAR* const RodColumns[] = {
-			TEXT("RodAimUpDeg"), TEXT("RodAimDownDeg"), TEXT("RodAimSideDeg"), TEXT("PitchBackPressure"), TEXT("PitchDipPressure"), TEXT("SideMinShare"),
-			TEXT("SideLeverage"), TEXT("SideTurnRate"), TEXT("SideTurnPull"), TEXT("SideDrain"), TEXT("ReelSteps"), TEXT("ReelDefaultStep"), TEXT("ReelSpeedMin"),
+			TEXT("RodAimUpDeg"), TEXT("RodAimDownDeg"), TEXT("RodAimSideDeg"), TEXT("PitchBackPressure"), TEXT("PitchDipPressure"), TEXT("PitchDipPower"),
+			TEXT("SideMinShare"), TEXT("SideLeverage"), TEXT("SideTurnRate"), TEXT("SideTurnPull"), TEXT("SideDrain"), TEXT("ReelSteps"), TEXT("ReelDefaultStep"), TEXT("ReelSpeedMin"),
 			TEXT("ReelSpeedMax"), TEXT("ReelLoadPerSpeed"), TEXT("CameraFollowTime"), TEXT("CameraRodYawShare"), TEXT("CameraRodPitchShare"),
 			TEXT("RodAimLookPitchDeg"), TEXT("RodAimLookYawDeg"), TEXT("RodAimBlendTime") };
 
@@ -22,7 +22,7 @@ namespace LureRodQA
 		struct FRange { const TCHAR* Column; double Min; double Max; };
 		const FRange Ranges[] = {
 			{ TEXT("RodAimUpDeg"), 5.0, 90.0 }, { TEXT("RodAimDownDeg"), 5.0, 90.0 }, { TEXT("RodAimSideDeg"), 5.0, 90.0 },
-			{ TEXT("PitchBackPressure"), 0.01, 1.0 }, { TEXT("PitchDipPressure"), 0.01, 0.95 }, { TEXT("SideMinShare"), 0.01, 0.99 },
+			{ TEXT("PitchBackPressure"), 0.01, 1.0 }, { TEXT("PitchDipPressure"), 0.01, 0.95 }, { TEXT("PitchDipPower"), 0.01, 0.95 }, { TEXT("SideMinShare"), 0.01, 0.99 },
 			{ TEXT("SideLeverage"), 0.01, 0.95 }, { TEXT("SideTurnRate"), 0.0, 5.0 }, { TEXT("SideTurnPull"), 0.0, 0.95 }, { TEXT("SideDrain"), 0.0, 5.0 },
 			{ TEXT("ReelSteps"), 2.0, 9.0 }, { TEXT("ReelDefaultStep"), 1.0, 9.0 }, { TEXT("ReelSpeedMin"), 0.05, 0.99 }, { TEXT("ReelSpeedMax"), 1.01, 4.0 },
 			{ TEXT("ReelLoadPerSpeed"), 0.01, 5.0 }, { TEXT("CameraFollowTime"), 0.0, 2.0 }, { TEXT("CameraRodYawShare"), 0.0, 1.0 },
@@ -281,7 +281,7 @@ namespace LureRodQA
 		struct FCase { const TCHAR* Column; const TCHAR* Text; bool bText; };
 		const FCase Cases[] = {
 			{ TEXT("RodAimUpDeg"), TEXT("0.5"), false }, { TEXT("RodAimDownDeg"), TEXT("-5"), false }, { TEXT("RodAimSideDeg"), TEXT("0"), false },
-			{ TEXT("PitchBackPressure"), TEXT("-0.3"), false }, { TEXT("PitchDipPressure"), TEXT("0.96"), false }, { TEXT("PitchDipPressure"), TEXT("1"), false },
+			{ TEXT("PitchBackPressure"), TEXT("-0.3"), false }, { TEXT("PitchDipPressure"), TEXT("0.96"), false }, { TEXT("PitchDipPressure"), TEXT("1"), false }, { TEXT("PitchDipPower"), TEXT("0.96"), false },
 			{ TEXT("SideMinShare"), TEXT("1.5"), false }, { TEXT("SideLeverage"), TEXT("1"), false }, { TEXT("SideTurnRate"), TEXT("-1"), false },
 			{ TEXT("SideTurnPull"), TEXT("0.99"), false }, { TEXT("SideDrain"), TEXT("-0.5"), false }, { TEXT("ReelSteps"), TEXT("0"), false },
 			{ TEXT("ReelSteps"), TEXT("10"), false }, { TEXT("ReelDefaultStep"), TEXT("0"), false }, { TEXT("ReelDefaultStep"), TEXT("4"), false },

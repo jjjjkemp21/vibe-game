@@ -11,7 +11,7 @@ Paths in the table are under `Source/VibeGame/` unless they start with a top-lev
 | Movement: walk, sprint, crouch, prone, swim, climb, ladder | `Character/LurePlayerCharacter.h` ALurePlayerCharacter, `Character/LureCharacterMovementComponent.h`, `Character/LureMovementTypes.h`, `Character/LureSwimTypes.h`, `Character/LureWaterVolume.h`, `Character/LureLadder.h`, `Character/LureCharacterSettings.h` | docs/specs/movement-rules.md, docs/specs/swimming.md | DT_Movement | Project.Movement.* | Lure.Teleport, Lure.SetStance |
 | Input | `Character/LureInputSubsystem.h` ULureInputSubsystem (runtime Enhanced Input actions + mapping context) | - | - | Project.Movement.Input, Project.Fishing.Input | - |
 | First-person arms / rod poses | `Character/FPArmsAnimInstance.h`, `Character/FPArmsPose.h` EFPArmsPose, `Character/LureArmsBob.h` | art/export/Characters/SK_FPArms.anim.md | DT_Movement (Bob*, RodPose* columns) | Project.Fishing.ArmsPose | - |
-| Fishing: cast, bobber, bite, hook, spots/water | `Fishing/LureFishingComponent.h` ULureFishingComponent, `Fishing/FishingTypes.h`, `Fishing/FishingSpots.h`, `Fishing/LureFishingSettings.h` | docs/specs/fishing-rules.md | DT_Fishing | Project.Fishing.* | - |
+| Fishing: cast, bobber, bite, hook, spots/water | `Fishing/LureFishingComponent.h` ULureFishingComponent, `Fishing/FishingTypes.h`, `Fishing/FishingSpots.h`, `Fishing/LureFishingSettings.h`; water areas + hot spots (T-027): `Fishing/FishingWater.h` (FLureWaterRules, FLureWaterQuery), `Fishing/FishingWaterTypes.h`, `Fishing/LureWaterArea.h`, `Fishing/LureHotSpot.h`, `Fishing/LureHotSpotSpawner.h`, `Fishing/LureHotSpotVisualComponent.h`, `Fishing/LureWaterSettings.h`, `Dev/LureWaterDevCommands.h` | docs/specs/fishing-rules.md, docs/specs/fishing-water-rules.md | DT_Fishing, DT_HotSpot | Project.Fishing.*, Project.Fishing.Water.* | Lure.Water.Probe, Lure.Water.Show, Lure.HotSpot.Spawn, Lure.HotSpot.Clear |
 | Fishing: reel fight, rod steering, gear | `Fishing/FishFight.h` (pure sim), `Fishing/FishFightTypes.h`, `Fishing/LureRodControl.h`, fight state in ULureFishingComponent | docs/specs/reel-fight-rules.md | DT_FishFight, DT_FightPattern, DT_Gear | Project.Fishing.Fight | - |
 | Fishing: the line | `Fishing/LureFishingLineComponent.h`, `Fishing/FishingLineSim.h` (pure rope sim), `Fishing/FishingLineTypes.h` | docs/specs/fishing-line.md | DT_FishingLine | Project.Fishing.Line | - |
 | Fish: species, FFishInstance roll pipeline | `Fish/FishRoll.h` UFishLibrary + FFishTables, `Fish/FishInstance.h` FFishInstance, `Fish/FishTypes.h`, `Fish/FishSettings.h`, `Fish/FishDataValidator.h` | docs/specs/fish-system-rules.md | DT_FishSpecies, DT_FishRarity, DT_FishModifier, DT_FishStat | Project.Fish.* | Lure.GiveFish |
@@ -19,7 +19,7 @@ Paths in the table are under `Source/VibeGame/` unless they start with a top-lev
 | Progression: XP, money, selling, cooler, save | `Progression/LureProgressionComponent.h` (GetSaveData/ApplySaveData), `Progression/LureCoolerComponent.h`, `Progression/LureSellPoint.h`, `Progression/LureProgressionLibrary.h`, `Progression/LureProgressionTypes.h` FLureProgressSaveData, `Game/LurePlayerState.h` | docs/specs/progression-rules.md | DT_PlayerLevel, DT_Cooler, DT_FishMarket | Project.Progression.* | - |
 | Interaction | `Interaction/LureInteractable.h` (interface), `Interaction/LureInteractionComponent.h`, `Interaction/LureInteractionSubsystem.h` | docs/specs/progression-rules.md | - | Project.Progression.Interact | - |
 | Game frame + HUD | `Game/LureGameMode.h`, `Game/LureHUD.h` (placeholder text HUD) | - | - | - | - |
-| Dev / playtest tools | `Dev/LureDevCommands.h`, `Playtest/PlaytestFeedbackSubsystem.h` (F8 note key), `Content/Python/playtest_driver.py` (PIE driver) | .claude/skills/playtest-feedback | - | Project.Dev.*, Project.Playtest.* | Lure.Teleport, Lure.SetStance, Lure.GiveFish, Lure.Screenshot |
+| Dev / playtest tools | `Dev/LureDevCommands.h`, `Playtest/PlaytestFeedbackSubsystem.h` (F8 note key), `Content/Python/playtest_driver.py` (PIE driver) | .claude/skills/playtest-feedback | - | Project.Dev.*, Project.Playtest.* | Lure.Teleport, Lure.SetStance, Lure.GiveFish, Lure.Screenshot, Lure.Water.*, Lure.HotSpot.* |
 | Levels | `Content/Python/levels/build_level.py` (builder), `levels/layout.py` (shared expansion), layouts `data/levels/*.json` | docs/levels/*.md | - | - | - |
 | Editor Python | `Content/Python/pipeline_unreal.py` (reusable editor ops), `vibegame_tools.py` (MCP toolset, run_python), `pipeline_cli.py`, `init_unreal.py` | .claude/skills/unreal-pipeline | - | - | - |
 | Art | `art/recipes/*.py` (one per asset), `art/lib/` (pipeline_blender, style palette, meshkit, fishkit, fishrig, fp_preview), `art/export/**` FBX + `*.anim.md` specs | docs/ART_STYLE.md, .claude/skills/blender-pipeline | - | - | - |
@@ -50,6 +50,7 @@ Paths in the table are under `Source/VibeGame/` unless they start with a top-lev
 - `Character/LureSwimTypes.h` ELureCustomMovementMode, FLureClimbPlan | swimming and climbing types (T-026; the jump climb from the T-004...
 - `Character/LureWaterVolume.h` ALureWaterVolume | water volume (T-026). The level builder places these over the water; spec docs/specs/s...
 - `Dev/LureDevCommands.h` | dev-only console commands for scripted playtests (T-025). Everything below the log category is compiled out
+- `Dev/LureWaterDevCommands.h` | dev-only console commands for the water model and hot spots (T-027). Compiled out of Shipping builds.
 - `Fish/FightFishVisual.h` FFishMoveAnimRole, FFishRoleTailBeat, FFishVisualRow | the fish you see fighting on the line (T-029). Data row...
 - `Fish/FishAnimInstance.h` EFishAnimRole, FFishAnimState, UFishAnimInstance | fish anim instance (T-029). Parent class of ABP_Fish (grap...
 - `Fish/FishDataValidator.h`
@@ -67,10 +68,17 @@ Paths in the table are under `Source/VibeGame/` unless they start with a top-lev
 - `Fishing/FishingLineTypes.h` FLureFishingLineRow | physics fishing line, tuning row and pure rules (T-032). Spec: docs/specs/fishing-li...
 - `Fishing/FishingSpots.h` | fishing spot markers and water lookups (T-006). Marker contract: docs/levels/L_PalmKey.md section 11.
 - `Fishing/FishingTypes.h` ELureFishingState, ELureFishingResult, ELureCastBlock, ELureEarlyHookRule, FLureFishingRow, FLureFishingNetSta...
+- `Fishing/FishingWater.h` | "fish anywhere" rules and world lookups (T-027). Rules: docs/specs/fishing-water-rules.md.
+- `Fishing/FishingWaterTypes.h` ELureWaterAreaShape, ELureWaterSource, ELureNoBiteReason, FLureWaterAreaInfo, FLureWaterContext, FLureHot...
 - `Fishing/LureFishingComponent.h` ULureFishingComponent | casting, bobber, bite and hook (T-006), reel fight, line tension and gear (T-0...
 - `Fishing/LureFishingLineComponent.h` ULureLineSegmentComponent, ELureLineMode, ULureFishingLineComponent | the fishing line (T-006 look...
 - `Fishing/LureFishingSettings.h` ULureFishingSettings | fishing settings (T-006). Project Settings > Game > Lure Fishing; stored in Conf...
+- `Fishing/LureHotSpot.h` ALureHotSpot | a hot spot on the water (T-027): bubbling or rippling water with better fish. Rules: docs/specs/...
+- `Fishing/LureHotSpotSpawner.h` ALureHotSpotSpawner | spawns hot spots in a level's water (T-027). The level builder places one from the...
+- `Fishing/LureHotSpotVisualComponent.h` ULureHotSpotVisualComponent | the look of a hot spot (T-027). The C++ class is a minimal, plainl...
 - `Fishing/LureRodControl.h` | rod steering during the reel fight (T-028). The owning client's side of it, as pure helpers (no world): th...
+- `Fishing/LureWaterArea.h` ALureWaterArea | a painted water area (T-027). The level builder places these from the layouts' "water_area"...
+- `Fishing/LureWaterSettings.h` ULureWaterSettings | water and hot spot settings (T-027). Project Settings > Game > Lure Water; stored in...
 - `Game/LureGameMode.h` ALureGameMode | game mode (T-004).
 - `Game/LureHUD.h` ALureHUD | placeholder HUD (T-006). Plain text only until Jimmy directs the UI (CLAUDE.md, 2026-09-22).
 - `Game/LurePlayerState.h` ALurePlayerState | player state (T-010).
@@ -91,11 +99,11 @@ Paths in the table are under `Source/VibeGame/` unless they start with a top-lev
 - `VibeGameGameMode.h` AVibeGameGameMode
 - `VibeGamePlayerController.h` AVibeGamePlayerController
 
-### Tests (`Source/VibeGame/`): folder, prefix (count): 3rd name segment count. Total 855
+### Tests (`Source/VibeGame/`): folder, prefix (count): 3rd name segment count. Total 933
 - `Tests/Dev/` Project.Dev.* (12): Teleport 4, GiveFish 3, Commands 1, PlaytestDriver 1, QA 1, Screenshot 1, SetStance 1
-- `Tests/FishFight/` Project.Fishing.* (100): Fight 100
+- `Tests/FishFight/` Project.Fishing.* (114): Fight 114
 - `Tests/FishVisual/` Project.FishVisual.* (41): QA 29, Lifecycle 3, Adapter 2, Anim 2, Data 2, Placement 2, Size 1
-- `Tests/Fishing/` Project.Fishing.* (141): QA 90, Line 47, CastTrace 4
+- `Tests/Fishing/` Project.Fishing.* (205): QA 90, Water 64, Line 47, CastTrace 4
 - `Tests/Movement/` Project.Fishing.* (3): Climb 1, Rules 1, Swim 1
 - `Tests/Movement/` Project.Movement.* (211): QA 171, Swim 33, Camera 3, Climb 3, Stance 1
 - `Tests/Progression/` Project.Progression.* (73): QA 42, Level 7, Data 5, Notice 4, Interact 3, Sell 3, Cooler 2, Save 2, Authority 1, C...
@@ -118,6 +126,7 @@ Paths in the table are under `Source/VibeGame/` unless they start with a top-lev
 - `data/tables/DT_Fishing.csv` FLureFishingRow (Fishing/FishingTypes.h)
 - `data/tables/DT_FishingLine.csv` FLureFishingLineRow (Fishing/FishingLineTypes.h)
 - `data/tables/DT_Gear.csv` FLureGearRow (Fishing/FishFightTypes.h)
+- `data/tables/DT_HotSpot.json` FLureHotSpotRow (Fishing/FishingWaterTypes.h)
 - `data/tables/DT_Movement.csv` FLureMovementRow (Character/LureMovementTypes.h)
 - `data/tables/DT_PlayerLevel.csv` FPlayerLevelRow (Progression/LureProgressionTypes.h)
 
@@ -128,6 +137,7 @@ Paths in the table are under `Source/VibeGame/` unless they start with a top-lev
 - `docs/specs/fish-system-rules.md` Fish system rules (T-008+), lead decisions 2026-09-22
 - `docs/specs/fishing-line.md` Physics fishing line (T-032)
 - `docs/specs/fishing-rules.md` Fishing rules (T-006: cast, bobber, bite, hook), unreal-engineer decisions 2026-09-23
+- `docs/specs/fishing-water-rules.md` Fishing water rules (T-027: fish anywhere + hot spots), unreal-engineer decisions 2026-09-23
 - `docs/specs/movement-rules.md` First-person movement rules (T-004), lead decisions 2026-09-22
 - `docs/specs/progression-rules.md` Progression rules (T-010): cooler, selling, money, XP and levels
 - `docs/specs/reel-fight-rules.md` Reel fight rules (T-007, rod steering T-028), unreal-engineer 2026-09-23

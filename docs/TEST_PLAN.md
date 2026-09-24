@@ -213,7 +213,7 @@ Independent tests: `Tests/Fishing/QAFishing*.cpp` + `QAFishingTestUtils.{h,cpp}`
 | Spot (16) | Spot.{BobberOnLandInsideSpotNoBite, ContextFromSpotAndEnvironment, DeepestSpotWins, LayoutMarkersParseCleanly, MarkerDataReachesTheRoll, MarkersAreReadLive, NoFitHintAfterHintDelay, NoFitSpotBitesWhenTimeFits, NoFitSpotShowsNoNibbles, NoSpotNoBiteEver, OffSpotHabitatSettingEnablesBites, ParseMalformedTagsNeverBreak, ParseRadiusRules, ParseSoftProblemsKeepTheSpot, RadiusBoundaryIs2D, TaggedWaterSurface} | U/I | Spot tag parsing (malformed, radius, soft problems), layout markers, 2D radius edge, deepest spot wins, context reaches the roll, no spot / no fit / land never bite, live markers, the off-spot habitat setting, tagged water. |
 | Interrupt (11) | Interrupt.{JumpKeepsTheLine, PawnDestroyedAtEveryStage, ProneCrawlEndsEveryStage, ProneStillKeepsEveryStage, RodPutAwayEndsEveryStage, SpotLostWhileFishing, SprintEndsEveryStage, SprintHeldStandingStillKeepsTheLine, StanceChangesKeepTheLine, SwimEndsEveryStage, TooFarFromTheBobber} | U/I | Every stage x sprint/prone crawl/swim/rod put away/pawn destroyed/spot lost/too far ends the line; stance changes, prone still, jump and sprint held standing still keep it. |
 | Pose (9) | Pose.{ArmsCounterPitchFormula, CharacterPoseFollowsStanceAndMotion, ClearanceTraceBoundaries, ColumnsDriveThePoseAndTheLineRules, PitchFollowUpEases, ShippedRowsPerStanceAndMotion, SwitchHysteresisEdges, WallAheadTucksUnlessFishing, WallTuckRules} | U/I | Rod pose switch rule and hysteresis edges, wall tuck (unless fishing), counter-pitch formula, clearance trace boundaries, data columns drive the pose. |
-| Net (7) | Net.{BiteStaysSecretUntilHooked, ClientCopyCannotDecide, ClientFollowsServerAtEveryStage, NetStateWireRoundTrip, OnlyChargeAndYawCrossTheWire, ReplicatedToEveryone, ServerRpcsClampHostileRequests} | U/I | Only charge and yaw cross the wire; replication conditions; NetState FRepLayout round trip; a client copy cannot decide; the bite stays secret until hooked; hostile RPC values are clamped. |
+| Net (7) | Net.{BiteStaysSecretUntilHooked, ClientCopyCannotDecide, ClientFollowsServerAtEveryStage, NetStateWireRoundTrip, ServerRpcsTakeOnlyPlainNumbers, ReplicatedToEveryone, ServerRpcsClampHostileRequests} | U/I | Server RPCs take only plain numbers (T-028b rename of OnlyChargeAndYawCrossTheWire); replication conditions; NetState FRepLayout round trip; a client copy cannot decide; the bite stays secret until hooked; hostile RPC values are clamped. |
 | Net2P (1) | Net2P.{ServerDecidesClientsFollow} | I | A real in-process dedicated server with 2 clients: the server decides, both clients follow. |
 | Input (2) | Input.{BoundActionsDriveFishing, KeysFromSettings} | U/I | Keys come from settings; bound actions drive fishing. |
 
@@ -310,6 +310,32 @@ object, read into the copy, RepNotifies called on change), not a property copy.
 - The binary assets (DT_Gear, DT_FightPattern, DT_FishFight) don't exist until the editor-operator imports them in main; the settings path then
   replaces the built-in fallbacks. After the import, check once in main that the component resolves the imported tables (no fallback warning).
 
+## T-027 fish anywhere + hot spots (lane eng1)
+- Implementer: `Project.Fishing.Water.*` (FishingWaterTest/FishingHotSpotTest). 11 T-006 tests were updated to the new rules; QA reviewed each:
+  all are legitimate rule updates (spot-less water now bites, NoSpecies path kept by empty fallbacks), none weakened.
+- QA, `Tests/Fishing/QAFishingWaterTest.cpp` + `QAFishingHotSpotTest.cpp` (helpers `QAFishingWaterTestUtils.h`), all `Project.Fishing.Water.QA.*`:
+  - Area selection (U): `Area.HigherPriorityWins`, `SmallerAreaWinsPriorityTie`, `LowerIdWinsFullTie`, `BrokenAreasNeverWin` (NaN/0/degenerate),
+    `PolygonEdgeCases` (concave U, both windings), `BoxYawAndCircleEdge`, `DepthBands` ([min,max), max 0 = open), `DefaultWaterContext`.
+  - Bite decision (U): `Bite.ShallowBoundaryAndReasonOrder` (14.9/15 cm, NotWater > TooShallow > gap > WrongBait, HUD text),
+    `Bite.ContextSumsLuckAndCarriesBonus`, `Gap.FallbackOrderAndBait`, `Gap.LoggedOncePerHabitatAndHour`, `Gap.NoDeadWaterAnyHourShipped` (48 half-hours).
+  - Roll (U): `Roll.NoBonusRollsUnchanged` (2000 seeded rolls, pinned fingerprint 2756817872: update only on an intended roll change),
+    `Roll.SizeBonusFormula`, `Roll.ValueMultiplierFormula`.
+  - World (I): `World.ShallowWaterNeverBitesAndSaysSo`, `OpenWaterBitesEverywhere`, `LegacySpotsOnlyWithoutAreas`, `AreaActorYawAndScale`.
+  - Hot spots (U/I): `HotSpot.SpawnChanceAndLifetimeRoll`, `DriftDeterministicBoundedSmooth`, `SpawnRateFollowsSpawnInterval`, `MaxPerAreaAndLevelCap`,
+    `LifetimeWithinRowThenGone`, `PrewarmFirstCheck`, `OnlyInValidWater`, `DriftNeverCrossesLand`, `BonusReachesTheBite`, `BonusKeptForWholeCast`,
+    `OverlapNearestRelativeToRadius`.
+  - Net (I, FTestWorlds): `Net2P.SpawnerHotSpotsAndBobberWaterReachClients` (same drift on server/client), `Net2P.DevCommandsOnClientAreSafe`.
+  - Data (D): `Data.HotSpotRowsValid` (DT_HotSpot.json), `Data.HotSpotValidateCatchesBadRows`, `Data.LayoutWaterAreasFollowSchema` (every data/levels layout).
+  - T-027b near-player rule (QA): `QA.HotSpot.FarAreaSpawnsOnlyWhenAPlayerComesNear` (far bounded area empty with players present, fills once one comes near); the Net2P test now places its area next to the measured pawn positions.
+
+### T-027 open bugs (failing test = regression test)
+- `HotSpot.DriftNeverCrossesLand`: the spawner checks only 8 points on the wander ring (spec rule), so a rock inside the drift disc between
+  the points is accepted and the bubbles drift over land (a cast into them lands NotWater). Fix: sample the disc densely or stop drift over land.
+
+### T-027 gaps
+- /Game/Data/DT_HotSpot is not imported in the lane (built-in Bubbles fallback); after the import in main, check once that no fallback warning shows.
+- Bubble/ripple visuals, the HUD hot-spot line and feel of spawn rates: playtester and designer. Real 2-player PIE latency: playtester.
+
 ## T-029 fighting fish visual (lane eng3)
 Implementer tests: `Tests/FishVisual/FightFishVisualTest.cpp`, `Project.FishVisual.*`, 10 tests (unreal-engineer; the 10th,
 `Adapter.FollowsRodSteeredFight`, added at the T-028 merge: a rod steered against a Bonefish's runs turns it, and the view's line end
@@ -393,6 +419,7 @@ QA (independent, black-box from the spec and headers): 25 tests `Project.Fishing
 - Gap: a real networked client console (no replicated relay yet) is untested.
 
 ## T-028 mouse-steered rod fight + reel speed (lane eng2, FULL gate)
+- T-028b independent QA (RodQAT028bTest.cpp, `Rod.QA.T028b.*`, 5 tests): dipped+fastest slower than the pump at every pull and >=1.3x on a resting fish; slowest+dipped reel never throws the hook (15 fish); teleport ends the fight and the next fight works; reel-step burst exactly 4 then ~10/s, last wins; text in every numeric/bool DT_FishFight cell fails ValidateCsvSource. Oracle change in RodQAMathTest (skip Side 0) reviewed: a real test bug (production ignores Side 0), coverage grew.
 Implementer: `Project.Fishing.Fight.Rod.*` (11, RodFightTest.cpp). Independent QA (41): `Project.Fishing.Fight.Rod.QA.*` in
 `Tests/FishFight/RodQA{Math,Data,World,Net,Balance}Test.cpp`; shared fixtures in `RodQATestUtils.h` (namespace LureRodQA: owner pawn in a
 test world, hook-and-fight, fixture tables, HUD line lookup, input firing, water volume).
@@ -420,8 +447,8 @@ test world, hook-and-fight, fixture tables, HUD line lookup, input firing, water
 ### T-028 review of the implementer-changed tests (all legitimate contract updates)
 - `ServerAuthority` (FishFightTest.cpp): 4 -> 5 RPCs and ServerSetFightInput must be unreliable; ServerSetReeling stays reliable with one
   bool (stronger than before).
-- `OnlyChargeAndYawCrossTheWire` (QAFishingNetTest.cpp): plain uint8 parameters are now allowed (enum bytes still rejected); the name is
-  stale. The 4-byte signature is pinned by the implementer's `ServerAuthorityOverTheRod` and by `Rod.QA.Net2P.*`.
+- `OnlyChargeAndYawCrossTheWire` (QAFishingNetTest.cpp; renamed `ServerRpcsTakeOnlyPlainNumbers` in T-028b): plain uint8 parameters are now allowed (enum bytes still rejected).
+  The 4-byte signature is pinned by the implementer's `ServerAuthorityOverTheRod` and by `Rod.QA.Net2P.*`.
 - `AllSixActionsResolveByName` (QAMovementNetInputTest.cpp): ReelFaster/ReelSlower added to the exact list; their keys and bindings are
   checked by `Rod.QA.Input.ReelKeysMappedAndBound`, key clashes by `Movement.QA.Input.NoKeyBoundToTwoActions`.
 
@@ -443,3 +470,9 @@ test world, hook-and-fight, fixture tables, HUD line lookup, input firing, water
 - Listen-server host, 2-player PIE with latency, a real gamepad stick, the ABP_FPArms aim offset and rod visuals (not imported in lanes): playtester.
 - Random packet loss (PktLoss emulation) is not used; drop and delay are deterministic.
 - The HUD slack wording (unspecified).
+
+## T-028b: rod follow-ups (unreal-engineer, 2026-09-23)
+`Source/VibeGame/Tests/FishFight/RodFollowUpTest.cpp`, `Project.Fishing.Fight.Rod.T028b.*` (9 tests, one per QA observation):
+DipIsReliefNotReeling and DippedFastPostureLosesToSkilledPlay (O1, C++ balance with QA's players), OneSlackRule and
+HudNeverContradictsItself (O2), TeleportEndsTheFight (O4), PawnSwitchEndsTheOldFight (O5), ServerRateLimitsReelSteps (O6),
+TextInANumberCellFailsValidation (O7), DefaultReelStepMustBeSpeedOne (O8). Numbers and contract changes: docs/specs/reel-fight-rules.md "T-028b".

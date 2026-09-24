@@ -97,7 +97,45 @@ void ULureFishingComponent::AuthoritySetFightInput(uint8 FightId, float RodPitch
 	const FLureFightInput Clean = FLureFight::SanitizeInput(Requested, Fight.Tuning);
 	ServerRodPitch = Clean.RodPitch;
 	ServerRodYaw = Clean.RodYaw;
-	ServerReelStep = Clean.ReelStep;
+	// T-028b (O6): reel-step changes are rate limited on the server; the latest held-back step applies when the limit allows.
+	if (Clean.ReelStep == FLureFight::ClampReelStep(ServerReelStep, Fight.Tuning))
+	{
+		ServerReelStep = Clean.ReelStep; // the step in use (a first packet names the default step explicitly): no change, no token
+		ServerPendingReelStep = INDEX_NONE; // back to the step in use: nothing to apply
+		return;
+	}
+	ServerPendingReelStep = Clean.ReelStep;
+	ApplyPendingReelStep(GetFishingTime());
+}
+
+void ULureFishingComponent::ApplyPendingReelStep(double Now)
+{
+	if (ServerPendingReelStep == INDEX_NONE)
+	{
+		return;
+	}
+	const ULureFishingSettings* Settings = GetDefault<ULureFishingSettings>();
+	const float Rate = FMath::IsFinite(Settings->FightReelStepsPerSecond) ? Settings->FightReelStepsPerSecond : 0.f;
+	if (Rate > 0.f)
+	{
+		const float Burst = static_cast<float>(FMath::Max(1, Settings->FightReelStepBurst));
+		if (ServerReelStepTokens < 0.f)
+		{
+			ServerReelStepTokens = Burst;
+		}
+		else
+		{
+			ServerReelStepTokens = FMath::Min(Burst, ServerReelStepTokens + static_cast<float>(FMath::Max(0.0, Now - ServerReelStepTokenTime)) * Rate);
+		}
+		ServerReelStepTokenTime = Now;
+		if (ServerReelStepTokens < 1.f - 1.0e-4f)
+		{
+			return; // over the limit: the step waits (the latest one) until a token is back
+		}
+		ServerReelStepTokens = FMath::Max(0.f, ServerReelStepTokens - 1.f);
+	}
+	ServerReelStep = ServerPendingReelStep;
+	ServerPendingReelStep = INDEX_NONE;
 }
 
 FLureFightInput ULureFishingComponent::GetServerFightInput() const

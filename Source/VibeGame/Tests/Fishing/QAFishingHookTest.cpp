@@ -502,6 +502,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FQAFishHookPressWithNothingToHookReelsIn, "Proj
 bool FQAFishHookPressWithNothingToHookReelsIn::RunTest(const FString& Parameters)
 {
 	// Spec: on land or with nothing biting, a press always reels in (whatever EarlyHook says).
+	// T-027: open water without a spot now has fish (fish anywhere); "nothing biting" is now water too shallow for fish.
 	FLureFishingRow Shipped;
 	if (!ShippedFishingRow(*this, Shipped))
 	{
@@ -512,7 +513,7 @@ bool FQAFishHookPressWithNothingToHookReelsIn::RunTest(const FString& Parameters
 		const FString Rule_ = StaticEnum<ELureEarlyHookRule>()->GetNameStringByValue(static_cast<int64>(Rule));
 		for (const bool bOnLand : { true, false })
 		{
-			const FString Label = Rule_ + (bOnLand ? TEXT(", bobber on a rock") : TEXT(", open water without a spot"));
+			const FString Label = Rule_ + (bOnLand ? TEXT(", bobber on a rock") : TEXT(", water too shallow for fish"));
 			FScene Scene;
 			if (!Scene.Create(*this))
 			{
@@ -522,6 +523,11 @@ bool FQAFishHookPressWithNothingToHookReelsIn::RunTest(const FString& Parameters
 			{
 				Scene.AddBox(FVector(900.f, 0.f, 20.f), FVector(500.f, 500.f, 20.f)); // a rock 40 cm above the sea, 4-14 m out
 				Scene.AddShoreSpot(); // the rock is inside the spot: land still wins
+			}
+			else
+			{
+				Scene.AddBox(FVector(900.f, 0.f, -55.f), FVector(500.f, 500.f, 50.f)); // a sandbar 5 cm under the sea, 4-14 m out
+				Scene.AddShoreSpot(); // a spot there does not make it deeper
 			}
 			ALurePlayerCharacter* Character = Scene.Spawn(*this);
 			FLureFishingRow Profile = FlowProfile(Shipped, 2.f);

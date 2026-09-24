@@ -52,6 +52,11 @@ stance and arms shots look the same on both maps; almost no fog.
   over the water (B-M3), and T2 and T3 crouched under the red ceilings.
 - Falling into the pool: you swim (T-026). Exits: 60 cm walls and dock (Jump), the ladder on the 70 cm edge, the shelf, the
   ramp. Labels: "60 cm edge: Jump out", "70 cm: ladder only", "shelf -60 / -20". Views `pool_exits` and `swim_ladder`.
+- Fishing water (T-027): `pool/water_area` makes the whole pool Shore water ("Test Pool", Region.Tropical.PalmKey,
+  priority 10); the bobber reads 190 cm deep over the floor, 20 cm over `pool/shelf_20` (just above MinBiteDepth 15) and
+  60 cm over `pool/shelf_60`. `pool/hot_spots` (Bubbles only, max 2, seed 1234) turns the spawner on, but a natural
+  Bubbles spawn needs a 5.25 m wander circle of water (DriftRange 400 + Radius/2) and the pool is only 8 m wide, so none
+  pass the spawn check here: use `Lure.HotSpot.Spawn Bubbles 600`, or a test table with a small DriftRange.
 - The preview's water exit check (levels.layout.water_exit_report, 25 cm cells): 38 fall-in cells, worst 1.75 m to an
   exit; the ladder measures a 70 cm edge with -190 water in front.
 

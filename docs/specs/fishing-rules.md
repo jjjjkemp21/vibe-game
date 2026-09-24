@@ -43,21 +43,17 @@ The lead may overrule any of these; a change is a data edit unless marked (code)
   - The Swim rows in DT_Movement keep the default rod columns (`CanFish = True`): the swimming rule above blocks fishing in
     the water whatever the row says (code, not data).
 
-## Spots
-- Read from marker actors tagged `Lure.FishingSpot` with `Key=Value` tags (L_PalmKey.md section 11; exactly what
-  `build_level.py marker_tags()` writes): Spot, Name, Habitat, Region, Radius, Luck, Hours, Levels, Danger, CastFrom.
-  Radius > 0 is required. Hours, Levels and Danger are info only (bites follow each species' time windows).
-- The bobber is in a spot if its 2D distance to the marker is within Radius; overlapping spots: the one you are deepest in
-  (smallest distance / radius).
-- The bite context: habitat and region from the spot (a spot without Region= uses the setting `DefaultRegion`,
-  Region.Tropical), Luck = spot Luck + gear luck (0 until T-011), time of day = `DefaultTimeOfDayHours` (12) until T-013,
-  bait = the setting `DefaultBait` (Bait.Shrimp: both starter species accept it) until gear exists.
-- **No spot in range: nothing bites** (my call). The bobber floats, no bite is scheduled, and after NoBiteHintDelay (8 s) the
-  HUD says "Nothing is biting here". Reason: spots are where the design puts fish; open-water bites would make the island's
-  spots pointless. Data hook for later: the setting `OffSpotHabitat` (a habitat tag name, default none) turns on an
-  off-spot pool (e.g. junk or "Habitat.OpenWater" fish) without code.
-- A spot where no species fits (e.g. the reef at noon) behaves the same: no bite, the hint, and a new check every
-  BiteWaitMax seconds (the time of day moves on).
+## Where fish bite (T-027: fish anywhere; replaces the spot rule)
+- Superseded by **docs/specs/fishing-water-rules.md** (Jimmy's playtest, 2026-09-23): every body of water can be fished.
+  The water area under the bobber (layout "water_area" markers -> ALureWaterArea) gives the habitat, region and luck;
+  depth bands pick areas; uncovered water uses ULureWaterSettings::DefaultWaterHabitat (Habitat.Shore); water shallower
+  than MinBiteDepth never bites; a habitat with no species at this hour uses the gap fallback habitats (logged); hot spots
+  add luck, size, value and sooner bites. "Nothing is biting here" is gone: the HUD names the water and, if nothing can
+  bite, the reason (too shallow, wrong bait, no fish).
+- Fishing spot markers (`Lure.FishingSpot` + `Key=Value` tags, L_PalmKey.md section 11) are still parsed: a level with
+  no water area reads them as circle areas (migration), otherwise they are only named casting places (teleports, labels).
+- The bite context: time of day = `DefaultTimeOfDayHours` (16) until T-013, bait = the hook's (DT_Gear) or the setting
+  `DefaultBait`, luck = water area luck + gear luck + hot spot luck.
 
 ## Bite, hook, miss
 - Wait: random in [BiteWaitMin, BiteWaitMax] after landing. Before the bite, [NibblesMin, NibblesMax] nibbles about
@@ -94,7 +90,7 @@ The lead may overrule any of these; a change is a data edit unless marked (code)
 - HUD: plain white text lines (ALureHUD): cast power, "BITE! Click/RT to hook!", hooked/caught/missed, "Can't cast: ...".
 
 ## Lead decisions on the T-006 open questions (2026-09-23)
-1. No fishing spot in range = no bite, plus a plain-text hint ("Nothing biting here"). The off-spot fish pool stays a setting, empty by default.
+1. ~~No fishing spot in range = no bite~~ Superseded by T-027 (Jimmy, 2026-09-23): every body of water can be fished (fishing-water-rules.md). The OffSpotHabitat setting is replaced by ULureWaterSettings::DefaultWaterHabitat.
 2. Bait: every hook uses Bait.Shrimp until gear exists (T-010/T-012); the default bait is a setting, not code.
 3. Crawling prone, sprinting or swimming while the line is out reels it in automatically (no blocked movement). Jimmy can change this after his playtest.
 4. A hooked fish is landed after 1.5 s (placeholder) until the reel fight (T-007) replaces it. (Superseded by T-007: docs/specs/reel-fight-rules.md.)

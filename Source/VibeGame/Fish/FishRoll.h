@@ -56,6 +56,8 @@ enum class EFishRollStage : uint32
  *   2. Weight: U = weight stream FRand() in [0, 1).
  *        Weight = WeightMin + (WeightMax - WeightMin) * U ^ SizeSkew                      (SampleWeight)
  *        or, forced: Weight = WeightMin + (WeightMax - WeightMin) * ForcedWeightFraction.
+ *      Size bonus (T-027 hot spots; natural rolls only): Weight += (WeightMax - Weight) * clamp(Context.SizeBonus, 0, 1);
+ *      0 (the default) skips the step, so every roll without a bonus is unchanged.
  *      Every difficulty stat (DT_FishStat bIsDifficultyStat) *= (Weight / ReferenceWeight) ^ WeightStatExponent.
  *      Fish.Stat.Weight = Weight. The base roll stays in [WeightMin, WeightMax].
  *   3. Rarity: candidates = the species' AllowedRarities (empty = every row), sorted by Rank then id.
@@ -72,7 +74,8 @@ enum class EFishRollStage : uint32
  *      Multiplies (product). Modifiers may push Weight past WeightMax.
  *   5. Clamp: every stat to its DT_FishStat [Min, Max]. WeightKg = Fish.Stat.Weight.
  *   6. Value = max(1, round-half-up(BaseValuePerKg * WeightKg * Rarity.ValueMultiplier * product of modifier
- *              ValueMultipliers)), round-half-up(x) = floor(x + 0.5).
+ *              ValueMultipliers * Context.ValueMultiplier)), round-half-up(x) = floor(x + 0.5). Context.ValueMultiplier
+ *              (T-027 hot spots) is skipped when it is 1 (the default); non-finite or <= 0 counts as 1 with a warning.
  *      Xp = round-half-up((XpBase + XpPerLevel * (Level - 1)) * Rarity.XpMultiplier).
  *      DifficultyRating = mean over difficulty stats with a base > 0 of (final value / species base value); 1 if none.
  *      Stats sorted by tag name (FName::LexicalLess).

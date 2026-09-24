@@ -21,6 +21,7 @@
 #include "Fish/FishRoll.h"
 #include "Fish/FishSettings.h"
 #include "Fishing/FishingSpots.h"
+#include "Fishing/FishingWater.h"
 #include "Fishing/LureFishingLineComponent.h"
 #include "Fishing/LureFishingSettings.h"
 #include "GameFramework/Character.h"
@@ -69,6 +70,8 @@ namespace LureFishingPrivate
 		case ELureCastBlock::Busy: return TEXT("the line is already out");
 		case ELureCastBlock::TooFar: return TEXT("too far from the bobber");
 		case ELureCastBlock::Climbing: return TEXT("climbing");
+		case ELureCastBlock::Teleported: return TEXT("teleported");
+		case ELureCastBlock::Unpossessed: return TEXT("the player left");
 		case ELureCastBlock::None:
 		default: return TEXT("");
 		}
@@ -758,7 +761,6 @@ FLureFishingEnvironment ULureFishingComponent::MakeEnvironment() const
 		: (Gear.BaitTag.IsValid() ? Gear.BaitTag : FGameplayTag::RequestGameplayTag(Settings->DefaultBait, /*ErrorIfNotFound*/ false));
 	Environment.GearLuck = GearLuck + (FMath::IsFinite(Gear.Luck) ? FMath::Max(0.f, Gear.Luck) : 0.f);
 	Environment.DefaultRegionTag = FGameplayTag::RequestGameplayTag(Settings->DefaultRegion, /*ErrorIfNotFound*/ false);
-	Environment.OffSpotHabitatTag = FGameplayTag::RequestGameplayTag(Settings->OffSpotHabitat, /*ErrorIfNotFound*/ false);
 	return Environment;
 }
 
@@ -828,11 +830,9 @@ bool ULureFishingComponent::AuthorityCast(float Charge01, float AimYawDegrees)
 	const FLureCastLanding Landing = FLureFishingSpots::ResolveLanding(World, Owner, Origin, FVector2D(Eye.X, Eye.Y),
 		FVector2D(Aim.Vector().X, Aim.Vector().Y), Distance, *Settings);
 
-	bHasSpot = Landing.bOnWater && FLureFishingSpots::FindSpotAt(World, Landing.Rest, Settings->FishingSpotTag, CurrentSpot);
-	if (!bHasSpot)
-	{
-		CurrentSpot = FLureFishingSpot();
-	}
+	// T-027: every body of water can be fished; the water area under the bobber decides its habitat (fishing-water-rules.md).
+	WaterContext = FLureWaterQuery::DescribeWater(World, Landing.Rest, Landing.bOnWater, Landing.WaterZ);
+	HotSpotBonus = FLureHotSpotBonus(); // a hot spot counts where the bobber lands (LandBobber)
 	PendingFish = FFishInstance();
 	NextBiteTime = -1.0;
 	NibbleSchedule.Reset();
@@ -847,11 +847,13 @@ bool ULureFishingComponent::AuthorityCast(float Charge01, float AimYawDegrees)
 	New.StateStartTime = Now;
 	New.bOnWater = Landing.bOnWater;
 	New.bNoFishHere = false;
-	New.SpotId = bHasSpot ? CurrentSpot.SpotId : NAME_None;
+	New.SpotId = WaterContext.AreaId;
+	New.Water = FLureBobberWater();
 	SetNetState(New);
 
-	UE_LOG(LogLureFishing, Verbose, TEXT("%s casts %.0f cm (charge %.2f): %s%s."), *Owner->GetName(), Distance, CastCharge,
-		Landing.bOnWater ? TEXT("water") : TEXT("land"), bHasSpot ? *FString::Printf(TEXT(", spot %s"), *CurrentSpot.SpotId.ToString()) : TEXT(""));
+	UE_LOG(LogLureFishing, Verbose, TEXT("%s casts %.0f cm (charge %.2f): %s."), *Owner->GetName(), Distance, CastCharge,
+		Landing.bOnWater ? *FString::Printf(TEXT("water %s (%s, %.0f cm deep)"), WaterContext.AreaId.IsNone() ? TEXT("default") : *WaterContext.AreaId.ToString(),
+			*WaterContext.HabitatTag.ToString(), WaterContext.DepthCm) : TEXT("land"));
 	return true;
 }
 
@@ -940,6 +942,25 @@ void ULureFishingComponent::AuthorityReelIn(ELureCastBlock Reason)
 	OnFishingEvent.Broadcast(New.LastResult, Lost);
 }
 
+void ULureFishingComponent::AuthorityOwnerTeleported()
+{
+	// T-028b (O4): a teleport ends a fight in progress (the line can't follow); the fish is lost. A line without a fish is left to
+	// the normal rules (the bobber distance rule brings it in if the teleport went far).
+	if (GetOwner() && GetOwner()->HasAuthority() && NetState.State == ELureFishingState::Hooked)
+	{
+		AuthorityReelIn(ELureCastBlock::Teleported);
+	}
+}
+
+void ULureFishingComponent::AuthorityOwnerUnpossessed()
+{
+	// T-028b (O5): nobody holds this rod any more, so its fight ends (a fight nobody steers must not run on).
+	if (GetOwner() && GetOwner()->HasAuthority() && NetState.State == ELureFishingState::Hooked)
+	{
+		AuthorityReelIn(ELureCastBlock::Unpossessed);
+	}
+}
+
 void ULureFishingComponent::ServerTick(double Now)
 {
 	if (NetState.State == ELureFishingState::Idle)
@@ -1008,28 +1029,29 @@ void ULureFishingComponent::LandBobber(double Now)
 	FLureFishingNetState New = NetState;
 	New.State = ELureFishingState::Waiting;
 	New.StateStartTime = Now;
-	const FLureFishingEnvironment Environment = MakeEnvironment();
-	const bool bCanBite = New.bOnWater && FLureFishingRules::CanHaveBites(bHasSpot ? &CurrentSpot : nullptr, Environment);
-	// A spot where no species fits right now (spot, time, weather, bait) acts like no spot: no nibbles (they are the tells of a
-	// coming bite), and the nothing-here flag is set now so the hint shows at NoBiteHintDelay. The species check is seed-independent.
-	bool bFits = false;
-	if (bCanBite && EnsureFishTables())
+	// T-027: a cast that lands in a hot spot keeps its bonus for the whole cast (fishing-water-rules.md, "Hot spots").
+	HotSpotBonus = New.bOnWater ? FLureWaterQuery::FindHotSpotBonusAt(GetWorld(), FVector2D(New.BobberRest.X, New.BobberRest.Y), Now) : FLureHotSpotBonus();
+	New.Water.HotSpotType = HotSpotBonus.TypeId;
+	// Can anything bite here now (depth, this water's species at this time, the bait)? If not: no nibbles (they are the tells of
+	// a coming bite) and the reason is set now for the HUD. The check is seed-independent.
+	FLureBiteDecision Check;
+	Check.Reason = New.bOnWater ? ELureNoBiteReason::NoSpecies : ELureNoBiteReason::NotWater;
+	if (New.bOnWater && EnsureFishTables())
 	{
-		const FFishRollContext Check = FLureFishingRules::MakeRollContext(bHasSpot ? &CurrentSpot : nullptr, Environment, 0);
-		FName SpeciesId;
-		bFits = FFishRoll::PickSpecies(Tables, Check, SpeciesId);
-		if (!bFits)
-		{
-			LastRollContext = Check; // what was checked, for debugging and tests (a fitting spot records the real roll at the bite)
-		}
+		Check = FLureWaterRules::DecideBite(Tables, WaterContext, HotSpotBonus, MakeEnvironment(), FLureBiteRules::FromSettings(), 0);
 	}
-	New.bNoFishHere = New.bOnWater && !bFits;
+	if (!Check.CanBite())
+	{
+		LastRollContext = Check.Context; // what was checked, for debugging and tests (water that fits records the real roll at the bite)
+	}
+	New.bNoFishHere = New.bOnWater && !Check.CanBite();
+	New.Water.NoBiteReason = New.bOnWater ? Check.Reason : ELureNoBiteReason::None;
 	SetNetState(New);
-	if (bFits)
+	if (Check.CanBite())
 	{
 		ScheduleBite(Now, /*bAfterMiss*/ false);
 	}
-	else if (bCanBite)
+	else if (Check.Reason == ELureNoBiteReason::NoSpecies || Check.Reason == ELureNoBiteReason::WrongBait)
 	{
 		// Look again every BiteWaitMax seconds (the time of day moves on); TryBite bites then if something fits.
 		NextBiteTime = Now + FMath::Max(1.f, GetProfile().BiteWaitMax);
@@ -1039,7 +1061,8 @@ void ULureFishingComponent::LandBobber(double Now)
 void ULureFishingComponent::ScheduleBite(double Now, bool bAfterMiss)
 {
 	const FLureFishingRow& Row = GetProfile();
-	const float Wait = FLureFishingRules::RandomBiteWait(Row, Rng, bAfterMiss);
+	// A hot spot's fish bite sooner (T-027 BiteWaitScale; 1 without a hot spot, so the draws and waits are unchanged).
+	const float Wait = FLureFishingRules::RandomBiteWait(Row, Rng, bAfterMiss) * (HotSpotBonus.IsActive() ? HotSpotBonus.BiteWaitScale : 1.f);
 	NextBiteTime = Now + Wait;
 	NibbleSchedule.Reset();
 	for (const float Time : FLureFishingRules::NibbleTimes(Row, Rng, Wait))
@@ -1073,28 +1096,36 @@ void ULureFishingComponent::TryBite(double Now)
 	if (!EnsureFishTables())
 	{
 		New.bNoFishHere = true;
+		New.Water.NoBiteReason = ELureNoBiteReason::NoSpecies;
 		SetNetState(New);
 		return;
 	}
 
 	const int32 Seed = static_cast<int32>(Rng.GetUnsignedInt());
-	LastRollContext = FLureFishingRules::MakeRollContext(bHasSpot ? &CurrentSpot : nullptr, MakeEnvironment(), Seed);
+	// T-027: the water (area habitat, region, luck; a gap fallback habitat if the data has none at this hour) + the hot spot.
+	const FLureBiteDecision Decision = FLureWaterRules::DecideBite(Tables, WaterContext, HotSpotBonus, MakeEnvironment(), FLureBiteRules::FromSettings(), Seed);
+	LastRollContext = Decision.Context;
 	FFishInstance Fish;
-	if (FLureFishingRules::DecideBite(Tables, LastRollContext, Fish))
+	if (Decision.CanBite() && FLureFishingRules::DecideBite(Tables, LastRollContext, Fish))
 	{
 		PendingFish = Fish;
 		New.State = ELureFishingState::Biting;
 		New.StateStartTime = Now;
 		New.bNoFishHere = false;
+		New.Water.NoBiteReason = ELureNoBiteReason::None;
 		SetNetState(New);
 		UE_LOG(LogLureFishing, Verbose, TEXT("%s: bite (%s)."), *GetNameSafe(GetOwner()), *Fish.ToString());
 		return;
 	}
 
-	// Nothing fits this spot, time or bait right now: say so, and look again later (the time of day moves on).
+	// Nothing fits this water, time or bait right now: say why, and look again later (the time of day moves on).
 	New.bNoFishHere = true;
+	New.Water.NoBiteReason = Decision.CanBite() ? ELureNoBiteReason::NoSpecies : Decision.Reason;
 	SetNetState(New);
-	NextBiteTime = Now + FMath::Max(1.f, GetProfile().BiteWaitMax);
+	if (Decision.Reason != ELureNoBiteReason::TooShallow && Decision.Reason != ELureNoBiteReason::NotWater)
+	{
+		NextBiteTime = Now + FMath::Max(1.f, GetProfile().BiteWaitMax);
+	}
 }
 
 void ULureFishingComponent::Hook(double Now)
@@ -1149,6 +1180,11 @@ void ULureFishingComponent::BeginFight(double Now)
 	// T-028: a new fight starts with the rod level and centered (the owner resets its aim too); the reel step carries over.
 	ServerRodPitch = 0.f;
 	ServerRodYaw = 0.f;
+	if (ServerPendingReelStep != INDEX_NONE)
+	{
+		ServerReelStep = ServerPendingReelStep; // the owner's last wheel pick, held back by the step rate limit, is the new fight's step
+		ServerPendingReelStep = INDEX_NONE;
+	}
 	Fight.ReelStep = FLureFight::ClampReelStep(ServerReelStep, FightTuning);
 
 	const uint8 NextId = static_cast<uint8>(FightNet.FightId + 1);
@@ -1166,6 +1202,7 @@ void ULureFishingComponent::UpdateFight(double Now)
 {
 	const float Delta = static_cast<float>(FMath::Clamp(Now - FightLastTime, 0.0, 0.5));
 	FightLastTime = Now;
+	ApplyPendingReelStep(Now); // T-028b: a reel-step change held back by the server's rate limit
 	const FLureFightInput Input = GetServerFightInput(); // the reel button + the rod aim and reel step (T-028)
 	const ELureFightOutcome Outcome = FLureFight::Advance(Fight, Input, Delta);
 	PublishFight();
@@ -1802,9 +1839,22 @@ FString ULureFishingComponent::GetStatusText() const
 		{
 			Lines.Add(TEXT("The bobber landed on land. Click/RT to reel in."));
 		}
-		else if (NetState.bNoFishHere && Now - NetState.StateStartTime >= GetProfile().NoBiteHintDelay)
+		else
 		{
-			Lines.Add(TEXT("Nothing is biting here. Click/RT to reel in."));
+			// T-027 placeholder lines: the hot spot, which water this is, and why nothing bites (if so).
+			if (!NetState.Water.HotSpotType.IsNone())
+			{
+				Lines.Add(FLureWaterQuery::HotSpotHudText(NetState.Water.HotSpotType));
+			}
+			Lines.Add(FLureWaterRules::WaterLine(FLureWaterQuery::GetAreaDisplayName(GetWorld(), NetState.SpotId)));
+			if (NetState.bNoFishHere && (FLureWaterRules::ShowsAtOnce(NetState.Water.NoBiteReason) || Now - NetState.StateStartTime >= GetProfile().NoBiteHintDelay))
+			{
+				const FString Reason = FLureWaterRules::NoBiteText(NetState.Water.NoBiteReason, MakeEnvironment().BaitTag);
+				if (!Reason.IsEmpty())
+				{
+					Lines.Add(Reason);
+				}
+			}
 		}
 		break;
 	case ELureFishingState::Biting:
@@ -1837,12 +1887,13 @@ FString ULureFishingComponent::GetStatusText() const
 			Lines.Add(FString::Printf(TEXT("Tension %s %d%%"), *TensionBar(Tension01), FMath::RoundToInt(Tension01 * 100.f)));
 			Lines.Add(FString::Printf(TEXT("Line out %.1f m of %.0f m"), FightNet.LineOut / 100.f, FightNet.SpoolLength / 100.f));
 			AppendRodHudLines(Lines); // T-028: "Rod: back-right", "Reel 2/3", "Fish runs LEFT: pull right"
-			Lines.Add(FightNet.bReeling || WantsToReel() ? TEXT("Reeling. Release to let it run.") : TEXT("Hold Click/RT to reel."));
+			const bool bReelingNow = FightNet.bReeling || WantsToReel();
+			Lines.Add(bReelingNow ? TEXT("Reeling. Release to let it run.") : TEXT("Hold Click/RT to reel."));
 			if (FightNet.SnapProgress > 0.f)
 			{
 				Lines.Add(TEXT("!! The line is about to snap: ease off !!"));
 			}
-			else if (FightNet.SlackProgress > 0.4f)
+			else if (!bReelingNow && FightNet.SlackProgress > 0.4f) // T-028b: one slack rule: reeling is never slack (FLureFight::IsSlack)
 			{
 				Lines.Add(TEXT("!! Slack line: reel or it throws the hook !!"));
 			}

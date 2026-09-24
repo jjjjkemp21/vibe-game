@@ -59,6 +59,10 @@ ACCENT = style.TROPICAL.ACCENT
 LANTERN = style.FOGGY.LANTERN
 ROUTE = "#6A3FA0"
 WATER_LINE = "#1F5FAF"  # water volume outline (map only)
+# Water areas (T-027, map only): outline color by habitat (most specific tag first).
+WATER_AREA_COLORS = [("Habitat.Shore.Cove", "#F07C1E"), ("Habitat.Shore", "#F2C230"), ("Habitat.Lagoon.Mouth", "#D04BB5"),
+                     ("Habitat.Lagoon", "#4F6BFF"), ("Habitat.Reef.Edge", "#E0245E"), ("Habitat.Reef", "#FF8A5B"),
+                     ("Habitat.DeepDrop", "#E6F0F5")]
 LADDER = "#E07A1F"      # ladders (map only)  # route line on the map only (not a game color): purple reads on sand, grass and water
 
 
@@ -535,11 +539,29 @@ def map_labels(layout, ex, legs, covers, clears):
     labels = []
     opts = layout.get("preview", {})
     n_tp = [0]
+    has_areas = any(mk["type"] == "water_area" for mk in ex["markers"])
+    everywhere = []
     for z in layout.get("zones", []):
         labels.append((z["name"].upper(), L.v3(z.get("label_at", z["center"])), 30, INK, True))
     for mk in ex["markers"]:
         t = mk["type"]
-        if t == "fishing_spot":
+        if t == "water_area":
+            hab = str(mk.get("habitat", "")).replace("Habitat.", "")
+            dep = list(mk.get("depth") or [0, 0])
+            band = "" if dep == [0, 0] else "  %s-%s m" % (dep[0] / 100.0, "any" if not dep[1] else dep[1] / 100.0)
+            txt = "%s: %s  P%s%s%s" % (mk.get("name", mk["id"]), hab, mk.get("priority", 0),
+                                       "  luck +%s" % mk["luck"] if mk.get("luck") else "", band)
+            if L.water_area_outline(mk):
+                labels.append((txt, water_area_label_at(mk), 16, INK, True))
+            else:
+                everywhere.append(txt)
+        elif t == "hot_spots":
+            labels.append(("HOT SPOTS: %s, max %s" % ("/".join(mk.get("types") or ["all"]), mk.get("max", "default")),
+                           L.v3(mk["at"]), 15, INK, True))
+        elif t == "fishing_spot" and has_areas:
+            labels.append(("spot: %s" % mk.get("name", mk["id"]), L.add(L.v3(mk["at"]), (-200, 0, 0)), 15, "#7A1F12",
+                           True))
+        elif t == "fishing_spot":
             lv = mk.get("level_band", [])
             txt = "%s  %s  L%s  %s" % (mk.get("name", mk["id"]), mk["habitat"].replace("Habitat.", ""),
                                        "-".join(str(x) for x in lv), mk.get("time_label", ""))
@@ -568,6 +590,8 @@ def map_labels(layout, ex, legs, covers, clears):
         elif t == "ladder" and mk.get("map_label", True):
             at = L.add(L.v3(mk["at"]), L.rotate(L.rot_rows(float(mk.get("yaw", 0.0))), (320.0, 0.0, 0.0)))
             labels.append(("ladder", at, 13, "#8A4A10", True))
+    if everywhere:
+        labels.append(("everywhere else: " + ";  ".join(everywhere), None, 16, INK, True))
     groups = {}
     for c in covers:  # one multi-line label per test location
         groups.setdefault(tuple(round(v) for v in c["at"]), []).append(c)
@@ -639,6 +663,19 @@ def render_labels_pass(scene, cam, labels, canvas, res, path):
     return load_rgba(path)
 
 
+def water_area_color(habitat):
+    for tag, hx in WATER_AREA_COLORS:
+        if habitat == tag or str(habitat).startswith(tag + "."):
+            return hx
+    return PARCHMENT
+
+
+def water_area_label_at(mk):
+    """Label point for a water area: just inside its north edge, over its middle."""
+    pts = L.water_area_outline(mk)
+    return (max(p[0] for p in pts) - 180.0, sum(p[1] for p in pts) / len(pts), 0.0)
+
+
 def draw_overlays(layout, ex, canvas, legs, covers, view, water=None):
     m = L.metrics(layout)
     px_per_m = 100.0 / canvas.s
@@ -653,6 +690,10 @@ def draw_overlays(layout, ex, canvas, legs, covers, view, water=None):
             fill = {"threat": 0.08, "hazard": 0.10, "crawl_gap": 0.45, "quiet": 0.08}.get(zt, 0.06)
             canvas.rect(L.v3(mk["at"]), size[:2], mk.get("yaw", 0.0), hx, fill)
             canvas.rect(L.v3(mk["at"]), size[:2], mk.get("yaw", 0.0), hx, 0.9, outline_px=2.0)
+    for mk in ex["markers"]:  # water areas (T-027): dashed outline by habitat; everywhere areas have no outline
+        if mk["type"] == "water_area" and L.water_area_outline(mk):
+            hx = water_area_color(mk.get("habitat"))
+            canvas.polyline(L.water_area_outline(mk), 3.5, hx, 0.95, closed=True, dash_cm=max(80.0, 12.0 * canvas.s))
     for mk in ex["markers"]:
         if mk["type"] == "water_volume":
             hs = mk["surface_half_size"]
@@ -687,14 +728,18 @@ def draw_overlays(layout, ex, canvas, legs, covers, view, water=None):
             canvas.polyline(pts, 3.0, DANGER, 0.85, closed=mk.get("closed", True), dash_cm=150.0)
             for p in pts:
                 canvas.disc(p, 45, DANGER, 0.9)
+    has_areas = any(mk["type"] == "water_area" for mk in ex["markers"])
     for leg in legs:
         canvas.polyline(leg["points"], 2.5, ROUTE, 0.75 if not leg["optional"] else 0.45, dash_cm=120.0)
     for mk in ex["markers"]:
         t = mk["type"]
         if t == "fishing_spot":
             c = L.v3(mk["at"])
-            canvas.disc(c, mk["radius"], ACCENT, 0.16)
-            canvas.disc(c, mk["radius"], ACCENT, 0.95, ring_px=3.0)
+            if has_areas:  # T-027: the areas decide the fish; a spot is only a named casting place (teleport)
+                canvas.disc(c, 70, ACCENT, 0.95)
+            else:
+                canvas.disc(c, mk["radius"], ACCENT, 0.16)
+                canvas.disc(c, mk["radius"], ACCENT, 0.95, ring_px=3.0)
             cf = L.v3(mk["cast_from"])
             canvas.disc(cf, float(mk.get("cast_from_radius", 250.0)), ACCENT, 0.9, ring_px=2.0, dash=12)
             canvas.segment(cf, c, 1.5, ACCENT, 0.7, dash_cm=60.0)
@@ -742,6 +787,10 @@ def render_map(layout, ex, scene, view, legs, covers, clears, out_dir, quick, wa
     canvas = Canvas(load_rgba(raw), center, w_cm, h_cm)
     draw_overlays(layout, ex, canvas, legs, covers, view, water)
     labels = map_labels(layout, ex, legs, covers, clears)
+    for i, lb in enumerate(labels):  # a label without a world point goes under the title (legend line)
+        if lb[1] is None:
+            wpt = canvas.world(24 + len(lb[0]) * 4.2, 56)
+            labels[i] = (lb[0], (wpt[0], wpt[1], 0), lb[2], lb[3], lb[4])
     title = "%s  |  %s  |  grid 1 m / 10 m, north up  |  see-through water" % (layout["id"], view.get("title", view["id"]))
     tl_world = canvas.world(24 + len(title) * 5.2, 24)
     labels.append((title, (tl_world[0], tl_world[1], 0), 20, INK, True))

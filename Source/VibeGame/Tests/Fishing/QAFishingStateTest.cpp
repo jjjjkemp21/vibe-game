@@ -589,7 +589,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FQAFishInterruptSpotLostWhileFishing, "Project.
 bool FQAFishInterruptSpotLostWhileFishing::RunTest(const FString& Parameters)
 {
 	// The spot marker disappears mid-cast (streamed out, deleted): safe at every stage; the next cast sees no spot (markers are
-	// read live), so nothing bites there.
+	// read live). T-027: that water is then default water, where fish still bite (every body of water can be fished).
 	ForEachStage(*this, false,
 		[](FRig& Rig, EStage)
 		{
@@ -608,7 +608,7 @@ bool FQAFishInterruptSpotLostWhileFishing::RunTest(const FString& Parameters)
 			TestTrue(Label + TEXT(": the next cast works"), Rig.Fishing->AuthorityCast(0.f, 0.f));
 			Rig.Scene.TickUntil([&Rig]() { return Rig.Fishing->GetFishingState() == ELureFishingState::Waiting; }, 180);
 			TestFalse(Label + TEXT(": the next cast finds no spot"), Rig.Fishing->HasCurrentSpot());
-			TestTrue(Label + TEXT(": ... so nothing can bite"), Rig.Fishing->GetNetState().bNoFishHere && Rig.Fishing->GetScheduledBiteTime() < 0.0);
+			TestTrue(Label + TEXT(": ... but it is default water, so a bite is scheduled (T-027)"), !Rig.Fishing->GetNetState().bNoFishHere && Rig.Fishing->GetScheduledBiteTime() >= 0.0);
 		},
 		{ EStage::Casting, EStage::Waiting, EStage::Nibble, EStage::Biting, EStage::Hooked });
 	return true;

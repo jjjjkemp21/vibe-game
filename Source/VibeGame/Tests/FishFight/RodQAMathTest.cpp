@@ -71,7 +71,7 @@ namespace LureRodQA
 			if (!Pre.bExhausted)
 			{
 				const FLureFightMove* PreMove = State.Pattern.Moves.IsValidIndex(Pre.MoveIndex) ? &State.Pattern.Moves[Pre.MoveIndex] : nullptr;
-				if (PreMove && FMath::Abs(FMath::Abs(PreMove->Side) - T.SideMinShare) < 1.0e-6f)
+				if (PreMove && PreMove->Side != 0.f && FMath::Abs(FMath::Abs(PreMove->Side) - T.SideMinShare) < 1.0e-6f) // a straight move (Side 0) never runs: no edge
 				{
 					return EResult::Skipped; // |Side| right at SideMinShare: a knife edge for float comparisons
 				}
@@ -107,7 +107,7 @@ namespace LureRodQA
 					}
 				}
 			}
-			if (Move && FMath::Abs(FMath::Abs(Move->Side) - T.SideMinShare) < 1.0e-6f)
+			if (Move && Move->Side != 0.f && FMath::Abs(FMath::Abs(Move->Side) - T.SideMinShare) < 1.0e-6f)
 			{
 				return EResult::Skipped;
 			}
@@ -117,7 +117,8 @@ namespace LureRodQA
 			const double S = FMath::Clamp(-Y01 * RunDir, -1.0, 1.0);
 			const double SPlus = FMath::Max(0.0, S);
 			const double P = P01 >= 0.0 ? 1.0 + P01 * T.PitchBackPressure : 1.0 + P01 * T.PitchDipPressure;
-			const double PowerF = P * (1.0 + S * T.SideLeverage);
+			const double R = P01 >= 0.0 ? 1.0 + P01 * T.PitchBackPressure : 1.0 + P01 * T.PitchDipPower; // T-028b: dipped, the rod barely works the fish
+			const double PowerF = R * (1.0 + S * T.SideLeverage);
 			const double PullF = 1.0 - SPlus * T.SideTurnPull;
 			const double DrainF = 1.0 + SPlus * T.SideDrain;
 			const double SpeedF = StepSpeed(Step, T);
@@ -165,7 +166,7 @@ namespace LureRodQA
 			{
 				return EResult::Skipped;
 			}
-			const bool bSlack = Tension < Slack;
+			const bool bSlack = !Raw.bReeling && Tension < Slack; // T-028b: one slack rule, reeling is never slack
 			const double Energy = Pre.Stamina * Pool - Tension * Dt * DrainF + (bSlack ? Pool * T.StaminaRecovery * Dt : 0.0);
 			const double Stamina = Clamp01(Energy / Pool);
 			if (!Pre.bExhausted && Near(Stamina, T.ExhaustedStamina))
@@ -335,6 +336,7 @@ namespace LureRodQA
 		{
 			T.PitchBackPressure = R.FRandRange(0.f, 1.f);
 			T.PitchDipPressure = R.FRandRange(0.f, 0.95f);
+			T.PitchDipPower = R.FRandRange(0.f, 0.95f);
 			T.SideMinShare = R.FRand() < 0.1f ? 0.f : R.FRandRange(0.f, 1.f);
 			T.SideLeverage = R.FRandRange(0.f, 0.95f);
 			T.SideTurnRate = R.FRandRange(0.f, 3.f);
@@ -342,8 +344,12 @@ namespace LureRodQA
 			T.SideDrain = R.FRandRange(0.f, 4.f);
 			T.ReelSteps = 1 + R.RandHelper(9);
 			T.ReelDefaultStep = 1 + R.RandHelper(T.ReelSteps);
-			T.ReelSpeedMin = R.FRandRange(0.05f, 1.f);
-			T.ReelSpeedMax = T.ReelSpeedMin + (R.FRand() < 0.1f ? 0.f : R.FRandRange(0.f, 2.f));
+			// T-028b (O8): Validate requires the default step to be speed 1, so the range is built around it.
+			const int32 Below = T.ReelDefaultStep - 1;
+			const int32 Above = T.ReelSteps - T.ReelDefaultStep;
+			const float Spacing = R.FRand() < 0.1f ? 0.f : R.FRandRange(0.f, 0.95f / FMath::Max(1, Below));
+			T.ReelSpeedMin = 1.f - Spacing * static_cast<float>(Below);
+			T.ReelSpeedMax = 1.f + Spacing * static_cast<float>(Above);
 			T.ReelLoadPerSpeed = R.FRandRange(0.f, 3.f);
 		}
 	}
@@ -519,7 +525,8 @@ namespace LureRodQA
 			TestNearlyEqual(FString::Printf(TEXT("pitch %g: P = %g"), Pitch, Expected), FLureFight::PitchPressure(Pitch, T), Expected, 1.0e-6f);
 			const FLureRodFactors Factors = FLureFight::RodFactors(In(true, Pitch), nullptr, 1.f, T);
 			TestNearlyEqual(FString::Printf(TEXT("pitch %g: RodFactors.Pressure"), Pitch), Factors.Pressure, Expected, 1.0e-6f);
-			TestNearlyEqual(FString::Printf(TEXT("pitch %g: RodFactors.Power = P (no run)"), Pitch), Factors.Power, Expected, 1.0e-6f);
+			const float ExpectedPower = Clean >= 0.f ? Expected : 1.f + Clean * T.PitchDipPower; // T-028b: dipped, the power drops by PitchDipPower
+			TestNearlyEqual(FString::Printf(TEXT("pitch %g: RodFactors.Power = the pitch's power (no run)"), Pitch), Factors.Power, ExpectedPower, 1.0e-6f);
 			TestTrue(FString::Printf(TEXT("pitch %g: the server keeps exactly %g"), Pitch, Clean), FLureFight::SanitizeInput(In(true, Pitch), T).RodPitch == Clean);
 		}
 		TestTrue(TEXT("level is exactly 1 (and -0 too)"), FLureFight::PitchPressure(0.f, T) == 1.f && FLureFight::PitchPressure(-0.f, T) == 1.f);
@@ -659,10 +666,10 @@ namespace LureRodQA
 							const FLureRodFactors F = FLureFight::RodFactors(In(true, Pitch, Yaw), Used, SideSign, T);
 							const float S = FMath::Clamp(-Yaw * static_cast<float>(RunDir), -1.f, 1.f);
 							const float SPlus = FMath::Max(0.f, S);
-							const float P = FLureFight::PitchPressure(Pitch, T);
+							const float P = Pitch >= 0.f ? FLureFight::PitchPressure(Pitch, T) : 1.f + Pitch * T.PitchDipPower; // the pitch's share of the power (T-028b)
 							const FString Label = FString::Printf(TEXT("side %+.1f x sign %+.0f%s, yaw %+.1f, pitch %+.0f"), Side, SideSign, bExhausted ? TEXT(" (exhausted)") : TEXT(""), Yaw, Pitch);
 							TestNearlyEqual(Label + TEXT(": side score"), F.Side, S, 1.0e-6f);
-							TestNearlyEqual(Label + TEXT(": power = P x (1 + S x SideLeverage)"), F.Power, P * (1.f + S * T.SideLeverage), 1.0e-5f);
+							TestNearlyEqual(Label + TEXT(": power = pitch power x (1 + S x SideLeverage)"), F.Power, P * (1.f + S * T.SideLeverage), 1.0e-5f);
 							TestNearlyEqual(Label + TEXT(": pull x (1 - S+ x SideTurnPull)"), F.Pull, 1.f - SPlus * T.SideTurnPull, 1.0e-6f);
 							TestNearlyEqual(Label + TEXT(": move clock x (1 + S+ x SideTurnRate)"), F.MoveClock, 1.f + SPlus * T.SideTurnRate, 1.0e-6f);
 							TestNearlyEqual(Label + TEXT(": drain x (1 + S+ x SideDrain)"), F.Drain, 1.f + SPlus * T.SideDrain, 1.0e-6f);
@@ -1107,8 +1114,8 @@ namespace LureRodQA
 
 	/**
 	 *  Instant tension: a soft fish let run keeps the line taut when level and slack when the rod is fully dipped (the hook is thrown after
-	 *  SlackGraceTime x HookSecurity of whole steps, plus one). The slack rule doesn't care about the reel button: reeling at the slowest step with
-	 *  the rod dipped can be slack too (the fish throws the hook while the player reels). The slack line itself: at it is not slack.
+	 *  SlackGraceTime x HookSecurity of whole steps, plus one). T-028b (O2): one slack rule, reeling is never slack: reeling at the slowest step with
+	 *  the rod dipped keeps the fish on even though the tension is under the slack line. The slack line itself: at it is not slack.
 	 */
 	IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRodQASlackTimer, "Project.Fishing.Fight.Rod.QA.Timers.SlackWholeStepsWhenTheRodDips", Flags)
 	bool FRodQASlackTimer::RunTest(const FString& Parameters)
@@ -1141,11 +1148,12 @@ namespace LureRodQA
 			const FLureFightMove Soft = SideMove(TEXT("Soft"), 0.5f, 0.f, 0.f, 0.f);
 			TestEqual(FString::Printf(TEXT("%s, letting it run level: never throws in 30 s"), *Hook.ToString()), StepsToThrow(Soft, In(false)), -1);
 			TestEqual(FString::Printf(TEXT("%s, letting it run fully dipped: throws after exactly %d + 1 steps"), *Hook.ToString(), Grace), StepsToThrow(Soft, In(false, -1.f)), Grace + 1);
-			// Reeling a Pull 0.3 fish: level = 1.2 x 1.3 + 1.2 = 2.76 (taut); fully dipped at the slowest step = (1.56 + 0.3) x 0.5 = 0.93 (slack).
+			// Reeling a Pull 0.3 fish: level = 1.2 x 1.3 + 1.2 = 2.76 (taut); fully dipped at the slowest step = (1.56 + 0.3) x 0.5 = 0.93 (under the
+			// slack line, but reeling: not slack since T-028b).
 			const FLureFightMove Resting = SideMove(TEXT("Resting"), 0.3f, 0.f, 0.f, 0.f);
 			TestEqual(FString::Printf(TEXT("%s, reeling level: never throws"), *Hook.ToString()), StepsToThrow(Resting, In(true)), -1);
-			TestEqual(FString::Printf(TEXT("%s, REELING with the rod fully dipped at the slowest step: slack, throws after %d + 1 steps"), *Hook.ToString(), Grace),
-				StepsToThrow(Resting, In(true, -1.f, 0.f, 0)), Grace + 1);
+			TestEqual(FString::Printf(TEXT("%s, REELING with the rod fully dipped at the slowest step: not slack, never throws in 30 s"), *Hook.ToString()),
+				StepsToThrow(Resting, In(true, -1.f, 0.f, 0)), -1);
 		}
 		// The slack line itself is not slack ("below"): a dip that puts the tension exactly at SlackShare x BasePull never throws.
 		{

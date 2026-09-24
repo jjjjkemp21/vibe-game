@@ -345,7 +345,7 @@ bool FLureFishFightRow::Validate(FString& OutProblem) const
 bool FLureFishFightRow::ValidateRodSteering(FString& OutProblem) const
 {
 	// T-028 columns (reel-fight-rules.md "Rod steering").
-	if (!LureFightTypesPrivate::AllFiniteNonNegative({ RodAimUpDeg, RodAimDownDeg, RodAimSideDeg, PitchBackPressure, PitchDipPressure, SideMinShare,
+	if (!LureFightTypesPrivate::AllFiniteNonNegative({ RodAimUpDeg, RodAimDownDeg, RodAimSideDeg, PitchBackPressure, PitchDipPressure, PitchDipPower, SideMinShare,
 		SideLeverage, SideTurnRate, SideTurnPull, SideDrain, ReelSpeedMin, ReelSpeedMax, ReelLoadPerSpeed, CameraFollowTime, CameraRodYawShare,
 		CameraRodPitchShare, RodAimLookPitchDeg, RodAimLookYawDeg, RodAimBlendTime }))
 	{
@@ -357,9 +357,9 @@ bool FLureFishFightRow::ValidateRodSteering(FString& OutProblem) const
 		OutProblem = TEXT("RodAimUpDeg, RodAimDownDeg and RodAimSideDeg must be >= 1 degree");
 		return false;
 	}
-	if (PitchDipPressure > 0.95f || SideLeverage > 0.95f || SideTurnPull > 0.95f)
+	if (PitchDipPressure > 0.95f || PitchDipPower > 0.95f || SideLeverage > 0.95f || SideTurnPull > 0.95f)
 	{
-		OutProblem = TEXT("PitchDipPressure, SideLeverage and SideTurnPull must be <= 0.95 (the rod and the fish keep some power)");
+		OutProblem = TEXT("PitchDipPressure, PitchDipPower, SideLeverage and SideTurnPull must be <= 0.95 (the rod and the fish keep some power)");
 		return false;
 	}
 	if (SideMinShare > 1.f || CameraRodYawShare > 1.f || CameraRodPitchShare > 1.f)
@@ -376,6 +376,17 @@ bool FLureFishFightRow::ValidateRodSteering(FString& OutProblem) const
 	{
 		OutProblem = TEXT("ReelSpeedMin must be >= 0.05 and ReelSpeedMax >= ReelSpeedMin");
 		return false;
+	}
+	// T-028b (O8): the default step is the plain T-007 reel (speed 1), so a player who never touches the wheel fights the T-007 fight.
+	if (ReelSteps > 1)
+	{
+		const float DefaultSpeed = ReelSpeedMin + (ReelSpeedMax - ReelSpeedMin) * static_cast<float>(ReelDefaultStep - 1) / static_cast<float>(ReelSteps - 1);
+		if (!FMath::IsNearlyEqual(DefaultSpeed, 1.f, 1.0e-4f))
+		{
+			OutProblem = FString::Printf(TEXT("the default reel step %d of %d has speed %.4f; it must be 1 (set ReelSpeedMin/ReelSpeedMax/ReelDefaultStep so it is)"),
+				ReelDefaultStep, ReelSteps, DefaultSpeed);
+			return false;
+		}
 	}
 	return true;
 }

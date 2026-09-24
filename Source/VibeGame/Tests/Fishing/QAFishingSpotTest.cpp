@@ -1,6 +1,9 @@
 // Lure T-006 QA (qa-engineer): fishing spots - marker tags, lookup, and what reaches the fish roll.
 // Project.Fishing.QA.Spot.* - spec: docs/specs/fishing-rules.md "Spots" + lead decision 1; marker contract: docs/levels/L_PalmKey.md s11
 // and Content/Python/levels/build_level.py marker_tags(); contract: Fishing/FishingSpots.h.
+// T-027 (unreal-engineer, Jimmy's playtest redesign): every body of water can be fished; spot markers are legacy water areas
+// (docs/specs/fishing-water-rules.md). The "no spot = no bite" tests became OpenWaterBitesWithoutSpots and
+// DefaultWaterHabitatDecidesOpenWater; the "nothing fits" tests run without the gap fallback (a data gap).
 
 #include "Tests/Fishing/QAFishingTestUtils.h"
 
@@ -12,8 +15,10 @@
 #include "Engine/World.h"
 #include "Fish/FishRoll.h"
 #include "Fishing/FishingSpots.h"
+#include "Fishing/FishingWater.h"
 #include "Fishing/LureFishingComponent.h"
 #include "Fishing/LureFishingSettings.h"
+#include "Fishing/LureWaterSettings.h"
 #include "HAL/FileManager.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
@@ -45,21 +50,45 @@ namespace SpotLocal
 		return { TEXT("Spot=qa_reef"), TEXT("Habitat=Habitat.Reef"), TEXT("Region=Region.Tropical.PalmKey"), FString::Printf(TEXT("Radius=%.0f"), SpotRadius) };
 	}
 
-	/** Temporarily changes a fishing setting (restored when the scope ends). */
-	struct FScopedOffSpotHabitat
+	/** Temporarily changes the water settings' gap fallback habitats (restored when the scope ends). T-027. */
+	struct FScopedGapFallbacks
 	{
-		FName Saved;
-		explicit FScopedOffSpotHabitat(FName Value)
+		TArray<FName> Saved;
+		explicit FScopedGapFallbacks(const TArray<FName>& Value)
 		{
-			ULureFishingSettings* Settings = GetMutableDefault<ULureFishingSettings>();
-			Saved = Settings->OffSpotHabitat;
-			Settings->OffSpotHabitat = Value;
+			ULureWaterSettings* Settings = GetMutableDefault<ULureWaterSettings>();
+			Saved = Settings->GapFallbackHabitats;
+			Settings->GapFallbackHabitats = Value;
 		}
-		~FScopedOffSpotHabitat()
+		~FScopedGapFallbacks()
 		{
-			GetMutableDefault<ULureFishingSettings>()->OffSpotHabitat = Saved;
+			GetMutableDefault<ULureWaterSettings>()->GapFallbackHabitats = Saved;
 		}
 	};
+
+	/** Temporarily changes the default water habitat (restored when the scope ends). T-027. */
+	struct FScopedDefaultWaterHabitat
+	{
+		FName Saved;
+		explicit FScopedDefaultWaterHabitat(FName Value)
+		{
+			ULureWaterSettings* Settings = GetMutableDefault<ULureWaterSettings>();
+			Saved = Settings->DefaultWaterHabitat;
+			Settings->DefaultWaterHabitat = Value;
+		}
+		~FScopedDefaultWaterHabitat()
+		{
+			GetMutableDefault<ULureWaterSettings>()->DefaultWaterHabitat = Saved;
+		}
+	};
+
+	/** The bite context of a spot read as a legacy water area, at XY (T-027: MakeWaterContext + MakeBiteContext). */
+	FFishRollContext SpotContext(const FLureFishingSpot& Spot, const FLureFishingEnvironment& Environment, int32 Seed, const FVector2D& XY)
+	{
+		const TArray<FLureWaterAreaInfo> Areas = { FLureWaterRules::AreaFromLegacySpot(Spot, 0) };
+		const FLureWaterContext Water = FLureWaterRules::MakeWaterContext(Areas, XY, 0.f, 800.f, Tag(TEXT("Habitat.Shore")));
+		return FLureWaterRules::MakeBiteContext(Water, Water.HabitatTag, FLureHotSpotBonus(), Environment, Seed);
+	}
 
 	bool CastAndLand(FAutomationTestBase& Test, FScene& Scene, ULureFishingComponent* Fishing, float Charge = 0.5f)
 	{
@@ -241,22 +270,24 @@ bool FQAFishSpotLayoutMarkersParseCleanly::RunTest(const FString& Parameters)
 			Marker->TryGetNumberField(TEXT("luck"), Luck);
 			TestNearlyEqual(Id + TEXT(": luck"), Spot.Luck, static_cast<float>(Luck), 0.01f);
 
-			// Content report: can anything bite here (default bait), at the fixed slice time and at any hour?
+			// Content report: can anything of the spot's own habitat bite here (default bait, no gap fallback), at the fixed slice
+			// time and at any hour?
 			FLureFishingEnvironment Environment;
 			Environment.BaitTag = Tag(TEXT("Bait.Shrimp"));
 			Environment.DefaultRegionTag = Tag(TEXT("Region.Tropical"));
+			const FVector2D SpotXY(Spot.Location.X, Spot.Location.Y);
 			bool bAnyHour = false;
 			bool bNow = false;
 			for (int32 Hour = 0; Hour < 24; ++Hour)
 			{
 				Environment.TimeOfDayHours = Hour + 0.5f;
 				FName Species;
-				const bool bBites = FFishRoll::PickSpecies(Fish.Get(), FLureFishingRules::MakeRollContext(&Spot, Environment, 1), Species);
+				const bool bBites = FFishRoll::PickSpecies(Fish.Get(), SpotContext(Spot, Environment, 1, SpotXY), Species);
 				bAnyHour |= bBites;
 			}
 			Environment.TimeOfDayHours = DefaultHours;
 			FName Species;
-			bNow = FFishRoll::PickSpecies(Fish.Get(), FLureFishingRules::MakeRollContext(&Spot, Environment, 1), Species);
+			bNow = FFishRoll::PickSpecies(Fish.Get(), SpotContext(Spot, Environment, 1, SpotXY), Species);
 			if (!bNow)
 			{
 				DeadNow.Add(Id);
@@ -338,6 +369,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FQAFishSpotContextFromSpotAndEnvironment, "Proj
 bool FQAFishSpotContextFromSpotAndEnvironment::RunTest(const FString& Parameters)
 {
 	// Spec: habitat and region from the spot (no Region= -> DefaultRegion), Luck = spot Luck + gear luck, time and bait from the environment.
+	// T-027: through the water model (the spot is a legacy water area; SpotContext).
 	FLureFishingSpot Spot;
 	Spot.Radius = 300.f;
 	Spot.HabitatTag = Tag(TEXT("Habitat.Reef.Edge"));
@@ -348,7 +380,8 @@ bool FQAFishSpotContextFromSpotAndEnvironment::RunTest(const FString& Parameters
 	Environment.BaitTag = Tag(TEXT("Bait.Squid"));
 	Environment.GearLuck = 0.75f;
 	Environment.DefaultRegionTag = Tag(TEXT("Region.Tropical"));
-	const FFishRollContext Context = FLureFishingRules::MakeRollContext(&Spot, Environment, -123456);
+	const FVector2D In(0.0, 0.0);
+	const FFishRollContext Context = SpotContext(Spot, Environment, -123456, In);
 	TestTrue(TEXT("habitat from the spot"), Context.HabitatTag == Spot.HabitatTag);
 	TestTrue(TEXT("region from the spot"), Context.RegionTag == Spot.RegionTag);
 	TestNearlyEqual(TEXT("luck = spot 1.5 + gear 0.75"), Context.Luck, 2.25f, 1.0e-5f);
@@ -358,21 +391,16 @@ bool FQAFishSpotContextFromSpotAndEnvironment::RunTest(const FString& Parameters
 	TestTrue(TEXT("the roll picks the species (none forced)"), Context.SpeciesId.IsNone() && Context.ForcedRarityId.IsNone() && !Context.bForceModifiers && !Context.bForceWeightFraction);
 
 	Spot.RegionTag = FGameplayTag();
-	TestTrue(TEXT("a spot without Region= uses the default region"), FLureFishingRules::MakeRollContext(&Spot, Environment, 1).RegionTag == Environment.DefaultRegionTag);
+	TestTrue(TEXT("a spot without Region= uses the default region"), SpotContext(Spot, Environment, 1, In).RegionTag == Environment.DefaultRegionTag);
 	Environment.GearLuck = std::numeric_limits<float>::quiet_NaN();
-	TestNearlyEqual(TEXT("NaN gear luck counts as 0"), FLureFishingRules::MakeRollContext(&Spot, Environment, 1).Luck, 1.5f, 1.0e-5f);
+	TestNearlyEqual(TEXT("NaN gear luck counts as 0"), SpotContext(Spot, Environment, 1, In).Luck, 1.5f, 1.0e-5f);
 	Environment.GearLuck = 0.f;
 	FLureFishingSpot Invalid = Spot;
 	Invalid.Radius = 0.f;
-	const FFishRollContext NoSpot = FLureFishingRules::MakeRollContext(&Invalid, Environment, 1);
-	TestFalse(TEXT("an invalid spot (radius 0) is no spot: no habitat"), NoSpot.HabitatTag.IsValid());
+	const FFishRollContext NoSpot = SpotContext(Invalid, Environment, 1, In);
+	TestTrue(TEXT("an invalid spot (radius 0) is no area: the default water habitat (T-027: fish anywhere)"), NoSpot.HabitatTag == Tag(TEXT("Habitat.Shore")));
 	TestNearlyEqual(TEXT("... and none of its luck"), NoSpot.Luck, 0.f, 1.0e-6f);
-	TestFalse(TEXT("... and nothing can bite"), FLureFishingRules::CanHaveBites(&Invalid, Environment));
-	TestTrue(TEXT("a valid spot can have bites"), FLureFishingRules::CanHaveBites(&Spot, Environment));
-	TestFalse(TEXT("no spot, no off-spot habitat: no bites (lead decision 1)"), FLureFishingRules::CanHaveBites(nullptr, Environment));
-	Environment.OffSpotHabitatTag = Tag(TEXT("Habitat.Shore"));
-	TestTrue(TEXT("the off-spot habitat setting allows bites off-spot"), FLureFishingRules::CanHaveBites(nullptr, Environment));
-	TestTrue(TEXT("... with that habitat"), FLureFishingRules::MakeRollContext(nullptr, Environment, 1).HabitatTag == Environment.OffSpotHabitatTag);
+	TestTrue(TEXT("outside the spot: the default water habitat too"), SpotContext(Spot, Environment, 1, FVector2D(400.0, 0.0)).HabitatTag == Tag(TEXT("Habitat.Shore")));
 	return true;
 }
 
@@ -451,21 +479,23 @@ bool FQAFishSpotMarkerDataReachesTheRoll::RunTest(const FString& Parameters)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FQAFishSpotNoSpotNoBiteEver, "Project.Fishing.QA.Spot.NoSpotNoBiteEver", QAFishing::Flags)
-bool FQAFishSpotNoSpotNoBiteEver::RunTest(const FString& Parameters)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FQAFishSpotOpenWaterBitesWithoutSpots, "Project.Fishing.QA.Spot.OpenWaterBitesWithoutSpots", QAFishing::Flags)
+bool FQAFishSpotOpenWaterBitesWithoutSpots::RunTest(const FString& Parameters)
 {
-	// Lead decision 1: no fishing spot in range = no bite (no nibble either), plus the hint after NoBiteHintDelay (not before).
+	// T-027 (replaces lead decision 1 "no spot = no bite", Jimmy's playtest): every body of water can be fished. Outside every
+	// spot the bobber is in the default water: no nothing-here flag, the nibbles and the bite come, and the HUD never says
+	// "Nothing is biting here".
 	FLureFishingRow Shipped;
 	FScene Scene;
 	if (!ShippedFishingRow(*this, Shipped) || !Scene.Create(*this))
 	{
 		return false;
 	}
-	Scene.AddSpot(FVector(1300.f, 3000.f, 0.f), { TEXT("Spot=qa_elsewhere"), TEXT("Habitat=Habitat.Shore"), TEXT("Radius=500") }); // 30 m to the side
+	Scene.AddSpot(FVector(1300.f, 3000.f, 0.f), { TEXT("Spot=qa_elsewhere"), TEXT("Habitat=Habitat.Reef"), TEXT("Radius=500") }); // 30 m to the side
 	FLureFishingRow Profile = Shipped;
-	Profile.BiteWaitMin = Profile.BiteWaitMax = 1.f;
+	Profile.BiteWaitMin = Profile.BiteWaitMax = 3.f;
 	Profile.NibblesMin = Profile.NibblesMax = 2;
-	Profile.NoBiteHintDelay = 2.5f;
+	Profile.NoBiteHintDelay = 1.f;
 	ULureFishingComponent* Fishing = Scene.SetUpFishing(*this, Scene.Spawn(*this), Profile);
 	if (!Fishing)
 	{
@@ -478,16 +508,15 @@ bool FQAFishSpotNoSpotNoBiteEver::RunTest(const FString& Parameters)
 	}
 	const double Landed = Fishing->GetNetState().StateStartTime;
 	TestFalse(TEXT("no spot here"), Fishing->HasCurrentSpot());
-	TestTrue(TEXT("nothing-here flag at once"), Fishing->GetNetState().bNoFishHere);
-	TestTrue(TEXT("no bite scheduled"), Fishing->GetScheduledBiteTime() < 0.0);
-	Scene.AdvanceTo(Landed + Profile.NoBiteHintDelay - 0.1);
-	TestFalse(TEXT("no hint before NoBiteHintDelay"), Fishing->GetStatusText().Contains(TEXT("Nothing is biting")));
-	Scene.AdvanceTo(Landed + Profile.NoBiteHintDelay + 0.05);
-	TestTrue(TEXT("the hint right after NoBiteHintDelay"), Fishing->GetStatusText().Contains(TEXT("Nothing is biting")));
-	Scene.AdvanceTo(Landed + 30.0);
-	TestEqual(TEXT("30 s later: still waiting"), StateName(Fishing->GetFishingState()), StateName(ELureFishingState::Waiting));
-	TestEqual(TEXT("... with no nibble at all"), static_cast<int32>(Fishing->GetNetState().NibbleId), 0);
-	TestFalse(TEXT("... and no fish rolled"), Fishing->GetPendingFish().IsValid());
+	TestFalse(TEXT("no nothing-here flag"), Fishing->GetNetState().bNoFishHere);
+	TestTrue(TEXT("a bite is scheduled"), Fishing->GetScheduledBiteTime() >= 0.0);
+	Scene.AdvanceTo(Landed + 2.9);
+	TestFalse(TEXT("after the hint delay: no 'Nothing is biting' hint"), Fishing->GetStatusText().Contains(TEXT("Nothing is biting")));
+	TestTrue(TEXT("the nibbles came (tells of a coming bite)"), Fishing->GetNetState().NibbleId > 0);
+	const bool bBite = Scene.TickUntil([Fishing]() { return Fishing->GetFishingState() == ELureFishingState::Biting; }, 60);
+	TestTrue(TEXT("the bite comes in open water"), bBite);
+	TestTrue(TEXT("... from the default water habitat"), Fishing->GetLastRollContext().HabitatTag == Tag(*GetDefault<ULureWaterSettings>()->DefaultWaterHabitat.ToString()));
+	TestTrue(TEXT("... and a fish was rolled"), Fishing->GetPendingFish().IsValid());
 	return true;
 }
 
@@ -528,6 +557,8 @@ bool FQAFishSpotNoFitSpotShowsNoNibbles::RunTest(const FString& Parameters)
 {
 	// Spec: a spot where no species fits (the reef at noon) behaves like no spot: the bobber floats, no bite, the hint after
 	// NoBiteHintDelay. Nibbles are the tells of a coming bite, so none may show when nothing can bite. Regression test for T006-B1.
+	// T-027: this is a data gap; it only stays dead without the gap fallback habitats.
+	const FScopedGapFallbacks NoFallback({});
 	FLureFishingRow Shipped;
 	FScene Scene;
 	if (!ShippedFishingRow(*this, Shipped) || !Scene.Create(*this))
@@ -558,8 +589,10 @@ bool FQAFishSpotNoFitSpotShowsNoNibbles::RunTest(const FString& Parameters)
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FQAFishSpotNoFitHintAfterHintDelay, "Project.Fishing.QA.Spot.NoFitHintAfterHintDelay", QAFishing::Flags)
 bool FQAFishSpotNoFitHintAfterHintDelay::RunTest(const FString& Parameters)
 {
-	// Spec: at a spot where no species fits, "Nothing is biting here" shows after NoBiteHintDelay, like with no spot - even when the
+	// Spec: at a spot where no species fits, the no-bite hint shows after NoBiteHintDelay, like with no spot - even when the
 	// bite wait is longer than the hint delay. Regression test for T006-B1 (part 2).
+	// T-027: a data gap (no gap fallback here); the hint names the reason ("No fish live in this water right now.").
+	const FScopedGapFallbacks NoFallback({});
 	FLureFishingRow Shipped;
 	FScene Scene;
 	if (!ShippedFishingRow(*this, Shipped) || !Scene.Create(*this))
@@ -582,9 +615,10 @@ bool FQAFishSpotNoFitHintAfterHintDelay::RunTest(const FString& Parameters)
 	}
 	const double Landed = Fishing->GetNetState().StateStartTime;
 	Scene.AdvanceTo(Landed + Profile.NoBiteHintDelay - 0.1);
-	TestFalse(TEXT("no hint before NoBiteHintDelay"), Fishing->GetStatusText().Contains(TEXT("Nothing is biting")));
+	TestFalse(TEXT("no hint before NoBiteHintDelay"), Fishing->GetStatusText().Contains(TEXT("No fish live in this water")));
 	Scene.AdvanceTo(Landed + Profile.NoBiteHintDelay + 0.1);
-	TestTrue(TEXT("the hint 0.1 s after NoBiteHintDelay (8 s), though the first bite check is due at 10 s"), Fishing->GetStatusText().Contains(TEXT("Nothing is biting")));
+	TestTrue(TEXT("the hint 0.1 s after NoBiteHintDelay (8 s), though the first bite check is due at 10 s"), Fishing->GetStatusText().Contains(TEXT("No fish live in this water")));
+	TestFalse(TEXT("never the old 'Nothing is biting here'"), Fishing->GetStatusText().Contains(TEXT("Nothing is biting")));
 	TestTrue(TEXT("... and the replicated nothing-here flag is set by then"), Fishing->GetNetState().bNoFishHere);
 	return true;
 }
@@ -593,6 +627,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FQAFishSpotNoFitSpotBitesWhenTimeFits, "Project
 bool FQAFishSpotNoFitSpotBitesWhenTimeFits::RunTest(const FString& Parameters)
 {
 	// Spec: at a spot where nothing fits there is a new check every BiteWaitMax seconds (the time of day moves on).
+	// T-027: a data gap (no gap fallback here).
+	const FScopedGapFallbacks NoFallback({});
 	FLureFishingRow Shipped;
 	FScene Scene;
 	if (!ShippedFishingRow(*this, Shipped) || !Scene.Create(*this))
@@ -664,19 +700,20 @@ bool FQAFishSpotMarkersAreReadLive::RunTest(const FString& Parameters)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FQAFishSpotOffSpotHabitatSettingEnablesBites, "Project.Fishing.QA.Spot.OffSpotHabitatSettingEnablesBites", QAFishing::Flags)
-bool FQAFishSpotOffSpotHabitatSettingEnablesBites::RunTest(const FString& Parameters)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FQAFishSpotDefaultWaterHabitatDecidesOpenWater, "Project.Fishing.QA.Spot.DefaultWaterHabitatDecidesOpenWater", QAFishing::Flags)
+bool FQAFishSpotDefaultWaterHabitatDecidesOpenWater::RunTest(const FString& Parameters)
 {
-	// Spec: the setting OffSpotHabitat (default none) turns on an off-spot pool without code.
-	TestTrue(TEXT("default: no off-spot habitat"), GetDefault<ULureFishingSettings>()->OffSpotHabitat.IsNone());
+	// T-027 (replaces the OffSpotHabitat setting): ULureWaterSettings::DefaultWaterHabitat is the habitat of water that no area or
+	// spot covers; changing it is a data edit.
+	TestEqual(TEXT("default: Habitat.Shore"), GetDefault<ULureWaterSettings>()->DefaultWaterHabitat, FName(TEXT("Habitat.Shore")));
 	FLureFishingRow Shipped;
 	FScene Scene;
 	if (!ShippedFishingRow(*this, Shipped) || !Scene.Create(*this))
 	{
 		return false;
 	}
-	const FScopedOffSpotHabitat OffSpot(TEXT("Habitat.Shore"));
-	ULureFishingComponent* Fishing = Scene.SetUpFishing(*this, Scene.Spawn(*this), FlowProfile(Shipped, 0.5f));
+	const FScopedDefaultWaterHabitat Reef(TEXT("Habitat.Reef"));
+	ULureFishingComponent* Fishing = Scene.SetUpFishing(*this, Scene.Spawn(*this), FlowProfile(Shipped, 0.5f), 20.f); // the snapper bites 15-09
 	if (!Fishing)
 	{
 		return false;
@@ -687,8 +724,9 @@ bool FQAFishSpotOffSpotHabitatSettingEnablesBites::RunTest(const FString& Parame
 		return false;
 	}
 	TestFalse(TEXT("no spot here"), Fishing->HasCurrentSpot());
-	TestTrue(TEXT("with OffSpotHabitat set, a fish bites off-spot"), Scene.TickUntil([Fishing]() { return Fishing->GetFishingState() == ELureFishingState::Biting; }, 120));
-	TestTrue(TEXT("... from the off-spot habitat"), Fishing->GetLastRollContext().HabitatTag == Tag(TEXT("Habitat.Shore")));
+	TestTrue(TEXT("a fish bites in open water"), Scene.TickUntil([Fishing]() { return Fishing->GetFishingState() == ELureFishingState::Biting; }, 120));
+	TestTrue(TEXT("... from the default water habitat set in the settings"), Fishing->GetLastRollContext().HabitatTag == Tag(TEXT("Habitat.Reef")));
+	TestEqual(TEXT("... so a reef fish"), Fishing->GetPendingFish().SpeciesId, FName(TEXT("CoralSnapper")));
 	TestTrue(TEXT("... in the default region"), Fishing->GetLastRollContext().RegionTag == Tag(*GetDefault<ULureFishingSettings>()->DefaultRegion.ToString()));
 	return true;
 }

@@ -23,6 +23,15 @@ Scripted players (reaction time 0.3 s, like the C++ balance tests):
             85 %; pumps (rod 60 % back, fastest reel) while the fish rests or is tired, and reels fast with the rod level through
             a gentle swim (bar under 50 %) - both only until this fish has once overpowered the line; the careful watcher on the
             reel button
+
+QA's players (T-028 senior QA, Project.Fishing.Fight.Rod.QA.Balance.* and Rod.T028b.*; they read the HUD like play_qa below):
+  advice       GAME_DESIGN's advice: rod against the run and a little back during a run, ease off at 90 % of the bar, reel
+               again under 60 %
+  advicewheel  advice + the wheel: slowest step above 75 %, fastest below 50 % when the fish doesn't run
+  dippedfast   the O1 posture (no watching): rod fully dipped, fastest reel, reel held, rod against the run. T-028b adds
+               PitchDipPower so this loses clearly to advice (it matched it before).
+  dippedslow   rod fully dipped, slowest reel, reel held (O2: reeling is never slack, so it never throws the hook)
+The QA section of the report prints lost / median time for 200 rolled bonefish and 200 rolled snappers.
 """
 import csv
 import json
@@ -38,7 +47,7 @@ INT_COLUMNS = ("SimRate", "ReelSteps", "ReelDefaultStep")
 
 
 # Used only when DT_FishFight.csv lacks a column (they are optional columns in C++ too, with these struct defaults).
-T028_DEFAULTS = {"PitchBackPressure": 0.3, "PitchDipPressure": 0.5, "SideMinShare": 0.15, "SideLeverage": 0.5,
+T028_DEFAULTS = {"PitchBackPressure": 0.3, "PitchDipPressure": 0.5, "PitchDipPower": 0.8, "SideMinShare": 0.15, "SideLeverage": 0.5,
                  "SideTurnRate": 1.0, "SideTurnPull": 0.2, "SideDrain": 1.5, "ReelSteps": 3, "ReelDefaultStep": 2,
                  "ReelSpeedMin": 0.5, "ReelSpeedMax": 1.5, "ReelLoadPerSpeed": 1.5}
 
@@ -121,6 +130,13 @@ def clamp(x, lo, hi):
 def pitch_pressure(t, pitch):
     p = clamp(pitch, -1.0, 1.0)
     return 1.0 + p * t["PitchBackPressure"] if p >= 0 else 1.0 + p * t["PitchDipPressure"]
+
+
+def pitch_power(t, pitch):
+    """T-028b (O1): the rod's power. Pulled back = PitchBackPressure (like the tension); dipped = PitchDipPower (more than the
+    tension's PitchDipPressure: a rod pointed at the fish relieves the line but barely works the fish)."""
+    p = clamp(pitch, -1.0, 1.0)
+    return 1.0 + p * t["PitchBackPressure"] if p >= 0 else 1.0 + p * t["PitchDipPower"]
 
 
 def run_direction(t, move, side_sign):
@@ -232,7 +248,7 @@ class Fight:
         away = speed * min(1, max(-1, m["Away"])) if m else 0.0
         # Rod factors.
         pressure = pitch_pressure(t, pitch)
-        power = g["RodPower"] * pressure * (1.0 + side * t["SideLeverage"])
+        power = g["RodPower"] * pitch_power(t, pitch) * (1.0 + side * t["SideLeverage"])
         reel_speed = g["ReelSpeed"] * step_speed(t, rstep)
         # 3. Line.
         gain = reel_speed * clamp(1 - pull / power, 0, 1) if (reel and power > 0 and reel_speed > 0) else 0.0
@@ -258,7 +274,10 @@ class Fight:
         slack_t = max(0.01, t["SlackShare"] * s.f["BasePull"])
         pool = max(0.01, s.f["Pool"])
         e = s.stam * pool - s.tension * dt * (1.0 + opp * t["SideDrain"])
-        if s.tension < slack_t:
+        # T-028b (O2): one slack rule. The line is slack only while you let it run and the tension is under the slack line:
+        # reeling always takes up slack (a dipped rod at the slowest step is not slack while you crank).
+        slack_now = (not reel) and s.tension < slack_t
+        if slack_now:
             e += pool * t["StaminaRecovery"] * dt
         s.stam = min(1, max(0, e / pool))
         if not s.exh and s.stam <= t["ExhaustedStamina"]:
@@ -280,7 +299,7 @@ class Fight:
                 s.outcome = "Snapped"; return
         else:
             s.over = 0
-        if s.tension < slack_t:
+        if slack_now:
             s.slack += 1
             if s.slack > t["SlackGraceTime"] * g["HookSecurity"] * rate + 1e-4:
                 s.outcome = "ThrewHook"; return
@@ -366,6 +385,59 @@ def play(fight, policy, react=0.3, max_s=180.0):
     return fight.outcome or "Timeout"
 
 
+def play_qa(fight, player, react=0.3, max_s=180.0):
+    """QA's scripted players (the same as RodQABalanceTest.cpp / RodFollowUpTest.cpp); returns the outcome."""
+    t = fight.t
+    fastest = reel_steps(t) - 1
+    reel, pitch, yaw, step = True, 0.0, 0.0, None
+    seen_key, since_change, seen_run = None, 0.0, 0
+    since_bar, bar, easing = 1000.0, 0.0, False
+    while fight.outcome is None and fight.elapsed < max_s:
+        key = ((-1 if fight.exh else fight.mi), fight.run_dir)
+        if key != seen_key:
+            seen_key, since_change = key, 0.0
+        since_change += fight.dt
+        if since_change >= react - 1e-4:
+            seen_run = fight.run_dir
+        since_bar += fight.dt
+        if since_bar >= react - 1e-4:
+            since_bar = 0.0
+            bar = fight.tension / max(1e-3, fight.g["LineStrength"])
+        if player in ("advice", "advicewheel"):
+            easing = (bar >= 0.6) if easing else (bar >= 0.9)
+            reel = not easing
+            yaw = -float(seen_run)
+            pitch = 0.5 if seen_run != 0 else 0.0
+            if player == "advicewheel":
+                step = 0 if bar >= 0.75 else (fastest if (bar < 0.5 and seen_run == 0) else None)
+        elif player == "dippedfast":
+            pitch, step, yaw = -1.0, fastest, -float(seen_run)
+        elif player == "dippedslow":
+            pitch, step = -1.0, 0
+        fight.step(reel, pitch, yaw, step)
+    return fight.outcome or "Timeout"
+
+
+QA_PLAYERS = ("hold", "advice", "advicewheel", "dippedfast", "dippedslow")
+
+
+def qa_group(label, fishes, pattern, g, tun, players=QA_PLAYERS):
+    """Lost / median landing time per QA player (hold = play()'s hold)."""
+    parts = []
+    for pol in players:
+        lost, times = 0, []
+        for i, (st, rating, lvl, w, name) in enumerate(fishes):
+            f = Fight(make_fish(st, rating, lvl, tun), pattern, g, tun, seed=1000 * i + 7)
+            o = play(f, pol) if pol == "hold" else play_qa(f, pol)
+            if o == "Landed":
+                times.append(f.elapsed)
+            else:
+                lost += 1
+        times.sort()
+        parts.append("%s %d/%d %.1fs" % (pol, lost, len(fishes), times[len(times) // 2] if times else float("nan")))
+    print("  %s: %s" % (label, "  ".join(parts)))
+
+
 def population(sp, rar, mods, n, rng):
     """(stats, rating, level, weight, label) sampled like the roll: rarity by weight, weight by skew, modifiers by chance."""
     names = [r for r in rar if rar[r]["RollWeight"] > 0]
@@ -447,6 +519,9 @@ def main():
     print("Reef kit")
     run_group("snapper 7 kg reef x40", ref(snap, "Common", 7.0) * 40, pats["Dive"], reef, tun)
     run_group("bonefish reef, 300 rolled", population(bone, rar, mods, 300, random.Random(9)), pats["Run"], reef, tun)
+    print("QA's players (T-028b O1/O2), starter kit: lost / median time")
+    qa_group("bonefish, 200 rolled", population(bone, rar, mods, 200, random.Random(42)), pats["Run"], starter, tun)
+    qa_group("snapper, 200 rolled", population(snap, rar, mods, 200, random.Random(7)), pats["Dive"], starter, tun)
 
 
 if __name__ == "__main__":

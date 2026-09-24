@@ -158,6 +158,11 @@ float FLureFight::SlackTension(const FLureFightFish& Fish, const FLureFishFightR
 	return FMath::Max(0.01f, FMath::Max(0.f, LureFishFightPrivate::Finite(Tuning.SlackShare)) * Fish.BasePull);
 }
 
+bool FLureFight::IsSlack(float Tension, bool bReeling, const FLureFightFish& Fish, const FLureFishFightRow& Tuning)
+{
+	return !bReeling && Tension < SlackTension(Fish, Tuning);
+}
+
 float FLureFight::SlackGrace(const FLureGearStats& Gear, const FLureFishFightRow& Tuning)
 {
 	return FMath::Max(0.f, Tuning.SlackGraceTime) * FMath::Max(0.f, LureFishFightPrivate::Finite(Gear.HookSecurity));
@@ -181,6 +186,14 @@ float FLureFight::PitchPressure(float RodPitch, const FLureFishFightRow& Tuning)
 	return Pitch >= 0.f
 		? 1.f + Pitch * FMath::Max(0.f, LureFishFightPrivate::Finite(Tuning.PitchBackPressure))
 		: 1.f + Pitch * FMath::Clamp(LureFishFightPrivate::Finite(Tuning.PitchDipPressure), 0.f, 0.95f);
+}
+
+float FLureFight::PitchPower(float RodPitch, const FLureFishFightRow& Tuning)
+{
+	const float Pitch = LureFishFightPrivate::ClampUnit(RodPitch);
+	return Pitch >= 0.f
+		? 1.f + Pitch * FMath::Max(0.f, LureFishFightPrivate::Finite(Tuning.PitchBackPressure))
+		: 1.f + Pitch * FMath::Clamp(LureFishFightPrivate::Finite(Tuning.PitchDipPower), 0.f, 0.95f);
 }
 
 int32 FLureFight::RunDirection(const FLureFightMove* Move, float SideSign, const FLureFishFightRow& Tuning)
@@ -240,7 +253,7 @@ FLureRodFactors FLureFight::RodFactors(const FLureFightInput& Input, const FLure
 	FLureRodFactors Out;
 	Out.Pressure = PitchPressure(Input.RodPitch, Tuning);
 	Out.Side = SideScore(Input.RodYaw, RunDirection(Move, SideSign, Tuning));
-	Out.Power = Out.Pressure * (1.f + Out.Side * FMath::Clamp(Finite(Tuning.SideLeverage), 0.f, 0.95f));
+	Out.Power = PitchPower(Input.RodPitch, Tuning) * (1.f + Out.Side * FMath::Clamp(Finite(Tuning.SideLeverage), 0.f, 0.95f));
 	Out.ReelSpeed = ReelStepSpeed(Input.ReelStep, Tuning);
 	Out.ReelLoad = ReelStepLoad(Input.ReelStep, Tuning);
 	const float Against = FMath::Max(0.f, Out.Side);
@@ -344,11 +357,11 @@ ELureFightOutcome FLureFight::Step(FLureFightState& State, const FLureFightInput
 	// 4. Tension.
 	State.Tension = FMath::Max(0.f, EaseTension(State.Tension, TargetTension(Pull, Rod.bReeling, Gear, Tuning, Factors), Dt, Tuning));
 
-	// 5. Stamina (a fish being turned tires faster).
-	const float Slack = SlackTension(State.Fish, Tuning);
+	// 5. Stamina (a fish being turned tires faster). One slack rule (IsSlack) for the recovery and the hook timer (T-028b).
+	const bool bSlack = IsSlack(State.Tension, Rod.bReeling, State.Fish, Tuning);
 	const float Pool = FMath::Max(0.01f, State.Fish.StaminaPool);
 	float Energy = State.Stamina * Pool - State.Tension * Dt * Factors.Drain;
-	if (State.Tension < Slack)
+	if (bSlack)
 	{
 		Energy += Pool * FMath::Max(0.f, Tuning.StaminaRecovery) * Dt;
 	}
@@ -397,7 +410,7 @@ ELureFightOutcome FLureFight::Step(FLureFightState& State, const FLureFightInput
 	{
 		State.OverTime = 0.f;
 	}
-	if (State.Tension < Slack)
+	if (bSlack)
 	{
 		State.SlackTime += Dt;
 		if (LureFishFightPrivate::IsLongerThanGrace(State.SlackTime, SlackGrace(Gear, Tuning), Tuning))

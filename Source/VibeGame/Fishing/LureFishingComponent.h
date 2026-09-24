@@ -235,6 +235,12 @@ public:
 	/** Brings the line in; Reason None = the player's choice. A hooked fish is lost. */
 	void AuthorityReelIn(ELureCastBlock Reason = ELureCastBlock::None);
 
+	/** Server: the owner was teleported (ALurePlayerCharacter::TeleportSucceeded). A hooked fish is lost (reason Teleported). T-028b. */
+	void AuthorityOwnerTeleported();
+
+	/** Server: the owner's controller left the pawn (ALurePlayerCharacter::UnPossessed). A hooked fish is lost (reason Unpossessed). T-028b. */
+	void AuthorityOwnerUnpossessed();
+
 	/** Fish tables for bites (tests). Default: UFishSettings::LoadTables on the first bite. */
 	void SetFishTables(const FFishTables& InTables);
 
@@ -247,9 +253,14 @@ public:
 	/** Server: the context of the last bite roll (spot habitat, region, luck, time, seed). */
 	const FFishRollContext& GetLastRollContext() const { return LastRollContext; }
 
-	/** Server: the fishing spot the bobber is in (valid only if HasCurrentSpot). */
-	const FLureFishingSpot& GetCurrentSpot() const { return CurrentSpot; }
-	bool HasCurrentSpot() const { return bHasSpot; }
+	/** Server: the water the bobber rests on (area, habitat, region, depth; T-027 docs/specs/fishing-water-rules.md). */
+	const FLureWaterContext& GetWaterContext() const { return WaterContext; }
+
+	/** Server: the bobber is in a named water area (a painted area, or a legacy fishing spot); false in default water or on land. */
+	bool HasCurrentSpot() const { return !WaterContext.AreaId.IsNone(); }
+
+	/** Server: the hot spot bonus of this cast (captured when the bobber landed; TypeId None = none). */
+	const FLureHotSpotBonus& GetHotSpotBonus() const { return HotSpotBonus; }
 
 	/** Server: when the next bite (or bite attempt) is due; < 0 = none scheduled. */
 	double GetScheduledBiteTime() const { return NextBiteTime; }
@@ -393,8 +404,8 @@ private:
 	TArray<TObjectPtr<UObject>> TableRefs;
 	FFishInstance PendingFish;
 	FFishRollContext LastRollContext;
-	FLureFishingSpot CurrentSpot;
-	bool bHasSpot = false;
+	FLureWaterContext WaterContext;
+	FLureHotSpotBonus HotSpotBonus;
 	double NextBiteTime = -1.0;
 	TArray<double> NibbleSchedule;
 	int32 NextNibbleIndex = 0;
@@ -508,6 +519,12 @@ private:
 	float ServerRodPitch = 0.f;
 	float ServerRodYaw = 0.f;
 	int32 ServerReelStep = INDEX_NONE;
+	/** T-028b (O6): the server's reel-step rate limit (ULureFishingSettings::FightReelStepBurst / FightReelStepsPerSecond, a token bucket); a change over it waits here. */
+	int32 ServerPendingReelStep = INDEX_NONE;
+	float ServerReelStepTokens = -1.f; // < 0: not started (a full bucket)
+	double ServerReelStepTokenTime = 0.0;
+	/** Server: applies a held-back reel-step change once the rate limit allows it. */
+	void ApplyPendingReelStep(double Now);
 	FVector2D RodAimVisual = FVector2D::ZeroVector;
 	/** Resets the owner's aim when a new fight starts (FightNet.FightId changed); true while steering. */
 	bool SyncRodAimToFight();

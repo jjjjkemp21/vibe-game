@@ -535,15 +535,18 @@ namespace LureRodQA
 			Fire(Input, Slower, ETriggerEvent::Started);
 		}
 		TestEqual(TEXT("50 wheel-downs: the slowest step, no further"), Fishing->GetReelStep(), 0);
-		Scene.World.Tick(1);
-		TestEqual(TEXT("... the server follows at once"), Fishing->GetServerFightInput().ReelStep, 0);
+		// T-028b (O6): the server rate-limits reel-step changes (a burst, then FightReelStepsPerSecond); one over the limit waits, the last one wins.
+		const ULureFishingSettings* Limits = GetDefault<ULureFishingSettings>();
+		const int32 LimitFrames = FMath::CeilToInt(1.f / FMath::Max(1.0e-3f, Limits->FightReelStepsPerSecond) / LureFightQA::WorldDt) + 1;
+		Scene.World.Tick(LimitFrames);
+		TestEqual(TEXT("... the server follows within its reel-step rate limit"), Fishing->GetServerFightInput().ReelStep, 0);
 
 		for (int32 Press = 0; Press < 51; ++Press)
 		{
 			Fire(Input, Press % 2 == 0 ? Faster : Slower, ETriggerEvent::Started);
 		}
 		TestEqual(TEXT("51 alternating presses from the slowest (up first): one step up"), Fishing->GetReelStep(), 1);
-		Scene.World.Tick(1);
+		Scene.World.Tick(LimitFrames);
 		TestEqual(TEXT("... the server has the last one"), Fishing->GetServerFightInput().ReelStep, 1);
 
 		// A twitching wheel: one press a frame, alternating, for a second.
@@ -557,8 +560,10 @@ namespace LureRodQA
 			Changes += Now != Last ? 1 : 0;
 			Last = Now;
 		}
+		Scene.World.Tick(LimitFrames);
 		TestEqual(TEXT("a twitching wheel: the server always ends on the owner's step"), Fishing->GetServerFightInput().ReelStep, Fishing->GetReelStep());
-		AddInfo(FString::Printf(TEXT("a wheel twitching every frame for 1 s: %d reel-step updates reached the server (a step change is sent at once, outside the aim's rate limit)"), Changes));
+		const int32 MaxChanges = FMath::Max(1, Limits->FightReelStepBurst) + FMath::CeilToInt(Limits->FightReelStepsPerSecond) + 1;
+		TestTrue(FString::Printf(TEXT("a wheel twitching every frame for 1 s: %d reel-step changes on the server (rate limit: at most %d)"), Changes, MaxChanges), Changes <= MaxChanges);
 
 		const int32 Kept = Fishing->GetReelStep();
 		Fishing->RequestReelIn();

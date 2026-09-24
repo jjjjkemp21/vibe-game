@@ -267,6 +267,10 @@ public:
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	virtual void Tick(float DeltaSeconds) override;
 	virtual void NotifyControllerChanged() override;
+	/** T-028b: a teleport (TeleportTo) ends a fight in progress (ULureFishingComponent::AuthorityOwnerTeleported). */
+	virtual void TeleportSucceeded(bool bIsATest) override;
+	/** T-028b: the controller leaving this pawn ends its fight (ULureFishingComponent::AuthorityOwnerUnpossessed). */
+	virtual void UnPossessed() override;
 	virtual void PawnClientRestart() override;
 	virtual void Restart() override;
 	virtual void OnRep_IsCrouched() override;

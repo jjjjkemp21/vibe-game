@@ -58,7 +58,11 @@ struct FLureRodFactors
 	/** Side score: +1 = rod fully against the fish's sideways run, -1 = fully with it, 0 = centered or no sideways run. */
 	float Side = 0.f;
 
-	/** x the rod's power (line gain and line taken while reeling): Pressure x (1 + Side x SideLeverage). */
+	/**
+	 *  x the rod's power (line gain and line taken while reeling): PitchPower x (1 + Side x SideLeverage). T-028b: pulled back the
+	 *  rod's power follows the pressure; dipped it drops by PitchDipPower (more than the tension's relief), so a dipped rod relieves
+	 *  the line but barely works the fish.
+	 */
 	float Power = 1.f;
 
 	/** Reel step: x the rod's ReelSpeed, and x the rod's cranking load (RodPower x ReelLoad) in the reeling tension. */
@@ -128,7 +132,8 @@ struct FLureFightState
  *   Pressure P  = 1 + p x PitchBackPressure (p >= 0) or 1 + p x PitchDipPressure (p < 0), p = RodPitch in [-1, 1]
  *   RunDir      = sign(Move.Side x SideSign) when |Move.Side| >= SideMinShare, else 0 (also 0 when exhausted)
  *   Side S      = clamp(-RodYaw x RunDir, -1, 1)   (+1 = rod fully against the sideways run, -1 = fully with it), S+ = max(0, S)
- *   Power       = P x (1 + S x SideLeverage)          ReelSpeed/ReelLoad from the reel step (ReelStepSpeed, ReelStepLoad)
+ *   Rod power R = 1 + p x PitchBackPressure (p >= 0) or 1 + p x PitchDipPower (p < 0)   (T-028b: dipped, the rod barely works the fish)
+ *   Power       = R x (1 + S x SideLeverage)          ReelSpeed/ReelLoad from the reel step (ReelStepSpeed, ReelStepLoad)
  *   Turning     = against the run only: Pull x (1 - S+ x SideTurnPull), MoveClock x (1 + S+ x SideTurnRate), Drain x (1 + S+ x SideDrain)
  *  With the neutral rod (p = 0, RodYaw = 0, the default step of speed 1) every factor is 1 and this is the T-007 fight exactly.
  *   1. Move: the move's clock runs MoveClock (of the current move) x dt; when its time is up, pick the next one:
@@ -145,12 +150,14 @@ struct FLureFightState
  *   4. Tension eases toward its target with time constant TensionRiseTime (rising) / TensionFallTime (falling):
  *        reeling:  Target = (Pull x ReelStrain + RodPower x ReelLoad x ReelStepLoad) x P
  *        not:      Target = min(Pull x P, Drag)      (letting it run never goes over the drag, whatever the rod does)
- *   5. Stamina: the fish spends Tension x dt x Turning.Drain of its pool; while the line is slack it regains StaminaRecovery x pool
- *      per second. At ExhaustedStamina it is exhausted for good.
+ *   5. Stamina: the fish spends Tension x dt x Turning.Drain of its pool; while the line is slack (IsSlack) it regains
+ *      StaminaRecovery x pool per second. At ExhaustedStamina it is exhausted for good.
  *      Cosmetic: the sideways swing SideDeg moves by Speed x Side x SideSign x dt / radius x (1 - 2 x S+) (a turned fish swings back).
  *   6. Outcome (first that applies): LineOut <= LandDistance -> Landed; LineOut > SpoolLength -> Spooled;
- *      Tension > LineStrength for longer than SnapGraceTime -> Snapped; Tension < SlackTension (= SlackShare x BasePull) for
- *      longer than SlackGraceTime x HookSecurity -> ThrewHook. The timers reset when their condition stops.
+ *      Tension > LineStrength for longer than SnapGraceTime -> Snapped; the line slack (IsSlack) for longer than
+ *      SlackGraceTime x HookSecurity -> ThrewHook. The timers reset when their condition stops.
+ *  Slack (one rule for the hook timer, the stamina recovery and the HUD; T-028b): NOT reeling and Tension < SlackTension
+ *  (= SlackShare x BasePull). Reeling always takes up slack, whatever the rod and the reel step do.
  *  Same fish, gear, tuning, pattern, seed and inputs = the same fight on every run.
  */
 struct FLureFight
@@ -184,6 +191,9 @@ struct FLureFight
 	/** Pitch pressure P for a rod pitch in [-1, 1] (non-finite = level). */
 	static float PitchPressure(float RodPitch, const FLureFishFightRow& Tuning);
 
+	/** T-028b: the pitch's share of the rod's power: 1 + p x PitchBackPressure (back) or 1 + p x PitchDipPower (dipped). */
+	static float PitchPower(float RodPitch, const FLureFishFightRow& Tuning);
+
 	/** The fish's sideways direction in Move with its random side: -1 left, +1 right, 0 none (below SideMinShare, or no move). */
 	static int32 RunDirection(const FLureFightMove* Move, float SideSign, const FLureFishFightRow& Tuning);
 
@@ -211,6 +221,9 @@ struct FLureFight
 
 	/** Below this the line is slack: SlackShare x BasePull (at least 0.01). */
 	static float SlackTension(const FLureFightFish& Fish, const FLureFishFightRow& Tuning);
+
+	/** T-028b: the one slack rule: not reeling and the tension below SlackTension (reeling always takes up slack). */
+	static bool IsSlack(float Tension, bool bReeling, const FLureFightFish& Fish, const FLureFishFightRow& Tuning);
 
 	/** Seconds of slack before the fish throws the hook: SlackGraceTime x HookSecurity. */
 	static float SlackGrace(const FLureGearStats& Gear, const FLureFishFightRow& Tuning);

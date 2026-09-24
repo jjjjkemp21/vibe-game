@@ -84,7 +84,7 @@ Model and effort per agent. They are pinned in each agent's frontmatter (`model`
   - Auto-compaction is lowered to about 30% of the context window (`CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=30` in `.claude/settings.local.json`, kept out of git). It applies to the lead and to subagents.
   - At the start of every session the lead schedules the housekeeping tick: a recurring CronCreate job every 30 minutes that runs `tools/lead-check.ps1` and acts on its flags. The job is session-only, so re-create it in each new session. The lead also runs the script at every agent hand-back.
   - HANDOFF (a running agent's context is over 250k): the lead asks the agent to finish if it is within about 10 tool calls. Otherwise the agent commits what builds, writes `Saved/AgentLogs/handoff/<ts>-<task>.md` (done, remaining steps, files, build/test state, decisions) and stops. A fresh agent of the same type continues from the handoff.
-  - JANITOR: run `janitor-low` (see the janitor line above).
+  - JANITOR: the lead runs `tools/cleanup.ps1` directly (dry run, glance at the reasons, then -Apply; default 60-minute keep window; no agent needed). `janitor-low` runs after each push and at milestones, for Progress photo pruning and a review of what else can go. Don't brief a janitor with a 3-hour window during a busy day: it frees nothing.
   - Brief long tasks in stages, so that one agent does not run past ~250k.
 
 ## Working with Jimmy

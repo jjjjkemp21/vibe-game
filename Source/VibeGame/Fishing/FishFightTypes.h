@@ -466,6 +466,14 @@ struct FLureFishFightRow : public FTableRowBase
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Rod aim", meta=(ClampMin="0", ClampMax="0.95", DataTableImportOptional))
 	float PitchDipPressure = 0.5f;
 
+	/**
+	 *  Rod fully dipped: the rod's power (line gained, line held while you reel) x (1 - this), T-028b. More than PitchDipPressure: a
+	 *  rod pointed at the fish relieves the line but barely works the fish, so dipping is relief, not a way to reel in (a dipped rod
+	 *  at the fastest reel no longer matches skilled play). Below 1 (the rod keeps some power).
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Rod aim", meta=(ClampMin="0", ClampMax="0.95", DataTableImportOptional))
+	float PitchDipPower = 0.8f;
+
 	/** A move's |Side| share at or above this is a sideways run (left or right by its random side); below it, no side. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Side pressure", meta=(ClampMin="0", ClampMax="1", DataTableImportOptional))
 	float SideMinShare = 0.15f;
@@ -490,7 +498,7 @@ struct FLureFishFightRow : public FTableRowBase
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Reel speed", meta=(ClampMin="1", ClampMax="9", DataTableImportOptional))
 	int32 ReelSteps = 3;
 
-	/** The step a new player starts on, 1-based as the HUD shows it ("Reel 2/3"). Its speed should be 1 (= the T-007 reel). */
+	/** The step a new player starts on, 1-based as the HUD shows it ("Reel 2/3"). Its speed must be 1 (= the T-007 reel; Validate checks). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Reel speed", meta=(ClampMin="1", ClampMax="9", DataTableImportOptional))
 	int32 ReelDefaultStep = 2;
 
