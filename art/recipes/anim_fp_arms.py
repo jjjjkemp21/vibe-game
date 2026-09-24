@@ -9,6 +9,7 @@ Exports (art/export/Characters/):
   A_FPArms_Prone_HoldRod_Idle.fbx armature only, one take  (loop, frames 0-90; prone and still)
   A_FPArms_Prone_TuckRod.fbx      armature only, one take  (loop, frames 0-90; prone and crawling)
   A_FPArms_HoldFish_Idle.fbx      armature only, one take  (loop, frames 0-90; T-030, rod stowed, fish on hand_r_fish)
+  A_FPArms_HoldFish_Large_Idle.fbx armature only, one take (loop, frames 0-90; the same hold for a 1.6x fish)
   A_FPArms_CarryCooler_Idle.fbx   armature only, one take  (loop, frames 0-90; T-030, cooler on bone `cooler`)
   A_FPArms_RodAim_<Center|Up|Down|Left|Right|UpLeft|UpRight|DownLeft|DownRight>.fbx
                                   armature only, one take  (single pose, frames 0-1; T-028 aim offset, mesh-space
@@ -30,6 +31,7 @@ over the palette backdrops of art/lib/fp_preview.py (tropical day / dusk, lit li
   SK_FPArms_rodaim_upright_fp.png                RodAim_UpRight full size
   SK_FPArms_rodaim_views.png                     simulated aim-offset blends (FP) + side/top/outside views
   SK_FPArms_holdfish_fp.png / SK_FPArms_holdfish.png        HoldFish_Idle with the Bonefish (sm_fish_bonefish) staged
+  SK_FPArms_holdfish_large_fp.png                HoldFish_Large_Idle with a 1.6x Bonefish
   SK_FPArms_carrycooler_fp.png / SK_FPArms_carrycooler.png  CarryCooler_Idle with SM_Cooler_Starter (its FBX) staged
 
 T-028 ROD AIM (aim offset): each extreme moves the grip (AIM_POSES) and turns the rod so its tip lands on a chosen
@@ -142,7 +144,8 @@ AIM_ACTIONS = {k: "A_FPArms_RodAim_" + v for k, v in AIM_GRID.items()}
 ACTIONS = [("A_FPArms_Idle", 0, LOOP_FRAMES), ("A_FPArms_HoldRod_Idle", 0, LOOP_FRAMES),
            ("A_FPArms_StanceDip", 0, DIP_FRAMES), ("A_FPArms_Prone_HoldRod_Idle", 0, LOOP_FRAMES),
            ("A_FPArms_Prone_TuckRod", 0, LOOP_FRAMES),
-           ("A_FPArms_HoldFish_Idle", 0, LOOP_FRAMES), ("A_FPArms_CarryCooler_Idle", 0, LOOP_FRAMES)]
+           ("A_FPArms_HoldFish_Idle", 0, LOOP_FRAMES), ("A_FPArms_HoldFish_Large_Idle", 0, LOOP_FRAMES),
+           ("A_FPArms_CarryCooler_Idle", 0, LOOP_FRAMES)]
 ACTIONS += [(AIM_ACTIONS[k], 0, AIM_FRAMES) for k in ((0, 0), (0, 1), (0, -1), (-1, 0), (1, 0),
                                                         (-1, 1), (1, 1), (-1, -1), (1, -1))]
 
@@ -187,47 +190,67 @@ TUCK_LEFT_CURL_DEG = 70.0
 # moves the grip (cm, camera space: x forward, y LEFT, z up; plus the same shift on both shoulders) and turns the rod
 # so its tip lands on a chosen point of the 90 deg first-person frame (% from the top-left corner): the rod stays in
 # view by construction. Center's tip is at (52.7, 14.1). The pitch/yaw are solved (RESULT_JSON rod_aim).
+# Designer review 2026-09-23: Down row grips 5 cm higher (a full fist in frame), Right column grips 9 cm towards the
+# center, the rod rolled in the Right column and in Down so the reel swings out from behind the fists (AIM_ROLL).
 ROD_TIP_M = 1.648                    # SM_Rod_Basic line tip on the rod's X axis
 AIM_POSES = {  # name: (grip offset cm, shoulder offset cm, tip target %)
-    "Up": ((-10.0, 0.0, 7.0), (-2.0, 0.0, 1.0), (55.0, 4.0)),        # pulled back and high: strong tension
-    "Down": ((7.0, 0.0, -3.0), (2.0, 0.0, -1.0), (50.0, 62.0)),       # dipped towards the water
+    "Up": ((-12.0, 2.0, 6.0), (-2.0, 0.0, 1.0), (56.0, 4.5)),        # pulled back and high: strong tension
+    "Down": ((7.0, 0.0, 2.0), (2.0, 0.0, -1.0), (50.0, 62.0)),        # dipped towards the water
     "Left": ((2.0, 6.0, 0.0), (0.0, 1.0, 0.0), (22.0, 20.0)),          # tip swung to the left
-    "Right": ((0.0, -2.0, -2.0), (0.0, -1.0, 0.0), (96.0, 40.0)),      # tip swung to the right
+    "Right": ((0.0, 7.0, -2.0), (0.0, -1.0, 0.0), (96.0, 40.0)),       # tip swung to the right
     "UpLeft": ((-8.0, 5.0, 7.0), (-2.0, 1.0, 1.0), (25.0, 6.0)),
-    "UpRight": ((-10.0, 1.0, 5.0), (-2.0, -1.0, 1.0), (92.0, 10.0)),
-    "DownLeft": ((3.0, 6.0, -3.0), (2.0, 1.0, -1.0), (24.0, 56.0)),
-    "DownRight": ((0.0, -2.0, -4.0), (2.0, -1.0, -1.0), (95.0, 62.0)),
+    "UpRight": ((-10.0, 9.0, 5.0), (-2.0, -1.0, 1.0), (92.0, 10.0)),
+    "DownLeft": ((3.0, 6.0, 2.0), (2.0, 1.0, -1.0), (24.0, 56.0)),
+    "DownRight": ((0.0, 7.0, 1.0), (2.0, -1.0, -1.0), (95.0, 62.0)),
 }
+AIM_ROLL = {"Right": -35.0, "UpRight": -35.0, "DownRight": -35.0, "Down": 15.0}   # rod roll (deg): swings the reel out from behind
+                                                                     # the right fist towards the eye
 
-# HoldFish (T-030): rod stowed; the right palm cradles the fish under its chest, the fish lying across the palm along
-# the fist channel (head out of the thumb side), fingers curled up its far flank, thumb on the near flank. The attach
-# bone hand_r_fish is where the fish's fishkit bone Grip goes (Grip = chest center on the spine line, still in every
-# fish clip): X = fish forward (head), Z = fish up (dorsal), Y = fish left.
-FISH_TILT_DEG = 30.0                 # fish axis in the palm = the fist channel (knuckle line tilted to the fingers)
-FISH_LIFT_M = 0.050                  # hand_r_fish above the rod grip point along the palm normal: the palm surface
-                                     # (~0.9 cm above the grip point) + the reference Bonefish's belly (5.9 cm below Grip)
-FISH_POS = Vector((0.47, -0.08, -0.11))   # hand_r_fish (= the fish's Grip) at frame 0, camera space
-FISH_YAW_DEG = -80.0                 # fish head direction: to the right, a little forward
-FISH_PITCH_DEG = 10.0                # head up
-FISH_ROLL_DEG = -15.0                # rolled about its axis so the near flank faces the eye
-FISH_SWAY = (1.5, 1.0, Vector((0.003, 0.002, 0.008)))   # pitch deg, yaw deg, offsets m (per breath)
-FISH_CURL_DEG = 50.0
+# HoldFish (T-030, designer review 2026-09-23: two hands). Rod stowed. The right hand cradles the fish under the
+# gills (the throat lies across the palm along the fist channel, head out of the thumb side, fingers wrapped up the
+# far flank, thumb on the near flank); the left palm supports the belly ahead of the anal fin, lower left. Both contact
+# points sit on the reference Bonefish's belly line. The attach bone hand_r_fish is where the fish's fishkit bone Grip
+# goes (chest center on the spine line, still in every fish clip): X = fish forward (head), Z = fish up, Y = fish left.
+FISH_TILT_DEG = 30.0                 # fish axis across the palms = the fist channel (knuckle line tilted to the fingers)
+FISH_THROAT = Vector((0.076, 0.0, -0.051))   # right-palm contact, fish space from Grip (Bonefish: x 17 cm, under the gills)
+FISH_BELLY = Vector((-0.150, 0.0, -0.030))   # left-palm contact, fish space from Grip (Bonefish: x -5.6 cm, belly)
+FISH_CONTACT_ROLL_DEG = -35.0        # both contacts turned about the fish's spine towards its near (right) flank, so
+                                     # the palms cup the near-lower belly and show in front of the fish
+FISH_PALM_M = 0.009                  # palm surface above the rod grip point along the palm normal (sk_fp_arms)
+FISH_SINK_M = 0.006                  # the belly rests this far into the palms (weight; the fingers wrap)
+# Two poses, blended by fish size in Unreal (HoldFishSize alpha = (scale - 1) / (1.6 - 1), clamped): the reference
+# size and a 1.6x trophy held further round (tail away) and head-up so it stays near 70 % of the screen width.
+# pos = hand_r_fish (the fish's Grip at REFERENCE size) at frame 0, camera space; yaw = head direction (-90 = right).
+FISH_POSES = {
+    "A_FPArms_HoldFish_Idle": dict(scale=1.0, pos=Vector((0.47, -0.08, -0.165)), yaw=-80.0, pitch=6.0, roll=-15.0),
+    "A_FPArms_HoldFish_Large_Idle": dict(scale=1.6, pos=Vector((0.44, -0.10, -0.19)), yaw=-125.0, pitch=22.0,
+                                         roll=-15.0),
+}
+FISH_SWAY = (1.2, 0.8, Vector((0.003, 0.002, 0.007)))   # pitch deg, yaw deg, offsets m (per breath)
+FISH_CURL_DEG = 72.0                 # right fingers wrapped round the throat
+FISH_LEFT_CURL_DEG = 28.0            # left palm open under the belly
+FISH_LEFT_YAW_DEG = -30.0            # left palm turned about its normal (least wrist bend in a 30 deg search)
 FISH_RIGHT_SHOULDER = Vector((0.02, 0.0, 0.0))
 FISH_RIGHT_POLE_AZ_DEG = 250.0       # right elbow down and a little in (forearm supinated, palm up)
-FISH_LEFT_OFFSET = Vector((-0.06, 0.03, -0.13))   # left hand: the Idle hand, relaxed, lowered out of the tail's way
-THUMB_FISH = [("th", -12.0), ("vh", 8.0)]
+FISH_LEFT_SHOULDER = Vector((0.03, -0.02, 0.0))
+FISH_LEFT_POLE_AZ_DEG = 200.0        # left elbow pole (mirrored azimuth, see pole_dir): in, under the chest
+THUMB_FISH = [("th", -25.0), ("vh", 10.0)]
+THUMB_SUPPORT = [("th", -6.0), ("vh", 4.0)]
+FISH_SCALES = (0.8, 1.0, 1.3, 1.6)    # checked sizes (Weight/ReferenceWeight)^(1/3); RESULT_JSON hold_fish.sizes
 
-# CarryCooler (T-030): both fists on the rope handles of SM_Cooler_Starter (art/recipes/sm_cooler_starter.py, sockets
-# Handle_L/Handle_R), the box across the body, its front (+X, latch) facing away. The attach bone `cooler` is the
-# cooler's pivot (bottom center) with the cooler's own axes; it rides the breath in CarryCooler_Idle.
+# CarryCooler (T-030, lead decision after the designer review 2026-09-23: two-handed low carry). Both fists on the
+# rope handles of SM_Cooler_Starter (sockets Handle_L/Handle_R at the grip centers), the box low in front with its
+# FRONT (latch, sticker) facing the player, tilted top-away so the front wall and the lid edge face the eye; the fists
+# peek in at the bottom corners, the lid edge stays in the lower third. The attach bone `cooler` is the cooler's pivot
+# (bottom center) with the cooler's own axes, i.e. the carry frame turned 180 deg about Z.
 COOLER_HANDLE_L = Vector((0.0, 0.3125, 0.191))   # socket Handle_L in cooler space (Blender +Y); Handle_R = mirror
-COOLER_POS = Vector((0.43, 0.0, -0.551))         # cooler pivot at frame 0, camera space (handles 36 cm below the eye)
-COOLER_PITCH_DEG = 0.0
-COOLER_SWAY = (0.6, Vector((0.002, 0.0, 0.008)))  # pitch deg, offsets m (per breath)
-HANDLE_DIR = 1.0                     # fist channel along the rope: +1 = the cooler's forward (+X)
-HANDLE_ROLL_DEG = 0.0                # roll of the fist about the rope: least wall contact (1.4 cm, wrist heel) in a 15 deg search
+COOLER_HANDLES_POS = Vector((0.48, 0.0, -0.28))   # midpoint between the two handle grips at frame 0, camera space
+COOLER_TILT_DEG = 10.0               # about the handle axis, top away from the eye (front wall towards the eye)
+COOLER_SWAY = (0.6, Vector((0.002, 0.0, 0.007)))  # tilt deg, offsets m (per breath)
+HANDLE_DIR = 1.0                     # fist channel along the rope: +1 = the carry frame's forward (+X)
+HANDLE_ROLL_DEG = 0.0                # roll of the fist about the rope (least wall contact in a 15 deg search)
 CARRY_SHOULDER = Vector((0.0, 0.0, -0.01))
-CARRY_POLE = Vector((-0.2, -1.0, -0.45))         # right elbow out wide and down (left mirrored): forearms outside the box
+CARRY_POLE = Vector((-0.1, -1.0, 0.05))         # right elbow out wide, level (left mirrored): forearms come down outside the box
 
 # Idle (empty hands): wrist offsets from the rest wrists (right side; the left is mirrored) and hand deltas.
 IDLE_WRIST_OFFSET = Vector((-0.02, -0.01, -0.012))
@@ -428,14 +451,20 @@ def build_armature(sides, crank_rest=None):
     return arm_obj
 
 
-def fish_rest_matrix(sd):
-    """hand_r_fish rest frame (armature rest space): the fish lying across the right palm along the fist channel, head
-    out of the thumb side, dorsal pointing out of the palm, its Grip FISH_LIFT_M above the rod grip point."""
+def palm_cradle(sd):
+    """A palm-up contact frame in the hand (armature rest space): X = the fist channel (knuckle line tilted towards the
+    fingers, pointing out of the thumb side), Z = out of the palm, origin on the palm surface (minus FISH_SINK_M)."""
     X = tilted(sd.uh, sd.th, FISH_TILT_DEG)
     Z = -sd.vh
     Z = (Z - X * Z.dot(X)).normalized()
     Y = Z.cross(X)
-    return mat4(Matrix((X, Y, Z)).transposed(), sd.grip + Z * FISH_LIFT_M)
+    return mat4(Matrix((X, Y, Z)).transposed(), sd.grip + Z * (FISH_PALM_M - FISH_SINK_M))
+
+
+def fish_rest_matrix(sd):
+    """hand_r_fish rest frame (armature rest space): the fish's Grip frame when its throat contact (FISH_THROAT) lies
+    in the right palm cradle, the fish axis along the channel (head out of the thumb side), dorsal out of the palm."""
+    return palm_cradle(sd) @ Matrix.Translation(-FISH_THROAT) @ rot3((1, 0, 0), -FISH_CONTACT_ROLL_DEG).to_4x4()
 
 
 def rest_matrices(arm_obj):
@@ -782,8 +811,9 @@ def aim_rod(name):
     g_off, _s_off, target = AIM_POSES[name]
     grip = R0.translation + Vector(g_off) * 0.01
     yaw, pitch = solve_rod_aim(grip, target, ROD_YAW_DEG, ROD_PITCH_DEG)
-    M = rod_matrix(pitch, yaw, ROD_ROLL_DEG, grip)
-    return M, {"grip_offset_cm": list(g_off), "pitch_deg": round(pitch, 2), "yaw_deg": round(yaw, 2),
+    roll = ROD_ROLL_DEG + AIM_ROLL.get(name, 0.0)
+    M = rod_matrix(pitch, yaw, roll, grip)
+    return M, {"grip_offset_cm": list(g_off), "pitch_deg": round(pitch, 2), "yaw_deg": round(yaw, 2), "roll_deg": roll,
                "tip_pct": [round(c, 2) for c in screen_of(M @ Vector((ROD_TIP_M, 0.0, 0.0)))]}
 
 
@@ -906,49 +936,77 @@ def aim_weights(u, v):
 
 
 # --- T-030 hold fish / carry cooler -----------------------------------------------------------------------------
-def fish_matrix(t):
-    """hand_r_fish (the fish's Grip frame) in camera space at time t: one slow breath per loop."""
+def fish_matrix(t, cfg):
+    """hand_r_fish (the reference fish's Grip frame) in camera space at time t: one slow breath per loop."""
     w = loop_w()
     a_pitch, a_yaw, a_off = FISH_SWAY
-    p = FISH_POS + Vector((a_off.x * math.sin(w * t - 0.3), a_off.y * math.sin(2.0 * w * t),
-                           a_off.z * math.sin(w * t - 0.5)))
-    return rod_matrix(FISH_PITCH_DEG + a_pitch * math.sin(w * t - 0.9), FISH_YAW_DEG + a_yaw * math.sin(w * t + 0.4),
-                      FISH_ROLL_DEG, p)
+    p = cfg["pos"] + Vector((a_off.x * math.sin(w * t - 0.3), a_off.y * math.sin(2.0 * w * t),
+                             a_off.z * math.sin(w * t - 0.5)))
+    return rod_matrix(cfg["pitch"] + a_pitch * math.sin(w * t - 0.9), cfg["yaw"] + a_yaw * math.sin(w * t + 0.4),
+                      cfg["roll"], p)
 
 
-def holdfish_targets(B, sides, t):
-    """Right hand from the fish frame (fish_rest_matrix = hand_r_fish rest), left hand = the Idle left hand, lower."""
+def belly_contact(scale):
+    """The left-palm contact in the hand_r_fish frame for a fish of `scale` (it grows about the throat contact)."""
+    return FISH_THROAT + (FISH_BELLY - FISH_THROAT) * scale
+
+
+def holdfish_targets(B, sides, t, cfg):
+    """Both hands from the fish frame: the right palm under the throat (hand_r_fish rest), the left palm under the
+    belly at FISH_BELLY, its channel along the fish (thumb towards the tail)."""
     breath = Vector((0.0, 0.0, 0.004 * math.sin(loop_w() * t)))
-    P_hr = fish_matrix(t) @ B["hand_r_fish"].inverted() @ B["hand_r"]
-    left = idle_targets(B, sides, t)["l"]
-    left.wrist = left.wrist + FISH_LEFT_OFFSET
+    F = fish_matrix(t, cfg)
+    P_hr = F @ B["hand_r_fish"].inverted() @ B["hand_r"]
+    P_hl = (F @ rot3((1, 0, 0), FISH_CONTACT_ROLL_DEG).to_4x4() @ Matrix.Translation(belly_contact(cfg["scale"]))
+            @ rot3((0, 0, 1), 180.0 + FISH_LEFT_YAW_DEG).to_4x4()
+            @ palm_cradle(sides["l"]).inverted() @ B["hand_l"])
     return {"r": ArmTarget(P_hr.translation, P_hr.to_3x3(), FISH_RIGHT_SHOULDER + breath, FISH_CURL_DEG,
                            FISH_TILT_DEG, thumb_rot(THUMB_FISH), pole=pole_dir(FISH_RIGHT_POLE_AZ_DEG)),
-            "l": left}
+            "l": ArmTarget(P_hl.translation, P_hl.to_3x3(), FISH_LEFT_SHOULDER + breath, FISH_LEFT_CURL_DEG,
+                           FISH_TILT_DEG, thumb_rot(THUMB_SUPPORT), pole=mir(pole_dir(FISH_LEFT_POLE_AZ_DEG)))}
+
+
+def fish_attach_offset(grip, scale):
+    """Relative location of a fish scaled by `scale` on hand_r_fish (fish space, m): the throat contact stays in the
+    right palm for every size (the fish grows about it, along its belly line towards the left palm)."""
+    return -grip * scale + fish_throat_contact() * (1.0 - scale)
+
+
+def fish_throat_contact():
+    """The right-palm contact point in the hand_r_fish frame (FISH_THROAT turned by FISH_CONTACT_ROLL_DEG)."""
+    return rot3((1, 0, 0), FISH_CONTACT_ROLL_DEG) @ FISH_THROAT
+
+
+def carry_frame(t):
+    """The carry frame at time t: origin midway between the two handle grips, X forward (away from the player), tilted
+    COOLER_TILT_DEG about the handle axis (top away)."""
+    w = loop_w()
+    a_tilt, a_off = COOLER_SWAY
+    p = COOLER_HANDLES_POS + Vector((a_off.x * math.sin(w * t - 0.3), 0.0, a_off.z * math.sin(w * t - 0.5)))
+    return mat4(rot3((0, 1, 0), COOLER_TILT_DEG + a_tilt * math.sin(w * t - 0.9)), p)
 
 
 def cooler_matrix(t):
-    """The cooler bone (cooler pivot, bottom center, cooler axes) in camera space at time t."""
-    w = loop_w()
-    a_pitch, a_off = COOLER_SWAY
-    p = COOLER_POS + Vector((a_off.x * math.sin(w * t - 0.3), 0.0, a_off.z * math.sin(w * t - 0.5)))
-    return mat4(rot3((0, 1, 0), -(COOLER_PITCH_DEG + a_pitch * math.sin(w * t - 0.9))), p)
+    """The cooler bone (cooler pivot, bottom center, cooler axes; its front faces the player) at time t."""
+    return (carry_frame(t) @ rot3((0, 0, 1), 180.0).to_4x4()
+            @ Matrix.Translation(Vector((0.0, 0.0, -COOLER_HANDLE_L.z))))
 
 
 def handle_frame(side, roll_deg=None, sign=None):
-    """Grip frame on a rope handle in COOLER space (the rod-grip convention: X = along the rope through the fist
-    channel, Z = the rod-up side of the fist), mirrored for the left."""
+    """Grip frame on a rope handle in the CARRY frame (the rod-grip convention: X = along the rope through the fist
+    channel, Z = the rod-up side of the fist), mirrored for the left. The right fist holds the handle on the player's
+    right (the cooler's Handle_L, since the cooler faces the player)."""
     roll_deg = HANDLE_ROLL_DEG if roll_deg is None else roll_deg
     sign = HANDLE_DIR if sign is None else sign
     X = Vector((sign, 0.0, 0.0))
     Z = Vector((0.0, 0.0, 1.0))
     R = rot3(X, roll_deg) @ Matrix((X, Z.cross(X), Z)).transposed()
-    H_r = mat4(R, mir(COOLER_HANDLE_L))
+    H_r = mat4(R, Vector((0.0, -COOLER_HANDLE_L.y, 0.0)))
     return H_r if side == "r" else M4 @ H_r @ M4
 
 
 def carry_targets(B, sides, t, roll_deg=None, sign=None):
-    C = cooler_matrix(t)
+    C = carry_frame(t)
     breath = Vector((0.0, 0.0, 0.004 * math.sin(loop_w() * t)))
     out = {}
     for s, sd in sides.items():
@@ -993,9 +1051,13 @@ class Poser:
                          rod_rest=self.tuck_rest)
         return self._dip(P, arms_M), m
 
-    def hold_fish(self, f, arms_M=None):
-        P, m = full_pose(self.B, self.sides, self.B["arms"], holdfish_targets(self.B, self.sides, f / FPS))
+    def hold_fish(self, f, arms_M=None, name="A_FPArms_HoldFish_Idle"):
+        P, m = full_pose(self.B, self.sides, self.B["arms"],
+                         holdfish_targets(self.B, self.sides, f / FPS, FISH_POSES[name]))
         return self._dip(P, arms_M), m
+
+    def hold_fish_large(self, f, arms_M=None):
+        return self.hold_fish(f, arms_M, "A_FPArms_HoldFish_Large_Idle")
 
     def carry(self, f, arms_M=None):
         t = f / FPS
@@ -1018,7 +1080,8 @@ class Poser:
     def source(self, action):
         src = {"A_FPArms_Idle": self.idle, "A_FPArms_HoldRod_Idle": self.hold,
                "A_FPArms_Prone_HoldRod_Idle": self.prone_hold, "A_FPArms_Prone_TuckRod": self.tuck,
-               "A_FPArms_HoldFish_Idle": self.hold_fish, "A_FPArms_CarryCooler_Idle": self.carry}
+               "A_FPArms_HoldFish_Idle": self.hold_fish, "A_FPArms_HoldFish_Large_Idle": self.hold_fish_large,
+               "A_FPArms_CarryCooler_Idle": self.carry}
         src.update({a: self.aim(AIM_GRID[k]) for k, a in AIM_ACTIONS.items()})
         return src.get(action)
 
@@ -1413,7 +1476,7 @@ def screen_metrics(geo, P, B, rod_rest=None):
                 continue                                   # faces away from the eye
             tot += 1
             hit = bvh.ray_cast(Vector((0.0, 0.0, 0.0)), p.normalized(), p.length - 0.002)
-            vis += 1 if hit[0] is None else 0
+            vis += 1 if (hit[0] is None and on_screen(screen(p))) else 0
     bb = (min(q[0] for q in hands), max(q[0] for q in hands), min(q[1] for q in hands), max(q[1] for q in hands))
     return {"hands_x_pct": [round(bb[0] * 100, 1), round(bb[1] * 100, 1)],
             "hands_center_x_pct": round((bb[0] + bb[1]) * 50, 1), "hands_top_y_pct": round(bb[2] * 100, 1),
@@ -1934,9 +1997,10 @@ class StagedCooler:
         return pts
 
 
-def place_fish(arm_obj, fish_obj, grip):
+def place_fish(arm_obj, fish_obj, grip, scale=1.0):
+    """The fish on hand_r_fish as Unreal attaches it: relative location fish_attach_offset(), uniform scale."""
     M = arm_obj.matrix_world @ arm_obj.pose.bones["hand_r_fish"].matrix
-    fish_obj.matrix_world = M @ Matrix.Translation(-grip)
+    fish_obj.matrix_world = M @ Matrix.Translation(fish_attach_offset(grip, scale)) @ Matrix.Scale(scale, 4)
     bpy.context.view_layer.update()
 
 
@@ -2062,13 +2126,52 @@ def fish_checks(geo, poser, fish_obj, grip):
     arms, polys = geo.arms_points()
     fpts, fpolys = mesh_world(fish_obj)
     hands = [p for p, k in zip(arms, geo.hand_mask) if k]
+    left = [p for p, v in zip(arms, geo.mesh.data.vertices)
+            if any(g.weight > 0.5 and geo.mesh.vertex_groups[g.group].name in ("hand_l", "fingers_l", "thumb_l")
+                   for g in v.groups)]
     res = {"wrists": m,
            "fish_verts_inside_arms": inside_count(fpts, BVHTree.FromPolygons(arms, polys)),
-           "screen_fish": screen_box(fpts), "screen_hands": screen_box(hands),
+           "screen_fish": screen_box(fpts), "screen_hands": screen_box(hands), "screen_left_hand": screen_box(left),
            "fish_grip_m": [round(c, 4) for c in grip],
            "unreal_hand_r_fish_f0": ue_transform(P["hand_r_fish"]),
            "unreal_hand_r_fish_local": ue_transform(B["hand_r"].inverted() @ B["hand_r_fish"])}
+    res["wrists_large"] = poser.hold_fish_large(0)[1]
+    sizes = {}
+    for sc in FISH_SCALES:
+        P = fish_size_pose(poser, sc)
+        set_basis(geo.arm, P)
+        place_fish(geo.arm, fish_obj, grip, sc)
+        pts, _pl = mesh_world(fish_obj)
+        arms, polys = geo.arms_points()
+        box = screen_box(pts)
+        # the left palm vs the belly contact of this size: the palm point (hand-derived) vs the fish-derived contact
+        F = geo.arm.matrix_world @ geo.arm.pose.bones["hand_r_fish"].matrix
+        Pl = geo.arm.matrix_world @ geo.arm.pose.bones["hand_l"].matrix
+        palm = (Pl @ poser.B["hand_l"].inverted() @ palm_cradle(poser.sides["l"])).translation
+        contact = F @ rot3((1, 0, 0), FISH_CONTACT_ROLL_DEG).to_4x4() @ belly_contact(sc)
+        sizes["%.1f" % sc] = {"blend_alpha": round(fish_size_alpha(sc), 3), "x_pct": box.get("x_pct"),
+                              "width_pct": round(box["x_pct"][1] - box["x_pct"][0], 1),
+                              "top_y_pct": box.get("top_y_pct"),
+                              "fish_verts_inside_arms": inside_count(pts, BVHTree.FromPolygons(arms, polys)),
+                              "left_palm_to_belly_contact_mm": round((palm - contact).length * 1000, 1)}
+    res["sizes"] = sizes
+    set_static_pose(geo.arm, B, poser.hold_fish(0)[0])
+    place_fish(geo.arm, fish_obj, grip)
     return res
+
+
+def fish_size_alpha(scale):
+    s0 = FISH_POSES["A_FPArms_HoldFish_Idle"]["scale"]
+    s1 = FISH_POSES["A_FPArms_HoldFish_Large_Idle"]["scale"]
+    return max(0.0, min(1.0, (scale - s0) / (s1 - s0)))
+
+
+def fish_size_pose(poser, scale, f=0):
+    """Pose basis for a fish of `scale`: HoldFish_Idle and HoldFish_Large_Idle crossfaded as Unreal blends them
+    (bone-local lerp / shortest-arc nlerp) by fish_size_alpha()."""
+    B = poser.B
+    return blend_basis(pose_to_basis(B, poser.hold_fish(f)[0]), pose_to_basis(B, poser.hold_fish_large(f)[0]),
+                       fish_size_alpha(scale))
 
 
 def carry_checks(geo, poser, cooler):
@@ -2081,7 +2184,7 @@ def carry_checks(geo, poser, cooler):
     res = {"wrists": m, "arms_verts_inside_cooler_hull": inside_convex(arms, cooler.ucx)}
     res["grip_to_handle_mm"] = {}
     res["hand_in_cooler_space"] = {}
-    for s, sock in (("l", "SOCKET_Handle_L"), ("r", "SOCKET_Handle_R")):
+    for s, sock in (("l", "SOCKET_Handle_R"), ("r", "SOCKET_Handle_L")):     # the cooler faces the player
         G = rod_rest_matrix(sides[s])
         grip_w = P["hand_" + s] @ B["hand_" + s].inverted() @ G
         res["grip_to_handle_mm"][s] = round((grip_w.translation - C @ cooler.sockets[sock]).length * 1000, 3)
@@ -2154,6 +2257,15 @@ def render_t030_t028_previews(arm_obj, rod_obj, poser, geo, fish_obj, grip, cool
     play(arm_obj, "A_FPArms_HoldFish_Idle", 45)
     place_fish(arm_obj, fish_obj, grip)
     cells.append(fp_frame(cell("fish_fp_45"), "dusk", "HoldFish_Idle f45  dusk", res=CELL))
+    for sc in (1.6, 1.3, 0.8):
+        set_basis(arm_obj, fish_size_pose(poser, sc))
+        place_fish(arm_obj, fish_obj, grip, sc)
+        cells.append(fp_frame(cell("fish_fp_x%02d" % int(sc * 10)), "day",
+                              "fish %.1fx: HoldFish/_Large blend %.2f" % (sc, fish_size_alpha(sc)), res=CELL))
+    play(arm_obj, "A_FPArms_HoldFish_Large_Idle", 0)
+    place_fish(arm_obj, fish_obj, grip, 1.6)
+    full["holdfish_trophy"] = fp_frame(PREVIEW_DIR / "SK_FPArms_holdfish_large_fp.png", "day",
+                                       "HoldFish_Large_Idle f0: Bonefish at scale 1.6 (trophy), day")
     play(arm_obj, "A_FPArms_HoldFish_Idle", 0)
     place_fish(arm_obj, fish_obj, grip)
     g = (arm_obj.pose.bones["hand_r_fish"].matrix).translation
@@ -2184,9 +2296,9 @@ def render_t030_t028_previews(arm_obj, rod_obj, poser, geo, fish_obj, grip, cool
     cells.append(shot(cell("cool_side"), (0.2, -2.4, -0.3), (0.2, 0.0, -0.3), ortho=1.3, label="CarryCooler f0  side"))
     cells.append(shot(cell("cool_front"), c + Vector((1.3, 0.45, 0.35)), c + Vector((0.0, 0.0, 0.05)), lens=35.0,
                       label="CarryCooler f0  from the front"))
-    hr = C @ mir(COOLER_HANDLE_L)
+    hr = C @ COOLER_HANDLE_L                                 # the right fist's handle (the cooler faces the player)
     cells.append(shot(cell("cool_handle_r"), hr + Vector((0.2, -0.35, 0.12)), hr, lens=45.0,
-                      label="right fist on Handle_R"))
+                      label="right fist on Handle_L (cooler faces the player)"))
     cells.append(shot(cell("cool_back"), c + Vector((-0.9, -0.6, 0.9)), c, lens=35.0,
                       label="CarryCooler f0  from above-behind"))
     full["carry_sheet"] = pb.contact_sheet(cells, PREVIEW_DIR / "SK_FPArms_carrycooler.png", cols=3, cell=CELL)
