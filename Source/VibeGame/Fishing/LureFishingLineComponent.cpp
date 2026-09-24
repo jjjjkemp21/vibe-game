@@ -359,6 +359,7 @@ void ULureFishingLineComponent::StartLine(ELureLineMode NewMode)
 	RecoilElapsed = 0.f;
 	RestLength = 0.f;
 	TargetRestLength = 0.f;
+	LastChord = 0.f;
 	bWaterLookedUp = false;
 	SetComponentTickEnabled(true);
 	UpdateLine(0.f); // valid points (and a drawn line) right away
@@ -371,6 +372,7 @@ void ULureFishingLineComponent::StopLine()
 	RecoilElapsed = 0.f;
 	RestLength = 0.f;
 	TargetRestLength = 0.f;
+	LastChord = 0.f;
 	bWaterLookedUp = false;
 	EndActor.Reset();
 	SetComponentTickEnabled(false);
@@ -477,7 +479,10 @@ void ULureFishingLineComponent::Simulate(float DeltaTime)
 		In.End = EndInput;
 		const float Chord = static_cast<float>(FVector::Dist(In.Start, In.End));
 		TargetRestLength = FLureFishingLineRules::TargetRestLength(Chord, Tension, Slack, Row);
+		// Carried to the ends' new distance first (the same share of slack), so ends that close in leave no extra line (T-032b).
+		RestLength = FLureFishingLineRules::CarryRestLength(RestLength, LastChord, Chord);
 		RestLength = FLureFishingLineRules::TightenRestLength(RestLength, TargetRestLength, Chord, DeltaTime, Row);
+		LastChord = Chord;
 		In.Float = FLureFishingLineRules::FloatAmount(Tension, Row);
 		break;
 	}
@@ -490,8 +495,11 @@ void ULureFishingLineComponent::Simulate(float DeltaTime)
 		In.EndDrag = Row.HangDrag;
 		const float Current = bNeedsReset ? static_cast<float>(FVector::Dist(In.Start, In.End)) : RestLength;
 		TargetRestLength = HangLength;
-		RestLength = FLureFishingLineRules::FollowRestLength(Current, HangLength, 0.f, DeltaTime, Row);
+		// Reeled in at HangReelSpeed, slowing at half of gravity, and the swing guard: the actor ends up under the tip (T-032b).
+		RestLength = FLureFishingLineRules::ReelInRestLength(Current, HangLength, DeltaTime, Row);
+		In.MaxSwingDeg = Row.HangMaxSwingDeg;
 		In.Float = Row.FloatStrength;
+		LastChord = 0.f;
 		break;
 	}
 	case ELureLineMode::Recoil:
@@ -503,6 +511,7 @@ void ULureFishingLineComponent::Simulate(float DeltaTime)
 		RestLength = RecoilStartLength * FMath::Lerp(1.f, Row.RecoilLengthShare, Alpha);
 		TargetRestLength = RecoilStartLength * Row.RecoilLengthShare;
 		In.Float = Row.FloatStrength;
+		LastChord = 0.f;
 		break;
 	}
 	case ELureLineMode::None:

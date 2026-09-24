@@ -229,6 +229,8 @@ private:
 	float Slack = -1.f;
 	float RestLength = 0.f;
 	float TargetRestLength = 0.f;
+	/** Straight tip-to-end distance of the last pinned frame (0 = none: a new line, or not pinned then); CarryRestLength input. */
+	float LastChord = 0.f;
 
 	// Water.
 	bool bWaterOverride = false;

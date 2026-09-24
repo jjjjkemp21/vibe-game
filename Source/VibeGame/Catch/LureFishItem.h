@@ -10,6 +10,7 @@
 class ALureFishItem;
 class ALureSellCounter;
 class ULureFishingLineComponent;
+struct FFishAnimState;
 
 /** A fish item started (bHooked true) or stopped hanging on a hook, on this machine (every machine: server, owner, others) */
 DECLARE_MULTICAST_DELEGATE_TwoParams(FLureFishHookedChanged, ALureFishItem* /*Fish*/, bool /*bHooked*/);
@@ -120,6 +121,16 @@ public:
 	/** The skeletal or static mesh in use (null on a dedicated server) */
 	UPrimitiveComponent* GetFishMesh() const;
 
+	/**
+	 *  The clip state a fish plays in a hand (T-030k), the same on every machine: the landed fight fish's (DT_FishVisual,
+	 *  phase Landed = Flop), which an adopted visual keeps playing. The own skeletal mesh plays it through the fish anim
+	 *  class (ULureFishVisualSettings AnimClass) while in a hand, so the holder and the other players see the same pose.
+	 */
+	FFishAnimState GetInHandAnimState() const;
+
+	/** The state of the fish anim instance on the drawn mesh (the adopted visual's, else the own skeletal fish); false if none */
+	bool GetShownAnimState(FFishAnimState& OutState) const;
+
 	// ---- T-029 seam (optional): a landed fight fish as this item's look ----
 
 	/**
@@ -197,6 +208,7 @@ protected:
 	virtual FTransform GetThirdPersonAttachment() const override;
 	virtual FTransform GetRestVisualTransform() const override;
 	virtual void UpdateHooked(float DeltaSeconds) override;
+	virtual void UpdatePresentation(float DeltaSeconds) override;
 	virtual void OnHoldChanged(const FLureItemHold& OldHold) override;
 	virtual bool IsHookedExternallyDriven() const override { return ExternalHangDriver.IsValid(); }
 
@@ -219,7 +231,11 @@ private:
 	/** T-032 seam: the physics line (or anything) that moves the hanging fish on this machine */
 	TWeakObjectPtr<UObject> ExternalHangDriver;
 
+	/** The own skeletal fish plays GetInHandAnimState while in a hand (no adopted visual); off again after */
+	bool bHandAnim = false;
+
 	void EnsureLook();
+	void UpdateHandAnim();
 	void EnsureHangLine();
 	void GetViewer(FVector& OutLocation, float& OutFovDeg) const;
 	double GetNow() const;
