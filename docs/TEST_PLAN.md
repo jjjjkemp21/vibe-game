@@ -245,6 +245,31 @@ object, read into the copy, RepNotifies called on change), not a property copy.
 - The binary assets (DT_Gear, DT_FightPattern, DT_FishFight) don't exist until the editor-operator imports them in main; the settings path then
   replaces the built-in fallbacks. After the import, check once in main that the component resolves the imported tables (no fallback warning).
 
+## T-027 fish anywhere + hot spots (lane eng1)
+- Implementer: `Project.Fishing.Water.*` (FishingWaterTest/FishingHotSpotTest). 11 T-006 tests were updated to the new rules; QA reviewed each:
+  all are legitimate rule updates (spot-less water now bites, NoSpecies path kept by empty fallbacks), none weakened.
+- QA, `Tests/Fishing/QAFishingWaterTest.cpp` + `QAFishingHotSpotTest.cpp` (helpers `QAFishingWaterTestUtils.h`), all `Project.Fishing.Water.QA.*`:
+  - Area selection (U): `Area.HigherPriorityWins`, `SmallerAreaWinsPriorityTie`, `LowerIdWinsFullTie`, `BrokenAreasNeverWin` (NaN/0/degenerate),
+    `PolygonEdgeCases` (concave U, both windings), `BoxYawAndCircleEdge`, `DepthBands` ([min,max), max 0 = open), `DefaultWaterContext`.
+  - Bite decision (U): `Bite.ShallowBoundaryAndReasonOrder` (14.9/15 cm, NotWater > TooShallow > gap > WrongBait, HUD text),
+    `Bite.ContextSumsLuckAndCarriesBonus`, `Gap.FallbackOrderAndBait`, `Gap.LoggedOncePerHabitatAndHour`, `Gap.NoDeadWaterAnyHourShipped` (48 half-hours).
+  - Roll (U): `Roll.NoBonusRollsUnchanged` (2000 seeded rolls, pinned fingerprint 2756817872: update only on an intended roll change),
+    `Roll.SizeBonusFormula`, `Roll.ValueMultiplierFormula`.
+  - World (I): `World.ShallowWaterNeverBitesAndSaysSo`, `OpenWaterBitesEverywhere`, `LegacySpotsOnlyWithoutAreas`, `AreaActorYawAndScale`.
+  - Hot spots (U/I): `HotSpot.SpawnChanceAndLifetimeRoll`, `DriftDeterministicBoundedSmooth`, `SpawnRateFollowsSpawnInterval`, `MaxPerAreaAndLevelCap`,
+    `LifetimeWithinRowThenGone`, `PrewarmFirstCheck`, `OnlyInValidWater`, `DriftNeverCrossesLand`, `BonusReachesTheBite`, `BonusKeptForWholeCast`,
+    `OverlapNearestRelativeToRadius`.
+  - Net (I, FTestWorlds): `Net2P.SpawnerHotSpotsAndBobberWaterReachClients` (same drift on server/client), `Net2P.DevCommandsOnClientAreSafe`.
+  - Data (D): `Data.HotSpotRowsValid` (DT_HotSpot.json), `Data.HotSpotValidateCatchesBadRows`, `Data.LayoutWaterAreasFollowSchema` (every data/levels layout).
+
+### T-027 open bugs (failing test = regression test)
+- `HotSpot.DriftNeverCrossesLand`: the spawner checks only 8 points on the wander ring (spec rule), so a rock inside the drift disc between
+  the points is accepted and the bubbles drift over land (a cast into them lands NotWater). Fix: sample the disc densely or stop drift over land.
+
+### T-027 gaps
+- /Game/Data/DT_HotSpot is not imported in the lane (built-in Bubbles fallback); after the import in main, check once that no fallback warning shows.
+- Bubble/ripple visuals, the HUD hot-spot line and feel of spawn rates: playtester and designer. Real 2-player PIE latency: playtester.
+
 ## Rules
 - Every new behavior gets at least one test written by someone other than its implementer (qa-engineer).
 - Every gameplay DataTable gets a data-validation test (D) when it is created.
