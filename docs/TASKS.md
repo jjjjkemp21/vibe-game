@@ -4,6 +4,16 @@ Format: `- [ ] T-### Title (owner) - acceptance: ... In progress: <agent>, start
 Done tasks move to "Done" with their commit hash. Read the "In progress" markers before starting work.
 Last processed playtest folder: (none)
 
+## Status 2026-09-23 ~18:15 (lead): see the memory snapshot for agent IDs
+A2 lanes:
+- eng1 T-027: built 740/740; QA plus water-area painting running
+- eng2 T-028: built 725/725; senior QA running
+- eng3 T-029: QA found 2 minor bugs, junior fixing
+- eng4 T-030: building (senior)
+- eng5 T-032: READY 761/761
+Curled-fish art fixes running.
+Then: merge all (git merge main in each lane, then ff), editor imports + ABP work, level rebuild, full A2 playtest, designer, push.
+
 ## Status 2026-09-23 ~17:10 (lead)
 Merged since the push:
 - ladder climbs with Jump held (83e36f4; main 716/716)
