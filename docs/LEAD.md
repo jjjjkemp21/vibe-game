@@ -19,7 +19,11 @@ Lead-only scripts: `tools/lead-check.ps1` (running agents' context size + disk; 
 - After each merge batch, rerun `tools/codemap.ps1` so docs/CODEMAP.md stays true.
 
 ## Starting agents (optimized pipeline; Jimmy, 2026-09-24)
-- **One task per agent** (Jimmy, 2026-09-24: "Do not limit yourself to stacking one agent with many tasks"). Split bundles of follow-ups into separate agents, each in its own lane. Only combine two fixes when they are in the very same function.
+- **Group by shared context, split by independence** (Jimmy, 2026-09-24; refines his earlier "don't stack one agent with many tasks"):
+  - Split into parallel agents when the pieces touch different files or systems and don't need each other's understanding: they finish faster side by side.
+  - Keep pieces with one agent, in order, when they share files or functions, depend on each other, or need the same big reading (e.g. T-032b parts B+C). A second agent would spend 50-100k re-reading.
+  - A follow-up in an area an agent just finished: resume that agent (SendMessage) if its context is under ~150k and still relevant; otherwise start a fresh agent with pointers.
+  - Never bundle past the context limit (250k; seniors 400k): stage it instead. Never bundle unrelated items just to have fewer agents (the first T-030h brief bundled 3 unrelated fixes).
 - Agents start lean by design: each agent file has a `tools:` allowlist (no Agent/Artifact/Workflow/connector tools), preloads its pipeline skill with `skills:`, and carries its role's standard protocol (lane start/finish, commit, handoff at ~250k, report format). Junior/senior files are generated from the mid file: edit the mid file, then run `tools/gen-agents.ps1`.
 - Steps: pick the level (table below) -> `tools/lane.ps1 -Free` gives a clean lane already at main (creates the next one if none is free; `-List` shows all) -> spawn with `run_in_background` -> add the task line to docs/TASKS.md and the agent to the memory snapshot table.
 - New lanes need a full first compile (slow, serialized by the build mutex); prefer reusing free lanes.
