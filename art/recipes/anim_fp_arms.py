@@ -243,9 +243,9 @@ FISH_SCALES = (0.8, 1.0, 1.3, 1.6)    # checked sizes (Weight/ReferenceWeight)^(
 # FRONT (latch, sticker) facing the player, tilted top-away so the front wall and the lid edge face the eye; the fists
 # peek in at the bottom corners, the lid edge stays in the lower third. The attach bone `cooler` is the cooler's pivot
 # (bottom center) with the cooler's own axes, i.e. the carry frame turned 180 deg about Z.
-COOLER_HANDLE_L = Vector((0.0, 0.3125, 0.191))   # socket Handle_L in cooler space (Blender +Y); Handle_R = mirror
-COOLER_HANDLES_POS = Vector((0.48, 0.0, -0.28))   # midpoint between the two handle grips at frame 0, camera space
-COOLER_TILT_DEG = 10.0               # about the handle axis, top away from the eye (front wall towards the eye)
+COOLER_HANDLE_L = Vector((0.0, 0.315, 0.306))    # socket Handle_L in cooler space (Blender +Y; rim handles, 7e4ba79); Handle_R = mirror
+COOLER_HANDLES_POS = Vector((0.46, 0.0, -0.25))   # midpoint between the two handle grips at frame 0, camera space
+COOLER_TILT_DEG = 16.0              # about the handle axis (+ = top away from the eye); - = lid tipped slightly towards the eye
 COOLER_SWAY = (0.6, Vector((0.002, 0.0, 0.007)))  # tilt deg, offsets m (per breath)
 HANDLE_DIR = 1.0                     # fist channel along the rope: +1 = the carry frame's forward (+X)
 HANDLE_ROLL_DEG = 0.0                # roll of the fist about the rope (least wall contact in a 15 deg search)

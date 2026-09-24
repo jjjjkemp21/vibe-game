@@ -99,7 +99,7 @@ don't read bone "forward" as X.
 | **`hand_r_rod`** | hand_r | no | (54.1, 13.8, -24.1) | **rod attachment**: its frame IS SM_Rod_Basic's pivot frame (X tip, Z up, reel below). **Animated in `A_FPArms_Prone_TuckRod`** (see below); in every other clip it keeps its bind offset in the fist |
 | **`hand_l_crank`** | hand_r_rod | no | (50.5, 3.8, -30.9) | left-hand IK target: the `hand_l` transform that holds SM_Rod_Basic's crank knob (socket CrankKnob; checked against the B-M1 rod: 0.03 mm) |
 | **`hand_r_fish`** | hand_r | no | (51.2, 15.7, -32.7) | **fish-in-hand attach** (T-030): its frame is the held fish's frame at the fish's fishkit bone `Grip` (X = fish forward/head, Z = fish up/dorsal), placed so the fish's throat lies in the right palm. Keyed in every clip, but it only moves with `hand_r` |
-| **`cooler`** | arms | no | (44.8, 0, -47.2) | **carried-cooler attach** (T-030): SM_Cooler_Starter's pivot (bottom center) with the cooler's own axes (its front faces the player). Animated only in `A_FPArms_CarryCooler_Idle` (rides the breath); its reference pose = that clip's frame 0 |
+| **`cooler`** | arms | no | (37.8, 0, -54.8) | **carried-cooler attach** (T-030): SM_Cooler_Starter's pivot (bottom center) with the cooler's own axes (its front faces the player). Animated only in `A_FPArms_CarryCooler_Idle` (rides the breath); its reference pose = that clip's frame 0 |
 
 (`_l` values have -Y, `_r` values +Y.) Skin: 12 deform groups, max 2 influences per vertex, weights sum to 1.0,
 3-loop blends at elbows and wrists, plus a forearm twist ramp from the cuff to the wrist.
@@ -115,7 +115,7 @@ don't read bone "forward" as X.
 | `A_FPArms_Prone_TuckRod` | 0-90 | 3.0 s | loop | **prone and crawling**: rod turned around in the right fist (ice-pick grip near the butt), running back along the forearm and the body; both fists peek in at the bottom corners; breath only (the crawl rhythm is the procedural prone bob, below) |
 | `A_FPArms_HoldFish_Idle` | 0-90 | 3.0 s | loop | T-030, **rod stowed, two hands**: the fish side-on in front below the horizon, head right; the right hand wraps the throat under the gills, the left palm supports the belly ahead of the anal fin (lower left); one slow breath (fish sways +-1.2 deg pitch / +-0.8 deg yaw). Authored for fish scale 1.0 |
 | `A_FPArms_HoldFish_Large_Idle` | 0-90 | 3.0 s | loop | the same hold for a 1.6x trophy: fish turned tail-away and head-up, hands on the big fish's throat and belly; blended with HoldFish_Idle by size |
-| `A_FPArms_CarryCooler_Idle` | 0-90 | 3.0 s | loop | T-030, **no rod, two-handed low carry**: both fists on the cooler's rope handles, the cooler low in front with its front wall and lid edge towards the eye (lower third); box and hands breathe together (+-0.7 cm, +-0.6 deg), so no grip sliding |
+| `A_FPArms_CarryCooler_Idle` | 0-90 | 3.0 s | loop | T-030, **no rod, two-handed low carry**: both fists on the cooler's rim rope handles (visible at the lower corners), the cooler low in front, latch side and lid edge towards the eye (bottom fifth); box and hands breathe together (+-0.7 cm, +-0.6 deg), so no grip sliding |
 | `A_FPArms_RodAim_*` (9) | 0-1 | 1 pose | aim-offset pose, **additive Mesh Space** | T-028: `Center` = HoldRod_Idle frame 0 exactly; `Up` pulled back and high, `Down` dipped towards the water, `Left` / `Right` tip swung to that side, plus the 4 corners. Two identical keys; Unreal samples frame 0 |
 
 Notifies: none needed. All seven loops are 3.0 s: put their players in one sync group `FPArmsBreath` so crossfades
@@ -200,33 +200,27 @@ horizon (only the dorsal fin tip may reach it). Rod stowed (hide the rod mesh; t
   fish sink up to 2.4 cm (CoralSnapper's deeper belly the same). Pectoral and anal fin tips poke through the fingers
   by a few mm.
 
-### CarryCooler (T-030; two-handed low carry, lead decision after the designer review 2026-09-23)
-- **Handles**: SM_Cooler_Starter's sockets `Handle_L` (0, -31.25, 19.1) cm and `Handle_R` (0, 31.25, 19.1) cm in the
-  cooler's space (checked against the current `art/export/Props/SM_Cooler_Starter.fbx`: 0.015 mm). Each fist's grip
-  channel is centered **exactly on its handle socket** (0.015 mm): **hands 62.5 cm apart, 19.1 cm above the cooler's
-  base, the rope running front-back through each fist**. The cooler is carried with **its front (latch, sticker)
-  facing the player**, so the right fist holds `Handle_L` and the left fist `Handle_R`. Wrist bones in cooler space
-  (Unreal axes, cm): `hand_r` (3.1, -30.4, 25.7), `hand_l` (3.1, 30.4, 25.7).
+### CarryCooler (T-030; two-handed low carry, re-posed for the rim handles of 7e4ba79)
+- **Handles**: SM_Cooler_Starter's sockets `Handle_L` (0, -31.5, 30.6) cm and `Handle_R` (0, 31.5, 30.6) cm in the
+  cooler's space (rim height since 7e4ba79; checked against `art/export/Props/SM_Cooler_Starter.fbx`: 0.03 mm). Each
+  fist's grip channel is centered **exactly on its handle socket** (0.03 mm): **hands 63.0 cm apart, 30.6 cm above the
+  cooler's base, the rope running front-back through each fist**. The cooler is carried with **its front (latch,
+  sticker) facing the player**, so the right fist holds `Handle_L` and the left fist `Handle_R`. Wrist bones in cooler
+  space (Unreal axes, cm): `hand_r` (3.1, -30.6, 37.2), `hand_l` (3.1, 30.6, 37.2).
 - **Attach**: the carried cooler's mesh attaches to bone **`cooler`** with a zero relative transform (the bone is the
-  cooler's pivot, bottom center, with the cooler's own axes: its +X points at the player). Frame 0: (44.8, 0, -47.2) cm,
-  P 9.5 / Y 180 in arms component space: the box low in front, handles 28 cm below the eye and 48 cm ahead, tilted
-  10 deg top-away so the front wall and the lid edge face the eye. It rides the breath (+-0.2 / +-0.7 cm, +-0.6 deg) and
-  the hands move with it (no sliding). If the model's handle sockets move, re-run the recipe (`COOLER_HANDLE_L`; the
-  RESULT_JSON check `socket_handle_L_vs_recipe_mm` flags a mismatch).
-- On screen: the front wall (latch strap, stripe) and the lid edge fill the bottom third (lid edge at 65 % of the height,
-  x 8-92 %); the center and the upper view stay clear.
-- **Compromise (needs a model change to fix): the fists are not visible.** With the handles at mid height (19 cm) on the
-  short sides, the cooler's front wall hides them from the eye in every pose that keeps the box in the lower third
-  (checked over carry distance, height and tilt: to see the fists over the box, its top would reach 53 % of the
-  screen). Only the forearms show at the bottom corners. **Fix: handles near the rim** (socket height 26 cm or more,
-  ideally 30-33 cm; the body rim is at 33 cm): then both fists show at the lower corners (about 10 % of the width each)
-  with the lid in the lower third. The model is being revised now; when the new sockets land, the recipe needs new
-  carry numbers (`COOLER_HANDLES_POS` about (42, 0, -24.5) cm, `COOLER_TILT_DEG` about -10 for 30 cm handles).
-- While carried: turn off the cooler's collision with its carrier (the box is 26-70 cm in front of the eye), and make
+  cooler's pivot, bottom center, with the cooler's own axes: its +X points at the player). Frame 0: (37.8, 0, -54.8) cm,
+  P 15.5 / Y 180 in arms component space: handles 46 cm ahead of and 25 cm below the eye, the box tilted 16 deg top-away
+  so the lid's front edge and the latch face the eye. It rides the breath (+-0.2 / +-0.7 cm, +-0.6 deg) and the hands
+  move with it (no sliding). If the model's handle sockets move, re-run the recipe (`COOLER_HANDLE_L`,
+  `COOLER_HANDLES_POS`, `COOLER_TILT_DEG`; RESULT_JSON `socket_handle_L_vs_recipe_mm` flags a mismatch).
+- On screen (`SK_FPArms_carrycooler_fp.png`): **both fists on the rope grips at the lower corners** (about 15 % of the
+  width each, x 5-20 % and 80-95 %, tops at 80 %), the lid with its front edge and latch catch across the bottom
+  (x 10-90 %, top at 80 %): the item stays in the lower fifth, the center and upper view are clear.
+- While carried: turn off the cooler's collision with its carrier (the box is 20-60 cm in front of the eye), and make
   it a first-person primitive for the owner (same FirstPersonScale reason as the fish). Other players see the
   replicated world cooler; a third-person carry needs a third-person body (later).
-- Contact: each wrist heel and thumb touch the cooler's end wall by up to 1.4 cm (the rope is 2.4 cm off the wall;
-  hidden). Wrists 9 deg flex / 73 deg ulnar bend (the mitten grip, as on the rod; hidden).
+- Contact: each wrist heel touches the cooler's rim by up to 1.5 cm (hidden under the fist). Wrists 40 deg flex /
+  82 deg ulnar bend (the mitten grip, as on the rod; the wrists are just outside the frame).
 
 ### Rod aim offset (T-028; framing revised after the designer review 2026-09-23)
 Nine single-pose clips, one per point of a 3x3 aim-offset grid. Each extreme moves the grip, turns the rod so its tip
@@ -321,7 +315,7 @@ rotation/translation offset, normals imported, no physics asset. In `Content/Pyt
    Sign convention: **yaw +1 = rod tip to the player's RIGHT** (Unreal's positive yaw), **pitch +1 = Up** (pulled back
    and high = more tension), -1 = dipped towards the water.
 5. Verify (stop and report if any fails): `skeleton_report()` shows 18 bones with `hand_r_fish` head at
-   (51.2, 15.7, -32.7) cm and `cooler` at (44.8, 0, -47.2) cm (component space); `A_FPArms_RodAim_Up` frame 0 has
+   (51.2, 15.7, -32.7) cm and `cooler` at (37.8, 0, -54.8) cm (component space); `A_FPArms_RodAim_Up` frame 0 has
    `hand_r_rod` at (30.9, 19.0, -17.0) cm; the aim offset preview at (1, 1) matches `SK_FPArms_rodaim_upright_fp.png`
    (rod up and on the right, tip near the top-right corner, both fists on the rod).
 6. Screenshot checks: SM_Rod_Basic on `hand_r_rod` with the aim offset at the 4 edge points; a Bonefish on
