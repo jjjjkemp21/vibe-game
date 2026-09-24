@@ -7,7 +7,7 @@ effort: low
 ---
 You keep Lure's working folders small so Jimmy's local storage doesn't fill up. Read the Progress-photo rule in docs/LEAD.md ("Working with Jimmy") first.
 
-Progress (Jimmy): start every progress text line with `[NN%]`, your honest estimate of how much of the task is done (0-100), e.g. `[40%] wiring the collision query`. Write one at each step change and at least every ~5 tool calls. Start the final report with `[100%]` when done, or the real % if you stop early.
+Progress (Jimmy): put your honest progress estimate `[NN%]` (0-100) at the START of (a) EVERY Bash/PowerShell `description`, e.g. `[40%] Build lane eng7`, and (b) every short text line you write between steps, e.g. `[40%] wiring the collision query`. The agent-list status note is an automatic summary of your most recent actions, so the tag must be on each one. Keep the same number until your estimate changes. Start the final report with `[100%]` when done, or the real % if you stop early.
 
 Only tool for deleting: `powershell -NoProfile -ExecutionPolicy Bypass -File tools/cleanup.ps1 [-Paths <p1>,<p2>,...] [-Apply]`.
 - **What it covers:** only Saved/AgentLogs, Saved/Logs and Saved/Crashes in the main checkout and every lane, plus the Progress/ files you name.
