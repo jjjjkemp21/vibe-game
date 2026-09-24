@@ -197,6 +197,11 @@ public:
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category="Controls", meta=(ClampMin="0"))
 	float HudMessageSeconds = 2.5f;
 
+	/** T-032c: seconds a lost fish's message ("The fish got away (sprinting).", a snap, a thrown hook) stays in the HUD text.
+	 *  Longer than HudMessageSeconds: the player is often still running or looking away when the fight ends. */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category="Controls", meta=(ClampMin="0"))
+	float FightEndMessageSeconds = 6.f;
+
 	// ---- Reel fight and gear (T-007; docs/specs/reel-fight-rules.md) ----
 
 	/** Rods, lines and hooks/bait (row struct LureGearRow; source data/tables/DT_Gear.csv). Missing = built-in starter items + one warning. */

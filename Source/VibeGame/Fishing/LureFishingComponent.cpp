@@ -925,6 +925,13 @@ void ULureFishingComponent::AuthorityReelIn(ELureCastBlock Reason)
 	const double Now = GetFishingTime();
 	const bool bHadFish = NetState.State == ELureFishingState::Hooked && HookedFish.IsValid();
 	const FFishInstance Lost = HookedFish;
+	if (bHadFish)
+	{
+		// T-032c: every fight end logs its reason (EndFight logs snaps, spools and thrown hooks; this is the line rules' path).
+		const TCHAR* Why = LureFishingPrivate::ReasonText(Reason);
+		UE_LOG(LogLureFishing, Log, TEXT("%s: the line came in (%s) after %.1f s (%.0f cm out) - %s lost."), *GetNameSafe(GetOwner()),
+			*Why ? Why : TEXT("reeled in"), Fight.Elapsed, Fight.LineOut, *Lost.SpeciesId.ToString());
+	}
 	PendingFish = FFishInstance();
 	HookedFish = FFishInstance();
 	NextBiteTime = -1.0;
@@ -1903,7 +1910,11 @@ FString ULureFishingComponent::GetStatusText() const
 		break;
 	}
 
-	if (NetState.ResultId != 0 && Now - NetState.ResultTime <= MessageSeconds)
+	// T-032c: a lost fish's message stays longer (FightEndMessageSeconds) so a player still running sees why the fight ended.
+	const bool bFightEnd = NetState.LastResult == ELureFishingResult::Lost || NetState.LastResult == ELureFishingResult::Snapped
+		|| NetState.LastResult == ELureFishingResult::ThrewHook;
+	const float ResultSeconds = bFightEnd ? FMath::Max(MessageSeconds, GetDefault<ULureFishingSettings>()->FightEndMessageSeconds) : MessageSeconds;
+	if (NetState.ResultId != 0 && Now - NetState.ResultTime <= ResultSeconds)
 	{
 		const FString Reason = ReasonText(NetState.ResultReason);
 		switch (NetState.LastResult)
