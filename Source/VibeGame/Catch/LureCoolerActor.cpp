@@ -17,6 +17,7 @@
 #include "Engine/CollisionProfile.h"
 #include "Engine/SkeletalMesh.h"
 #include "Engine/StaticMesh.h"
+#include "Engine/StaticMeshSocket.h"
 #include "Engine/World.h"
 #include "Fishing/FishingSpots.h"
 #include "Fishing/LureFishingSettings.h"
@@ -63,6 +64,25 @@ namespace LureCoolerPrivate
 			Cube = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cube.Cube"));
 		}
 		return Cube.Get();
+	}
+
+	/**
+	 * The cooler's box: the body plus the closed lid (the lid is part of the cooler for carrying, placing and clearance).
+	 * The lid sits on the body's LidHinge socket (scale not included, as RefreshLook attaches it), else on the back top edge.
+	 */
+	FBox CoolerBounds(const UStaticMesh* Body, const UStaticMesh* Lid)
+	{
+		const FBox BodyBox = Body->GetBoundingBox();
+		if (!Lid)
+		{
+			return BodyBox;
+		}
+		FTransform Hinge(FVector(BodyBox.Min.X, 0.0, BodyBox.Max.Z));
+		if (const UStaticMeshSocket* Socket = Body->FindSocket(LidHingeSocket))
+		{
+			Hinge = FTransform(Socket->RelativeRotation, Socket->RelativeLocation);
+		}
+		return BodyBox + Lid->GetBoundingBox().TransformBy(Hinge);
 	}
 }
 
@@ -715,7 +735,7 @@ void ALureCoolerActor::RefreshLook()
 		Body = LoadIfExists(CachedRow.BodyMesh);
 		if (Body)
 		{
-			const FBox Bounds = Body->GetBoundingBox();
+			const FBox Bounds = CoolerBounds(Body, LoadIfExists(CachedRow.LidMesh));
 			BoxHalfExtent = Bounds.GetExtent();
 			BoxCenter = Bounds.GetCenter();
 			Body = nullptr;
@@ -726,9 +746,10 @@ void ALureCoolerActor::RefreshLook()
 	{
 		BodyMesh->SetStaticMesh(Body);
 		BodyMesh->SetRelativeTransform(FTransform::Identity);
-		const FBox Bounds = Body->GetBoundingBox();
-		BoxHalfExtent = Bounds.GetExtent();
-		BoxCenter = Bounds.GetCenter();
+		const FBox Bounds = Body->GetBoundingBox(); // the body alone: hinge, contents and lid-slab fallbacks
+		const FBox Whole = CoolerBounds(Body, Lid);
+		BoxHalfExtent = Whole.GetExtent();
+		BoxCenter = Whole.GetCenter();
 		if (BodyMesh->DoesSocketExist(LidHingeSocket))
 		{
 			LidPivot->AttachToComponent(BodyMesh, FAttachmentTransformRules::SnapToTargetNotIncludingScale, LidHingeSocket);
