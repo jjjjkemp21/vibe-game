@@ -19,8 +19,11 @@ struct FLureFightFishSetup
 {
 	FFishVisualRow Row;
 	FFishInstance Fish;
-	/** Species ReferenceWeight (kg; scale 1 at this weight), AnimRate and AnimAmplitude (1 / 1 / 1 without a species row). */
-	float ReferenceWeightKg = 1.f;
+	/**
+	 *  Species ReferenceWeight (kg; scale 1 at this weight), AnimRate and AnimAmplitude. Without a species row: 0 / 1 / 1,
+	 *  and a ReferenceWeight of 0 (or a missing one) means scale 1 and the unscaled play rate (T029-B1).
+	 */
+	float ReferenceWeightKg = 0.f;
 	float AnimRate = 1.f;
 	float AnimAmplitude = 1.f;
 	/** May be null (nothing drawn; the actor still moves and computes its clip state). */
@@ -104,13 +107,16 @@ private:
 	FVector Velocity = FVector::ZeroVector;
 	FVector LastTarget = FVector::ZeroVector;
 	FVector EscapeDirection = FVector::ForwardVector;
+	/** The water surface of the last fight view (the escape's floor trace starts under it). */
+	float LastWaterZ = 0.f;
+	bool bHasWaterZ = false;
 	bool bPlaced = false;
 	bool bDartRight = false;
 	bool bExhausted = false;
 	EFishAnimRole LastRole = EFishAnimRole::SwimIdle;
 
-	/** Bottom height under a point (FLureFishingSpots::TraceCast from just under the surface), or -BIG_NUMBER. */
-	float TraceFloorZ(const FVector& At, float WaterZ) const;
+	/** Bottom height under a point (FLureFishingSpots::TraceCast from just under the surface down past the shown depth and past BelowZ), or -BIG_NUMBER. */
+	float TraceFloorZ(const FVector& At, float WaterZ, float BelowZ = UE_BIG_NUMBER) const;
 	void UpdateAnim(EFightFishPhase InPhase, FName MoveId, const FVector& TurnToward);
 	void MoveTo(const FVector& NewLocation, const FVector& PlayerLocation, float DeltaTime, float SmoothTime, bool bSnap);
 };

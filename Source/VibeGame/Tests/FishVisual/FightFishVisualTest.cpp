@@ -851,6 +851,90 @@ namespace LureFightFishTest
 		ProxyCharacter->SetRole(ROLE_Authority);
 		return true;
 	}
+	/** A lost fish sinks while it swims away, but never into the seabed (FloorClearance above it), and still goes after EscapeTime. */
+	IMPLEMENT_SIMPLE_AUTOMATION_TEST(FFishVisualEscapeFloor, "Project.FishVisual.Placement.EscapeStaysAboveTheSeabed", Flags)
+	bool FFishVisualEscapeFloor::RunTest(const FString& Parameters)
+	{
+		TStrongObjectPtr<UDataTable> Table;
+		LureFightQA::FWorld World;
+		if (!LoadVisual(*this, Table) || !World.Create(*this))
+		{
+			return false;
+		}
+		const FFishVisualRow* RowPtr = DefaultRow(*this, Table);
+		if (!RowPtr)
+		{
+			return false;
+		}
+		const FFishVisualRow& Row = *RowPtr;
+
+		// Pure rule: no floor = plain sink; a floor lifts the step to FloorZ + FloorClearance, capped at the surface.
+		const FVector Start(1000.f, 0.f, -25.f);
+		const FVector Free = FFightFishVisual::EscapeStep(Row, Start, FVector(1.f, 0.f, 0.f), 1.f, 0.f, -UE_BIG_NUMBER);
+		TestTrue(TEXT("no floor: swims away and sinks"), Free.Equals(Start + FVector(Row.EscapeSpeed, 0.f, -Row.EscapeSinkSpeed), 0.01));
+		const FVector Floored = FFightFishVisual::EscapeStep(Row, Start, FVector(1.f, 0.f, 0.f), 1.f, 0.f, -50.f);
+		TestEqual(TEXT("floor: held at FloorZ + FloorClearance"), static_cast<float>(Floored.Z), -50.f + Row.FloorClearance, 0.01f);
+		TestEqual(TEXT("floor: still swims away"), static_cast<float>(Floored.X), 1000.f + Row.EscapeSpeed, 0.01f);
+		const FVector Beach = FFightFishVisual::EscapeStep(Row, Start, FVector(1.f, 0.f, 0.f), 1.f, 0.f, 30.f);
+		TestTrue(TEXT("floor above the water: never lifted out of it"), Beach.Z <= 0.0);
+		const FVector Deep = FFightFishVisual::EscapeStep(Row, Start, FVector(1.f, 0.f, 0.f), 0.1f, 0.f, -500.f);
+		TestEqual(TEXT("deep floor: no effect"), static_cast<float>(Deep.Z), -25.f - 0.1f * Row.EscapeSinkSpeed, 0.01f);
+		FFishVisualRow NoClamp = Row;
+		NoClamp.FloorClearance = -1.f;
+		TestTrue(TEXT("FloorClearance < 0: no clamp"), FFightFishVisual::EscapeStep(NoClamp, Start, FVector(1.f, 0.f, 0.f), 1.f, 0.f, -50.f).Z < -80.0);
+		TestTrue(TEXT("NaN time: no move"), FFightFishVisual::EscapeStep(Row, Start, FVector(1.f, 0.f, 0.f), std::numeric_limits<float>::quiet_NaN(), 0.f, -50.f).Equals(Start, 0.01));
+
+		// A live fish over shallow sand (top at z = -50, water at 0): it sinks to the bottom and glides along it.
+		constexpr float SandTop = -50.f;
+		World.AddBox(FVector(4000.f, 0.f, SandTop - 100.f), FVector(3000.f, 3000.f, 100.f));
+		ALureFightFish* Fish = SpawnBareFish(World.World, Row);
+		if (!TestNotNull(TEXT("fish"), Fish))
+		{
+			return false;
+		}
+		Fish->ApplyView(MakeView(FVector(2000.f, 0.f, 0.f), TEXT("Rest")), 0.f);
+		const FVector Before = Fish->GetActorLocation();
+		Fish->BeginEnd(EFightFishEnd::Escaped, FVector(0.f, 0.f, 100.f));
+		const float Step = 1.f / 60.f;
+		float LowestZ = static_cast<float>(Before.Z);
+		int32 Frames = 0;
+		for (; Frames < 600 && !Fish->IsFinished(); ++Frames)
+		{
+			Fish->TickAfterFight(Step);
+			LowestZ = FMath::Min(LowestZ, static_cast<float>(Fish->GetActorLocation().Z));
+		}
+		TestTrue(TEXT("finished after EscapeTime"), Fish->IsFinished());
+		TestEqual(TEXT("removed on time (frames)"), static_cast<float>(Frames), Row.EscapeTime / Step, 2.f);
+		TestTrue(FString::Printf(TEXT("sank at first (%.1f < %.1f)"), LowestZ, Before.Z), LowestZ < Before.Z - 10.f);
+		TestTrue(FString::Printf(TEXT("never below the sand + clearance (lowest %.2f, min %.2f)"), LowestZ, SandTop + Row.FloorClearance),
+			LowestZ >= SandTop + Row.FloorClearance - 0.5f);
+		TestTrue(TEXT("swam away from the player"), Fish->GetActorLocation().X > Before.X + 0.8f * Row.EscapeSpeed * Row.EscapeTime);
+		Fish->Destroy();
+		return true;
+	}
+
+	/** The subsystem's update runs in TG_LastDemotable, after the fight step in ULureFishingComponent (TG_PostUpdateWork). */
+	IMPLEMENT_SIMPLE_AUTOMATION_TEST(FFishVisualTickOrder, "Project.FishVisual.Lifecycle.UpdateTicksAfterTheFightStep", Flags)
+	bool FFishVisualTickOrder::RunTest(const FString& Parameters)
+	{
+		LureFightQA::FWorld World;
+		if (!World.Create(*this))
+		{
+			return false;
+		}
+		const ULureFightFishSubsystem* Visuals = World.World->GetSubsystem<ULureFightFishSubsystem>();
+		if (!TestNotNull(TEXT("subsystem"), Visuals))
+		{
+			return false;
+		}
+		const FTickFunction& Tick = Visuals->GetUpdateTickFunction();
+		TestTrue(TEXT("registered at BeginPlay"), Tick.IsTickFunctionRegistered());
+		TestTrue(TEXT("enabled"), Tick.IsTickFunctionEnabled());
+		TestEqual(TEXT("tick group"), static_cast<int32>(Tick.TickGroup.GetValue()), static_cast<int32>(TG_LastDemotable));
+		const ULureFishingComponent* Fishing = GetDefault<ULureFishingComponent>();
+		TestTrue(TEXT("the fight steps in an earlier group"), static_cast<int32>(Fishing->PrimaryComponentTick.TickGroup.GetValue()) < static_cast<int32>(Tick.TickGroup.GetValue()));
+		return true;
+	}
 }
 
 #endif // WITH_DEV_AUTOMATION_TESTS

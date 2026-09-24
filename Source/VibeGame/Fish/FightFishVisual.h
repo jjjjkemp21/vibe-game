@@ -287,6 +287,13 @@ struct FFightFishVisual
 	static FRotator FacingRotation(const FFishVisualRow& Row, const FVector& Velocity, const FVector& FishLocation, const FVector& PlayerLocation,
 		const FRotator& Current, bool bExhausted);
 
+	/**
+	 *  One step of a lost fish's escape: Location + (Direction x EscapeSpeed + down x EscapeSinkSpeed) x DeltaTime, but never
+	 *  lower than FloorZ + FloorClearance (FloorZ = -BIG_NUMBER: no floor; FloorClearance < 0: no clamp) and, when the floor
+	 *  clamp lifts it, never above WaterZ. A fish already under the floor is lifted to it.
+	 */
+	static FVector EscapeStep(const FFishVisualRow& Row, const FVector& Location, const FVector& Direction, float DeltaTime, float WaterZ, float FloorZ);
+
 	/** Exponential smoothing factor for one step: 1 - exp(-DeltaTime / TimeConstant) (1 when the constant is 0). */
 	static float SmoothAlpha(float DeltaTime, float TimeConstant);
 

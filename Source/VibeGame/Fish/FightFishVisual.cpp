@@ -246,6 +246,22 @@ FVector FFightFishVisual::TargetLocation(const FFishVisualRow& Row, const FFight
 	return Target;
 }
 
+FVector FFightFishVisual::EscapeStep(const FFishVisualRow& Row, const FVector& Location, const FVector& Direction, float DeltaTime, float WaterZ, float FloorZ)
+{
+	const float Dt = FMath::IsFinite(DeltaTime) ? FMath::Max(0.f, DeltaTime) : 0.f;
+	FVector Next = Location + (Direction.GetSafeNormal2D() * Row.EscapeSpeed + FVector::DownVector * Row.EscapeSinkSpeed) * Dt;
+	if (Row.FloorClearance >= 0.f && FMath::IsFinite(FloorZ) && FloorZ > -UE_BIG_NUMBER * 0.5f)
+	{
+		const double MinZ = FloorZ + Row.FloorClearance;
+		if (Next.Z < MinZ)
+		{
+			// Sinking into shallow sand: glide along the bottom instead (never pushed out of the water).
+			Next.Z = FMath::IsFinite(WaterZ) ? FMath::Min(MinZ, static_cast<double>(WaterZ)) : MinZ;
+		}
+	}
+	return Next;
+}
+
 FRotator FFightFishVisual::FacingRotation(const FFishVisualRow& Row, const FVector& Velocity, const FVector& FishLocation, const FVector& PlayerLocation,
 	const FRotator& Current, bool bExhausted)
 {

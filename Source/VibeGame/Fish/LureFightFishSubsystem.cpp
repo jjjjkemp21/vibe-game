@@ -33,24 +33,43 @@ bool ULureFightFishSubsystem::DoesSupportWorldType(const EWorldType::Type WorldT
 	return WorldType == EWorldType::Game || WorldType == EWorldType::PIE;
 }
 
+void FLureFightFishTickFunction::ExecuteTick(float DeltaTime, ELevelTick TickType, ENamedThreads::Type CurrentThread, const FGraphEventRef& MyCompletionGraphEvent)
+{
+	if (Target && TickType != LEVELTICK_TimeOnly)
+	{
+		Target->UpdateVisuals(DeltaTime);
+	}
+}
+
+void ULureFightFishSubsystem::OnWorldBeginPlay(UWorld& InWorld)
+{
+	Super::OnWorldBeginPlay(InWorld);
+	if (!UpdateTick.IsTickFunctionRegistered() && InWorld.PersistentLevel && InWorld.GetNetMode() != NM_DedicatedServer)
+	{
+		// After TG_PostUpdateWork (the fight step in ULureFishingComponent's tick): this frame's fight state, same-frame ends.
+		UpdateTick.TickGroup = TG_LastDemotable;
+		UpdateTick.EndTickGroup = TG_LastDemotable;
+		UpdateTick.bCanEverTick = true;
+		UpdateTick.bStartWithTickEnabled = true;
+		UpdateTick.bAllowTickOnDedicatedServer = false;
+		UpdateTick.bTickEvenWhenPaused = false;
+		UpdateTick.Target = this;
+		UpdateTick.RegisterTickFunction(InWorld.PersistentLevel);
+	}
+}
+
 void ULureFightFishSubsystem::Deinitialize()
 {
+	if (UpdateTick.IsTickFunctionRegistered())
+	{
+		UpdateTick.UnRegisterTickFunction();
+	}
+	UpdateTick.Target = nullptr;
 	Active.Reset();
 	Ending.Reset();
 	KeepAlive.Reset();
 	Loaded.Reset();
 	Super::Deinitialize();
-}
-
-TStatId ULureFightFishSubsystem::GetStatId() const
-{
-	RETURN_QUICK_DECLARE_CYCLE_STAT(ULureFightFishSubsystem, STATGROUP_Tickables);
-}
-
-void ULureFightFishSubsystem::Tick(float DeltaTime)
-{
-	Super::Tick(DeltaTime);
-	UpdateVisuals(DeltaTime);
 }
 
 void ULureFightFishSubsystem::SetTables(const UDataTable* InSpeciesTable, const UDataTable* InVisualTable)

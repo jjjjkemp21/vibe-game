@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Engine/EngineBaseTypes.h"
 #include "Subsystems/WorldSubsystem.h"
 #include "Fish/FightFishVisual.h"
 #include "Fish/FishInstance.h"
@@ -23,6 +24,30 @@ struct FFishSpeciesRow;
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FLureFightFishLandedSignature, ULureFishingComponent*, Fishing, ALureFightFish*, Fish, const FFishInstance&, Landed);
 DECLARE_MULTICAST_DELEGATE_ThreeParams(FLureFightFishLandedNative, ULureFishingComponent* /*Fishing*/, ALureFightFish* /*Fish*/, const FFishInstance& /*Landed*/);
 
+class ULureFightFishSubsystem;
+
+/**
+ *  The subsystem's frame update, in TG_LastDemotable: after TG_PostUpdateWork, where ULureFishingComponent steps the fight,
+ *  so the fish is placed from this frame's fight state and ends are seen the same frame (T029-B2).
+ */
+USTRUCT()
+struct FLureFightFishTickFunction : public FTickFunction
+{
+	GENERATED_BODY()
+
+	ULureFightFishSubsystem* Target = nullptr;
+
+	virtual void ExecuteTick(float DeltaTime, ELevelTick TickType, ENamedThreads::Type CurrentThread, const FGraphEventRef& MyCompletionGraphEvent) override;
+	virtual FString DiagnosticMessage() override { return TEXT("ULureFightFishSubsystem::UpdateVisuals"); }
+	virtual FName DiagnosticContext(bool bDetailed) override { return FName(TEXT("LureFightFishSubsystem")); }
+};
+
+template<>
+struct TStructOpsTypeTraits<FLureFightFishTickFunction> : public TStructOpsTypeTraitsBase2<FLureFightFishTickFunction>
+{
+	enum { WithCopy = false };
+};
+
 /**
  *  Watches every pawn's ULureFishingComponent through FFightFishViewAdapter (replicated state only, so it works the same
  *  on the server, the owning client and proxies). A new fight (bFighting with a new FightId) spawns one local
@@ -30,7 +55,7 @@ DECLARE_MULTICAST_DELEGATE_ThreeParams(FLureFightFishLandedNative, ULureFishingC
  *  the characters tick it moves the fish; when the fight ends the fish is handed off (Landed) or swims away (Escaped).
  */
 UCLASS()
-class ULureFightFishSubsystem : public UTickableWorldSubsystem
+class ULureFightFishSubsystem : public UWorldSubsystem
 {
 	GENERATED_BODY()
 
@@ -55,7 +80,7 @@ public:
 
 	FLureFightFishLandedNative OnFightFishLandedNative;
 
-	/** One update (Tick calls it with the frame time). Public for tests. */
+	/** One update (the tick function calls it with the frame time, after the fight step). Public for tests. */
 	void UpdateVisuals(float DeltaTime);
 
 	/** Tests: species and visual tables to use instead of the settings' (null = the settings' table). Resets the cache. */
@@ -67,11 +92,13 @@ public:
 	/** Where the fish mesh comes from, in order: species SkeletalMesh, species Mesh (if it is a skeletal mesh), Fallback. Null paths skipped. */
 	static TArray<FSoftObjectPath> MeshCandidates(const FFishSpeciesRow* Species, const TSoftObjectPtr<USkeletalMesh>& Fallback);
 
-	// ---- UTickableWorldSubsystem ----
+	/** The frame update's tick function (registered at world BeginPlay; TG_LastDemotable). Public for tests. */
+	const FTickFunction& GetUpdateTickFunction() const { return UpdateTick; }
+
+	// ---- UWorldSubsystem ----
 	virtual bool ShouldCreateSubsystem(UObject* Outer) const override;
+	virtual void OnWorldBeginPlay(UWorld& InWorld) override;
 	virtual void Deinitialize() override;
-	virtual void Tick(float DeltaTime) override;
-	virtual TStatId GetStatId() const override;
 
 protected:
 
@@ -86,6 +113,7 @@ private:
 		uint8 FightId = 0;
 	};
 	TArray<FEntry> Active;
+	FLureFightFishTickFunction UpdateTick;
 	TArray<TWeakObjectPtr<ALureFightFish>> Ending;
 
 	/** The fish offered to KeepLandedFish during OnFightFishLanded, and whether it was kept. */

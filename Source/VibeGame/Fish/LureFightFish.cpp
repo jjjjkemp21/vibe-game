@@ -76,7 +76,7 @@ void ALureFightFish::Setup(const FLureFightFishSetup& InSetup)
 	UpdateAnim(EFightFishPhase::Fighting, NAME_None, FVector::ZeroVector);
 }
 
-float ALureFightFish::TraceFloorZ(const FVector& At, float WaterZ) const
+float ALureFightFish::TraceFloorZ(const FVector& At, float WaterZ, float BelowZ) const
 {
 	const UWorld* World = GetWorld();
 	if (!World)
@@ -86,7 +86,8 @@ float ALureFightFish::TraceFloorZ(const FVector& At, float WaterZ) const
 	const FFishVisualRow& Row = Setup_.Row;
 	// From just under the surface (dock planks above the water don't count) down past the deepest the fish is shown.
 	const FVector Start(At.X, At.Y, WaterZ - 1.f);
-	const FVector End(At.X, At.Y, WaterZ - (Row.SurfaceDepth + Row.MaxShownDepth + Row.FloorClearance + 100.f));
+	const float EndZ = FMath::Min(WaterZ - (Row.SurfaceDepth + Row.MaxShownDepth + Row.FloorClearance + 100.f), BelowZ - Row.FloorClearance - 100.f);
+	const FVector End(At.X, At.Y, EndZ);
 	FHitResult Hit;
 	const FCollisionQueryParams Params(SCENE_QUERY_STAT(LureFightFishFloor), false, this);
 	return FLureFishingSpots::TraceCast(World, Hit, Start, End, Params) ? static_cast<float>(Hit.ImpactPoint.Z) : -UE_BIG_NUMBER;
@@ -113,6 +114,8 @@ void ALureFightFish::ApplyView(const FFightFishView& View, float DeltaTime)
 	const FFishVisualRow& Row = Setup_.Row;
 	Seconds += FMath::Max(0.f, DeltaTime);
 	bExhausted = View.bExhausted;
+	LastWaterZ = View.WaterZ;
+	bHasWaterZ = FMath::IsFinite(View.WaterZ);
 
 	FVector Away = (View.LineEnd - View.PlayerLocation).GetSafeNormal2D();
 	if (Away.IsNearlyZero())
@@ -193,9 +196,16 @@ void ALureFightFish::TickAfterFight(float DeltaTime)
 	if (Phase == EFightFishPhase::Escaping)
 	{
 		const FFishVisualRow& Row = Setup_.Row;
-		const FVector Step = (EscapeDirection * Row.EscapeSpeed + FVector::DownVector * Row.EscapeSinkSpeed) * Dt;
-		const FVector Player = GetActorLocation() - EscapeDirection * 1000.f; // "away from" point for the facing rule
-		MoveTo(GetActorLocation() + Step, Player, Dt, 0.f, false);
+		const FVector Here = GetActorLocation();
+		FVector Next = FFightFishVisual::EscapeStep(Row, Here, EscapeDirection, Dt, bHasWaterZ ? LastWaterZ : UE_BIG_NUMBER, -UE_BIG_NUMBER);
+		if (bHasWaterZ && Row.FloorClearance >= 0.f)
+		{
+			// Stay above the seabed while sinking away (shallow sand), traced where the fish is going.
+			const float FloorZ = TraceFloorZ(Next, LastWaterZ, static_cast<float>(Next.Z));
+			Next = FFightFishVisual::EscapeStep(Row, Here, EscapeDirection, Dt, LastWaterZ, FloorZ);
+		}
+		const FVector Player = Here - EscapeDirection * 1000.f; // "away from" point for the facing rule
+		MoveTo(Next, Player, Dt, 0.f, false);
 	}
 	UpdateAnim(Phase, NAME_None, FVector::ZeroVector);
 }
