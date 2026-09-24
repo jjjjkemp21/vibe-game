@@ -197,14 +197,22 @@ AIM_POSES = {  # name: (grip offset cm, shoulder offset cm, tip target %)
     "Up": ((-12.0, 2.0, 6.0), (-2.0, 0.0, 1.0), (56.0, 4.5)),        # pulled back and high: strong tension
     "Down": ((7.0, 0.0, 2.0), (2.0, 0.0, -1.0), (50.0, 62.0)),        # dipped towards the water
     "Left": ((2.0, 6.0, 0.0), (0.0, 1.0, 0.0), (22.0, 20.0)),          # tip swung to the left
-    "Right": ((0.0, 7.0, -2.0), (0.0, -1.0, 0.0), (96.0, 40.0)),       # tip swung to the right
+    "Right": ((-3.5, -1.0, 2.0), (0.0, -1.0, 0.0), (96.0, 40.0)),     # tip swung to the right
     "UpLeft": ((-8.0, 5.0, 7.0), (-2.0, 1.0, 1.0), (25.0, 6.0)),
-    "UpRight": ((-10.0, 9.0, 5.0), (-2.0, -1.0, 1.0), (92.0, 10.0)),
+    "UpRight": ((-11.5, 3.5, 6.0), (-2.0, -1.0, 1.0), (92.0, 10.0)),
     "DownLeft": ((3.0, 6.0, 2.0), (2.0, 1.0, -1.0), (24.0, 56.0)),
-    "DownRight": ((0.0, 7.0, 1.0), (2.0, -1.0, -1.0), (95.0, 62.0)),
+    "DownRight": ((-2.0, -1.5, 1.0), (2.0, -1.0, -1.0), (95.0, 62.0)),
 }
-AIM_ROLL = {"Right": -35.0, "UpRight": -35.0, "DownRight": -35.0, "Down": 15.0}   # rod roll (deg): swings the reel out from behind
-                                                                     # the right fist towards the eye
+AIM_ROLL = {"Right": 18.0, "UpRight": 15.0, "DownRight": 23.5, "Down": 15.0}   # rod roll (deg): swings the reel out from
+                                                                     # behind the right fist towards the eye
+# T-033 (playtest A2: the hands clipped into one blob at a hard-right swing). The Right column is re-solved so each
+# forearm turns WITH the rod instead of the wrist doing it: the upper body turns 35 deg right (AIM_BODY_YAW, fixed for
+# the whole column so the 'arms' blend stays separable), the right elbow swings in under the rod and the left elbow
+# follows the crank (AIM_ELBOW_SWIVEL: (right, left) degrees about each shoulder-wrist axis, + = counter-clockwise
+# seen from the wrist). The grip, roll and swivels come from a search (wrist bend/twist vs Center, arm and rod
+# clearances, both fists in frame and apart, reel spool not hidden, sleeves below the frame; T-033 in SK_FPArms.anim.md).
+AIM_BODY_YAW = {1: -35.0}            # yaw input sign -> body yaw (deg); a side not listed is searched (aim_pose)
+AIM_ELBOW_SWIVEL = {"Right": (22.0, 12.0), "UpRight": (62.0, 14.0), "DownRight": (34.0, 8.5)}
 
 # HoldFish (T-030, designer review 2026-09-23: two hands). Rod stowed. The right hand cradles the fish under the
 # gills (the throat lies across the palm along the fist channel, head out of the thumb side, fingers wrapped up the
@@ -830,6 +838,12 @@ def _aim_try(B, sides, name, knob_grip, yaw_deg, pitch_deg):
     s_off = Vector(AIM_POSES[name][1]) * 0.01 if name != "Center" else Vector()
     tg = rod_hands_targets(B, R_rod, knob_grip, 0.0, RIGHT_SHOULDER_HOLD + s_off, Rb @ RIGHT_POLE_HOLD,
                            LEFT_SHOULDER_HOLD + s_off, Rb @ LEFT_POLE_HOLD)
+    swivel = AIM_ELBOW_SWIVEL.get(name)
+    if swivel is not None:
+        delta = arms_M @ B["arms"].inverted()
+        for s, deg in zip(("r", "l"), swivel):
+            S = delta @ sides[s].S + tg[s].shoulder_off
+            tg[s].pole = rot3(tg[s].wrist - S, deg) @ tg[s].pole
     return arms_M, tg
 
 
@@ -842,7 +856,7 @@ def aim_pose(B, sides, name, knob_grip):
     (Left/Right search the yaw 0..40 deg towards the aim side, Up/Down the pitch 0..15 deg; the corners combine their
     side's yaw and their Up/Down pitch), which keeps the aim-offset blend of the 'arms' bone separable and monotonic.
     The search (2.5 deg steps) keeps both wrists closest to their Center angles: sum of the flex, deviation and half
-    the twist changes, plus 0.4 per degree of body turn."""
+    the twist changes, plus 0.4 per degree of body turn. A side listed in AIM_BODY_YAW uses that yaw (T-033)."""
     if name in _AIM_CACHE:
         return _AIM_CACHE[name]
     sx, sy = next(k for k, v in AIM_GRID.items() if v == name)
@@ -852,6 +866,8 @@ def aim_pose(B, sides, name, knob_grip):
         best = (ay, ap, None)
     elif name == "Center":
         best = (0.0, 0.0, 0.0)
+    elif sy == 0 and sx in AIM_BODY_YAW:
+        best = (AIM_BODY_YAW[sx], 0.0, None)              # T-033: fixed for the Right column
     else:
         ref = full_pose(B, sides, B["arms"], _aim_try(B, sides, "Center", knob_grip, 0.0, 0.0)[1])[1]
         best = None
