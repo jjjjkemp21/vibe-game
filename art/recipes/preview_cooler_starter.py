@@ -39,6 +39,10 @@ import style  # noqa: E402
 OUT = pb.PREVIEW_ROOT / "SM_Cooler_Scenes.png"
 DECK_Z = -1.65
 LID_OPEN = math.radians(100.0)
+# Preview-only carry numbers for the rim-height handles, from the animation-artist's note in SK_FPArms.anim.md
+# (used only while anim_fp_arms.py still carries the old handle height)
+FP_RIM_CARRY_POS = (0.42, 0.0, -0.245)
+FP_RIM_CARRY_TILT_DEG = 10.0
 
 
 def load(name):
@@ -271,6 +275,16 @@ def stage_fp():
     info = {}
     try:
         anim = load("anim_fp_arms")
+        socket = cooler.grip_path(1, 0.0)
+        if (Vector(anim.COOLER_HANDLE_L) - socket).length > 1e-4:
+            # the carry clip still uses the old handle height: preview the new sockets with the carry numbers the
+            # animation-artist proposed for rim handles (SK_FPArms.anim.md, CarryCooler); the clip itself is theirs
+            anim.COOLER_HANDLE_L = socket.copy()
+            anim.COOLER_HANDLES_POS = Vector(FP_RIM_CARRY_POS)
+            anim.COOLER_TILT_DEG = FP_RIM_CARRY_TILT_DEG
+            info["carry_override"] = {"COOLER_HANDLE_L": [round(c, 4) for c in socket],
+                                      "COOLER_HANDLES_POS": list(FP_RIM_CARRY_POS),
+                                      "COOLER_TILT_DEG": FP_RIM_CARRY_TILT_DEG}
         ctx = anim.setup()                                    # resets the scene, builds arms + rig
         P, _m = ctx["poser"].carry(0)
         anim.apply_basis(ctx["arm_obj"], anim.pose_to_basis(ctx["B"], P))

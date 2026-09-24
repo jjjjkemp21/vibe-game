@@ -11,8 +11,8 @@ Preview: Saved/AgentLogs/previews/SM_Cooler_Starter.png (contact sheet: closed 3
 handle, top with the lid open, handle close-up). Scene checks (fish capacity, first-person carry, 1.2 m and 10 m dock
 views, colour variants): art/recipes/preview_cooler_starter.py.
 
-Size (Blender 1 unit = 1 m): body shell 0.40 (X) x 0.56 (Y) x 0.33 (Z) at the rim, rope handles stick out ~5.5 cm on
-each short side, closed height with the lid 0.392 m. Liner (inside) about 0.35 x 0.51 m at the floor (0.38 x 0.54 at
+Size (Blender 1 unit = 1 m): body shell 0.40 (X) x 0.56 (Y) x 0.33 (Z) at the rim, rim-height rope handles (grip
+center 0.306 m up) stick out ~5.5 cm on each short side, closed height with the lid 0.392 m. Liner (inside) about 0.35 x 0.51 m at the floor (0.38 x 0.54 at
 the lip), 0.28 m deep.
 
 Axes (Unreal = Blender x100 cm with Y negated, default FBX import; docs/ART_STYLE.md facing rule):
@@ -24,7 +24,8 @@ Axes (Unreal = Blender x100 cm with Y negated, default FBX import; docs/ART_STYL
   relative Pitch 0 (closed) .. about +100 (open; it clears the back wall).
 - Body sockets (SOCKET_ empties -> Unreal mesh sockets): LidHinge (lid attach point), Handle_L / Handle_R (middle
   of each rope grip on the rope's center line: hand IK / carry targets; Handle_L = Blender +Y = Unreal -Y), Contents
-  (liner floor center). Unchanged by the art pass; exact positions in RESULT_JSON "sockets".
+  (liner floor center). Handle_L/R moved to rim height for the first-person carry (2026-09-23: z 0.191 -> 0.306 m;
+  LidHinge and Contents unchanged); exact positions in RESULT_JSON "sockets".
 Collision: a UCX_ convex hull in each FBX (body: tapered box without the handles; lid: box). Unreal imports them as
 simple collision (auto-detected UCX_ prefix).
 Budget: small prop <= 2000 triangles for body + lid together. No accent red (#FF4D3D is the bobber's).
@@ -97,7 +98,8 @@ LID_TOP = 0.392
 FLOOR_Z = 0.050             # liner floor (Contents socket)
 LINER_LIP = -0.012          # liner inset from the outer wall at the lip ...
 LINER_FLOOR = -0.016        # ... and at the floor (thin stylized walls: every cm of liner counts for the fish)
-HANDLE_Z = 0.215
+HANDLE_Z = 0.296            # rope-end / bracket height: rim-mounted handles (bracket tops 4 mm under the lid)
+GRIP_LIFT = 0.010           # the grip arcs up 1 cm between its brackets (carried, pulled taut): center 0.306 m
 ROPE_R = 0.018              # grip rope radius (1.5x the first pass): a 36 mm grip for the two-hand carry
 LASH_R = 0.0215             # lashing turns stand proud of the grip
 DECAL = 0.0012              # decal offset off the surface
@@ -201,10 +203,12 @@ def strip(mb, cols, mat, center):
 # Body
 # ---------------------------------------------------------------------------------------------------
 def grip_path(side, x):
-    """Center line of a rope grip (x along the grip, -0.10..0.10): sags 2.4 cm down and 1.6 cm out in the middle."""
+    """Center line of a rope grip (x along the grip, -0.10..0.10): rises GRIP_LIFT and bows 1.6 cm out in the middle.
+    Everything stays below z 0.326 or outside the lid's footprint (|y| > 0.286), so the lid's opening arc (it never
+    dips under z 0.330 in front of the hinge) clears the handles all the way to +100 deg."""
     wall = half(HANDLE_Z)[1]
     s = math.sin(math.pi * (x + 0.100) / 0.200)
-    return Vector((x, side * (wall + 0.020 + 0.016 * s), HANDLE_Z - 0.024 * s))
+    return Vector((x, side * (wall + 0.020 + 0.016 * s), HANDLE_Z + GRIP_LIFT * s))
 
 
 # Grip stations (x, radius, material of the band to the next station): plain rope where the fist goes, three lashing
