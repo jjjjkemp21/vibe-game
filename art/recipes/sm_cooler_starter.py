@@ -1,7 +1,7 @@
 """SM_Cooler_Starter + SM_Cooler_Starter_Lid: the beginner's beat-up fishing cooler (T-030, holds 4 fish).
 
 Art pass after the designer review (Saved/AgentLogs/design/20260923-170000-cooler-review.md): a sun-faded sea-glass
-body (off the water hues), an aged-white lid with 3 sun-bleached patches, a chipped lid corner, a grimy base band with
+body (off the water hues), an aged-white lid with 3 small sun-faded patches and a scuff, a chipped lid corner, a grimy base band with
 dirt creeping up the wall, thick rope-wrapped handles for the two-hand first-person carry, a weathered fish sticker with
 a peeled corner, a strip of old tape over the lid's front edge and a darker liner. Two meshes so the lid can swing open.
 
@@ -58,8 +58,8 @@ VARIANTS = {
                                           # so it leaves the water's hue band (#3ED1C4 175, #0E6F7A 186 deg)
         "M_Cooler_Band": "#415F55",       # the raised stripe and the sticker's fish, deeper sea-glass
         "M_Cooler_Grime": "#4E4330",      # murky mud: the grimy base band
-        "M_Cooler_Lid": "#E8DCC4",        # aged, warm white
-        "M_Cooler_LidFaded": "#F3EDE0",   # sun-bleached facets on the lid top (a small step lighter)
+        "M_Cooler_Lid": "#E0D4BC",        # aged, warm white (a step down so it doesn't bloom butter-yellow in sun)
+        "M_Cooler_LidFaded": "#EAE1CF",   # sun-faded patches: ~5% lighter and less yellow than the lid
     },
     "white": {
         "M_Cooler_Body": "#E3DCCB",
@@ -338,35 +338,41 @@ CHIP_K = {16: 0.35, 17: 1.0, 18: 0.7}   # ring points at the back-right corner (
 CHIP_RINGS = {1: (0.009, 0.007), 2: (0.017, 0.015)}   # ring (side top, chamfer top): (inward, down) in m
 
 
-# Sun-bleached wear on the lid's top panel (flat at LID_TOP; the panel edge is the superellipse 0.144 x 0.224).
-# Low-poly style: the faded areas are big straight-edged facets (3-4 sided shards, sharing edges like a cut gem) that are
-# built into the panel's own triangulation, not free-form blobs or floating decals. Two touching shards on the sun side,
-# one small shard near the back corner. (x, y) corners, counter-clockwise seen from above.
-LID_FACETS = [
-    [(0.030, -0.190), (0.112, -0.115), (0.085, 0.005), (-0.035, -0.060)],
-    [(-0.035, -0.060), (0.085, 0.005), (0.010, 0.075)],
-    [(-0.112, 0.105), (-0.040, 0.125), (-0.070, 0.190), (-0.108, 0.168)],
-]
+# Wear on the lid's top panel (flat at LID_TOP; the panel edge is the superellipse 0.144 x 0.224), built into the
+# panel's own triangulation (coplanar, shared edges; no decals): small irregular straight-edged patches, each a few %
+# of the lid area and split over several triangles. (x, y) corners seen from above, slot.
+def _lid_wear():
+    return [
+        # sun-faded patches: irregular, different sizes, a small step lighter and less yellow than the lid
+        ([(0.010, -0.150), (0.045, -0.168), (0.085, -0.150), (0.105, -0.118), (0.080, -0.110), (0.062, -0.125),
+          (0.030, -0.118)], L_FADED),
+        ([(-0.095, -0.010), (-0.060, -0.030), (-0.035, -0.012), (-0.020, 0.028), (-0.048, 0.022), (-0.058, 0.050),
+          (-0.088, 0.035)], L_FADED),
+        ([(-0.110, 0.130), (-0.080, 0.122), (-0.066, 0.140), (-0.085, 0.150), (-0.078, 0.176), (-0.104, 0.166)],
+         L_FADED),
+        # a grey scuff at the panel's front edge beside the latch: seen from the first-person carry (the front faces
+        # the player in CarryCooler) and at the counter
+        ([(0.110, -0.098), (0.124, -0.104), (0.138, -0.076), (0.137, -0.046), (0.128, -0.040), (0.121, -0.066)],
+         L_LINER),
+    ]
 
 
 def build_lid_panel(mb, outer):
-    """The lid's flat top: the panel ring `outer` (BMVerts) and the LID_FACETS shards, filled by one constrained
-    Delaunay triangulation (all coplanar, shared edges); triangles inside a shard take the faded colour."""
+    """The lid's flat top: the panel ring `outer` (BMVerts) and the wear patches (_lid_wear), filled by one
+    constrained Delaunay triangulation; triangles inside a patch take its slot."""
     from mathutils.geometry import delaunay_2d_cdt
     bm = mb.bm
     pts = [Vector((v.co.x, v.co.y)) for v in outer]
     nb = len(pts)
-    faces = [list(range(nb))]
-    for facet in LID_FACETS:
-        idx = []
-        for p in facet:
-            q = Vector(p)
-            hit = next((k for k in range(nb, len(pts)) if (pts[k] - q).length < 1e-6), None)
-            if hit is None:
-                pts.append(q)
-                hit = len(pts) - 1
-            idx.append(hit)
-        faces.append(idx)
+    faces, mats = [list(range(nb))], [L_LID]
+    for poly, mat in _lid_wear():
+        area = sum(poly[k][0] * poly[(k + 1) % len(poly)][1] - poly[(k + 1) % len(poly)][0] * poly[k][1]
+                   for k in range(len(poly)))
+        if area < 0.0:
+            poly = list(reversed(poly))   # the CDT wants counter-clockwise faces
+        faces.append(list(range(len(pts), len(pts) + len(poly))))
+        pts.extend(Vector(p) for p in poly)
+        mats.append(mat)
     verts, _e, out_faces, orig_v, _oe, orig_f = delaunay_2d_cdt(pts, [], faces, 1, 1e-6)
     bmv = []
     for co, orig in zip(verts, orig_v):
@@ -374,7 +380,8 @@ def build_lid_panel(mb, outer):
         bmv.append(outer[ring[0]] if ring else bm.verts.new(Vector((co.x, co.y, LID_TOP))))
     for f, of in zip(out_faces, orig_f):
         face = bm.faces.new([bmv[k] for k in f])
-        face.material_index = L_FADED if any(k >= 1 for k in of) else L_LID
+        inner = [k for k in of if k >= 1]
+        face.material_index = mats[inner[0]] if inner else L_LID
 
 
 def build_lid(mats):
@@ -412,6 +419,13 @@ def build_lid(mats):
     aabox(mb, (hx - 0.002, -0.036, 0.356), (hx + 0.012, 0.036, 0.366), L_DARK)
 
     bmesh.ops.recalc_face_normals(mb.bm, faces=mb.bm.faces[:])
+
+    # The scuff continues on the lid's front band beside the latch (the band is what the carry pose shows)
+    band = []
+    for y, z in ((-0.108, 0.343), (-0.090, 0.340), (-0.062, 0.344), (-0.050, 0.352), (-0.058, 0.361),
+                 (-0.080, 0.357), (-0.101, 0.362)):
+        band.append((se_x(y, hx, hy) + 0.0008, y, z))
+    decal(mb, band, L_LINER, (1, 0, 0))
 
     # Old masking tape over the lid's front edge near the +Y corner, a little skewed.
     cols = []
