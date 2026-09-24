@@ -66,16 +66,19 @@ public:
 
 	// ---- Held items: owner's first-person view (the item is drawn as a first-person primitive there) ----
 
-	/** Bone or socket of the first-person arms the held fish's Grip goes to (the HoldFish clip's hand). None or missing = the camera. */
+	/**
+	 *  Bone or socket of the first-person arms whose frame is the held fish's Grip frame (SK_FPArms.anim.md "HoldFish": bone
+	 *  hand_r_fish, X = the fish's head, Z = its back). The fish snaps to it with rotation 0. None or missing = the camera.
+	 */
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category="Held Fish")
 	FName HeldFishSocket;
 
-	/** The fish's Grip relative to that socket (or to the camera without arms), cm and degrees */
+	/**
+	 *  The right palm's contact on the fish (under the gills), cm from its Grip bone at scale 1 in the fish's axes. The fish
+	 *  grows about this point, so it stays on the palm at any size: relative location = -S x Grip + (1 - S) x this.
+	 */
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category="Held Fish")
-	FVector HeldFishOffset;
-
-	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category="Held Fish")
-	FRotator HeldFishRotation;
+	FVector HeldFishContactPoint;
 
 	/** Where the held fish is without arms (tests, a missing mesh): relative to the camera */
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category="Held Fish")

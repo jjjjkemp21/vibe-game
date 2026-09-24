@@ -99,6 +99,14 @@ public:
 	FVector GetMouthOffset() const { return MouthOffset * WeightScale; }
 	FVector GetGripOffset() const { return GripOffset * WeightScale; }
 
+	/**
+	 *  The held fish's location relative to the first-person hand bone (SK_FPArms.anim.md "HoldFish"), rotation 0:
+	 *  -Scale x GripAtScale1 + (1 - Scale) x Contact. GripAtScale1 = the Grip bone in the fish's component space at scale 1,
+	 *  Contact = the right palm's contact from the Grip (ULureCatchSettings::HeldFishContactPoint). The contact point lands on
+	 *  Contact in the bone's frame at every scale; at scale 1 it is just -GripAtScale1.
+	 */
+	static FVector ComputeHeldFishLocation(const FVector& GripAtScale1, float Scale, const FVector& Contact);
+
 	/** How high its origin sits above the ground when it lies on its side, cm */
 	float GetLieHeight() const { return LieHeight * WeightScale; }
 

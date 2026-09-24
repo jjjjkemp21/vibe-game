@@ -11,6 +11,7 @@
 #include "LureCarryableItem.generated.h"
 
 class APawn;
+class UPrimitiveComponent;
 class USceneComponent;
 
 /**
@@ -162,7 +163,13 @@ protected:
 
 	bool bFirstPersonRendering = false;
 
+	/** Subclasses: while drawn first person, the item's primitives cast no shadow (restored when it leaves the hand) */
+	bool bNoShadowInFirstPerson = false;
+
 private:
+
+	/** Primitives whose shadow SetFirstPersonRendering turned off (bNoShadowInFirstPerson), to turn back on */
+	TArray<TWeakObjectPtr<UPrimitiveComponent>> FirstPersonShadowOff;
 
 	/** Drop flight on this machine */
 	double FlightStartTime = -1.0;
