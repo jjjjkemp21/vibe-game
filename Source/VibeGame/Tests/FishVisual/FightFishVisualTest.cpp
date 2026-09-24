@@ -5,6 +5,7 @@
 // replication layout).
 
 #include "Tests/FishFight/FightQATestUtils.h"
+#include "Tests/FishVisual/FightFishVisualQATestUtils.h" // LureFightFishQA::LandedFishHandedOff / ClearHangingCatch (was only reachable through the unity blob)
 
 #if WITH_DEV_AUTOMATION_TESTS
 

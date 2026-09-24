@@ -137,6 +137,43 @@ Retired with T-030 (the abstract player-state cooler and `ALureSellPoint` no lon
 - Two players racing for the last fish in a cooler / the same loose fish (the second request is refused as stale).
 - Gaps (not automated): the look of the hanging fish, the first-person held fish and carried cooler (offsets in ULureCatchSettings), the curled display with the real A_Fish_Curled pose and the imported SM_Cooler_Starter meshes (sockets LidHinge, Contents): playtester + designer after the editor-operator's imports.
 
+### T-030 independent QA (qa-engineer, 2026-09-23)
+Black-box tests from the acceptance criteria and `docs/specs/catch-handling-rules.md`, written apart from the implementer's. Files in `Source/VibeGame/Tests/Catch/`: `QACatchTestUtils.h` (namespace `LureCatchQA`: OracleFreshness/OracleShare/OraclePrice, strict CountCopies, CountCoolers, FrontFacing, Roll, Record), `QACatchRulesTest.cpp` (8), `QACatchWorldTest.cpp` (27, with the engineer's 2 regressions from 1a97b46), `QACatchNetTest.cpp` (4). Total 39, paths `Project.Catch.QA.<Group>.<Name>`.
+
+| Group | Area | Tests |
+|---|---|---|
+| Freshness | Freshness | `CurveMatchesOracle`, `PriceRoundsHalfUpWithFloor`, `AnchorLongSessionAndBadRates`, `RowLookupFallbacks`, `CoolerRatesComeFromTheRow`, `SpeciesRowInTheWorld` |
+| Data | Data validation (shipped CSVs) | `ShippedTablesRestated`, `FreshnessValidatorBoundaries`, `CatchRowValidatorBoundaries`, `DisplayValidatorBoundaries` |
+| Conservation | Conservation (no fish copied or lost) | `FullJourneyOneRecord`, `FullCoolerKeepsFishInHand`, `RaceForLastFishInCooler`, `RaceForLooseFishAndCooler`, `ServerCallsRefuseItemsNotHeld`, `PawnLeavesMidCarry`, `PawnLeavesWithFishInHandAndOnHook` |
+| Sell | Selling | `PaysOnceToThePresserForRealCatches`, `OnlyThisCountersFish`, `CounterFishKeepSpoiling`, `MarketFallbacksAndMoneySaturates`, `ServerRangeAndNoPlayerState` |
+| PutDown | Put-down | `FacesPlayerAtEveryYaw`, `ProneFacesPlayer`, `WaterFacesPlayer`, `CaughtFacesPlayer`, `StepHeightBoundary`, `NeverInCounterArea`, `BoxIncludesClosedLid` |
+| Save | Save/load + starter cooler | `RealCatchesRoundTripNoDupes`, `FallbackStarterCooler`, `FallbackStartersDoNotOverlap`, `ReapplyAfterTakeOutNoDupes` |
+| Water | Water + getting caught | `HangingFishGoesToLastDryGround` |
+| Caught | Getting caught | `LosesHandAndHookFishOnly` |
+| Net | Network: 2 clients + dedicated server (races, a quit) | `SimultaneousTakeOutOneWinner`, `SimultaneousSellPaysOnce`, `SellRacesTakeBack`, `CarrierLeavesCoolerStaysUsable` |
+
+Patterns to reuse (copy these when extending):
+- Conservation census after every step, on every machine: each catch (Seed + Species + Rarity) exists exactly once (hand, hook, loose, counter or cooler record), or zero times after a sale. Server: strict `LureCatchQA::CountCopies`; clients: the identity census in QACatchNetTest.
+- Money comes from the oracle (`OraclePrice(Value, OracleShare(...), Multiplier)`), never from the product's own quote.
+- Resolve the verb and assert it before every press. A wrong prompt is a test bug, not a pass. Watch the focus rule: facing a counter that has fish on it, E sells.
+- Same-frame races: `PressKey` on both clients with no tick in between. Assert exactly one winner, never assume which one, and log it with AddInfo.
+- A player quitting: remove the LAST client's FTestWorldInstance (`Worlds.Clients.RemoveAt`) and never touch it again. Fall back to `AGameSession::KickPlayer`: VibeGame doesn't link NetCore, so `UNetConnection::Close()` fails to link.
+- The net harness runs ALureGameMode, so every player already has a starter cooler: count coolers against a before-count, never as an absolute.
+
+Bugs found:
+- F1 (fixed in 1a97b46): players sharing one start spot, with no `Lure.CoolerSpawn` marker, got their starter coolers in the same place. Regression: `Save.FallbackStartersDoNotOverlap`.
+- Save re-apply after a take-out copied fish (found and fixed by the engineer in 1a97b46). Regression: `Save.ReapplyAfterTakeOutNoDupes`.
+- Net: no product bug. In both races exactly one player wins, the sale is paid once, and no fish is copied or lost. When the carrier quits, the cooler is put down at their last dry ground with its fish and a closed lid, and the other player can pick it up.
+
+Observations (per spec, not bugs):
+- A sale that races a take-back pays for what is on the counter when the server runs it. That can be fewer fish than the prompt showed.
+- E facing a counter with fish sells, even when your own fish is hanging (the focused target's verb wins). UX note for the playtest.
+- DT_Catch PutDownDistance 80 vs the display's 0.6 m: data follow-up, already in TASKS.
+- A map without a PlayerStart still gives starter coolers: the engine's start spot is then the WorldSettings (the net harness gets 2). Harmless for Palm Key, which has player starts.
+- Unity builds: adding a test .cpp regrouped the blobs and exposed a missing include in `Tests/FishVisual/FightFishVisualTest.cpp`. Fixed: it now includes `FightFishVisualQATestUtils.h`.
+
+Gaps: races under latency or packet loss (`FScopedNetEmulationOverride` unused), 3-4 players, a listen-server host racing a client, the owner reconnecting to their coolers (T-019), visuals (lid, carry pose, counter layout: playtester + designer).
+
 ## T-010 cooler, selling, money, XP and levels (lane eng5)
 (T-030 retired the cooler and sell-point tests of this section; see the T-030 section above.)
 Implementer tests: `Tests/Progression/Progression{Component,Data,Interaction,Rules}Test.cpp`, `Project.Progression.{Cooler,Level,Landed,Money,Authority,Caught,Save,Data,Sell,Interact,Net}.*`, 25 tests (unreal-engineer).
