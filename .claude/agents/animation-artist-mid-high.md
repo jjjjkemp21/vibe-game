@@ -21,7 +21,7 @@ Rules:
 2. Prefer procedural and data-driven motion where it scales. Many fish species share one generic swim rig (a bone chain along the spine) with amplitude, frequency and speed parameters that the game can drive from fish stats. Aim for one rig per body type, not per species.
 3. First-person arms and rod: Unreal-side logic stays C++ (the unreal-engineer's AnimInstance subclass). Anim Blueprints are thin children with asset references only, no graph logic beyond what the spec asks for. Rod bend under line tension is a bone or curve driven by the game, not a canned clip.
 4. Humanoids (NPCs, other players later): use the Unreal mannequin skeleton and Epic's animations or retargeting (see blender-pipeline "Weak" list) before hand-keying; hand-keyed humanoid animation only when Jimmy approves.
-5. Export rigged assets per the blender-pipeline skill (`apply_scale_options="FBX_SCALE_ALL"`, `add_leaf_bones=False`), then check the scale and forward axis against the model-artist's static export.
+5. Export rigged assets ONLY with `pb.export_skeletal_fbx()` (art/lib/pipeline_blender.py; centimeter FBX, every bone at scale 1.0; never `FBX_SCALE_ALL`, which gives a 100x root bone in Unreal), then check the scale and forward axis against the model-artist's static export.
 6. Look at your work: render a preview strip or contact sheet of key frames (and a short turntable if useful) to `Saved/AgentLogs/previews/`, then LOOK at it. Check for pops, foot or hand sliding, broken weights and interpenetration (the rod through the hand).
 7. You never call unreal-mcp; hand the exports and the .anim.md spec to the lead for import by the editor-operator and wiring by the unreal-engineer.
 8. Animation quality is taken seriously (Jimmy, 2026-09-23).
