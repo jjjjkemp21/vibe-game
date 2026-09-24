@@ -28,10 +28,47 @@ struct FLureFightFish
 	float DifficultyRating = 1.f;
 };
 
-/** The player's input to one step. */
+/**
+ *  The player's input to one step. The defaults are the neutral rod (level, centered, the default reel step): with them the
+ *  fight is exactly the T-007 fight. The server clamps whatever a client sends (FLureFight::SanitizeInput).
+ */
 struct FLureFightInput
 {
 	bool bReeling = false;
+
+	/** T-028: rod pitch, -1 = fully dipped toward the fish, 0 = level, +1 = pulled fully back/up. */
+	float RodPitch = 0.f;
+
+	/** T-028: rod yaw relative to the line, -1 = fully left, 0 = centered, +1 = fully right. */
+	float RodYaw = 0.f;
+
+	/** T-028: reel speed step, 0-based; INDEX_NONE = the tuning's default step (ReelDefaultStep). */
+	int32 ReelStep = INDEX_NONE;
+};
+
+/**
+ *  What the rod input does in one step (FLureFight::RodFactors). Every field is a multiplier (Side excepted); the defaults are
+ *  the neutral rod, and multiplying by them changes nothing (so the T-007 formulas are the neutral case, bit for bit).
+ */
+struct FLureRodFactors
+{
+	/** Pitch pressure: x the tension target (and x the rod's power through Power). 1 + p x PitchBackPressure, or 1 + p x PitchDipPressure. */
+	float Pressure = 1.f;
+
+	/** Side score: +1 = rod fully against the fish's sideways run, -1 = fully with it, 0 = centered or no sideways run. */
+	float Side = 0.f;
+
+	/** x the rod's power (line gain and line taken while reeling): Pressure x (1 + Side x SideLeverage). */
+	float Power = 1.f;
+
+	/** Reel step: x the rod's ReelSpeed, and x the rod's cranking load (RodPower x ReelLoad) in the reeling tension. */
+	float ReelSpeed = 1.f;
+	float ReelLoad = 1.f;
+
+	/** Turning (only against the run): x the fish's pull, x the speed of its move's clock, x its stamina drain. */
+	float Pull = 1.f;
+	float MoveClock = 1.f;
+	float Drain = 1.f;
 };
 
 /** One fight in progress (server). Begin() fills it; Step()/Advance() move it on. */
@@ -71,6 +108,13 @@ struct FLureFightState
 	float SideSign = 1.f;
 	bool bExhausted = false;
 	bool bReeling = false;
+	/** T-028: the rod input of the last step (clamped; ReelStep resolved to a real step) and what it did. */
+	float RodPitch = 0.f;
+	float RodYaw = 0.f;
+	int32 ReelStep = 0;
+	/** The fish's sideways direction in the last step (-1 left, 0 none, +1 right) and the side score the rod got against it. */
+	int32 RunDir = 0;
+	float Side = 0.f;
 	ELureFightOutcome Outcome = ELureFightOutcome::None;
 
 	bool IsOver() const { return Outcome != ELureFightOutcome::None; }
@@ -80,23 +124,30 @@ struct FLureFightState
 };
 
 /**
- *  The fight, one fixed step (1 / SimRate s) at a time:
- *   1. Move: when the current move's time is up, pick the next one: weight_i = max(0, Weight_i + Aggression x AggressionWeight_i),
- *      one draw from the fight's RNG (FFishRoll::PickWeightedIndex); duration random in [Min, Max] (x RestScale for Rest moves).
- *      An exhausted fish makes no moves.
+ *  The fight, one fixed step (1 / SimRate s) at a time. The rod input (T-028) gives the factors of FLureRodFactors (RodFactors):
+ *   Pressure P  = 1 + p x PitchBackPressure (p >= 0) or 1 + p x PitchDipPressure (p < 0), p = RodPitch in [-1, 1]
+ *   RunDir      = sign(Move.Side x SideSign) when |Move.Side| >= SideMinShare, else 0 (also 0 when exhausted)
+ *   Side S      = clamp(-RodYaw x RunDir, -1, 1)   (+1 = rod fully against the sideways run, -1 = fully with it), S+ = max(0, S)
+ *   Power       = P x (1 + S x SideLeverage)          ReelSpeed/ReelLoad from the reel step (ReelStepSpeed, ReelStepLoad)
+ *   Turning     = against the run only: Pull x (1 - S+ x SideTurnPull), MoveClock x (1 + S+ x SideTurnRate), Drain x (1 + S+ x SideDrain)
+ *  With the neutral rod (p = 0, RodYaw = 0, the default step of speed 1) every factor is 1 and this is the T-007 fight exactly.
+ *   1. Move: the move's clock runs MoveClock (of the current move) x dt; when its time is up, pick the next one:
+ *      weight_i = max(0, Weight_i + Aggression x AggressionWeight_i), one draw from the fight's RNG (FFishRoll::PickWeightedIndex);
+ *      duration random in [Min, Max] (x RestScale for Rest moves); a RandomSide move draws its side. An exhausted fish makes no moves.
  *   2. Fish: StaminaFactor = TiredPull + (1 - TiredPull) x Stamina.
- *        Pull  = BasePull x Move.Pull x StaminaFactor            (exhausted: BasePull x TiredPull)
+ *        Pull  = BasePull x Move.Pull x StaminaFactor x Turning.Pull   (exhausted: BasePull x TiredPull)
  *        Speed = BaseSpeed x Move.Speed x StaminaFactor          (exhausted: 0); away speed Va = Speed x Move.Away
- *   3. Line (LineOut changes by Taken - Gain per second):
- *        reeling:  Gain  = ReelSpeed x clamp(1 - Pull / RodPower, 0, 1)
- *                  Taken = Va x clamp(Pull / RodPower - 1, 0, 1)          (Va <= 0: Taken = Va, the fish comes toward you)
+ *   3. Line (LineOut changes by Taken - Gain per second), RodPower' = RodPower x Power, ReelSpeed' = ReelSpeed x ReelStepSpeed:
+ *        reeling:  Gain  = ReelSpeed' x clamp(1 - Pull / RodPower', 0, 1)
+ *                  Taken = Va x clamp(Pull / RodPower' - 1, 0, 1)          (Va <= 0: Taken = Va, the fish comes toward you)
  *        not:      Gain  = 0
  *                  Taken = Va x clamp((Pull / Drag - DragHold) / (1 - DragHold), 0, 1)   (Va <= 0: Taken = Va)
  *   4. Tension eases toward its target with time constant TensionRiseTime (rising) / TensionFallTime (falling):
- *        reeling:  Target = Pull x ReelStrain + RodPower x ReelLoad
- *        not:      Target = min(Pull, Drag)
- *   5. Stamina: the fish spends Tension x dt of its pool; while the line is slack it regains StaminaRecovery x pool per second.
- *      At ExhaustedStamina it is exhausted for good.
+ *        reeling:  Target = (Pull x ReelStrain + RodPower x ReelLoad x ReelStepLoad) x P
+ *        not:      Target = min(Pull x P, Drag)      (letting it run never goes over the drag, whatever the rod does)
+ *   5. Stamina: the fish spends Tension x dt x Turning.Drain of its pool; while the line is slack it regains StaminaRecovery x pool
+ *      per second. At ExhaustedStamina it is exhausted for good.
+ *      Cosmetic: the sideways swing SideDeg moves by Speed x Side x SideSign x dt / radius x (1 - 2 x S+) (a turned fish swings back).
  *   6. Outcome (first that applies): LineOut <= LandDistance -> Landed; LineOut > SpoolLength -> Spooled;
  *      Tension > LineStrength for longer than SnapGraceTime -> Snapped; Tension < SlackTension (= SlackShare x BasePull) for
  *      longer than SlackGraceTime x HookSecurity -> ThrewHook. The timers reset when their condition stops.
@@ -115,14 +166,45 @@ struct FLureFight
 	/** Swim speed of the fish in Move (null = exhausted: 0), cm/s. */
 	static float FishSpeed(const FLureFightFish& Fish, const FLureFightMove* Move, float Stamina01, const FLureFishFightRow& Tuning);
 
-	/** The tension the line heads for (step 4). */
-	static float TargetTension(float Pull, bool bReeling, const FLureGearStats& Gear, const FLureFishFightRow& Tuning);
+	/** The tension the line heads for (step 4). Rod = the rod input's factors (default: the neutral rod). */
+	static float TargetTension(float Pull, bool bReeling, const FLureGearStats& Gear, const FLureFishFightRow& Tuning, const FLureRodFactors& Rod = FLureRodFactors());
 
 	/** Line reeled in per second (step 3), cm/s. */
-	static float LineGainSpeed(float Pull, bool bReeling, const FLureGearStats& Gear);
+	static float LineGainSpeed(float Pull, bool bReeling, const FLureGearStats& Gear, const FLureRodFactors& Rod = FLureRodFactors());
 
 	/** Line the fish takes per second (step 3; negative when it swims toward you), cm/s. AwaySpeed = Speed x Move.Away. */
-	static float LineTakenSpeed(float Pull, float AwaySpeed, bool bReeling, const FLureGearStats& Gear, const FLureFishFightRow& Tuning);
+	static float LineTakenSpeed(float Pull, float AwaySpeed, bool bReeling, const FLureGearStats& Gear, const FLureFishFightRow& Tuning,
+		const FLureRodFactors& Rod = FLureRodFactors());
+
+	// ---- Rod steering (T-028) ----
+
+	/** Clamps a client's rod input: pitch and yaw into [-1, 1] (non-finite = 0), the reel step to a real step (INDEX_NONE = default). */
+	static FLureFightInput SanitizeInput(const FLureFightInput& Input, const FLureFishFightRow& Tuning);
+
+	/** Pitch pressure P for a rod pitch in [-1, 1] (non-finite = level). */
+	static float PitchPressure(float RodPitch, const FLureFishFightRow& Tuning);
+
+	/** The fish's sideways direction in Move with its random side: -1 left, +1 right, 0 none (below SideMinShare, or no move). */
+	static int32 RunDirection(const FLureFightMove* Move, float SideSign, const FLureFishFightRow& Tuning);
+
+	/** Side score of a rod yaw against a run direction: clamp(-RodYaw x RunDir, -1, 1). */
+	static float SideScore(float RodYaw, int32 RunDir);
+
+	/** Number of reel steps (ReelSteps, at least 1) and the default one, 0-based. */
+	static int32 NumReelSteps(const FLureFishFightRow& Tuning);
+	static int32 DefaultReelStep(const FLureFishFightRow& Tuning);
+
+	/** A reel step clamped into range; INDEX_NONE (or any negative) = the default step. */
+	static int32 ClampReelStep(int32 Step, const FLureFishFightRow& Tuning);
+
+	/** Speed of a step (x the rod's ReelSpeed): ReelSpeedMin .. ReelSpeedMax evenly; a single step is 1. */
+	static float ReelStepSpeed(int32 Step, const FLureFishFightRow& Tuning);
+
+	/** Cranking load of a step (x RodPower x ReelLoad): max(0, 1 + (speed - 1) x ReelLoadPerSpeed). */
+	static float ReelStepLoad(int32 Step, const FLureFishFightRow& Tuning);
+
+	/** Everything the rod input does in a step while the fish makes Move (null = exhausted) with its SideSign. */
+	static FLureRodFactors RodFactors(const FLureFightInput& Input, const FLureFightMove* Move, float SideSign, const FLureFishFightRow& Tuning);
 
 	/** One easing step of the tension toward Target. */
 	static float EaseTension(float Current, float Target, float DeltaTime, const FLureFishFightRow& Tuning);

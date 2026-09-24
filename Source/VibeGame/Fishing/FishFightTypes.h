@@ -24,6 +24,19 @@ enum class ELureGearSlot : uint8
 	Hook
 };
 
+/**
+ *  Which way the hooked fish swims across the line right now (T-028): its move's Side share x its random side, when that
+ *  share is at least DT_FishFight SideMinShare. The player steers the rod the other way to turn it.
+ */
+UENUM(BlueprintType)
+enum class ELureFightRunSide : uint8
+{
+	/** Straight away, toward you, down, resting or tired: no side to steer against. */
+	None,
+	Left,
+	Right
+};
+
 /** How a reel fight ended (None = still on). */
 UENUM(BlueprintType)
 enum class ELureFightOutcome : uint8
@@ -429,8 +442,96 @@ struct FLureFishFightRow : public FTableRowBase
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Look", meta=(ClampMin="0.01", ClampMax="1"))
 	float TautTension = 0.3f;
 
-	/** Finite, in range, SimRate 10-240, the four stat tags set. */
+	// ---- Rod steering (T-028; docs/specs/reel-fight-rules.md "Rod steering"). Optional columns: a missing one uses the default. ----
+	// The rod input is RodPitch (-1 dipped toward the fish .. +1 pulled back/up) and RodYaw (-1 left .. +1 right of the line).
+	// Level and centered at the default reel step is exactly the T-007 fight.
+
+	/** Mouse/stick look degrees that take the rod from level to fully pulled back (RodPitch +1). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Rod aim", meta=(ClampMin="1", DataTableImportOptional))
+	float RodAimUpDeg = 35.f;
+
+	/** Look degrees from level to fully dipped toward the fish (RodPitch -1). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Rod aim", meta=(ClampMin="1", DataTableImportOptional))
+	float RodAimDownDeg = 35.f;
+
+	/** Look degrees from centered to fully left or right (RodYaw -1 / +1). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Rod aim", meta=(ClampMin="1", DataTableImportOptional))
+	float RodAimSideDeg = 45.f;
+
+	/** Rod pulled fully back: the tension you apply and the rod's power x (1 + this). In between: linear. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Rod aim", meta=(ClampMin="0", DataTableImportOptional))
+	float PitchBackPressure = 0.3f;
+
+	/** Rod fully dipped: the tension you apply and the rod's power x (1 - this). Below 1 (the rod keeps some power). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Rod aim", meta=(ClampMin="0", ClampMax="0.95", DataTableImportOptional))
+	float PitchDipPressure = 0.5f;
+
+	/** A move's |Side| share at or above this is a sideways run (left or right by its random side); below it, no side. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Side pressure", meta=(ClampMin="0", ClampMax="1", DataTableImportOptional))
+	float SideMinShare = 0.15f;
+
+	/** Side score S (+1 = rod fully against the run, -1 = fully with it): the rod's power x (1 + S x this). Below 1. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Side pressure", meta=(ClampMin="0", ClampMax="0.95", DataTableImportOptional))
+	float SideLeverage = 0.5f;
+
+	/** Against the run (S > 0) the fish is turned: its move's clock runs (1 + S x this) times as fast (the run ends sooner). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Side pressure", meta=(ClampMin="0", DataTableImportOptional))
+	float SideTurnRate = 1.f;
+
+	/** Against the run: the fish's pull x (1 - S x this) while it is being turned. Below 1. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Side pressure", meta=(ClampMin="0", ClampMax="0.95", DataTableImportOptional))
+	float SideTurnPull = 0.2f;
+
+	/** Against the run: the fish spends stamina (1 + S x this) times as fast. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Side pressure", meta=(ClampMin="0", DataTableImportOptional))
+	float SideDrain = 1.5f;
+
+	/** Reel speed steps (mouse wheel / bumpers), evenly spaced from ReelSpeedMin to ReelSpeedMax times the rod's ReelSpeed. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Reel speed", meta=(ClampMin="1", ClampMax="9", DataTableImportOptional))
+	int32 ReelSteps = 3;
+
+	/** The step a new player starts on, 1-based as the HUD shows it ("Reel 2/3"). Its speed should be 1 (= the T-007 reel). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Reel speed", meta=(ClampMin="1", ClampMax="9", DataTableImportOptional))
+	int32 ReelDefaultStep = 2;
+
+	/** Speed of the slowest and the fastest step, x the rod's ReelSpeed (one step = speed 1). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Reel speed", meta=(ClampMin="0.05", DataTableImportOptional))
+	float ReelSpeedMin = 0.5f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Reel speed", meta=(ClampMin="0.05", DataTableImportOptional))
+	float ReelSpeedMax = 1.5f;
+
+	/** Cranking load: the rod's reeling load (RodPower x ReelLoad) x max(0, 1 + (step speed - 1) x this). Fast reeling adds tension. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Reel speed", meta=(ClampMin="0", DataTableImportOptional))
+	float ReelLoadPerSpeed = 1.5f;
+
+	/** Owner's camera while a fish is on: eases toward the fish (plus a share of the rod's aim) with this time constant, s. 0 = snaps. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Camera", meta=(ClampMin="0", DataTableImportOptional))
+	float CameraFollowTime = 0.35f;
+
+	/** Share of the rod's yaw and pitch (in look degrees) the camera turns with. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Camera", meta=(ClampMin="0", ClampMax="1", DataTableImportOptional))
+	float CameraRodYawShare = 0.5f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Camera", meta=(ClampMin="0", ClampMax="1", DataTableImportOptional))
+	float CameraRodPitchShare = 0.35f;
+
+	/** Placeholder rod turn at full aim, degrees (until ABP_FPArms plays the rod-aim aim offset; then the arms turn it). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Look", meta=(ClampMin="0", DataTableImportOptional))
+	float RodAimLookPitchDeg = 20.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Look", meta=(ClampMin="0", DataTableImportOptional))
+	float RodAimLookYawDeg = 25.f;
+
+	/** The arms' rod aim (and other players' view of this rod) eases toward the aim with this time constant, s; back to level after the fight. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Look", meta=(ClampMin="0", DataTableImportOptional))
+	float RodAimBlendTime = 0.1f;
+
+	/** Finite, in range, SimRate 10-240, the four stat tags set, the rod-steering columns in range. */
 	bool Validate(FString& OutProblem) const;
+
+	/** The T-028 rod-steering columns only (part of Validate). */
+	bool ValidateRodSteering(FString& OutProblem) const;
 
 	/** The built-in tuning (= the shipped DT_FishFight Default row; a test checks). */
 	static FLureFishFightRow GetFallbackRow();
@@ -504,6 +605,24 @@ struct FLureFightNetState
 
 	UPROPERTY(BlueprintReadOnly, Category="Fight")
 	float SlackProgress = 0.f;
+
+	/**
+	 *  T-028: the rod angle the server fights with (the owner's last input, -1..1; pitch + = pulled back/up, yaw + = right of
+	 *  the line). Cosmetic for other players (their view of this player's rod and line); the owner uses its own live aim.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category="Fight")
+	float RodPitch = 0.f;
+
+	UPROPERTY(BlueprintReadOnly, Category="Fight")
+	float RodYaw = 0.f;
+
+	/** The reel speed step the server fights with, 0-based (the HUD shows ReelStep + 1). */
+	UPROPERTY(BlueprintReadOnly, Category="Fight")
+	uint8 ReelStep = 0;
+
+	/** Which way the fish swims across the line right now (the HUD's "Fish runs LEFT: pull right"). */
+	UPROPERTY(BlueprintReadOnly, Category="Fight")
+	ELureFightRunSide RunSide = ELureFightRunSide::None;
 
 	/** Tension / line strength (0 if no line). */
 	float GetTension01() const { return LineStrength > 0.f ? Tension / LineStrength : 0.f; }

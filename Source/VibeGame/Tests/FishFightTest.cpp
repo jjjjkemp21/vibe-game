@@ -952,7 +952,8 @@ bool FLureFightSlackThrowsHook::RunTest(const FString& Parameters)
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLureFightServerAuthority, "Project.Fishing.Fight.ServerAuthority", LureFishFightTest::TestFlags)
 bool FLureFightServerAuthority::RunTest(const FString& Parameters)
 {
-	// What a client can send: the three T-006 requests plus its reel button, nothing about the fish or the outcome.
+	// What a client can send: the three T-006 requests, its reel button and (T-028) its rod aim + reel step, nothing about the fish
+	// or the outcome. The rod input's own checks: Project.Fishing.Fight.Rod.ServerAuthorityOverTheRod.
 	UClass* Class = ULureFishingComponent::StaticClass();
 	TSet<FString> ServerRpcs;
 	for (TFieldIterator<UFunction> It(Class, EFieldIteratorFlags::ExcludeSuper); It; ++It)
@@ -962,10 +963,14 @@ bool FLureFightServerAuthority::RunTest(const FString& Parameters)
 			ServerRpcs.Add(It->GetName());
 		}
 	}
-	TestEqual(TEXT("server RPCs = ServerCast, ServerHook, ServerReelIn, ServerSetReeling"), ServerRpcs.Num(), 4);
-	for (const TCHAR* Name : { TEXT("ServerCast"), TEXT("ServerHook"), TEXT("ServerReelIn"), TEXT("ServerSetReeling") })
+	TestEqual(TEXT("server RPCs = ServerCast, ServerHook, ServerReelIn, ServerSetReeling, ServerSetFightInput"), ServerRpcs.Num(), 5);
+	for (const TCHAR* Name : { TEXT("ServerCast"), TEXT("ServerHook"), TEXT("ServerReelIn"), TEXT("ServerSetReeling"), TEXT("ServerSetFightInput") })
 	{
 		TestTrue(FString::Printf(TEXT("%s is a server RPC"), Name), ServerRpcs.Contains(Name));
+	}
+	if (const UFunction* FightInput = Class->FindFunctionByName(TEXT("ServerSetFightInput")))
+	{
+		TestFalse(TEXT("ServerSetFightInput is unreliable (a stream of aim updates; the reel button stays reliable)"), FightInput->HasAnyFunctionFlags(FUNC_NetReliable));
 	}
 	const UFunction* SetReeling = Class->FindFunctionByName(TEXT("ServerSetReeling"));
 	if (TestNotNull(TEXT("ServerSetReeling"), SetReeling))

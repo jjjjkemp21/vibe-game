@@ -126,7 +126,7 @@ public:
 	UFUNCTION(BlueprintCallable, Category="Lure|Input")
 	void DoMove(float Right, float Forward);
 
-	/** Look input in degrees (yaw right, pitch up). */
+	/** Look input in degrees (yaw right, pitch up). While a fish is on it steers the rod instead (T-028, ULureFishingComponent::ConsumeLookInput). */
 	UFUNCTION(BlueprintCallable, Category="Lure|Input")
 	void DoLook(float YawDegrees, float PitchDegrees);
 

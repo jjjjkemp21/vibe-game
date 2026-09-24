@@ -11,6 +11,12 @@ namespace LureFishFightPrivate
 		return FMath::IsFinite(Value) ? Value : Fallback;
 	}
 
+	/** A rod axis value in [-1, 1]; anything non-finite is the neutral 0. */
+	float ClampUnit(float Value)
+	{
+		return FMath::IsFinite(Value) ? FMath::Clamp(Value, -1.f, 1.f) : 0.f;
+	}
+
 	/**
 	 *  "Longer than Grace": the timers grow by whole fixed steps, so count those steps (float sums drift: 36 x 1/60 is
 	 *  0.600000083 > 0.6) and compare with the grace in steps (a tiny tolerance absorbs the grace's own float rounding).
@@ -88,26 +94,33 @@ float FLureFight::FishSpeed(const FLureFightFish& Fish, const FLureFightMove* Mo
 	return Fish.BaseSpeed * FMath::Max(0.f, LureFishFightPrivate::Finite(Move->Speed)) * StaminaFactor(Tuning, Stamina01);
 }
 
-float FLureFight::TargetTension(float Pull, bool bReeling, const FLureGearStats& Gear, const FLureFishFightRow& Tuning)
+float FLureFight::TargetTension(float Pull, bool bReeling, const FLureGearStats& Gear, const FLureFishFightRow& Tuning, const FLureRodFactors& Rod)
 {
-	const float SafePull = FMath::Max(0.f, LureFishFightPrivate::Finite(Pull));
+	using LureFishFightPrivate::Finite;
+	const float SafePull = FMath::Max(0.f, Finite(Pull));
+	const float Pressure = FMath::Max(0.f, Finite(Rod.Pressure, 1.f));
 	if (bReeling)
 	{
-		return SafePull * FMath::Max(0.f, Tuning.ReelStrain) + FMath::Max(0.f, Gear.RodPower) * FMath::Max(0.f, Tuning.ReelLoad);
+		// The rod's cranking load grows with the reel step; the rod's angle scales everything you apply (T-028).
+		return (SafePull * FMath::Max(0.f, Tuning.ReelStrain) + FMath::Max(0.f, Gear.RodPower) * FMath::Max(0.f, Tuning.ReelLoad) * FMath::Max(0.f, Finite(Rod.ReelLoad, 1.f)))
+			* Pressure;
 	}
-	return FMath::Min(SafePull, FMath::Max(0.f, Gear.Drag));
+	// Letting it run: the drag slips at its setting, whatever the rod does (so letting it run never snaps the line).
+	return FMath::Min(SafePull * Pressure, FMath::Max(0.f, Gear.Drag));
 }
 
-float FLureFight::LineGainSpeed(float Pull, bool bReeling, const FLureGearStats& Gear)
+float FLureFight::LineGainSpeed(float Pull, bool bReeling, const FLureGearStats& Gear, const FLureRodFactors& Rod)
 {
-	if (!bReeling || !(Gear.RodPower > 0.f) || !(Gear.ReelSpeed > 0.f))
+	const float Power = Gear.RodPower * FMath::Max(0.f, LureFishFightPrivate::Finite(Rod.Power, 1.f));
+	const float Speed = Gear.ReelSpeed * FMath::Max(0.f, LureFishFightPrivate::Finite(Rod.ReelSpeed, 1.f));
+	if (!bReeling || !(Power > 0.f) || !(Speed > 0.f))
 	{
 		return 0.f;
 	}
-	return Gear.ReelSpeed * FMath::Clamp(1.f - FMath::Max(0.f, Pull) / Gear.RodPower, 0.f, 1.f);
+	return Speed * FMath::Clamp(1.f - FMath::Max(0.f, Pull) / Power, 0.f, 1.f);
 }
 
-float FLureFight::LineTakenSpeed(float Pull, float AwaySpeed, bool bReeling, const FLureGearStats& Gear, const FLureFishFightRow& Tuning)
+float FLureFight::LineTakenSpeed(float Pull, float AwaySpeed, bool bReeling, const FLureGearStats& Gear, const FLureFishFightRow& Tuning, const FLureRodFactors& Rod)
 {
 	const float Away = LureFishFightPrivate::Finite(AwaySpeed);
 	if (Away <= 0.f)
@@ -117,8 +130,10 @@ float FLureFight::LineTakenSpeed(float Pull, float AwaySpeed, bool bReeling, con
 	const float SafePull = FMath::Max(0.f, LureFishFightPrivate::Finite(Pull));
 	if (bReeling)
 	{
-		// Only a fish that out-pulls the rod takes line while you crank (fully at twice the rod's power).
-		return Gear.RodPower > 0.f ? Away * FMath::Clamp(SafePull / Gear.RodPower - 1.f, 0.f, 1.f) : Away;
+		// Only a fish that out-pulls the rod takes line while you crank (fully at twice the rod's power). The rod's angle and
+		// side pressure change that power (T-028).
+		const float Power = Gear.RodPower * FMath::Max(0.f, LureFishFightPrivate::Finite(Rod.Power, 1.f));
+		return Power > 0.f ? Away * FMath::Clamp(SafePull / Power - 1.f, 0.f, 1.f) : Away;
 	}
 	if (!(Gear.Drag > 0.f))
 	{
@@ -146,6 +161,93 @@ float FLureFight::SlackTension(const FLureFightFish& Fish, const FLureFishFightR
 float FLureFight::SlackGrace(const FLureGearStats& Gear, const FLureFishFightRow& Tuning)
 {
 	return FMath::Max(0.f, Tuning.SlackGraceTime) * FMath::Max(0.f, LureFishFightPrivate::Finite(Gear.HookSecurity));
+}
+
+// ---- Rod steering (T-028) ----
+
+FLureFightInput FLureFight::SanitizeInput(const FLureFightInput& Input, const FLureFishFightRow& Tuning)
+{
+	FLureFightInput Out;
+	Out.bReeling = Input.bReeling;
+	Out.RodPitch = LureFishFightPrivate::ClampUnit(Input.RodPitch);
+	Out.RodYaw = LureFishFightPrivate::ClampUnit(Input.RodYaw);
+	Out.ReelStep = ClampReelStep(Input.ReelStep, Tuning);
+	return Out;
+}
+
+float FLureFight::PitchPressure(float RodPitch, const FLureFishFightRow& Tuning)
+{
+	const float Pitch = LureFishFightPrivate::ClampUnit(RodPitch);
+	return Pitch >= 0.f
+		? 1.f + Pitch * FMath::Max(0.f, LureFishFightPrivate::Finite(Tuning.PitchBackPressure))
+		: 1.f + Pitch * FMath::Clamp(LureFishFightPrivate::Finite(Tuning.PitchDipPressure), 0.f, 0.95f);
+}
+
+int32 FLureFight::RunDirection(const FLureFightMove* Move, float SideSign, const FLureFishFightRow& Tuning)
+{
+	if (!Move)
+	{
+		return 0;
+	}
+	const float Lateral = FMath::Clamp(LureFishFightPrivate::Finite(Move->Side), -1.f, 1.f) * (SideSign < 0.f ? -1.f : 1.f);
+	if (Lateral == 0.f || FMath::Abs(Lateral) < FMath::Max(0.f, LureFishFightPrivate::Finite(Tuning.SideMinShare)))
+	{
+		return 0;
+	}
+	return Lateral > 0.f ? 1 : -1;
+}
+
+float FLureFight::SideScore(float RodYaw, int32 RunDir)
+{
+	return FMath::Clamp(-LureFishFightPrivate::ClampUnit(RodYaw) * static_cast<float>(FMath::Clamp(RunDir, -1, 1)), -1.f, 1.f);
+}
+
+int32 FLureFight::NumReelSteps(const FLureFishFightRow& Tuning)
+{
+	return FMath::Clamp(Tuning.ReelSteps, 1, 9);
+}
+
+int32 FLureFight::DefaultReelStep(const FLureFishFightRow& Tuning)
+{
+	return FMath::Clamp(Tuning.ReelDefaultStep - 1, 0, NumReelSteps(Tuning) - 1);
+}
+
+int32 FLureFight::ClampReelStep(int32 Step, const FLureFishFightRow& Tuning)
+{
+	return Step < 0 ? DefaultReelStep(Tuning) : FMath::Min(Step, NumReelSteps(Tuning) - 1);
+}
+
+float FLureFight::ReelStepSpeed(int32 Step, const FLureFishFightRow& Tuning)
+{
+	const int32 Num = NumReelSteps(Tuning);
+	if (Num <= 1)
+	{
+		return 1.f;
+	}
+	const float Min = FMath::Max(0.05f, LureFishFightPrivate::Finite(Tuning.ReelSpeedMin, 1.f));
+	const float Max = FMath::Max(Min, LureFishFightPrivate::Finite(Tuning.ReelSpeedMax, Min));
+	return Min + (Max - Min) * static_cast<float>(ClampReelStep(Step, Tuning)) / static_cast<float>(Num - 1);
+}
+
+float FLureFight::ReelStepLoad(int32 Step, const FLureFishFightRow& Tuning)
+{
+	return FMath::Max(0.f, 1.f + (ReelStepSpeed(Step, Tuning) - 1.f) * FMath::Max(0.f, LureFishFightPrivate::Finite(Tuning.ReelLoadPerSpeed)));
+}
+
+FLureRodFactors FLureFight::RodFactors(const FLureFightInput& Input, const FLureFightMove* Move, float SideSign, const FLureFishFightRow& Tuning)
+{
+	using LureFishFightPrivate::Finite;
+	FLureRodFactors Out;
+	Out.Pressure = PitchPressure(Input.RodPitch, Tuning);
+	Out.Side = SideScore(Input.RodYaw, RunDirection(Move, SideSign, Tuning));
+	Out.Power = Out.Pressure * (1.f + Out.Side * FMath::Clamp(Finite(Tuning.SideLeverage), 0.f, 0.95f));
+	Out.ReelSpeed = ReelStepSpeed(Input.ReelStep, Tuning);
+	Out.ReelLoad = ReelStepLoad(Input.ReelStep, Tuning);
+	const float Against = FMath::Max(0.f, Out.Side);
+	Out.Pull = 1.f - Against * FMath::Clamp(Finite(Tuning.SideTurnPull), 0.f, 0.95f);
+	Out.MoveClock = 1.f + Against * FMath::Max(0.f, Finite(Tuning.SideTurnRate));
+	Out.Drain = 1.f + Against * FMath::Max(0.f, Finite(Tuning.SideDrain));
+	return Out;
 }
 
 float FLureFight::MoveWeight(const FLureFightMove& Move, float Aggression)
@@ -190,6 +292,8 @@ void FLureFight::Begin(FLureFightState& Out, const FLureFightFish& Fish, const F
 	const int32 Opening = Fresh.Pattern.FindMove(Fresh.Pattern.OpeningMove);
 	LureFishFightPrivate::StartMove(Fresh, Opening != INDEX_NONE ? Opening : PickMove(Fresh.Pattern, Fresh.Fish.Aggression, Fresh.Rng.GetFraction()));
 	Fresh.Pull = FishPull(Fresh.Fish, Fresh.GetMove(), Fresh.Stamina, Fresh.Tuning);
+	Fresh.ReelStep = DefaultReelStep(Fresh.Tuning);
+	Fresh.RunDir = RunDirection(Fresh.GetMove(), Fresh.SideSign, Fresh.Tuning);
 	Out = MoveTemp(Fresh);
 }
 
@@ -204,38 +308,46 @@ ELureFightOutcome FLureFight::Step(FLureFightState& State, const FLureFightInput
 	const float Dt = StepSeconds(Tuning);
 	State.Elapsed += Dt;
 	++State.Steps;
-	State.bReeling = Input.bReeling;
+	// The rod input (T-028), clamped: the server simulates whatever a client sent within the rod's range.
+	const FLureFightInput Rod = SanitizeInput(Input, Tuning);
+	State.bReeling = Rod.bReeling;
+	State.RodPitch = Rod.RodPitch;
+	State.RodYaw = Rod.RodYaw;
+	State.ReelStep = Rod.ReelStep;
 
-	// 1. Move.
+	// 1. Move. Side pressure against the current move's sideways run turns the fish: its clock runs faster.
 	if (!State.bExhausted)
 	{
-		State.MoveTimeLeft -= Dt;
+		State.MoveTimeLeft -= Dt * RodFactors(Rod, State.GetMove(), State.SideSign, Tuning).MoveClock;
 		if (State.MoveTimeLeft <= 0.f)
 		{
 			LureFishFightPrivate::StartMove(State, PickMove(State.Pattern, State.Fish.Aggression, State.Rng.GetFraction()));
 		}
 	}
 	const FLureFightMove* Move = State.bExhausted ? nullptr : State.GetMove();
+	const FLureRodFactors Factors = RodFactors(Rod, Move, State.SideSign, Tuning);
+	State.RunDir = RunDirection(Move, State.SideSign, Tuning);
+	State.Side = Factors.Side;
 
 	// 2. Fish.
-	const float Pull = FishPull(State.Fish, Move, State.Stamina, Tuning);
+	const float Pull = FishPull(State.Fish, Move, State.Stamina, Tuning) * Factors.Pull;
 	const float Speed = FishSpeed(State.Fish, Move, State.Stamina, Tuning);
 	const float AwaySpeed = Move ? Speed * FMath::Clamp(Move->Away, -1.f, 1.f) : 0.f;
 	State.Pull = Pull;
 	State.Speed = Speed;
 
 	// 3. Line.
-	const float Gain = LineGainSpeed(Pull, Input.bReeling, Gear);
-	const float Taken = LineTakenSpeed(Pull, AwaySpeed, Input.bReeling, Gear, Tuning);
+	const float Gain = LineGainSpeed(Pull, Rod.bReeling, Gear, Factors);
+	const float Taken = LineTakenSpeed(Pull, AwaySpeed, Rod.bReeling, Gear, Tuning, Factors);
 	State.LineOut = FMath::Max(0.f, State.LineOut + (Taken - Gain) * Dt);
 
 	// 4. Tension.
-	State.Tension = FMath::Max(0.f, EaseTension(State.Tension, TargetTension(Pull, Input.bReeling, Gear, Tuning), Dt, Tuning));
+	State.Tension = FMath::Max(0.f, EaseTension(State.Tension, TargetTension(Pull, Rod.bReeling, Gear, Tuning, Factors), Dt, Tuning));
 
-	// 5. Stamina.
+	// 5. Stamina (a fish being turned tires faster).
 	const float Slack = SlackTension(State.Fish, Tuning);
 	const float Pool = FMath::Max(0.01f, State.Fish.StaminaPool);
-	float Energy = State.Stamina * Pool - State.Tension * Dt;
+	float Energy = State.Stamina * Pool - State.Tension * Dt * Factors.Drain;
 	if (State.Tension < Slack)
 	{
 		Energy += Pool * FMath::Max(0.f, Tuning.StaminaRecovery) * Dt;
@@ -247,12 +359,12 @@ ELureFightOutcome FLureFight::Step(FLureFightState& State, const FLureFightInput
 		State.MoveIndex = INDEX_NONE;
 	}
 
-	// Cosmetic: depth and swing.
+	// Cosmetic: depth and swing (a fish turned by side pressure swings back toward the middle).
 	if (Move)
 	{
 		State.Depth += Speed * FMath::Clamp(Move->Down, -1.f, 1.f) * Dt;
 		const float Radius = FMath::Max(100.f, State.LineOut);
-		State.SideDeg += FMath::RadiansToDegrees(Speed * FMath::Clamp(Move->Side, -1.f, 1.f) * State.SideSign * Dt / Radius);
+		State.SideDeg += FMath::RadiansToDegrees(Speed * FMath::Clamp(Move->Side, -1.f, 1.f) * State.SideSign * Dt / Radius) * (1.f - 2.f * FMath::Max(0.f, Factors.Side));
 	}
 	if (!Move || Move->Down <= 0.f)
 	{

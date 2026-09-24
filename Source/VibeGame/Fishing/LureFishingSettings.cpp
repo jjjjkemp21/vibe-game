@@ -31,6 +31,8 @@ ULureFishingSettings::ULureFishingSettings()
 	DefaultRegion = TEXT("Region.Tropical");
 
 	CastKeys = { EKeys::LeftMouseButton, EKeys::Gamepad_RightTrigger };
+	ReelFasterKeys = { EKeys::MouseScrollUp, EKeys::Gamepad_RightShoulder }; // T-028
+	ReelSlowerKeys = { EKeys::MouseScrollDown, EKeys::Gamepad_LeftShoulder };
 
 	// Reel fight and gear (T-007).
 	GearTable = TSoftObjectPtr<UDataTable>(FSoftObjectPath(TEXT("/Game/Data/DT_Gear.DT_Gear")));

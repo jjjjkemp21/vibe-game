@@ -899,6 +899,11 @@ void ALurePlayerCharacter::DoLook(float YawDegrees, float PitchDegrees)
 	{
 		return;
 	}
+	// T-028: while a fish is on, the mouse / right stick steers the rod instead of the view (the camera follows the fish).
+	if (Fishing && Fishing->ConsumeLookInput(YawDegrees, PitchDegrees))
+	{
+		return;
+	}
 	PlayerController->RotationInput.Yaw += YawDegrees;
 	PlayerController->RotationInput.Pitch += PitchDegrees;
 }

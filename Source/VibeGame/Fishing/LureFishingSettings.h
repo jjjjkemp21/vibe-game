@@ -159,6 +159,23 @@ public:
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category="Controls")
 	TArray<FKey> HookKeys;
 
+	/** T-028: one reel speed step faster / slower while a fish is on (mouse wheel up / down, right / left bumper). */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category="Controls")
+	TArray<FKey> ReelFasterKeys;
+
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category="Controls")
+	TArray<FKey> ReelSlowerKeys;
+
+	/**
+	 *  T-028: while a fish is on, the owner sends its rod aim and reel step to the server (unreliable) at most this often,
+	 *  seconds, and at least every FightInputResendSeconds even when nothing changed (so a lost packet is repaired).
+	 */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category="Controls", meta=(ClampMin="0.01"))
+	float FightInputSendSeconds = 0.05f;
+
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category="Controls", meta=(ClampMin="0.05"))
+	float FightInputResendSeconds = 0.25f;
+
 	/** Seconds a result or a refusal stays in the placeholder HUD text. */
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category="Controls", meta=(ClampMin="0"))
 	float HudMessageSeconds = 2.5f;
