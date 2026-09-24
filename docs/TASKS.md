@@ -7,7 +7,11 @@ Last processed playtest folder: (none)
 ## Status 2026-09-23 ~21:55 (lead): see the memory snapshot for agent IDs
 main 2a78f0f (unpushed since 4d64f2c): ALL A2 code merged and built in main: 986/987 (tests/20260923-214924; only ArmsFollowTheRodAim, a test that expects the old placeholder rod turn; qa-engineer-junior-low is updating it in qa1).
 - Editor stage 1 DONE 806a580/2a78f0f: AO_FPArms_RodAim (3x3 mesh-space additive) + Two Bone IK in ABP_FPArms, bRodAimOffsetInGraph on; ABP_Fish (7 roles). PIE aim extremes within 0.3-1.2 cm of the spec (Saved/AgentLogs/editor/20260923-210606-A2-graphs.md).
-- Editor stage 2 running (editor-operator-mid-medium): T-030 tables (DT_Catch, DT_Freshness, DT_CoolerDisplay, DT_Cooler) + HoldFish/CarryCooler pins; PIE shots of hold, carry, curled fish.
+- Editor stage 2 DONE 07ec030: T-030 tables imported; HoldFish (blend by HoldFishSizeAlpha) + CarryCooler pins; guards pass, Catch/Arms 79/79 (Saved/AgentLogs/editor/20260923-220100-A2-stage2.md). Cooler pick up/put down is F (spec).
+- Lead review of the PIE shots: the held fish points straight up with no hand on it (hold_fish.png). Cause: placeholder attach (hand_r_rod, rot -20/-70) instead of the spec (hand_r_fish, rot 0, grip formula). T-030e FIXED 90ea461 (hand_r_fish, rotation 0, grip formula, HeldFishContactPoint data; Catch 77/77), merged ae65927; check the pose in PIE after the rebuild.
+- T-030f (unreal-engineer-mid-high, eng2): cooler display fish play A_Fish_Curled through an ABP_Fish Curled role (additive on single-node is not cook-safe). Then editor: ABP_Fish Curled pin; QA: GraphPinOrderMatchesEnum covers HoldFish/CarryCooler/Curled.
+- Levels rebuilt f96aba1 (492 + 149 actors, rerun no-op; water outlines OK; sell counter prompt OK; Saved/AgentLogs/editor/20260923-221200-A2-levels.md). Bug: no hot spot ever spawns by itself on L_PalmKey (manual Lure.HotSpot.Spawn works): T-027c, unreal-engineer-senior-max in eng3 (unknown cause; headless repro on the real map).
+- Builder re-saves 26 MI_Lvl_* every run (committed once, 103c98c): level-designer-junior-low fixing in eng5.
 - Next: rebuild both levels (sell counter), Lure.Water.Show + bubbles check; full A2 playtest (1P + 2P), designer, push, janitor-low. Jimmy's feedback file: Playtest/2026-09-23 A2 playtest feedback.txt.
 ThirdPerson template level: Jimmy deleted it on purpose; removal committed cfe7e38.
 

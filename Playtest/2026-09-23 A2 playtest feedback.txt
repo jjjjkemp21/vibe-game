@@ -11,8 +11,9 @@ How to use this file
 Controls reminder
 - Left mouse: cast. Once a fish bites: hold left mouse to reel.
 - During a fight the mouse steers the rod (the view follows). Mouse wheel: reel faster / slower.
-- E: grab the fish, put it in the cooler, take it out, pick up / put down the cooler, sell.
-- F: let a fish go / drop it.
+- E: grab the fish, put it in the cooler, open the cooler, take a fish out, sell.
+- F: pick up / put down the cooler, let a fish go / drop it.
+- The prompt in the top-left always shows what E and F do right now.
 - C: crouch. Z: prone. Shift: sprint. Space: jump.
 
 
@@ -46,7 +47,7 @@ Controls reminder
 
 5. FISH ON THE HOOK, HOLDING IT, THE COOLER, SELLING
    Try: land a fish (it hangs on the hook), grab it with E, look at it in your hands, put it in
-   your cooler. Pick up the cooler, carry it, put it down, open it. Leave a fish out of the
+   your cooler. Pick up the cooler (F), carry it, put it down, open it (E). Leave a fish out of the
    cooler for a while (it loses freshness and value). At the shop, take fish out one at a time,
    put them on the counter and press Sell.
    Your notes:
