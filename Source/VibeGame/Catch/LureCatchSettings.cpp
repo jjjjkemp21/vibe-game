@@ -29,8 +29,9 @@ ULureCatchSettings::ULureCatchSettings()
 	CarriedCoolerOffset = FVector(60.0f, 0.0f, -59.0f);
 	CarriedCoolerRotation = FRotator::ZeroRotator;
 
-	ThirdPersonFishOffset = FVector(35.0f, 25.0f, 0.0f);
-	ThirdPersonFishRotation = FRotator(-60.0f, 0.0f, 0.0f);
+	// Others see the owner's HoldFish pose (hand_r_fish at frame 0, from the eye): side-on, head right, at hand height.
+	ThirdPersonFishOffset = FVector(46.9f, 8.0f, -16.8f);
+	ThirdPersonFishRotation = FRotator(5.1f, 79.7f, -15.0f);
 	ThirdPersonCoolerOffset = FVector(45.0f, 0.0f, -45.0f);
 	ThirdPersonCoolerRotation = FRotator::ZeroRotator;
 

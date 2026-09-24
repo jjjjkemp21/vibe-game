@@ -24,6 +24,13 @@ by the server; clients only ask ("I pressed E on this cooler, expecting Put in")
   (fish: a hand bone; cooler: the arms component) and drawn as a first-person primitive, so it never clips into walls;
   every other machine attaches it to the holder's body at a third-person offset. Offsets and sockets are settings
   (`ULureCatchSettings`), so the animation-artist's clips are matched without code.
+- **A fish in another player's hand (T-030k):** the owner's first-person pose seen from outside. `ThirdPersonFishOffset`
+  / `ThirdPersonFishRotation` are the grip frame (the first-person `hand_r_fish` frame) from the holder's eye point
+  (capsule center + `BaseEyeHeight`, the body's yaw; it follows crouch and prone every frame); default = the HoldFish
+  clip's frame 0, so the fish lies side-on in front at hand height, head to the holder's right, and sits in that frame
+  exactly as on the bone (`-S x Grip + (1 - S) x HeldFishContactPoint`). In a hand every machine plays the same clip
+  role: an adopted landed fight fish keeps its Landed state (Flop); the item's own skeletal fish plays
+  `ALureFishItem::GetInHandAnimState` (DT_FishVisual, phase Landed) through the fish anim class, and stops on release.
 - A free item stands at its `Placement` (actor root = the gameplay truth at once); the mesh flies there along a short
   arc (`DropArcTime`) on every machine, like the bobber.
 

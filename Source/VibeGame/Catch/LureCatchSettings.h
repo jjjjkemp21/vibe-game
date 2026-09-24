@@ -96,6 +96,12 @@ public:
 
 	// ---- Held items: what other players see (relative to the holder's capsule center) ----
 
+	/**
+	 *  The held fish on other players' screens (T-030k): its grip frame (the first-person hand_r_fish frame: X = head,
+	 *  Z = dorsal) relative to the holder's eye point (capsule center + BaseEyeHeight, the body's yaw), so it follows
+	 *  crouch and prone. The fish sits in it like in the first-person hand (-S x Grip + (1 - S) x HeldFishContactPoint).
+	 *  Default = the HoldFish clip's frame 0 (SK_FPArms.anim.md): side-on in front, head to the holder's right.
+	 */
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category="Third Person")
 	FVector ThirdPersonFishOffset;
 
