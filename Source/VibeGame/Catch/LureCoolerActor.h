@@ -11,6 +11,8 @@ class ALureFishItem;
 class APlayerState;
 class UBoxComponent;
 class ULureCoolerComponent;
+struct FFishVisualRow;
+struct FLureCoolerDisplayRow;
 class UPrimitiveComponent;
 class UStaticMeshComponent;
 
@@ -115,6 +117,13 @@ public:
 	/** Fish shown inside right now (lid open, up to the display slots) */
 	int32 GetNumDisplayedFish() const;
 
+	/** The size a fish of WeightKg shows at inside: the fight fish's weight scale (T-030d), capped at Row.MaxFishScale */
+	static float GetDisplayFishScale(float WeightKg, float ReferenceWeightKg, const FFishVisualRow& VisualRow, const FLureCoolerDisplayRow& Row);
+
+	/** Where the fish in display slot SlotIndex lies, relative to the Contents point: the slot's X, Y and turn, its bed Z
+	 *  plus the lie offset at Scale; the transform's scale is Scale. Identity for a bad slot index. */
+	static FTransform GetDisplayFishTransform(const FLureCoolerDisplayRow& Row, int32 SlotIndex, float Scale);
+
 	/** The lid's current angle on this machine, degrees (0 = closed) */
 	float GetLidPitch() const { return LidPitch; }
 
@@ -138,6 +147,8 @@ public:
 	virtual bool PerformInteraction(APawn* Pawn, ELureInteractVerb Verb) override;
 	virtual FVector GetInteractionLocation() const override;
 	virtual float GetFocusRadius() const override { return 35.0f; }
+	/** T-030g: the view ray hits the cooler's box (the gameplay box), not the looser focus sphere */
+	virtual double GetFocusHitDistance(const FVector& ViewLocation, const FVector& ViewDirection) const override;
 
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	virtual void BeginPlay() override;

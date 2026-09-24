@@ -74,7 +74,7 @@ TArray<FString> ULureProgressionLibrary::GetPlaceholderStatusLines(const APlayer
 	}
 	if (const ULureProgressionComponent* Progression = GetProgression(PlayerController))
 	{
-		const FString Cooler = ULureCatchLibrary::GetOwnCoolerStatus(FindPlayerState(PlayerController));
+		const FString Cooler = ULureCatchLibrary::GetCoolerStatus(PlayerController); // the carried cooler, else your own (T-030g)
 		Lines.Add(Cooler.IsEmpty() ? Progression->GetStatusText() : Progression->GetStatusText() + TEXT("   ") + Cooler);
 	}
 	Lines.Append(ULureCatchLibrary::GetPlaceholderLines(PlayerController)); // what the hands hold (T-030)

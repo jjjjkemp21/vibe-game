@@ -125,6 +125,11 @@ bool FLureCatchRow::Validate(FString& OutProblem) const
 			return false;
 		}
 	}
+	if (!FMath::IsFinite(LidPulsePitch) || LidPulsePitch < 0.0f || LidPulsePitch > LidOpenPitch)
+	{
+		OutProblem = FString::Printf(TEXT("LidPulsePitch %g must be in [0, LidOpenPitch %g]"), LidPulsePitch, LidOpenPitch);
+		return false;
+	}
 	if (!(HoldFishScaleLarge > HoldFishScaleSmall))
 	{
 		OutProblem = FString::Printf(TEXT("HoldFishScaleLarge %g must be above HoldFishScaleSmall %g"), HoldFishScaleLarge, HoldFishScaleSmall);
@@ -171,13 +176,14 @@ bool FLureCoolerDisplayRow::Validate(FString& OutProblem) const
 FLureCoolerDisplayRow FLureCoolerDisplayRow::GetFallbackRow()
 {
 	// The shipped Starter row (a data test keeps them equal): the slot table of SK_Fish.anim.md "Cooler display"
-	// (art/recipes/anim_fish_cooler.py), curled fish on alternating sides, bottom of the pile first, Z = the bed.
+	// (art/recipes/anim_fish_cooler.py), curled fish on alternating sides, bottom of the pile first, Z = the bed; T-030g
+	// turned the pile 180 deg about Z (X, Y negated, Yaw + 180) so it lies along the back wall, visible from farther away.
 	struct FSlotData
 	{
 		float X, Y, BedZ, Yaw, Roll;
 	};
-	static const FSlotData Table[] = { { 7.5f, -2.5f, 0.0f, 95.0f, 90.0f }, { 5.5f, -2.0f, 6.28f, -125.0f, -90.0f },
-		{ 6.5f, 1.0f, 12.35f, 140.0f, 90.0f }, { 10.0f, 2.5f, 18.72f, -100.0f, -90.0f } };
+	static const FSlotData Table[] = { { -7.5f, 2.5f, 0.0f, -85.0f, 90.0f }, { -5.5f, 2.0f, 6.28f, 55.0f, -90.0f },
+		{ -6.5f, -1.0f, 12.35f, -40.0f, 90.0f }, { -10.0f, -2.5f, 18.72f, 80.0f, -90.0f } };
 	FLureCoolerDisplayRow Row;
 	for (const FSlotData& Data : Table)
 	{

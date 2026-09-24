@@ -294,12 +294,28 @@ bool ALureSellCounter::AuthorityTakeBack(APawn* Pawn)
 
 // ---- Interaction ----
 
+namespace LureSellCounterPrivate
+{
+	/** The focus shape: the top area plus the counter's front below it (looking at the counter anywhere counts) */
+	FTransform FocusBox(const ALureSellCounter& Counter, const FVector& CounterHalfSize, FVector& OutHalf)
+	{
+		OutHalf = FVector(CounterHalfSize.X, CounterHalfSize.Y, CounterHalfSize.Z + 50.0f);
+		return FTransform(Counter.GetActorRotation(), Counter.GetActorTransform().TransformPositionNoScale(FVector(0.0, 0.0, CounterHalfSize.Z - 50.0)));
+	}
+}
+
 float ALureSellCounter::GetFocusAngle(const FVector& ViewLocation, const FVector& ViewDirection) const
 {
-	// The top area plus the counter's front below it (looking at the counter anywhere counts).
-	const FVector Half(CounterHalfSize.X, CounterHalfSize.Y, CounterHalfSize.Z + 50.0f);
-	const FTransform Box(GetActorRotation(), GetActorTransform().TransformPositionNoScale(FVector(0.0, 0.0, CounterHalfSize.Z - 50.0)));
+	FVector Half;
+	const FTransform Box = LureSellCounterPrivate::FocusBox(*this, CounterHalfSize, Half);
 	return AngleToBox(ViewLocation, ViewDirection, Box, Half);
+}
+
+double ALureSellCounter::GetFocusHitDistance(const FVector& ViewLocation, const FVector& ViewDirection) const
+{
+	FVector Half;
+	const FTransform Box = LureSellCounterPrivate::FocusBox(*this, CounterHalfSize, Half);
+	return RayToBox(ViewLocation, ViewDirection, Box, Half);
 }
 
 bool ALureSellCounter::CanInteract(const APawn* Pawn) const

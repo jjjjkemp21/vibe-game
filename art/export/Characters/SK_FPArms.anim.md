@@ -235,11 +235,11 @@ Screen numbers for 1920x1080 at 90 deg; tip = SM_Rod_Basic's line tip.
 | Up | -12, +2, +6 | 37.3 / -0.2 / 0 | 0 | 56, 4.5 | 56-98 / 77 | 97 % | (30.9, 19.0, -17.0) |
 | Down | +7, 0, +2 | -2.7 / 7.3 / 15 | 0 | 50, 62 | 55-80 / 71 | 40 % | (49.9, 21.0, -21.0) |
 | Left | +2, +6, 0 | 26.9 / 43.0 / 0 | 40 | 22, 20 | 47-77 / 80 | 90 % | (44.9, 15.0, -23.0) |
-| Right | 0, +7, -2 | 14.6 / -49.4 / -35 | -20 | 96, 40 | 57-81 / 85 | 84 % | (42.9, 14.0, -25.0) |
+| Right (T-033) | -3.5, -1, +2 | 13.3 / -46.4 / +18 | -35 | 96, 40 | 62-91 / 80 | 0 % | (39.4, 22.0, -21.0) |
 | UpLeft | -8, +5, +7 | 31.9 / 38.9 / 0 | 40 | 25, 6 | 47-88 / 71 | 90 % | (34.9, 16.0, -16.0) |
-| UpRight | -10, +9, +5 | 28.6 / -44.8 / -35 | -20 | 92, 10 | 55-87 / 77 | 60 % | (32.9, 12.0, -18.0) |
+| UpRight (T-033) | -11.5, +3.5, +6 | 28.6 / -42.7 / +15 | -35 | 92, 10 | 59-94 / 75 | 8 % | (31.4, 17.5, -17.0) |
 | DownLeft | +3, +6, +2 | 3.3 / 39.6 / 0 | 40 | 24, 56 | 48-75 / 74 | 77 % | (45.9, 15.0, -21.0) |
-| DownRight | 0, +7, +1 | 0.5 / -48.4 / -35 | -20 | 95, 62 | 58-80 / 78 | 67 % | (42.9, 14.0, -22.0) |
+| DownRight (T-033) | -2, -1.5, +1 | 0.3 / -45.7 / +23.5 | -35 | 95, 62 | 62-90 / 80 | 0 % | (40.9, 22.5, -22.0) |
 
 - Review fixes: the Down row's grips are 5 cm higher (fist tops 71-78 % instead of 80-87 %: a full fist in frame); the
   Right column's grips are 9 cm further left (fists 4-7 % more central); the rod is rolled in the Right column (-35 deg)
@@ -260,6 +260,20 @@ Screen numbers for 1920x1080 at 90 deg; tip = SM_Rod_Basic's line tip.
 - Off-screen compromise: the right wrist bends hard in the extremes (the mitten grip's 79 deg ulnar bend plus up to
   ~100 deg of flex). All of it is below or beside the frame; the outside views in `SK_FPArms_rodaim_views.png` show it
   bent, not broken. The rod butt touches the right forearm by up to 5 cm in Right (off-screen).
+- **T-033 (playtest A2, 2026-09-24): Right column re-solved.** Cause: at a hard-right swing (and in the blends
+  towards it, e.g. the playtest's yaw ~0.67 / pitch ~0.3) the rod turned ~50 deg right and rolled -35 deg about a grip
+  that stayed put while both forearms kept pointing forward, so both WRISTS did the turn: right hand bent 44-51 deg and
+  twisted 43-72 deg beyond its Center grip, left hand 40-58 deg; the left fist hid behind a back-bent right fist and
+  the two read as one blob (shots 05/53 of the A2 playtest). Fix: the upper body turns 35 deg right for the whole
+  column (`AIM_BODY_YAW`), each elbow swivels so its forearm follows the rod (`AIM_ELBOW_SWIVEL`), the rod roll is
+  +12..+24 deg instead of -35, grips re-placed (search in the recipe's T-033 comment). Wrist change vs Center now
+  (swing / twist deg): Right R 29/-26 L 37/-25, UpRight R 0/-73 (twist, taken 60 % by lowerarm_twist) L 21/-25,
+  DownRight R 30/-25 L 50/-27; at the playtest input (0.67, 0.3) R 16 L 23 (was 31 / 47). Arm-arm and rod-arm
+  clearances unchanged or better; tips unchanged. The left forearm now visibly reaches across to the crank.
+  Compromises: the reel spool is hidden behind the right fist in the Right column (0-8 % visible, was 60-84 %),
+  the fists sit 5-10 % further right (62-94 %) than the 2026-09-23 review, and Left/Up/Down/left corners are
+  unchanged (DownLeft still has a 53 deg right-wrist change, off-screen). Halfway to the right (yaw 0.5) the rod
+  points away from the eye (tip high, as before the fix).
 - **Standing / crouched only.** On `Prone_HoldRod_Idle` the same deltas don't fit (the left fist drifts up to 20 cm,
   `Up` lifts the rod to +21 cm above the eye where a 60 cm crawl gap allows +15, the tip leaves the frame at the
   right/down corners). Apply the aim offset only on the `HoldRod` branch (below); a prone fight keeps ProneHold still
@@ -322,6 +336,17 @@ rotation/translation offset, normals imported, no physics asset. In `Content/Pyt
 6. Screenshot checks: SM_Rod_Basic on `hand_r_rod` with the aim offset at the 4 edge points; a Bonefish on
    `hand_r_fish` (relative location (-9.43, 0, 0) cm at scale 1) with HoldFish_Idle, like `SK_FPArms_holdfish_fp.png`;
    SM_Cooler_Starter on `cooler` (zero transform) with CarryCooler_Idle: both fists on the rope handles.
+
+**T-033 re-import (2026-09-24)**, `/Game/Art/Characters/FPArms/`, settings above (Convert Scene Unit OFF):
+1. Re-import only `A_FPArms_RodAim_Right`, `A_FPArms_RodAim_UpRight`, `A_FPArms_RodAim_DownRight`
+   (`reimport_interchange("/Game/Art/Characters/FPArms/<name>", convert_scene_unit=False)`). SK_FPArms, the skeleton
+   and every other clip are unchanged (not re-exported).
+2. On each of the three check that it is still **Additive Anim Type = Mesh Space**, Base Pose Type = Selected
+   animation frame, Ref Pose Seq = `A_FPArms_RodAim_Center`, frame 0 (re-import can reset it); `AO_FPArms_RodAim`
+   and ABP_FPArms need no change.
+3. Verify: `A_FPArms_RodAim_Right` frame 0 `hand_r_rod` at about (39.4, 22.0, -21.0) cm component space; PIE with a
+   fish on, steer the rod fully right (and up-right, down-right): both forearms visible, the left one reaching across
+   to the crank, no bent-back right wrist; compare with `Saved/AgentLogs/previews/SK_FPArms_rodaim_fp.png`.
 
 First-time import (a fresh project or a new copy), for reference:
 1. `SK_FPArms.fbx` -> `/Game/Art/Characters/FPArms/`, Skeletal Mesh, create a new skeleton and rename it

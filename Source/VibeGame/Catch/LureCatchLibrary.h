@@ -77,4 +77,10 @@ public:
 
 	/** "Cooler 3/4" for the player's own cooler (empty if they have none) */
 	static FString GetOwnCoolerStatus(const APlayerState* PlayerState);
+
+	/**
+	 *  The status line's cooler count (T-030g): the cooler this player carries (anyone's: the count matches the "Carrying:"
+	 *  line), else their own cooler (GetOwnCoolerStatus). Empty if neither.
+	 */
+	static FString GetCoolerStatus(const APlayerController* PlayerController);
 };

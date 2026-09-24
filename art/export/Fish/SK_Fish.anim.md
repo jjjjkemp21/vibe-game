@@ -260,6 +260,11 @@ CoralSnapper `Mouth` (27.71, 0, 2.52), `Tail` (-9.34, 0, 10.45). The two species
 | 2 | 6.5 | 1.0 | 12.35 | 0 | 140 | 90 | right |
 | 3 | 10.0 | 2.5 | 18.72 | 0 | -100 | -90 | left |
 
+**In game (T-030g, unreal-engineer):** DT_CoolerDisplay uses this table **turned 180 deg about the Contents Z axis**
+(X and Y negated, Yaw + 180; e.g. slot 0 = (-7.5, 2.5, 0), yaw -85, roll 90), so the pile lies along the back wall. The
+liner is symmetric, so every fit check below still holds; the front wall hid a lone fish lying at the front from a
+standing player farther than about 1 m. A rerun of `anim_fish_cooler.py` should apply the same turn to `slots_ue`.
+
 Units cm and degrees, Unreal axes, relative to the `Contents` socket (the liner floor center, 5 cm above the cooler's
 pivot; +X = the cooler's front, the latch side). X, Y locate the fish's origin (its body center); the origin sits off
 the middle of a back-arched fish's curl, so the slot X values are not centered. Example: a CoralSnapper at s = 1.0 in

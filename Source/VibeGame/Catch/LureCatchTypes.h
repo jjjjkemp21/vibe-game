@@ -173,6 +173,13 @@ struct FLureCatchRow : public FTableRowBase
 	float LidOpenTime = 0.25f;
 
 	/**
+	 *  T-030g: how far a closed lid lifts when a fish goes in (the "clack"), degrees (0..LidOpenPitch). It lifts at the open
+	 *  speed and shuts as soon as it gets there, so it never reads as an open lid.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Cooler", meta=(ClampMin="0", ClampMax="180", DataTableImportOptional))
+	float LidPulsePitch = 30.0f;
+
+	/**
 	 *  T-030c: the held fish's scale (its visual weight scale S) that A_FPArms_HoldFish_Idle is authored for; at or below it
 	 *  UFPArmsAnimInstance::HoldFishSizeAlpha is 0 (SK_FPArms.anim.md "HoldFish"), > 0
 	 */

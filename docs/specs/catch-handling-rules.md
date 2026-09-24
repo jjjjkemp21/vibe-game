@@ -94,7 +94,7 @@ by the server; clients only ask ("I pressed E on this cooler, expecting Put in")
 | nothing | closed | Open | Pick up |
 | nothing | open, has fish | Take out the top fish | Close |
 | nothing | open, empty | Close | Close |
-| a fish | any, room | Put it in (a closed lid opens and shuts around it: the lid state is kept) | Drop the fish |
+| a fish | any, room | Put it in (a closed lid gives a short clack, `LidPulsePitch`: the lid state is kept) | Drop the fish |
 | a fish | full | nothing (info "Cooler full (4/4)") | Drop the fish |
 | this cooler | - | Put down | Put down |
 
@@ -125,8 +125,18 @@ by the server; clients only ask ("I pressed E on this cooler, expecting Put in")
   role (DT_FishVisual rejects it). The
   layout is made for the cooler **on the floor with its front toward a standing player** (eye 1.65 m, 0.6 m away);
   seen from beside a counter the liner's front wall hides most fish, which is why a put-down faces you and refuses
-  raised tops. No row = the built-in layout (= the shipped Starter row); a missing pose = straight fish. A fish put
-  into a closed cooler makes the lid open and shut around it (a replicated pulse id).
+  raised tops. **The pile lies along the back wall** (T-030g: the anim.md table turned 180 deg about the socket's Z,
+  X and Y negated, yaw + 180; the liner is symmetric, so every fit check holds): the front wall hides the floor next to
+  it from a standing player farther than about 1 m, so a lone fish at the front was invisible from 2 m (A2 playtest).
+  At the back every shown fish, from the smallest possible weight (scale ~0.68) to any capped one (1.0), clears the
+  sight line over the front rim from the put-down distance out to 1.5 m (`Project.Catch.Display.EveryFishVisible`);
+  farther than that a lone fish on the floor can still hide behind the wall. No row = the built-in layout (= the
+  shipped Starter row); a missing pose = straight fish.
+- **The lid's look follows `bLidOpen`** on every machine: open = `LidOpenPitch`, closed = 0, animated over
+  `LidOpenTime`, set without animation when the cooler first appears (a fresh cooler, a late-joining client). A fish
+  put into a closed cooler gives a short **clack** (a replicated pulse id): the lid lifts to `LidPulsePitch` (30 deg)
+  at the open speed and shuts at once (about 0.15 s), so it never reads as open while the prompt says "Open" (T-030g;
+  the old pulse held 60 deg for 0.5 s). A cooler that joins with a pulse already bumped doesn't clack.
 
 ## Freshness (`FLureFreshness`, DT_Freshness)
 - Time zero is the landing (server time). Each record keeps `ExposedSeconds` (seconds spent spoiling, rate-weighted)
@@ -161,9 +171,12 @@ by the server; clients only ask ("I pressed E on this cooler, expecting Put in")
 ## Focus and input
 - Keys: **Interact** (E / gamepad X, existing) and the new **AltInteract** (F / gamepad Y). LMB stays the fishing
   button (never drops a fish: habit clicks must not throw a catch away).
-- What a key does: the target you look at (registered interactables within their reach; the smallest angle between
-  your view and the target's shape, at most `FocusAngleDeg`; ties go to the nearer) if it has a verb for that key; else
-  the item in your hands; else your hanging fish. A target with no verb for you (e.g. a cooler someone carries) can't
+- What a key does: the target you look at if it has a verb for that key; else the item in your hands; else your
+  hanging fish. The target you look at (registered interactables within their reach): **first what the view ray
+  actually hits** (the nearest hit; each target's hit shape: a cooler its box, a counter its focus box, a fish or item
+  its `GetFocusRadius` sphere), **else** the smallest angle between your view and the target's shape, at most
+  `FocusAngleDeg`, ties to the nearer (T-030g: looking straight down at a fish beside a cooler, the cooler's larger
+  focus sphere used to tie at 0 deg and win as the nearer). A target with no verb for you (e.g. a cooler someone carries) can't
   take the focus. The HUD prompt shows both keys: `[E] Put the Bonefish in the cooler (2/4)   [F] Drop the Bonefish`.
 - Network: the client sends `ServerInteract(Target, Key, Verb)`. The server checks the target (interactable, in its reach
   + `ServerRangeSlack` 150 cm) and that ITS own verb for that key is the same (so a stale prompt never does something
@@ -219,7 +232,8 @@ by the server; clients only ask ("I pressed E on this cooler, expecting Put in")
   both for T-019. Reconnects and travel copy progression only, never world items (no duplicated fish).
 
 ## HUD (placeholder text, `ALureHUD` top-left block)
-- Status line: `Money 120   Level 3 (XP 40/110)   Cooler 3/4` (your own cooler).
+- Status line: `Money 120   Level 3 (XP 40/110)   Cooler 3/4`: the cooler you carry (anyone's, so it matches the
+  `Carrying:` line), else your own (T-030g: carrying a friend's 1/4 cooler showed your own 0/4 next to it).
 - `Holding: Bonefish (Rare), 2.04 kg, 45 coins, fresh 87%` (value and freshness now), the E/F prompt line(s), and the
   info line (e.g. `Cooler full (4/4)`). Notices: "Released the Bonefish", "Sold 3 fish for 123 coins".
 
@@ -229,7 +243,7 @@ by the server; clients only ask ("I pressed E on this cooler, expecting Put in")
 - `data/tables/DT_Freshness.csv` (FLureFreshnessRow): Default = grace 120 s, spoil 600 s, exponent 1.0, min 0.3.
 - `data/tables/DT_Catch.csv` (FLureCatchRow, row Default): HangLineLength 40 cm, HangDamping 1.2 /s, ReachDistance
   250 cm, FocusAngleDeg 20, DropForward 60 cm, DropArcTime 0.35 s, PutDownDistance 80 cm,
-  PutDownMaxFall 300 cm, LidOpenPitch 100 deg, LidOpenTime 0.25 s.
+  PutDownMaxFall 300 cm, LidOpenPitch 100 deg, LidOpenTime 0.25 s, LidPulsePitch 30 deg.
 - `data/tables/DT_CoolerDisplay.json` (FLureCoolerDisplayRow, rows Starter and Large): the 4-slot table of
   SK_Fish.anim.md (`anim_fish_cooler.py`, 2026-09-23), FishPose `/Game/Art/Fish/A_Fish_Curled`, PoseTime 0,
   MaxFishScale 1.0, LieOffsetCm 4.25 (Bonefish 4.24, CoralSnapper 4.26: one value until the species table has look

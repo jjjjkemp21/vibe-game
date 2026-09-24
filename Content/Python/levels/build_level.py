@@ -532,7 +532,7 @@ class _MeshCache(object):
         return self.meshes[path]
 
 
-def _configure_mesh_component(actor, mat, collision, shadow, visible):
+def _configure_mesh_component(actor, mat, collision, shadow, visible, step_up=True):
     comp = actor.static_mesh_component
     if mat is not None:
         for i in range(max(1, comp.get_num_materials())):
@@ -540,6 +540,8 @@ def _configure_mesh_component(actor, mat, collision, shadow, visible):
     if collision == "none":
         comp.set_collision_profile_name(unreal.Name("NoCollision"))
         comp.set_collision_enabled(unreal.CollisionEnabled.NO_COLLISION)
+    if not step_up:
+        comp.set_editor_property("can_character_step_up_on", unreal.CanBeCharacterBase.ECB_NO)
     if not shadow:
         comp.set_cast_shadow(False)
     if not visible:
@@ -556,7 +558,8 @@ def spawn_prim(prim, layout_id, mats, cache, sort_priorities=None):
         if mesh is not None:
             actor = _eas().spawn_actor_from_object(mesh, _vec(prim["pivot"]), rot)
             actor.set_actor_scale3d(_vec(prim["scale"]))
-            _configure_mesh_component(actor, None, prim["collision"], prim["shadow"], prim["visible"])
+            _configure_mesh_component(actor, None, prim["collision"], prim["shadow"], prim["visible"],
+                                      prim.get("step_up", True))
             return _finish_actor(actor, layout_id, prim["id"], prim["id"].replace("/", "."),
                                  "%s/%s" % (layout_id, prim.get("group") or "props"), prim["tags"])
         _warn("mesh %s missing for %s: spawning its basic-shape stand-in" % (prim["mesh"], prim["id"]))
@@ -574,7 +577,8 @@ def spawn_prim(prim, layout_id, mats, cache, sort_priorities=None):
     loc = L.sub(prim["center"], off)
     actor = _eas().spawn_actor_from_object(mesh, _vec(loc), rot)
     actor.set_actor_scale3d(unreal.Vector(sx, sy, sz))
-    _configure_mesh_component(actor, mats.get(prim["mat"]), prim["collision"], prim["shadow"], prim["visible"])
+    _configure_mesh_component(actor, mats.get(prim["mat"]), prim["collision"], prim["shadow"], prim["visible"],
+                                      prim.get("step_up", True))
     if sort_priorities and prim["mat"] in sort_priorities:
         actor.static_mesh_component.set_translucent_sort_priority(sort_priorities[prim["mat"]])
     return _finish_actor(actor, layout_id, prim["id"], prim["id"].replace("/", "."),
