@@ -867,7 +867,8 @@ namespace LureFishingLineTest
 		TestEqual(TEXT("mode Hanging"), static_cast<int32>(Line->GetMode()), static_cast<int32>(ELureLineMode::Hanging));
 		TestTrue(TEXT("GetEndActor"), Line->GetEndActor() == FishActor);
 		Line->Hide(); // the fishing state went idle: the hanging line stays
-		for (int32 Frame = 0; Frame < 360; ++Frame)
+		// 14 s: the 15 m line reels in over ~3.4 s (HangReelSpeed, slowing near the end; T-032b), then the swing settles (HangDrag).
+		for (int32 Frame = 0; Frame < 840; ++Frame)
 		{
 			World.Tick(1);
 		}

@@ -161,6 +161,7 @@ FLureLineSimInput FLureLineSim::Sanitize(const FLureLineSimInput& In) const
 	Out.RestLength = static_cast<float>(FMath::Clamp(Finite(In.RestLength, GetRestLength()), 0.0, MaxLength));
 	Out.EndMass = (FMath::IsFinite(In.EndMass) && In.EndMass > 0.f) ? FMath::Clamp(In.EndMass, 0.001f, 1.0e6f) : 1.f;
 	Out.EndDrag = FMath::IsFinite(In.EndDrag) ? FMath::Min(In.EndDrag, 1000.f) : -1.f;
+	Out.MaxSwingDeg = FMath::IsFinite(In.MaxSwingDeg) ? FMath::Clamp(In.MaxSwingDeg, 0.f, 90.f) : 0.f;
 	Out.bHasWater = In.bHasWater && FMath::IsFinite(In.WaterZ) && FMath::Abs(In.WaterZ) < MaxCoordinate;
 	Out.WaterZ = Out.bHasWater ? In.WaterZ : 0.f;
 	Out.Float = FMath::IsFinite(In.Float) ? FMath::Clamp(In.Float, 0.f, 1.f) : 0.f;
@@ -236,13 +237,11 @@ void FLureLineSim::Step(float DeltaTime, const FLureLineSimInput& InRaw, const F
 
 	bFreeEnd = In.bFreeEnd;
 	EndInvMass = bFreeEnd ? 1.0 / In.EndMass : 0.0;
-	double RestLength = In.RestLength;
-	if (!bFreeEnd)
-	{
-		// A pinned line can't be shorter than the straight distance at either end of this frame (it would have to stretch).
-		RestLength = PinnedLength(RestLength, FMath::Max(FVector::Dist(In.Start, In.End), FVector::Dist(LastStart, LastEnd)));
-	}
-	SegmentLength = FMath::Min(RestLength, MaxLength) / N;
+	// The line's length goes from the last Step's to this one's linearly over the sub-steps; a pinned line is clamped per
+	// sub-step to the straight distance between its ends there (T-032b). One whole-frame clamp to the longer of the two
+	// chords left a frame's worth of extra line (sag) every frame the ends closed in, so a reeled line never pulled straight.
+	const double FromRest = GetRestLength();
+	const double ToRest = FMath::Min(static_cast<double>(In.RestLength), MaxLength);
 
 	const double Dt = (FMath::IsFinite(DeltaTime) && DeltaTime > 0.f) ? static_cast<double>(DeltaTime) : 0.0;
 	if (Dt <= 0.0)
@@ -253,6 +252,7 @@ void FLureLineSim::Step(float DeltaTime, const FLureLineSimInput& InRaw, const F
 		{
 			Previous[N] = Positions[N] = In.End;
 		}
+		SegmentLength = (bFreeEnd ? ToRest : PinnedLength(ToRest, FVector::Dist(In.Start, In.End))) / N;
 		LastStart = Positions[0];
 		LastEnd = Positions[N];
 		LastSubsteps = 0;
@@ -266,7 +266,8 @@ void FLureLineSim::Step(float DeltaTime, const FLureLineSimInput& InRaw, const F
 	const int32 Substeps = FMath::Clamp(FMath::CeilToInt32(FrameTime * Rate - 1.0e-6), 1, MaxSubsteps);
 	const double H = FrameTime / Substeps;
 
-	const FVector GravityStep(0.0, 0.0, -Gravity * FMath::Clamp(Finite(Tuning.GravityScale, 1.0), 0.0, 10.0) * H * H);
+	const double GravityAccel = Gravity * FMath::Clamp(Finite(Tuning.GravityScale, 1.0), 0.0, 10.0);
+	const FVector GravityStep(0.0, 0.0, -GravityAccel * H * H);
 	const double AirKeep = FMath::Exp(-FMath::Max(0.0, Finite(Tuning.AirDrag, 0.0)) * H);
 	const double WaterKeep = FMath::Exp(-FMath::Max(0.0, Finite(Tuning.WaterDrag, 0.0)) * H);
 	const double EndKeep = In.EndDrag >= 0.f ? FMath::Exp(-static_cast<double>(In.EndDrag) * H) : AirKeep;
@@ -277,16 +278,31 @@ void FLureLineSim::Step(float DeltaTime, const FLureLineSimInput& InRaw, const F
 
 	const FVector FromStart = LastStart;
 	const FVector FromEnd = LastEnd;
+
+	// Swing guard (T-032b): a free end rises per sub-step at most as fast as gravity lets it coast up to SwingCos x the line
+	// under the tip, plus what the tip rises. Upward only: a cap on the whole speed would also kill the sideways lag of a
+	// hanging fish behind a moving rod.
+	const bool bSwingGuard = bFreeEnd && In.MaxSwingDeg > 0.f && GravityAccel > 0.0;
+	const double SwingCos = FMath::Cos(FMath::DegreesToRadians(static_cast<double>(In.MaxSwingDeg)));
+	const double TipRise = FMath::Max(0.0, (In.Start.Z - FromStart.Z) / Substeps);
+
 	for (int32 Sub = 1; Sub <= Substeps; ++Sub)
 	{
 		const double Alpha = static_cast<double>(Sub) / Substeps;
+		const double Rest = FMath::Lerp(FromRest, ToRest, Alpha);
 		const double VelocityScale = LastSubstep > 0.0 ? H / LastSubstep : 1.0; // time-corrected Verlet
 		const int32 LastFree = bFreeEnd ? N : N - 1;
 		for (int32 Index = 1; Index <= LastFree; ++Index)
 		{
 			const bool bWet = In.bHasWater && Positions[Index].Z < WetZ;
 			const double Keep = bWet ? WaterKeep : (Index == N ? EndKeep : AirKeep);
-			const FVector Velocity = (Positions[Index] - Previous[Index]) * (VelocityScale * Keep);
+			FVector Velocity = (Positions[Index] - Previous[Index]) * (VelocityScale * Keep);
+			if (bSwingGuard && Index == N)
+			{
+				const double TopZ = FMath::Lerp(FromStart.Z, In.Start.Z, Alpha) - Rest * SwingCos;
+				const double MaxRise = FMath::Sqrt(2.0 * GravityAccel * FMath::Max(0.0, TopZ - Positions[N].Z)) * H + TipRise;
+				Velocity.Z = FMath::Min(Velocity.Z, MaxRise);
+			}
 			Previous[Index] = Positions[Index];
 			Positions[Index] += Velocity + GravityStep;
 		}
@@ -297,6 +313,8 @@ void FLureLineSim::Step(float DeltaTime, const FLureLineSimInput& InRaw, const F
 			Previous[N] = Positions[N];
 			Positions[N] = FMath::Lerp(FromEnd, In.End, Alpha);
 		}
+		// The lerped rest is >= the lerped chord >= the chord of the lerped ends, so this clamp is only a safety net.
+		SegmentLength = (bFreeEnd ? Rest : PinnedLength(Rest, FVector::Dist(Positions[0], Positions[N]))) / N;
 		// Float before the constraints: the line never stretches to stay on the water. A slack line to a deep end (a diving
 		// fish) is pulled under near the end instead of stretching its last segments (T032-O2).
 		if (Float > 0.0)

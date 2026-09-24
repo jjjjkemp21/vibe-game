@@ -25,7 +25,17 @@ struct FLureLineSimInput
 	/** Drag of a free end, per second (a hanging fish: HangDrag). < 0 = the line's own AirDrag. */
 	float EndDrag = -1.f;
 
-	/** Total line length, cm. A pinned line is never shorter than the straight distance between its ends (it would have to stretch). */
+	/**
+	 *  Swing guard for a free end, degrees (0 = off; clamped to 0..90; a hanging fish: HangMaxSwingDeg). The end can't rise faster
+	 *  than gravity would let it coast up to RestLength x cos(MaxSwingDeg) under the tip (+ what the tip itself rises), so a
+	 *  jerked or reeled line never throws it over the tip. Upward only: sideways and downward motion are untouched.
+	 */
+	float MaxSwingDeg = 0.f;
+
+	/**
+	 *  Total line length, cm, reached over the frame's sub-steps (linearly from the last Step's length). A pinned line is never
+	 *  shorter than the straight distance between its ends in any sub-step (it would have to stretch).
+	 */
 	float RestLength = 0.f;
 
 	/** The water surface under the line (when bHasWater), cm, and how strongly line under it rises to it (0..1 per sub-step). */
