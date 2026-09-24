@@ -78,8 +78,9 @@ struct FFishInstance
 };
 
 /**
- *  Input of the roll and the bite picker. Filled on the server by the fishing spot + gear + player (T-006).
- *  Roll uses: SpeciesId, Seed, Luck, RegionTag, TimeOfDayHours, WeatherTag (modifier conditions) and the Forced* overrides.
+ *  Input of the roll and the bite picker. Filled on the server by the water (area, hot spot) + gear + player (T-006, T-027).
+ *  Roll uses: SpeciesId, Seed, Luck, SizeBonus, ValueMultiplier, RegionTag, TimeOfDayHours, WeatherTag (modifier
+ *  conditions) and the Forced* overrides.
  *  PickSpecies uses: Seed, RegionTag, HabitatTag, TimeOfDayHours, WeatherTag, BaitTag.
  *  The same Seed can be used for both (they use different sub-streams).
  */
@@ -99,6 +100,17 @@ struct FFishRollContext
 	/** >= 0; clamped to [0, FFishRollTuning::MaxLuck], NaN counts as 0. Only affects rarity. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Fish")
 	float Luck = 0.0f;
+
+	/**
+	 *  Bigger fish (T-027 hot spots): the natural weight roll moves this share of the way to the species' WeightMax
+	 *  (0 = none, 1 = always the max). Clamped to [0, 1]; NaN counts as 0. Ignored with bForceWeightFraction.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Fish", meta=(ClampMin="0", ClampMax="1"))
+	float SizeBonus = 0.0f;
+
+	/** More valuable fish (T-027 hot spots): multiplies the value with the rarity and modifier multipliers (1 = none; must be > 0). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Fish", meta=(ClampMin="0.01"))
+	float ValueMultiplier = 1.0f;
 
 	/** Where the player is (e.g. Region.Tropical.PalmKey) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Fish", meta=(Categories="Region"))

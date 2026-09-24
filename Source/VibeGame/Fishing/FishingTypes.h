@@ -11,6 +11,7 @@
 #include "Character/LureMovementTypes.h"
 #include "Fish/FishTypes.h"
 #include "Fish/FishInstance.h"
+#include "Fishing/FishingWaterTypes.h"
 #include "FishingTypes.generated.h"
 
 class AActor;
@@ -302,13 +303,17 @@ struct FLureFishingNetState
 	UPROPERTY(BlueprintReadOnly, Category="Fishing")
 	bool bOnWater = false;
 
-	/** Nothing can bite here now (no fishing spot in range, or no species fits the spot, time or bait). */
+	/** Nothing can bite here now (on water: too shallow, no species of this water at this time, or none takes the bait; Water.NoBiteReason says which). */
 	UPROPERTY(BlueprintReadOnly, Category="Fishing")
 	bool bNoFishHere = false;
 
-	/** The fishing spot the bobber is in (marker tag Spot=...); None = none. */
+	/** The water area the bobber is in (T-027: an area id, or a legacy fishing spot id); None = default water, or land. */
 	UPROPERTY(BlueprintReadOnly, Category="Fishing")
 	FName SpotId;
+
+	/** The hot spot the bobber landed in and why nothing bites (T-027; docs/specs/fishing-water-rules.md). */
+	UPROPERTY(BlueprintReadOnly, Category="Fishing")
+	FLureBobberWater Water;
 
 	/** +1 per nibble; clients tip the bobber when it changes. */
 	UPROPERTY(BlueprintReadOnly, Category="Fishing")
@@ -332,7 +337,12 @@ struct FLureFishingNetState
 	ELureCastBlock ResultReason = ELureCastBlock::None;
 };
 
-/** A fishing spot read from a marker actor (L_PalmKey.md section 11: tags Lure.FishingSpot + Key=Value). */
+/**
+ *  A fishing spot read from a marker actor (L_PalmKey.md section 11: tags Lure.FishingSpot + Key=Value).
+ *  T-027: spots no longer decide where fish bite (every body of water can be fished). A level without water areas reads
+ *  its spot markers as circle water areas (FLureWaterRules::AreaFromLegacySpot, migration only); the markers stay useful
+ *  as named casting places (teleports, labels).
+ */
 USTRUCT(BlueprintType)
 struct FLureFishingSpot
 {
@@ -391,18 +401,16 @@ struct FLureFishingSpot
 	bool IsValid() const { return Radius > 0.f; }
 };
 
-/** What besides the spot feeds a bite: time, weather, bait and gear luck (T-011/T-013 fill these later). */
+/** What besides the water feeds a bite: time, weather, bait and gear luck (T-011/T-013 fill these later). */
 struct FLureFishingEnvironment
 {
 	float TimeOfDayHours = 12.f;
 	FGameplayTag WeatherTag;
 	FGameplayTag BaitTag;
-	/** Added to the spot's luck. */
+	/** Added to the water area's luck (and a hot spot's). */
 	float GearLuck = 0.f;
-	/** Used when there is no spot, or the spot has no Region=. */
+	/** Used when the water area has no region (and for default water). */
 	FGameplayTag DefaultRegionTag;
-	/** Habitat used when no spot is in range (None = nothing bites off-spot; see docs/specs/fishing-rules.md). */
-	FGameplayTag OffSpotHabitatTag;
 };
 
 /** What the cast rules look at. */
@@ -455,11 +463,7 @@ struct FLureFishingRules
 	/** Nibble times in seconds after the wait began, ascending, all before Wait (count random in [NibblesMin, NibblesMax]). */
 	static TArray<float> NibbleTimes(const FLureFishingRow& Row, FRandomStream& Rng, float Wait);
 
-	/** The fish-roll context of a bite: habitat and region from the spot (or the off-spot habitat), Luck = spot luck + gear luck. */
-	static FFishRollContext MakeRollContext(const FLureFishingSpot* Spot, const FLureFishingEnvironment& Environment, int32 Seed);
-
-	/** Can anything bite with this context (a spot, or an off-spot habitat)? */
-	static bool CanHaveBites(const FLureFishingSpot* Spot, const FLureFishingEnvironment& Environment);
+	// The context of a bite comes from the water since T-027: FLureWaterRules::DecideBite / MakeBiteContext (FishingWater.h).
 
 	/** The bite: FFishRoll::PickSpecies then FFishRoll::Roll (the one roll pipeline). False = nothing bites. */
 	static bool DecideBite(const FFishTables& Tables, const FFishRollContext& Context, FFishInstance& OutFish);

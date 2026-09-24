@@ -33,6 +33,11 @@ What gets spawned (all tagged "LureLayout", "LureLayout=<id>", "LureId=<element 
                 overlap box is rebuilt at once. "ladder" markers spawn ALureLadder (origin on the dock/rock face at the
                 water line, +X out over the water), with "properties" such as MaxClimbHeight. Both classes are the
                 defaults below and can be overridden in the layout's "marker_classes".
+- water areas (T-027, docs/specs/fishing-water-rules.md) -> "water_area" markers spawn ALureWaterArea at "at" (a polygon
+                without "at" sits at its centroid, an "everywhere" area at the origin) with the marker's yaw, then
+                _configure_water_area() sets AreaId, DisplayName, Priority, Luck, the depth band, the habitat/region tags
+                (SetAreaTags) and the outline (SetShapeCircle / SetShapeBox / SetShapePolygon with world X/Y points /
+                SetShapeEverywhere). A "hot_spots" marker spawns ALureHotSpotSpawner (HotSpotTypes, MaxHotSpots, RandomSeed).
 - labels     -> TextRenderActor (editor aid; hidden in game unless the layout says "labels_in_game": true)
 
 Materials: /Game/Materials/Level/M_LevelPalette (params Color, Roughness, Emissive) is created once;
@@ -52,6 +57,8 @@ TAG_ALL = "LureLayout"
 DEFAULT_MARKER_CLASSES = {
     "water_volume": "/Script/VibeGame.LureWaterVolume",
     "ladder": "/Script/VibeGame.LureLadder",
+    "water_area": "/Script/VibeGame.LureWaterArea",
+    "hot_spots": "/Script/VibeGame.LureHotSpotSpawner",
 }
 PLAYER_START_Z = 100.0  # PlayerStart is placed this far above the floor point (capsule center + a little)
 
@@ -410,6 +417,14 @@ def marker_tags(mk):
         tags += ["Lure.Water", "Surface=" + _fmt(float(mk["at"][2])), "Depth=" + _fmt(float(mk["water_depth"]))]
     elif t == "ladder":
         tags += ["Lure.Ladder"]
+    elif t == "water_area":
+        # Informational: the game reads the actor's properties (set by _configure_water_area), not these tags.
+        tags += ["Lure.WaterArea", "Area=" + mk["id"], "Habitat=" + str(mk.get("habitat", "")),
+                 "Priority=%d" % int(mk.get("priority", 0))]
+        if mk.get("region"):
+            tags.append("Region=" + mk["region"])
+    elif t == "hot_spots":
+        tags += ["Lure.HotSpots"]
     elif t in ("cover_test", "clearance_test"):
         tags += ["Lure.DesignTest", "Test=" + t]
         for k in ("stance", "vs", "expect", "expect_min", "expect_max"):
@@ -490,6 +505,53 @@ def _size_water(actor, mk):
               % (mk["id"], actor.get_class().get_name()))
 
 
+def _set_props(actor, elem_id, pairs):
+    for prop, value in pairs:
+        try:
+            actor.set_editor_property(prop, value)
+        except Exception as exc:
+            _warn("%s: property %s not set: %s" % (elem_id, prop, exc))
+
+
+def _configure_water_area(actor, mk):
+    """ALureWaterArea (T-027): id, name, priority, luck, depth band, habitat/region tags and the outline."""
+    if not hasattr(actor, "set_area_tags"):
+        _warn("water area %s: %s is not an ALureWaterArea (no set_area_tags); not configured"
+              % (mk["id"], actor.get_class().get_name()))
+        return
+    depth = list(mk.get("depth") or [0, 0]) + [0, 0]
+    _set_props(actor, mk["id"], (("area_id", unreal.Name(mk["id"])), ("display_name", str(mk.get("name", mk["id"]))),
+                                 ("priority", int(mk.get("priority", 0))), ("luck", float(mk.get("luck", 0.0))),
+                                 ("min_depth", float(depth[0])), ("max_depth", float(depth[1]))))
+    if not actor.set_area_tags(unreal.Name(str(mk.get("habitat", ""))), unreal.Name(str(mk.get("region") or "None"))):
+        _warn("water area %s: habitat %r or region %r is not a registered gameplay tag (Config/Tags/*.ini)"
+              % (mk["id"], mk.get("habitat"), mk.get("region")))
+    shape = mk.get("shape")
+    if shape == "circle":
+        actor.set_shape_circle(float(mk["radius"]))
+    elif shape == "box":
+        actor.set_shape_box(unreal.Vector2D(float(mk["size"][0]) / 2.0, float(mk["size"][1]) / 2.0))
+    elif shape == "polygon":
+        # World X/Y: the actor is already at its place and yaw, so the C++ side stores them in its own frame.
+        count = actor.set_shape_polygon([unreal.Vector2D(float(p[0]), float(p[1])) for p in mk["points"]])
+        if count != len(mk["points"]):
+            _warn("water area %s: %d of %d polygon points stored" % (mk["id"], count, len(mk["points"])))
+    elif shape == "everywhere":
+        actor.set_shape_everywhere()
+    else:
+        _warn("water area %s: unknown shape %r (the layout validation should have stopped this)" % (mk["id"], shape))
+
+
+def _configure_hot_spots(actor, mk):
+    """ALureHotSpotSpawner (T-027): which DT_HotSpot rows spawn in this level, the cap and the seed."""
+    pairs = [("hot_spot_types", [unreal.Name(t) for t in mk.get("types", [])])]
+    if "max" in mk:
+        pairs.append(("max_hot_spots", int(mk["max"])))
+    if "seed" in mk:
+        pairs.append(("random_seed", int(mk["seed"])))
+    _set_props(actor, mk["id"], pairs)
+
+
 def spawn_label(text, at, layout_id, elem_id, size, yaw, in_game):
     actor = _eas().spawn_actor_from_class(unreal.TextRenderActor, _vec(at), _rot(yaw))
     comp = actor.text_render
@@ -547,6 +609,10 @@ def spawn_marker(mk, layout, layout_id):
         tags = marker_tags(mk)
     if t == "water_volume":
         _size_water(a, mk)
+    if t == "water_area":
+        _configure_water_area(a, mk)
+    if t == "hot_spots":
+        _configure_hot_spots(a, mk)
     if mk.get("properties"):
         apply_properties(a, mk["properties"], mk["id"])
     spawned.append(_finish_actor(a, layout_id, mk["id"], mk["id"].replace("/", "."), folder, tags))

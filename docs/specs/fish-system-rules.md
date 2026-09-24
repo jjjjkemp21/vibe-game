@@ -60,3 +60,18 @@ Each stage uses its own RNG sub-stream: `FRandomStream(HashCombine(Seed, StageId
 - Ids (O1): row names are ids. Renaming a modifier is a content change and may change which modifiers survive the MaxModifiers cap (the cap keeps the first hits in lexical row-name order).
 - Tags (O5): unregistered tags written in struct or JSON-object form import without an import problem; FFishDataValidator::Validate catches them, so it stays in the reimport path.
 - JSON sources (T004-Q2): the engine's JSON import reports text in a float field, but silently reads text in an int field as 0 and in a bool field as false. `FFishDataValidator::ValidateJsonSource(Json, RowStruct, TableName)` checks the raw source: every int/float (enums excepted) is a JSON number, every bool is true/false, and structs other than gameplay tags are JSON objects. Run it next to the import and Validate.
+
+## T-027 additions (unreal-engineer, 2026-09-23; docs/specs/fishing-water-rules.md)
+Hot spots make fish bigger and worth more through two new roll inputs on `FFishRollContext` (the one pipeline stays the
+only place a fish is made; defaults leave every roll exactly as before):
+- `SizeBonus` (default 0, clamped to [0, 1]): stage 2, natural rolls only, right after SampleWeight:
+  `Weight += (WeightMax - Weight) * SizeBonus`, before the difficulty-stat scaling (bigger fish fight harder). 0 skips the
+  step (bit-identical rolls). A forced weight fraction ignores it. Non-finite: ignored with a Warning.
+- `ValueMultiplier` (default 1): stage 6, multiplies with the rarity and modifier value multipliers. 1 skips it. Non-finite
+  or <= 0: ignored with a Warning (caller problem, logged every call).
+- Rarity is still boosted only through `Luck` (the water area's luck + gear luck + a hot spot's LuckBonus).
+- The weight, rarity and modifier stages keep their own RNG sub-streams: for the same seed a size bonus changes only the
+  weight (and what follows from it: difficulty stats, value), never the rarity or the modifiers.
+- The bite picker gained no inputs. The water decides the habitat (and a gap fallback habitat when the data has no species
+  at that hour); `FLureWaterRules::HasSpeciesIgnoringBait` asks PickSpecies' eligibility with each species' own bait.
+- Tests: `Project.Fishing.Water.Roll.SizeAndValueInputs`, `Project.Fishing.Water.HotSpot.BonusReachesTheRoll`.

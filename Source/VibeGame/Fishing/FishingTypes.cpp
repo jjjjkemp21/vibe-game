@@ -214,27 +214,6 @@ TArray<float> FLureFishingRules::NibbleTimes(const FLureFishingRow& Row, FRandom
 	return Times;
 }
 
-bool FLureFishingRules::CanHaveBites(const FLureFishingSpot* Spot, const FLureFishingEnvironment& Environment)
-{
-	return (Spot && Spot->IsValid()) || Environment.OffSpotHabitatTag.IsValid();
-}
-
-FFishRollContext FLureFishingRules::MakeRollContext(const FLureFishingSpot* Spot, const FLureFishingEnvironment& Environment, int32 Seed)
-{
-	FFishRollContext Context;
-	Context.Seed = Seed;
-	Context.TimeOfDayHours = Environment.TimeOfDayHours;
-	Context.WeatherTag = Environment.WeatherTag;
-	Context.BaitTag = Environment.BaitTag;
-	const bool bSpot = Spot && Spot->IsValid();
-	Context.HabitatTag = bSpot ? Spot->HabitatTag : Environment.OffSpotHabitatTag;
-	Context.RegionTag = (bSpot && Spot->RegionTag.IsValid()) ? Spot->RegionTag : Environment.DefaultRegionTag;
-	const float SpotLuck = (bSpot && FMath::IsFinite(Spot->Luck)) ? Spot->Luck : 0.f;
-	const float GearLuck = FMath::IsFinite(Environment.GearLuck) ? Environment.GearLuck : 0.f;
-	Context.Luck = SpotLuck + GearLuck; // the roll clamps to [0, MaxLuck]
-	return Context;
-}
-
 bool FLureFishingRules::DecideBite(const FFishTables& Tables, const FFishRollContext& Context, FFishInstance& OutFish)
 {
 	OutFish = FFishInstance();

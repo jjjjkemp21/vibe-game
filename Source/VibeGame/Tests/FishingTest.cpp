@@ -1,4 +1,6 @@
 // Lure T-006: casting, bobber, bite and hook (implementer's tests; QA adds its own). Project.Fishing.*
+// T-027 changed the spot rule (every body of water can be fished): Spot.HabitatAndLuckReachTheRoll and Spot.OpenWaterBites
+// follow docs/specs/fishing-water-rules.md.
 // Tables come from the text sources in data/tables/ (never the binary assets). Worlds are transient FTestWorldWrapper game worlds:
 // a 1 m high dock (top z = 100) and a Lure.Water surface at z = 0 around it.
 
@@ -26,9 +28,11 @@
 #include "Engine/World.h"
 #include "Fishing/FishingSpots.h"
 #include "Fishing/FishingTypes.h"
+#include "Fishing/FishingWater.h"
 #include "Fishing/LureFishingComponent.h"
 #include "Fishing/LureFishingLineComponent.h"
 #include "Fishing/LureFishingSettings.h"
+#include "Fishing/LureWaterSettings.h"
 #include "Game/LureGameMode.h"
 #include "Game/LureHUD.h"
 #include "GameFramework/PlayerController.h"
@@ -773,8 +777,11 @@ bool FLureFishingSpotTagsParse::RunTest(const FString& Parameters)
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLureFishingSpotHabitatAndLuckReachTheRoll, "Project.Fishing.Spot.HabitatAndLuckReachTheRoll", LureFishingTest::TestFlags)
 bool FLureFishingSpotHabitatAndLuckReachTheRoll::RunTest(const FString& Parameters)
 {
-	// Pure: the context is the spot's habitat and region, and its luck plus gear luck.
+	// T-027: a fishing spot marker is a legacy water area (in a level without water areas). Pure: the bite context is the
+	// area's habitat and region, and its luck plus gear luck (docs/specs/fishing-water-rules.md).
+	AddExpectedMessagePlain(TEXT("Data gap:"), ELogVerbosity::Warning, EAutomationExpectedMessageFlags::Contains, -1); // the reef at noon (T-009)
 	FLureFishingSpot Spot;
+	Spot.SpotId = TEXT("cove");
 	Spot.Radius = 500.f;
 	Spot.HabitatTag = Tag(TEXT("Habitat.Shore.Cove"));
 	Spot.RegionTag = Tag(TEXT("Region.Tropical.PalmKey"));
@@ -783,19 +790,20 @@ bool FLureFishingSpotHabitatAndLuckReachTheRoll::RunTest(const FString& Paramete
 	Environment.TimeOfDayHours = 6.f;
 	Environment.GearLuck = 0.25f;
 	Environment.DefaultRegionTag = Tag(TEXT("Region.Tropical"));
-	const FFishRollContext Context = FLureFishingRules::MakeRollContext(&Spot, Environment, 77);
+	const TArray<FLureWaterAreaInfo> Areas = { FLureWaterRules::AreaFromLegacySpot(Spot, 0) };
+	const FLureWaterContext Water = FLureWaterRules::MakeWaterContext(Areas, FVector2D(Spot.Location), 0.f, 800.f, Tag(TEXT("Habitat.Shore")));
+	const FFishRollContext Context = FLureWaterRules::MakeBiteContext(Water, Water.HabitatTag, FLureHotSpotBonus(), Environment, 77);
+	TestEqual(TEXT("the legacy area is the spot"), Water.AreaId, FName(TEXT("cove")));
 	TestTrue(TEXT("habitat from the spot"), Context.HabitatTag == Spot.HabitatTag);
 	TestTrue(TEXT("region from the spot"), Context.RegionTag == Spot.RegionTag);
 	TestNearlyEqual(TEXT("luck = spot 0.5 + gear 0.25"), Context.Luck, 0.75f, 0.0001f);
 	TestNearlyEqual(TEXT("time of day"), Context.TimeOfDayHours, 6.f, 0.0001f);
 	TestEqual(TEXT("seed"), Context.Seed, 77);
-	const FFishRollContext OffSpot = FLureFishingRules::MakeRollContext(nullptr, Environment, 1);
-	TestFalse(TEXT("no spot: no habitat (nothing bites off-spot by default)"), OffSpot.HabitatTag.IsValid());
+	const FLureWaterContext Open = FLureWaterRules::MakeWaterContext(Areas, FVector2D(5000.0, 0.0), 0.f, 800.f, Tag(TEXT("Habitat.Shore")));
+	const FFishRollContext OffSpot = FLureWaterRules::MakeBiteContext(Open, Open.HabitatTag, FLureHotSpotBonus(), Environment, 1);
+	TestTrue(TEXT("no spot: the default water habitat (fish anywhere)"), OffSpot.HabitatTag == Tag(TEXT("Habitat.Shore")));
 	TestTrue(TEXT("no spot: the default region"), OffSpot.RegionTag == Environment.DefaultRegionTag);
 	TestNearlyEqual(TEXT("no spot: gear luck only"), OffSpot.Luck, 0.25f, 0.0001f);
-	TestFalse(TEXT("no spot, no off-spot habitat: no bites"), FLureFishingRules::CanHaveBites(nullptr, Environment));
-	Environment.OffSpotHabitatTag = Tag(TEXT("Habitat.Shore"));
-	TestTrue(TEXT("an off-spot habitat in the settings allows bites"), FLureFishingRules::CanHaveBites(nullptr, Environment));
 
 	// Luck changes the rarity roll (same seed, more luck -> rarer tiers more often).
 	FishQA::FTables Tables;
@@ -803,8 +811,8 @@ bool FLureFishingSpotHabitatAndLuckReachTheRoll::RunTest(const FString& Paramete
 	{
 		return false;
 	}
-	FLureFishingSpot Shore;
-	Shore.Radius = 500.f;
+	FLureWaterContext Shore;
+	Shore.bOnWater = true;
 	Shore.HabitatTag = Tag(TEXT("Habitat.Shore"));
 	Shore.RegionTag = Tag(TEXT("Region.Tropical.PalmKey"));
 	FLureFishingEnvironment Noon;
@@ -817,10 +825,10 @@ bool FLureFishingSpotHabitatAndLuckReachTheRoll::RunTest(const FString& Paramete
 	{
 		Shore.Luck = 0.f;
 		FFishInstance Plain;
-		FLureFishingRules::DecideBite(Tables.Get(), FLureFishingRules::MakeRollContext(&Shore, Noon, Seed), Plain);
+		FLureFishingRules::DecideBite(Tables.Get(), FLureWaterRules::MakeBiteContext(Shore, Shore.HabitatTag, FLureHotSpotBonus(), Noon, Seed), Plain);
 		Shore.Luck = 4.f;
 		FFishInstance Lucky;
-		FLureFishingRules::DecideBite(Tables.Get(), FLureFishingRules::MakeRollContext(&Shore, Noon, Seed), Lucky);
+		FLureFishingRules::DecideBite(Tables.Get(), FLureWaterRules::MakeBiteContext(Shore, Shore.HabitatTag, FLureHotSpotBonus(), Noon, Seed), Lucky);
 		RareNoLuck += Plain.RarityId != TEXT("Common") ? 1 : 0;
 		RareLucky += Lucky.RarityId != TEXT("Common") ? 1 : 0;
 		Differ += Plain.RarityId != Lucky.RarityId ? 1 : 0;
@@ -834,12 +842,13 @@ bool FLureFishingSpotHabitatAndLuckReachTheRoll::RunTest(const FString& Paramete
 		const TCHAR* Habitat;
 		float Hours;
 		float Luck;
-		const TCHAR* ExpectSpecies; // nullptr = nothing bites
+		const TCHAR* ExpectSpecies;
+		const TCHAR* RollHabitat; // the habitat the roll used
 	};
 	const FCase Cases[] = {
-		{ TEXT("Habitat.Shore.Cove"), 12.f, 0.5f, TEXT("Bonefish") },   // cove = a Shore child: shore fish, with the cove's luck
-		{ TEXT("Habitat.Reef"), 20.f, 0.f, TEXT("CoralSnapper") },       // reef at night: the snapper (15-09)
-		{ TEXT("Habitat.Reef"), 12.f, 0.f, nullptr },                    // reef at noon: nothing fits
+		{ TEXT("Habitat.Shore.Cove"), 12.f, 0.5f, TEXT("Bonefish"), TEXT("Habitat.Shore.Cove") }, // cove = a Shore child: shore fish, with the cove's luck
+		{ TEXT("Habitat.Reef"), 20.f, 0.f, TEXT("CoralSnapper"), TEXT("Habitat.Reef") },          // reef at night: the snapper (15-09)
+		{ TEXT("Habitat.Reef"), 12.f, 0.f, TEXT("Bonefish"), TEXT("Habitat.Shore") },             // reef at noon: a data gap, the gap fallback (Shore) bites
 	};
 	for (const FCase& Case : Cases)
 	{
@@ -859,31 +868,25 @@ bool FLureFishingSpotHabitatAndLuckReachTheRoll::RunTest(const FString& Paramete
 		TestTrue(Label + TEXT(": the bobber is in the marker's spot"), Fishing->HasCurrentSpot() && Fishing->GetNetState().SpotId == TEXT("case"));
 		World.Tick(30); // past the 0.2 s bite wait
 		const FFishRollContext& Rolled = Fishing->GetLastRollContext();
-		TestTrue(Label + TEXT(": the roll used the marker's habitat"), Rolled.HabitatTag == Tag(Case.Habitat));
+		TestTrue(FString::Printf(TEXT("%s: the roll used habitat %s (got %s)"), *Label, Case.RollHabitat, *Rolled.HabitatTag.ToString()), Rolled.HabitatTag == Tag(Case.RollHabitat));
 		TestTrue(Label + TEXT(": ... and region"), Rolled.RegionTag == Tag(TEXT("Region.Tropical.PalmKey")));
 		TestNearlyEqual(Label + TEXT(": ... and luck"), Rolled.Luck, Case.Luck, 0.001f);
-		if (Case.ExpectSpecies)
-		{
-			TestEqual(Label + TEXT(": biting"), StateName(Fishing->GetFishingState()), StateName(ELureFishingState::Biting));
-			TestEqual(Label + TEXT(": species"), Fishing->GetPendingFish().SpeciesId, FName(Case.ExpectSpecies));
-			// The bite is the one roll pipeline: the same context rolls the same fish.
-			FFishInstance Again;
-			TestTrue(Label + TEXT(": re-roll"), FLureFishingRules::DecideBite(Tables.Get(), Rolled, Again));
-			TestTrue(Label + TEXT(": same fish from the same context"), Again.Seed == Fishing->GetPendingFish().Seed && Again.RarityId == Fishing->GetPendingFish().RarityId
-				&& FMath::IsNearlyEqual(Again.WeightKg, Fishing->GetPendingFish().WeightKg));
-		}
-		else
-		{
-			TestEqual(Label + TEXT(": nothing bites"), StateName(Fishing->GetFishingState()), StateName(ELureFishingState::Waiting));
-			TestTrue(Label + TEXT(": nothing-here flag"), Fishing->GetNetState().bNoFishHere);
-		}
+		TestEqual(Label + TEXT(": biting"), StateName(Fishing->GetFishingState()), StateName(ELureFishingState::Biting));
+		TestEqual(Label + TEXT(": species"), Fishing->GetPendingFish().SpeciesId, FName(Case.ExpectSpecies));
+		// The bite is the one roll pipeline: the same context rolls the same fish.
+		FFishInstance Again;
+		TestTrue(Label + TEXT(": re-roll"), FLureFishingRules::DecideBite(Tables.Get(), Rolled, Again));
+		TestTrue(Label + TEXT(": same fish from the same context"), Again.Seed == Fishing->GetPendingFish().Seed && Again.RarityId == Fishing->GetPendingFish().RarityId
+			&& FMath::IsNearlyEqual(Again.WeightKg, Fishing->GetPendingFish().WeightKg));
 	}
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLureFishingNoSpotNoBite, "Project.Fishing.Spot.NoSpotNoBite", LureFishingTest::TestFlags)
-bool FLureFishingNoSpotNoBite::RunTest(const FString& Parameters)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLureFishingOpenWaterBites, "Project.Fishing.Spot.OpenWaterBites", LureFishingTest::TestFlags)
+bool FLureFishingOpenWaterBites::RunTest(const FString& Parameters)
 {
+	// T-027 (was Spot.NoSpotNoBite): every body of water can be fished. Casting outside every spot lands in the default water
+	// (ULureWaterSettings::DefaultWaterHabitat), a bite comes, and the HUD never says "Nothing is biting here".
 	FishQA::FTables Tables;
 	if (!FishQA::LoadReal(*this, Tables))
 	{
@@ -894,7 +897,7 @@ bool FLureFishingNoSpotNoBite::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
-	World.AddSpot(FVector(5000.f, 5000.f, 0.f), { TEXT("Spot=far_away"), TEXT("Habitat=Habitat.Shore"), TEXT("Radius=300") });
+	World.AddSpot(FVector(5000.f, 5000.f, 0.f), { TEXT("Spot=far_away"), TEXT("Habitat=Habitat.Reef"), TEXT("Radius=300") });
 	FLureFishingRow Profile = QuickProfile();
 	Profile.NoBiteHintDelay = 1.f;
 	ULureFishingComponent* Fishing = SetUpFishing(World.Spawn(StandAt), Tables, Profile);
@@ -903,14 +906,13 @@ bool FLureFishingNoSpotNoBite::RunTest(const FString& Parameters)
 		return false;
 	}
 	TestFalse(TEXT("open water, no spot"), Fishing->HasCurrentSpot());
-	TestTrue(TEXT("nothing-here flag"), Fishing->GetNetState().bNoFishHere);
-	TestTrue(TEXT("no bite scheduled"), Fishing->GetScheduledBiteTime() < 0.0);
-	TestTrue(TEXT("no hint before NoBiteHintDelay"), Fishing->GetStatusText().IsEmpty());
-	World.Tick(90);
-	TestEqual(TEXT("still waiting, no bite"), StateName(Fishing->GetFishingState()), StateName(ELureFishingState::Waiting));
-	TestTrue(TEXT("HUD: nothing is biting here"), Fishing->GetStatusText().Contains(TEXT("Nothing is biting here")));
-	Fishing->AuthorityHook();
-	TestEqual(TEXT("a press reels in"), StateName(Fishing->GetFishingState()), StateName(ELureFishingState::Idle));
+	TestFalse(TEXT("no nothing-here flag"), Fishing->GetNetState().bNoFishHere);
+	TestTrue(TEXT("a bite is scheduled"), Fishing->GetScheduledBiteTime() >= 0.0);
+	TestTrue(TEXT("HUD: the water line"), Fishing->GetStatusText().Contains(TEXT("Water: open water")));
+	const bool bBite = World.TickUntil([Fishing]() { return Fishing->GetFishingState() == ELureFishingState::Biting; }, 90);
+	TestTrue(TEXT("a fish bites in open water"), bBite);
+	TestTrue(TEXT("... from the default water habitat"), Fishing->GetLastRollContext().HabitatTag == Tag(*GetDefault<ULureWaterSettings>()->DefaultWaterHabitat.ToString()));
+	TestFalse(TEXT("HUD: never 'Nothing is biting here'"), Fishing->GetStatusText().Contains(TEXT("Nothing is biting")));
 	return true;
 }
 

@@ -589,6 +589,24 @@ bool FFishRoll::Roll(const FFishTables& Tables, const FFishRollContext& Context,
 				OutTrace->Add(FString::Printf(TEXT("2 weight: U %.6f ^ skew %g = %.6f -> %g + (%g - %g) x %.6f = %.4f kg"),
 					U, Species.SizeSkew, FMath::Pow(U, Species.SizeSkew), Species.WeightMin, Species.WeightMax, Species.WeightMin, FMath::Pow(U, Species.SizeSkew), Weight));
 			}
+			// T-027 size bonus (hot spots): move the natural roll toward WeightMax. 0 (the default) leaves it untouched.
+			if (Context.SizeBonus != 0.0f)
+			{
+				if (!FMath::IsFinite(Context.SizeBonus))
+				{
+					UE_LOG(LogLureFish, Warning, TEXT("Fish roll %s: SizeBonus is not finite, using 0"), *SpeciesId.ToString());
+				}
+				else if (Context.SizeBonus > 0.0f)
+				{
+					const double Bonus = FMath::Min(1.0, static_cast<double>(Context.SizeBonus));
+					const float Before = Weight;
+					Weight = static_cast<float>(Before + (static_cast<double>(Species.WeightMax) - Before) * Bonus);
+					if (OutTrace)
+					{
+						OutTrace->Add(FString::Printf(TEXT("  size bonus %g: %.4f + (%g - %.4f) x %g = %.4f kg"), Bonus, Before, Species.WeightMax, Before, Bonus, Weight));
+					}
+				}
+			}
 		}
 		const float Factor = WeightStatFactor(Species, Weight);
 		if (OutTrace)
@@ -854,6 +872,18 @@ bool FFishRoll::Roll(const FFishTables& Tables, const FFishRollContext& Context,
 	for (const FName& Id : Kept)
 	{
 		ValueMultiplier *= Tables.FindModifier(Id)->ValueMultiplier;
+	}
+	// T-027 context value multiplier (hot spots). 1 (the default) leaves the value untouched.
+	if (Context.ValueMultiplier != 1.0f)
+	{
+		if (FMath::IsFinite(Context.ValueMultiplier) && Context.ValueMultiplier > 0.0f)
+		{
+			ValueMultiplier *= Context.ValueMultiplier;
+		}
+		else
+		{
+			UE_LOG(LogLureFish, Warning, TEXT("Fish roll %s: ValueMultiplier %g must be finite and > 0, using 1"), *SpeciesId.ToString(), Context.ValueMultiplier);
+		}
 	}
 	const double RawValue = static_cast<double>(Species.BaseValuePerKg) * WeightKg * ValueMultiplier;
 	if (!FMath::IsFinite(RawValue) || RawValue < 0.0)

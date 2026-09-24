@@ -241,9 +241,14 @@ public:
 	/** Server: the context of the last bite roll (spot habitat, region, luck, time, seed). */
 	const FFishRollContext& GetLastRollContext() const { return LastRollContext; }
 
-	/** Server: the fishing spot the bobber is in (valid only if HasCurrentSpot). */
-	const FLureFishingSpot& GetCurrentSpot() const { return CurrentSpot; }
-	bool HasCurrentSpot() const { return bHasSpot; }
+	/** Server: the water the bobber rests on (area, habitat, region, depth; T-027 docs/specs/fishing-water-rules.md). */
+	const FLureWaterContext& GetWaterContext() const { return WaterContext; }
+
+	/** Server: the bobber is in a named water area (a painted area, or a legacy fishing spot); false in default water or on land. */
+	bool HasCurrentSpot() const { return !WaterContext.AreaId.IsNone(); }
+
+	/** Server: the hot spot bonus of this cast (captured when the bobber landed; TypeId None = none). */
+	const FLureHotSpotBonus& GetHotSpotBonus() const { return HotSpotBonus; }
 
 	/** Server: when the next bite (or bite attempt) is due; < 0 = none scheduled. */
 	double GetScheduledBiteTime() const { return NextBiteTime; }
@@ -342,8 +347,8 @@ private:
 	TArray<TObjectPtr<UObject>> TableRefs;
 	FFishInstance PendingFish;
 	FFishRollContext LastRollContext;
-	FLureFishingSpot CurrentSpot;
-	bool bHasSpot = false;
+	FLureWaterContext WaterContext;
+	FLureHotSpotBonus HotSpotBonus;
 	double NextBiteTime = -1.0;
 	TArray<double> NibbleSchedule;
 	int32 NextNibbleIndex = 0;

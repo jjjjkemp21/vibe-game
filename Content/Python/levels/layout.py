@@ -17,12 +17,17 @@ Conventions (docs/levels/README-style summary; the full description is in each l
 - Compound blocks ("kind"): stairs, ramp, pier, palm, lamp_post, beacon, stall. They expand to primitives with ids
   "<block id>/<part>" (and lamps/beacons also emit point lights).
 
+- Water areas (T-027, docs/specs/fishing-water-rules.md): "water_area" markers give the water inside an outline (circle,
+  box, polygon or everywhere) a habitat, region, luck, priority and depth band; water_area_at() is the same winner rule as
+  the game (FLureWaterRules::FindAreaIndex). A "hot_spots" marker turns hot spots on for the level.
+
 CLI (plain Python 3, from the repo root):  python Content/Python/levels/layout.py data/levels/L_PalmKey.json
-prints counts, validation problems, fishing spots and the route table (distances and walk times).
+prints counts, validation problems, fishing spots, water areas and the route table (distances and walk times).
 """
 import json
 import math
 import os
+import re
 
 SCHEMA = "lure.level_layout/1"
 
@@ -37,7 +42,10 @@ ANCHORS = ("bottom", "center", "top")
 MARKER_TYPES = (
     "player_start", "fishing_spot", "patrol", "sight_cone", "zone", "npc", "teleport", "boat_mooring",
     "cover_test", "clearance_test", "landmark", "label", "sell_point", "water_volume", "ladder",
+    "water_area", "hot_spots",
 )
+# T-027 water areas (docs/specs/fishing-water-rules.md): the habitat of the water inside an outline.
+WATER_AREA_SHAPES = ("circle", "box", "polygon", "everywhere")
 LIGHT_TYPES = ("directional", "sky_atmosphere", "sky_light", "height_fog", "point", "post_process")
 ZONE_TYPES = ("threat", "hazard", "crawl_gap", "quiet", "trigger", "area")
 STANCES = ("stand", "crouch", "prone")
@@ -577,7 +585,8 @@ def resolve_rel(layout):
     return blocks, markers
 
 
-LABELLED_TYPES = ("fishing_spot", "npc", "landmark", "zone", "sight_cone", "boat_mooring", "player_start", "teleport")
+LABELLED_TYPES = ("fishing_spot", "npc", "landmark", "zone", "sight_cone", "boat_mooring", "player_start", "teleport",
+                  "water_area")
 
 
 def labels(layout, markers, size=None, yaw=180.0):
@@ -601,6 +610,10 @@ def labels(layout, markers, size=None, yaw=180.0):
         if t == "fishing_spot":
             text = "%s\n%s  L%s  %s" % (name, mk["habitat"], "-".join(str(x) for x in mk.get("level_band", [])),
                                         mk.get("time_label", ""))
+        elif t == "water_area":
+            depth = mk.get("depth") or [0, 0]
+            band = "" if not (depth[0] or depth[1]) else "  %s-%s cm" % (depth[0], depth[1] or "any")
+            text = "%s\n%s  P%s%s" % (name, mk.get("habitat", "?"), mk.get("priority", 0), band)
         at = v3(mk.get("label_at", mk["at"]))
         out.append({"id": mk["id"] + "/label", "text": text, "at": (at[0], at[1], at[2] + lift), "size": size,
                     "yaw": float(mk.get("label_yaw", yaw))})
@@ -629,6 +642,19 @@ def expand(layout):
         prims.append(expand_prop(prop))
     lights.extend(layout.get("lights", []))
     markers = [m for m in markers_in if not m.get("disabled")]
+    water_z = float(layout.get("water_z", 0.0))
+    for i, m in enumerate(markers):
+        # Water areas and the hot spot marker need no "at" in the JSON: a polygon sits at its centroid, the rest at the
+        # origin on the water (the builder places the actor there; the outline is in world X/Y anyway).
+        if m["type"] in ("water_area", "hot_spots") and "at" not in m:
+            m = dict(m)
+            if m["type"] == "water_area" and m.get("shape") == "polygon" and len(m.get("points") or []) >= 3:
+                c = polygon_centroid(m["points"])
+                m["at"] = [c[0], c[1], water_z]
+            else:
+                m["at"] = [0.0, 0.0, water_z]
+            m["_auto_at"] = True
+            markers[i] = m
     for m in list(markers):
         if m["type"] == "fishing_spot" and m.get("teleport", True) and m.get("cast_from"):
             cf = v3(m["cast_from"])
@@ -898,6 +924,295 @@ def water_exit_report(layout, top_fn, expanded=None):
 
 
 # ---------------------------------------------------------------------------------------------------------------------
+# Water areas (T-027, docs/specs/fishing-water-rules.md): the same geometry and winner rule as the game
+# (Source/VibeGame/Fishing/FishingWaterTypes.cpp FLureWaterAreaInfo, FishingWater.cpp FLureWaterRules::FindAreaIndex)
+# ---------------------------------------------------------------------------------------------------------------------
+def polygon_signed_area(points):
+    """Shoelace area (cm^2; positive = counter-clockwise in X/Y)."""
+    n = len(points)
+    if n < 3:
+        return 0.0
+    s = 0.0
+    for i in range(n):
+        x1, y1 = float(points[i][0]), float(points[i][1])
+        x2, y2 = float(points[(i + 1) % n][0]), float(points[(i + 1) % n][1])
+        s += x1 * y2 - x2 * y1
+    return 0.5 * s
+
+
+def polygon_centroid(points):
+    """Area centroid of a polygon (the vertex mean for a degenerate one)."""
+    a = polygon_signed_area(points)
+    n = len(points)
+    if abs(a) < 1e-6:
+        return (sum(float(p[0]) for p in points) / max(n, 1), sum(float(p[1]) for p in points) / max(n, 1))
+    cx = cy = 0.0
+    for i in range(n):
+        x1, y1 = float(points[i][0]), float(points[i][1])
+        x2, y2 = float(points[(i + 1) % n][0]), float(points[(i + 1) % n][1])
+        cross = x1 * y2 - x2 * y1
+        cx += (x1 + x2) * cross
+        cy += (y1 + y2) * cross
+    return (cx / (6.0 * a), cy / (6.0 * a))
+
+
+def _segments_cross(p1, p2, q1, q2):
+    """True if segments p1-p2 and q1-q2 intersect (touching counts)."""
+    def orient(a, b, c):
+        v = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
+        return 0 if abs(v) < 1e-9 else (1 if v > 0 else -1)
+
+    def on_seg(a, b, c):
+        return min(a[0], b[0]) - 1e-9 <= c[0] <= max(a[0], b[0]) + 1e-9 and min(a[1], b[1]) - 1e-9 <= c[1] <= max(a[1], b[1]) + 1e-9
+
+    o1, o2, o3, o4 = orient(p1, p2, q1), orient(p1, p2, q2), orient(q1, q2, p1), orient(q1, q2, p2)
+    if o1 != o2 and o3 != o4:
+        return True
+    return ((o1 == 0 and on_seg(p1, p2, q1)) or (o2 == 0 and on_seg(p1, p2, q2)) or (o3 == 0 and on_seg(q1, q2, p1))
+            or (o4 == 0 and on_seg(q1, q2, p2)))
+
+
+def polygon_is_simple(points):
+    """No two non-adjacent edges touch (the outline doesn't cross itself)."""
+    pts = [(float(p[0]), float(p[1])) for p in points]
+    n = len(pts)
+    for i in range(n):
+        a1, a2 = pts[i], pts[(i + 1) % n]
+        for j in range(i + 1, n):
+            if j == i or (j + 1) % n == i or (i + 1) % n == j:
+                continue  # adjacent edges share a corner
+            if _segments_cross(a1, a2, pts[j], pts[(j + 1) % n]):
+                return False
+    return True
+
+
+def _area_frame(mk, x, y):
+    """X/Y in a box area's own frame (turned by its yaw around its "at")."""
+    at = v3(mk["at"])
+    a = math.radians(float(mk.get("yaw", 0.0)))
+    dx, dy = x - at[0], y - at[1]
+    return dx * math.cos(a) + dy * math.sin(a), -dx * math.sin(a) + dy * math.cos(a)
+
+
+def water_area_has_shape(mk):
+    shape = mk.get("shape")
+    if shape == "everywhere":
+        return True
+    if shape == "circle":
+        return float(mk.get("radius", 0) or 0) > 0
+    if shape == "box":
+        s = mk.get("size") or [0, 0]
+        return len(s) >= 2 and float(s[0]) > 0 and float(s[1]) > 0
+    if shape == "polygon":
+        pts = mk.get("points") or []
+        return len(pts) >= 3 and abs(polygon_signed_area(pts)) > 1e-4
+    return False
+
+
+def water_area_contains(mk, x, y):
+    """The area's outline contains (x, y): circles and boxes include the edge; polygons use the even-odd rule."""
+    if not water_area_has_shape(mk):
+        return False
+    shape = mk["shape"]
+    if shape == "everywhere":
+        return True
+    if shape == "circle":
+        at = v3(mk["at"])
+        r = float(mk["radius"])
+        return (x - at[0]) ** 2 + (y - at[1]) ** 2 <= r * r
+    if shape == "box":
+        lx, ly = _area_frame(mk, x, y)
+        return abs(lx) <= float(mk["size"][0]) / 2.0 and abs(ly) <= float(mk["size"][1]) / 2.0
+    pts = mk["points"]
+    inside = False
+    n = len(pts)
+    j = n - 1
+    for i in range(n):
+        ax, ay = float(pts[i][0]), float(pts[i][1])
+        bx, by = float(pts[j][0]), float(pts[j][1])
+        if (ay > y) != (by > y):
+            cross_x = ax + (y - ay) * (bx - ax) / (by - ay)
+            if x < cross_x:
+                inside = not inside
+        j = i
+    return inside
+
+
+def water_area_size(mk):
+    """Surface area in cm^2 (the tie-break: smaller wins); everywhere = infinite."""
+    if not water_area_has_shape(mk):
+        return 0.0
+    shape = mk["shape"]
+    if shape == "everywhere":
+        return float("inf")
+    if shape == "circle":
+        return math.pi * float(mk["radius"]) ** 2
+    if shape == "box":
+        return float(mk["size"][0]) * float(mk["size"][1])
+    return abs(polygon_signed_area(mk["points"]))
+
+
+def water_area_accepts_depth(mk, depth):
+    """min <= depth < max (max 0 = no limit). depth None = any (for 2D questions)."""
+    if depth is None:
+        return True
+    lo, hi = (list(mk.get("depth") or [0, 0]) + [0, 0])[:2]
+    lo, hi = max(0.0, float(lo)), float(hi)
+    return depth >= lo and (hi <= 0 or depth < hi)
+
+
+def water_area_outline(mk, segments=64):
+    """The outline as world X/Y points (a circle as a polygon); [] for everywhere. For previews and checks."""
+    if not water_area_has_shape(mk) or mk["shape"] == "everywhere":
+        return []
+    shape = mk["shape"]
+    if shape == "polygon":
+        return [(float(p[0]), float(p[1])) for p in mk["points"]]
+    at = v3(mk["at"])
+    if shape == "circle":
+        r = float(mk["radius"])
+        return [(at[0] + r * math.cos(2 * math.pi * i / segments), at[1] + r * math.sin(2 * math.pi * i / segments))
+                for i in range(segments)]
+    hx, hy = float(mk["size"][0]) / 2.0, float(mk["size"][1]) / 2.0
+    rows = rot_rows(float(mk.get("yaw", 0.0)))
+    out = []
+    for sx, sy in ((1, 1), (-1, 1), (-1, -1), (1, -1)):
+        w = rotate(rows, (sx * hx, sy * hy, 0.0))
+        out.append((at[0] + w[0], at[1] + w[1]))
+    return out
+
+
+def _fname_key(text):
+    """Sort key like FName::LexicalLess: case-insensitive text, then a trailing _N number (natural: a_2 < a_10)."""
+    m = re.match(r"^(.*)_(0|[1-9][0-9]*)$", str(text))
+    if m:
+        return (m.group(1).lower(), int(m.group(2)) + 1)
+    return (str(text).lower(), 0)
+
+
+def water_area_better(a, b):
+    """a wins over b: higher priority, then the smaller area, then the lower id."""
+    pa, pb = int(a.get("priority", 0)), int(b.get("priority", 0))
+    if pa != pb:
+        return pa > pb
+    sa, sb = water_area_size(a), water_area_size(b)
+    if sa != sb:
+        return sa < sb
+    return _fname_key(a["id"]) < _fname_key(b["id"])
+
+
+def water_area_at(markers, x, y, depth=None):
+    """The water_area marker that decides the water at (x, y) (and depth, if given), or None (default water)."""
+    best = None
+    for mk in markers:
+        if mk.get("type") != "water_area" or not str(mk.get("habitat", "")).startswith("Habitat."):
+            continue
+        if not water_area_accepts_depth(mk, depth) or not water_area_contains(mk, x, y):
+            continue
+        if best is None or water_area_better(mk, best):
+            best = mk
+    return best
+
+
+def _check_water_area(mk, raw_at, problems):
+    """Validation of one water_area marker (see the spec's layout schema)."""
+    mid = mk["id"]
+    shape = mk.get("shape")
+    if shape not in WATER_AREA_SHAPES:
+        problems.append("ERROR water area %s: shape must be one of %s" % (mid, WATER_AREA_SHAPES))
+        return
+    if not str(mk.get("habitat", "")).startswith("Habitat."):
+        problems.append("ERROR water area %s: habitat must be a Habitat.* tag" % mid)
+    if mk.get("region") and not str(mk["region"]).startswith("Region."):
+        problems.append("ERROR water area %s: region must be a Region.* tag (or left out)" % mid)
+    if not isinstance(mk.get("priority", 0), int):
+        problems.append("ERROR water area %s: priority must be an integer" % mid)
+    try:
+        if float(mk.get("luck", 0.0)) < 0:
+            problems.append("ERROR water area %s: luck must be >= 0" % mid)
+    except (TypeError, ValueError):
+        problems.append("ERROR water area %s: luck must be a number" % mid)
+    depth = mk.get("depth", [0, 0])
+    if not (isinstance(depth, (list, tuple)) and len(depth) == 2 and all(isinstance(d, (int, float)) for d in depth)):
+        problems.append("ERROR water area %s: depth must be [min, max] in cm (max 0 = no limit)" % mid)
+    elif depth[0] < 0 or (depth[1] != 0 and depth[1] <= depth[0]):
+        problems.append("ERROR water area %s: depth [%s, %s] needs min >= 0 and max 0 or > min" % (mid, depth[0], depth[1]))
+    if shape in ("circle", "box") and not raw_at:
+        problems.append("ERROR water area %s: a %s needs \"at\" (its center on the water)" % (mid, shape))
+    if shape == "circle" and not float(mk.get("radius", 0) or 0) > 0:
+        problems.append("ERROR water area %s: radius must be > 0" % mid)
+    if shape == "box":
+        s = mk.get("size")
+        if not (isinstance(s, (list, tuple)) and len(s) == 2 and all(float(v) > 0 for v in s)):
+            problems.append("ERROR water area %s: size must be [x, y] > 0 (the full box)" % mid)
+    if shape == "polygon":
+        pts = mk.get("points") or []
+        if len(pts) < 3 or not all(isinstance(p, (list, tuple)) and len(p) >= 2 for p in pts):
+            problems.append("ERROR water area %s: a polygon needs 3 or more [x, y] points" % mid)
+        else:
+            if any(math.hypot(float(pts[i][0]) - float(pts[(i + 1) % len(pts)][0]),
+                              float(pts[i][1]) - float(pts[(i + 1) % len(pts)][1])) < 1.0 for i in range(len(pts))):
+                problems.append("ERROR water area %s: two points in a row are the same (a zero-length edge)" % mid)
+            elif not polygon_is_simple(pts):
+                problems.append("ERROR water area %s: the polygon outline crosses itself" % mid)
+            elif abs(polygon_signed_area(pts)) < 1.0:
+                problems.append("ERROR water area %s: the polygon has no area" % mid)
+
+
+def _water_area_overlaps(a, b, samples=24):
+    """Rough 2D overlap test (bounds, then a sample grid inside the shared bounds); everywhere overlaps everything."""
+    def bounds(mk):
+        pts = water_area_outline(mk)
+        if not pts:
+            return None
+        return (min(p[0] for p in pts), min(p[1] for p in pts), max(p[0] for p in pts), max(p[1] for p in pts))
+    ba, bb = bounds(a), bounds(b)
+    if ba is None or bb is None:
+        return water_area_has_shape(a) and water_area_has_shape(b)
+    x0, y0, x1, y1 = max(ba[0], bb[0]), max(ba[1], bb[1]), min(ba[2], bb[2]), min(ba[3], bb[3])
+    if x0 > x1 or y0 > y1:
+        return False
+    for i in range(samples):
+        for j in range(samples):
+            x = x0 + (x1 - x0) * (i + 0.5) / samples
+            y = y0 + (y1 - y0) * (j + 0.5) / samples
+            if water_area_contains(a, x, y) and water_area_contains(b, x, y):
+                return True
+    return False
+
+
+def _check_water_areas_together(layout, markers, problems):
+    """Cross-area warnings: equal-priority overlaps, areas off the water, spots whose habitat an area overrides."""
+    areas = [mk for mk in markers if mk["type"] == "water_area" and mk.get("shape") in WATER_AREA_SHAPES]
+    for i, a in enumerate(areas):
+        for b in areas[i + 1:]:
+            if int(a.get("priority", 0)) != int(b.get("priority", 0)):
+                continue
+            if a.get("depth") and b.get("depth") and list(a["depth"]) != list(b["depth"]):
+                continue  # different depth bands never compete at one point (approximately)
+            if _water_area_overlaps(a, b):
+                problems.append("WARN water areas %s and %s overlap with the same priority %s: the smaller wins; say it with priorities"
+                                % (a["id"], b["id"], a.get("priority", 0)))
+    volumes = [mk for mk in markers if mk["type"] == "water_volume"]
+    if volumes:
+        for a in areas:
+            if a["shape"] == "everywhere":
+                continue
+            c = polygon_centroid(a["points"]) if a["shape"] == "polygon" else v3(a["at"])[:2]
+            if not any(in_water_volume(w, c[0], c[1]) for w in volumes):
+                problems.append("WARN water area %s: its center (%.0f, %.0f) is not over a water volume" % (a["id"], c[0], c[1]))
+    if areas:
+        for s in markers:
+            if s["type"] != "fishing_spot":
+                continue
+            at = v3(s["at"])
+            win = water_area_at(markers, at[0], at[1])
+            if win is not None and str(win.get("habitat")) != str(s.get("habitat")):
+                problems.append("WARN spot %s (%s) lies in water area %s (%s): since T-027 the area decides the fish there"
+                                % (s["id"], s.get("habitat"), win["id"], win.get("habitat")))
+
+
+# ---------------------------------------------------------------------------------------------------------------------
 # Validation
 # ---------------------------------------------------------------------------------------------------------------------
 def validate(layout, expanded=None):
@@ -982,10 +1297,23 @@ def validate(layout, expanded=None):
                 problems.append("ERROR ladder %s: not over a water volume" % mk["id"])
             elif all(abs(v3(w["at"])[2] - v3(mk["at"])[2]) > 0.5 for w in wet):
                 problems.append("ERROR ladder %s: origin z must be the water surface" % mk["id"])
+        if t == "water_area":
+            _check_water_area(mk, not mk.get("_auto_at"), problems)
+        if t == "hot_spots":
+            types = mk.get("types", [])
+            if not (isinstance(types, list) and all(isinstance(x, str) and x for x in types)):
+                problems.append("ERROR hot_spots %s: types must be a list of DT_HotSpot row names (empty = every row)" % mk["id"])
+            if not isinstance(mk.get("max", 0), int) or mk.get("max", 0) < 0:
+                problems.append("ERROR hot_spots %s: max must be an integer >= 0 (leave it out for the settings' MaxHotSpots)" % mk["id"])
+            if not isinstance(mk.get("seed", 0), int):
+                problems.append("ERROR hot_spots %s: seed must be an integer (0 = random)" % mk["id"])
         if t == "cover_test" and mk.get("stance") not in STANCES:
             problems.append("ERROR cover test %s: stance must be one of %s" % (mk["id"], STANCES))
         if t == "cover_test" and mk.get("vs") not in marker_ids:
             problems.append("ERROR cover test %s: vs %r is not a marker" % (mk["id"], mk.get("vs")))
+    if sum(1 for mk in expanded["markers"] if mk.get("type") == "hot_spots") > 1:
+        problems.append("ERROR more than one hot_spots marker: a level has one hot spot spawner")
+    _check_water_areas_together(layout, expanded["markers"], problems)
     for v in layout.get("views", []):
         if v.get("stance") and v["stance"] not in STANCES:
             problems.append("ERROR view %s: stance must be one of %s" % (v["id"], STANCES))
@@ -1023,11 +1351,23 @@ def summary(layout):
         lines.append("time of day: %s, exposure EV100 %s (scale %.3f), fog density %s from %s cm" % (
             tod["id"], tod.get("exposure_ev100"), exposure_scale(tod), fog.get("density"), fog.get("start_distance")))
     spots = [mk for mk in ex["markers"] if mk["type"] == "fishing_spot"]
+    areas = [mk for mk in ex["markers"] if mk["type"] == "water_area"]
     if spots:
-        lines.append("fishing spots:")
+        lines.append("fishing spots%s:" % (" (legacy water areas: the level has no water_area yet)" if not areas else
+                                           " (named casting places; the water areas decide the fish)"))
         for s in spots:
             lines.append("  %-14s %-22s r=%4.0f  hours=%s  levels=%s  danger=%s" % (
                 s["id"], s["habitat"], s["radius"], s["hours"], s.get("level_band"), s.get("danger", "none")))
+    if areas:
+        lines.append("water areas (T-027; higher priority wins, then the smaller area):")
+        for a in sorted(areas, key=lambda m: (-int(m.get("priority", 0)), water_area_size(m), _fname_key(m["id"]))):
+            size = water_area_size(a)
+            lines.append("  %-16s %-10s %-22s P%-4s luck %.2f depth %s  %s" % (
+                a["id"], a.get("shape"), a.get("habitat"), a.get("priority", 0), float(a.get("luck", 0.0)),
+                a.get("depth", [0, 0]), "everywhere" if size == float("inf") else "%.0f m2" % (size / 10000.0)))
+    hot = [mk for mk in ex["markers"] if mk["type"] == "hot_spots"]
+    lines.append("hot spots: %s" % ("types %s, max %s" % (hot[0].get("types") or "all rows", hot[0].get("max", "settings"))
+                                    if hot else "off (no hot_spots marker)"))
     legs = route_table(layout)
     if legs:
         lines.append("route:")
