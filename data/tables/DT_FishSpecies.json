@@ -28,6 +28,9 @@
 		"MaxModifiers": 2,
 		"FightPatternId": "Run",
 		"Mesh": "None",
+		"SkeletalMesh": "/Game/Art/Fish/SK_Bonefish.SK_Bonefish",
+		"AnimAmplitude": 1.0,
+		"AnimRate": 1.15,
 		"DevComment": "Shore starter fish (beginner, daytime). PLACEHOLDER numbers (T-008): tune after playtest A. Mesh comes from the model-artist."
 	},
 	{
@@ -59,6 +62,9 @@
 		"MaxModifiers": 2,
 		"FightPatternId": "Dive",
 		"Mesh": "None",
+		"SkeletalMesh": "/Game/Art/Fish/SK_CoralSnapper.SK_CoralSnapper",
+		"AnimAmplitude": 0.8,
+		"AnimRate": 0.85,
 		"DevComment": "Reef starter fish (level 3, bites 15:00 to 09:00, wrapping midnight). PLACEHOLDER numbers (T-008): tune after playtest A."
 	}
 ]
