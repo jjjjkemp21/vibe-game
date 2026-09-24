@@ -4,6 +4,18 @@ Format: `- [ ] T-### Title (owner) - acceptance: ... In progress: <agent>, start
 Done tasks move to "Done" with their commit hash. Read the "In progress" markers before starting work.
 Last processed playtest folder: (none)
 
+## Status 2026-09-23 ~17:10 (lead)
+Merged since the push:
+- ladder climbs with Jump held (83e36f4; main 716/716)
+- clear shallow water (259937c)
+- shop light and haze (6d4639f)
+- cooler model final (11a483a: rim handles, weathered; designer-approved)
+- arm clips: rod aim + hold fish designer-approved (f2c8a46); carry front-wall tweak in progress
+Running:
+- T-027 (eng1), T-028 (eng2), T-030 (eng4), T-032 (eng5)
+- T-029 QA (eng3)
+- A_Fish_Curled + cooler slots
+
 ## Status 2026-09-23 ~16:00 (lead)
 **Pushed to GitHub: origin/main 4d64f2c (2026-09-23, e74801b..4d64f2c). Janitor ran after the push.**
 Milestone A features are merged and passed the release gate: build green, full suite 714/714 (Saved/AgentLogs/tests/20260923-151434), Project.Fishing 178/178 with the 16:00 clock, final playtest PASS (Saved/AgentLogs/playtest/20260923-152855-final-gate/report.md), designer APPROVED WITH CHANGES, no must-fix (Saved/AgentLogs/design/20260923-153500-release-gate.md).
