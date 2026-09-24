@@ -15,7 +15,12 @@ description: How Jimmy's playtest feedback is captured and turned into work - th
 - After an agent session, the agent moves its note folders out of `Saved/Playtest/` into its report folder (`Saved/AgentLogs/playtest/<run>/notes/`). `Saved/Playtest/` holds only Jimmy's notes.
 - Triage skips any note whose text starts with `[AGENT TEST]` and flags any other note that wasn't from a Jimmy session.
 
+## Jimmy's written feedback file
+- Per playtest round the lead makes `Playtest/<yyyy-MM-dd> <milestone> playtest feedback.txt` (tracked in git): one section per feature with what to try, plus a controls reminder. Jimmy writes in it while he plays.
+- The lead reads it in full when Jimmy says he's done playing, and triages it with the F8 notes below. Commit his edits as they are ("Jimmy's A2 playtest notes"). Agents never edit these files.
+
 ## Triage loop (run when Jimmy says he played, or when new folders exist)
+0. Read the current `Playtest/*feedback.txt` file.
 1. List folders in `Saved/Playtest/` newer than the last triage (record the last processed folder in `docs/TASKS.md`).
 2. For each note: look at the screenshot, read the note and context. Classify: bug / feel / content / idea.
 3. Add or update a task in `docs/TASKS.md` referencing the note folder. For "feel" notes, propose a concrete tuning change (which data value, from what to what) and explain it in one sentence.
