@@ -10,6 +10,7 @@
 #include "Dom/JsonValue.h"
 #include "EngineUtils.h"
 #include "Fish/FishDataValidator.h"
+#include "Fishing/LureHotSpotVisualComponent.h"
 #include "HAL/FileManager.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"

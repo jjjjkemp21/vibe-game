@@ -6,6 +6,8 @@
 #include "Animation/AnimInstance.h"
 #include "FishAnimInstance.generated.h"
 
+class UAnimSequenceBase;
+
 /**
  *  Which fish clip plays (ABP_Fish: Blend Poses by EFishAnimRole, one Sequence Player per role). Keep this order: the
  *  graph's pose pins follow it. The fight's move -> role mapping is data (DT_FishVisual MoveRoles).
@@ -26,7 +28,13 @@ enum class EFishAnimRole : uint8
 	/** A_Fish_Fight_Dart: C-start dart; DartStartTime picks the left (0.0) or right (0.6 s) half. */
 	Dart,
 	/** A_Fish_Landed_Flop: out of the water. Always at alpha 1. */
-	Flop
+	Flop,
+	/**
+	 *  A held pose, never a fight role (FFishVisualRow::Validate rejects it): the Sequence Player of this pin plays the
+	 *  DisplayPose variable (its Sequence pin; A_Fish_Curled as the node's own clip) from DisplayPoseTime at play rate 0,
+	 *  alpha 1. Set by SetHeldPose: the fish shown in an open cooler (DT_CoolerDisplay FishPose, T-030f).
+	 */
+	Curled
 };
 
 /** Everything ABP_Fish reads (the fight fish actor computes it; FFightFishVisual::ComputeAnimState). */
@@ -68,6 +76,7 @@ struct FFishAnimState
  *        Dive     -> Sequence Player A_Fish_Fight_Dive
  *        Dart     -> Sequence Player A_Fish_Fight_Dart   (Start Position <- DartStartTime)
  *        Flop     -> Sequence Player A_Fish_Landed_Flop
+ *        Curled   -> Sequence Player A_Fish_Curled       (Sequence <- DisplayPose, Start Position <- DisplayPoseTime)
  *      every Sequence Player: Play Rate <- PlayRate, Loop on; every Blend Time pin <- RoleBlendTime; Blend Poses
  *      "Reset Child on Activation" ON (a role restarts from its start, so Thrash shakes first and Dart starts on its side).
  *    Apply Additive -> Output Pose.
@@ -76,7 +85,7 @@ struct FFishAnimState
  *  anim.md "Why additive"). No state machine, no slots, no event graph logic.
  *
  *  The values come from the owning ALureFightFish every update (UpdateFromOwner), or from SetAnimState (previews, other
- *  owners such as T-030's landed fish).
+ *  owners such as T-030's landed fish), or from SetHeldPose (a static pose; the owner no longer drives it).
  */
 UCLASS(Transient, Blueprintable, BlueprintType)
 class UFishAnimInstance : public UAnimInstance
@@ -110,5 +119,38 @@ public:
 	/** Copies the state of the owning ALureFightFish. False (nothing changed) when the owner is not one. */
 	bool UpdateFromOwner();
 
+	/** The clip the Curled pin plays (its Sequence Player's Sequence pin). Only meaningful while Role is Curled. */
+	UPROPERTY(Transient, BlueprintReadOnly, Category="Lure|Fish")
+	TObjectPtr<UAnimSequenceBase> DisplayPose;
+
+	/** Seconds into DisplayPose the fish holds (the Curled player's Start Position), >= 0 */
+	UPROPERTY(Transient, BlueprintReadOnly, Category="Lure|Fish")
+	float DisplayPoseTime = 0.f;
+
+	/**
+	 *  Holds Pose (an additive A_Fish_* clip on SKEL_Fish) at Time from now on: Role Curled, DisplayPose, play rate 0,
+	 *  alpha 1, no blend. The owner stops driving the state (UpdateFromOwner is skipped). A null Pose is ignored (false).
+	 *  Check CanPlayRole(Curled) first: without that pin the graph would play its default pose instead.
+	 */
+	UFUNCTION(BlueprintCallable, Category="Lure|Fish")
+	bool SetHeldPose(UAnimSequenceBase* Pose, float Time);
+
+	/** True after SetHeldPose */
+	bool HasHeldPose() const { return bHeldPose; }
+
+	/** Whether this instance's graph has a Blend Poses pin of its own for InRole (ClassHasRolePin on its class). */
+	virtual bool CanPlayRole(EFishAnimRole InRole) const;
+
+	/**
+	 *  Whether AnimClass (an Anim Blueprint class) has a Blend Poses by EFishAnimRole node with a pin for InRole. A role
+	 *  without a pin plays the node's Default pin; SwimIdle (enum 0) always counts once the node exists. False for native
+	 *  classes (no graph) and null.
+	 */
+	static bool ClassHasRolePin(const UClass* AnimClass, EFishAnimRole InRole);
+
 	virtual void NativeUpdateAnimation(float DeltaSeconds) override;
+
+private:
+
+	bool bHeldPose = false;
 };

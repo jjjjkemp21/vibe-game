@@ -116,7 +116,13 @@ by the server; clients only ask ("I pressed E on this cooler, expecting Put in")
   `Contents` socket, bottom of the pile first (slot 0 = the lowest shown fish; taking one out re-seats the rest). A
   fish goes to its slot's X, Y and bed Z + `LieOffsetCm` x its shown scale, turned by the slot (pitch 0, yaw, roll
   +-90 = which side is down). Shown scale = (Weight / ReferenceWeight)^(1/3), at most `MaxFishScale` (1.0: four fish
-  fit under the lid; the record keeps its weight). `FishPose` + `PoseTime` = the held pose (`A_Fish_Curled`). The
+  fit under the lid; the record keeps its weight). `FishPose` + `PoseTime` = the held pose (`A_Fish_Curled`), played
+  by the fish anim class (ULureFishVisualSettings AnimClass = ABP_Fish) in the role **Curled** (EFishAnimRole, after
+  Flop; `UFishAnimInstance::SetHeldPose`: the Curled pin's Sequence Player plays `FishPose` from `PoseTime` at play
+  rate 0, alpha 1; additive on the playing mesh's local-space ref pose, so every SKEL_Fish species keeps its
+  proportions and it works in cooked builds). No anim class, a native one, or a graph without the Curled pin = the
+  single-node player (editor-correct, not cook-safe for additives); never hidden (T-030f). Curled is never a fight
+  role (DT_FishVisual rejects it). The
   layout is made for the cooler **on the floor with its front toward a standing player** (eye 1.65 m, 0.6 m away);
   seen from beside a counter the liner's front wall hides most fish, which is why a put-down faces you and refuses
   raised tops. No row = the built-in layout (= the shipped Starter row); a missing pose = straight fish. A fish put

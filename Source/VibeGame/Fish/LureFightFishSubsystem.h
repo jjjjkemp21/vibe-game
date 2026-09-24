@@ -89,6 +89,9 @@ public:
 	/** The DT_FishVisual row in use (the built-in one if the table or row is missing or invalid). */
 	const FFishVisualRow& GetVisualRow();
 
+	/** The fish anim class (ULureFishVisualSettings AnimClass, loaded and kept alive): UFishAnimInstance when it is unset or missing. */
+	UClass* ResolveAnimClass();
+
 	/** Where the fish mesh comes from, in order: species SkeletalMesh, species Mesh (if it is a skeletal mesh), Fallback. Null paths skipped. */
 	static TArray<FSoftObjectPath> MeshCandidates(const FFishSpeciesRow* Species, const TSoftObjectPtr<USkeletalMesh>& Fallback);
 
@@ -140,7 +143,6 @@ private:
 	void Resolve();
 	UObject* LoadPath(const FSoftObjectPath& Path);
 	USkeletalMesh* ResolveMesh(const FFishSpeciesRow* Species);
-	UClass* ResolveAnimClass();
 	UClass* ResolveActorClass();
 	ALureFightFish* SpawnFish(ULureFishingComponent& Fishing, const FFightFishView& View);
 	void EndFish(ULureFishingComponent* Fishing, ALureFightFish* Fish, const FFightFishView& View);

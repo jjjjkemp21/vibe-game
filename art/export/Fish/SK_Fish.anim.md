@@ -172,12 +172,18 @@ for both species and all 8 clips (the 7 motion clips and A_Fish_Curled).
 C++ `UFishAnimInstance` (the unreal-engineer) exposes, read by the graph only:
 `EFishAnimRole Role` (UENUM, in this order: `SwimIdle, SwimFast, Thrash, Run, Dive, Dart, Flop, Curled`; `Curled`
 is new for T-030, appended at the END so the existing Blend Poses pins keep their order), `float PlayRate`,
-`float Amplitude` (0..1), `float RoleBlendTime` (default 0.2 s), `float DartStartTime` (0.0 or 0.6).
+`float Amplitude` (0..1), `float RoleBlendTime` (default 0.2 s), `float DartStartTime` (0.0 or 0.6),
+`UAnimSequenceBase* DisplayPose` + `float DisplayPoseTime` (T-030f: the held pose, set by `SetHeldPose`).
 Graph, nothing else:
 `Local Space Ref Pose` -> **Apply Additive** (Base) <- Additive: **Blend Poses by EFishAnimRole** (one Sequence
 Player per role, clips per the table below, PlayRate pin <- `PlayRate`, blend time per pose <- `RoleBlendTime`,
-**Reset Child on Activation** on; the Dart player's Start Position <- `DartStartTime`) ; Apply Additive **Alpha <-
-`Amplitude`** -> Output Pose. The Apply Additive alpha is clamped to 0..1, so the clips are authored at the maximum
+**Reset Child on Activation** on; the Dart player's Start Position <- `DartStartTime`; the **Curled** player (node
+clip `A_Fish_Curled`) has its **Sequence** pin shown and <- `DisplayPose`, Start Position <- `DisplayPoseTime`) ;
+Apply Additive **Alpha <- `Amplitude`** -> Output Pose. Curled is a pose slot: whatever clip DT_CoolerDisplay
+`FishPose` names plays there (a new display pose = a new additive clip + a table edit, no code), held because C++
+sets PlayRate 0, Amplitude 1, RoleBlendTime 0. The cooler uses this path only when the graph has the Curled pin
+(`UFishAnimInstance::ClassHasRolePin`); without it the display falls back to a single-node player, which is not
+cook-safe for additive clips (T-030f). The Apply Additive alpha is clamped to 0..1, so the clips are authored at the maximum
 and species scale down.
 
 ## Which clip each fight state plays (T-007 `FLureFightNetState`)
@@ -241,8 +247,8 @@ CoralSnapper `Mouth` (27.71, 0, 2.52), `Tail` (-9.34, 0, 10.45). The two species
 - relative location to the cooler mesh's `Contents` socket = **(X, Y, BedZ + LieOffsetCm(species) x s)** cm;
 - relative rotation = **FRotator(Pitch 0, Yaw, Roll)** from the slot row (Roll +90 = the fish's right side down,
   -90 = its left side down);
-- animation: ABP_Fish with Role `Curled`, alpha 1 (see the tables above). The pose never changes, so the component
-  can tick its animation rarely or pause after the first pose (engineer's choice of mechanism);
+- animation: ABP_Fish with Role `Curled`, alpha 1 (see the tables above): `UFishAnimInstance::SetHeldPose(FishPose,
+  PoseTime)` from DT_CoolerDisplay (T-030f); a spawned display fish starts as Curled with no blend;
 - fill order slot 0, 1, 2, 3 (each slot rests on the ones below it). After a fish is taken out, re-seat the rest into
   slots 0..n-1, so there is never a gap under a fish. The slots move with the cooler (carry, lid closed: the top fish
   stays 7.5 mm under the closed lid).

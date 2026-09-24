@@ -20,6 +20,7 @@
 #include "Engine/StaticMeshSocket.h"
 #include "Engine/World.h"
 #include "Fish/FightFishVisual.h"
+#include "Fish/FishAnimInstance.h"
 #include "Fish/LureFightFishSubsystem.h"
 #include "Fishing/FishingSpots.h"
 #include "Fishing/LureFishingSettings.h"
@@ -42,6 +43,28 @@ namespace LureCoolerPrivate
 
 	const FName LidHingeSocket(TEXT("LidHinge"));
 	const FName ContentsSocket(TEXT("Contents"));
+
+	/**
+	 *  A shown fish holds Pose at Time (T-030f). Through the fish anim class (ABP_Fish) when its graph has the Curled pin:
+	 *  the ABP adds the clip onto the playing mesh's local-space ref pose, which is cook-safe for an additive clip. Otherwise
+	 *  (no class, a native class, or no Curled pin) the old single-node player, which still shows the pose in the editor.
+	 */
+	void HoldPose(USkeletalMeshComponent& Skeletal, UClass* AnimClass, UAnimSequenceBase* Pose, float Time)
+	{
+		if (AnimClass && AnimClass->IsChildOf(UFishAnimInstance::StaticClass()))
+		{
+			Skeletal.SetAnimInstanceClass(AnimClass);
+			UFishAnimInstance* Anim = Cast<UFishAnimInstance>(Skeletal.GetAnimInstance());
+			if (Anim && Anim->CanPlayRole(EFishAnimRole::Curled) && Anim->SetHeldPose(Pose, Time))
+			{
+				return;
+			}
+			Skeletal.SetAnimInstanceClass(nullptr);
+		}
+		Skeletal.PlayAnimation(Pose, /*bLooping*/ false);
+		Skeletal.SetPosition(Time, /*bFireNotifies*/ false);
+		Skeletal.Stop();
+	}
 
 	template <typename T>
 	T* LoadIfExists(const TSoftObjectPtr<T>& Ref)
@@ -872,6 +895,7 @@ void ALureCoolerActor::RefreshDisplay()
 		UAnimSequenceBase* Pose = LureCoolerPrivate::LoadIfExists(Row.FishPose);
 		ULureFightFishSubsystem* Visuals = ULureFightFishSubsystem::Get(this);
 		const FFishVisualRow VisualRow = Visuals ? Visuals->GetVisualRow() : FFishVisualRow::GetFallbackRow();
+		UClass* AnimClass = (Visuals && Pose) ? Visuals->ResolveAnimClass() : nullptr;
 		for (int32 Index = 0; Index < Shown; ++Index)
 		{
 			const FLureCaughtFish& Record = Fish[Fish.Num() - Shown + Index];
@@ -911,10 +935,7 @@ void ALureCoolerActor::RefreshDisplay()
 			Shown3D->RegisterComponent();
 			if (USkeletalMeshComponent* Skeletal = Cast<USkeletalMeshComponent>(Shown3D); Skeletal && Pose)
 			{
-				// Additive fish clips go on the fish's own reference pose (single-node evaluation), held at PoseTime.
-				Skeletal->PlayAnimation(Pose, /*bLooping*/ false);
-				Skeletal->SetPosition(Row.PoseTime, /*bFireNotifies*/ false);
-				Skeletal->Stop();
+				LureCoolerPrivate::HoldPose(*Skeletal, AnimClass, Pose, Row.PoseTime);
 			}
 			if (bFirstPersonRendering)
 			{

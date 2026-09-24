@@ -222,7 +222,8 @@ struct FLureCoolerDisplayRow : public FTableRowBase
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Display")
 	TArray<FLureCoolerDisplaySlot> Slots;
 
-	/** The pose the shown fish hold (an A_Fish_* clip on SKEL_Fish, e.g. A_Fish_Curled; additive clips go on the fish's own ref pose). None = straight. */
+	/** The pose the shown fish hold (an additive A_Fish_* clip on SKEL_Fish, e.g. A_Fish_Curled), played by ABP_Fish's Curled pin
+	 *  (its Sequence pin, so any clip works without code); single-node fallback without that pin. None = straight. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Display", meta=(DataTableImportOptional))
 	TSoftObjectPtr<UAnimSequenceBase> FishPose;
 
