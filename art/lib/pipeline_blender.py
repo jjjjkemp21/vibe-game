@@ -104,7 +104,14 @@ def socket_children(objects):
 
 def export_fbx(objects, out_path):
     """Export objects as one FBX that Unreal imports at the right scale (1 m cube -> 50 uu box extent).
-    SOCKET_ empties parented to the objects are exported too (Unreal makes them mesh sockets)."""
+    SOCKET_ empties parented to the objects are exported too (Unreal makes them mesh sockets).
+
+    bake_space_transform=True bakes the axis conversion (Z-up -> FBX Y-up) and the m -> cm unit scale into the vertex
+    data, so every Model node (mesh, UCX_, SOCKET_) is written with zero rotation and unit scale (cm, Y-up, like a Maya
+    file). Without it the mesh node carried Lcl Rotation (-90,0,0) and Lcl Scaling 100, and Unreal's socket import
+    (mesh global transform * socket local) gave every socket scale 100 and roll -90 (SM_Cooler_Starter, fixed by hand
+    in 19b06c1). World-space geometry, size, pivot and facing in Unreal are unchanged. The written file is checked:
+    raises if any node has a rotation or a non-unit scale."""
     ensure_fbx_exporter()
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -119,7 +126,12 @@ def export_fbx(objects, out_path):
         mesh_smooth_type="FACE",
         add_leaf_bones=False,
         bake_anim=False,
+        bake_space_transform=True,
     )
+    rep = fbx_scale_report(out_path)
+    if not (rep["unit_scale_factor"] == 1.0 and rep["max_node_scale_dev"] <= _SCALE_TOLERANCE
+            and rep["max_node_rotation"] <= 1e-4):
+        raise RuntimeError("static FBX has node rotation/scale (sockets would import wrong): %s" % rep)
     return str(out_path)
 
 
@@ -328,7 +340,7 @@ def fbx_scale_report(path):
 
     gs = props70(child(root, b"GlobalSettings"))
     objects = child(root, b"Objects")
-    node_dev, max_t, nodes = 0.0, 0.0, 0
+    node_dev, max_t, max_r, nodes = 0.0, 0.0, 0.0, 0
     s_nodes, curves, stacks = set(), {}, []
     for e in objects.elems:
         if e.id == b"Model":
@@ -336,6 +348,7 @@ def fbx_scale_report(path):
             p = props70(e)
             node_dev = max([node_dev] + [abs(v - 1.0) for v in p.get(b"Lcl Scaling", [1.0, 1.0, 1.0])])
             max_t = max([max_t] + [abs(v) for v in p.get(b"Lcl Translation", [0.0, 0.0, 0.0])])
+            max_r = max([max_r] + [abs(v) for v in p.get(b"Lcl Rotation", [0.0, 0.0, 0.0])])
         elif e.id == b"AnimationCurveNode" and e.props[1].split(b"\x00")[0] == b"S":
             s_nodes.add(e.props[0])
         elif e.id == b"AnimationCurve":
@@ -353,7 +366,7 @@ def fbx_scale_report(path):
     rep = {
         "file": str(path), "unit_scale_factor": usf, "original_unit_scale_factor": gs.get(b"OriginalUnitScaleFactor", [None])[0],
         "model_nodes": nodes, "max_node_scale_dev": node_dev, "scale_curves": s_curves, "max_anim_scale_dev": anim_dev,
-        "max_node_translation": round(max_t, 4), "takes": stacks,
+        "max_node_translation": round(max_t, 4), "max_node_rotation": max_r, "takes": stacks,
     }
     rep["ok"] = usf == 1.0 and node_dev <= _SCALE_TOLERANCE and anim_dev <= _SCALE_TOLERANCE
     return rep

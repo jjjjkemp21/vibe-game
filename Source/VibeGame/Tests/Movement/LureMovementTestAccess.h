@@ -32,6 +32,13 @@ struct FLureMovementTestAccess
 		Movement.Acceleration = Acceleration;
 	}
 
+	/** Player input on the owning client (ControlledCharacterMove): the acceleration and its analog modifier (0 blocks all input speed). */
+	static void SetInputAcceleration(ULureCharacterMovementComponent& Movement, const FVector& Acceleration)
+	{
+		Movement.Acceleration = Acceleration;
+		Movement.AnalogInputModifier = Movement.ComputeAnalogInputModifier();
+	}
+
 	/** The component's reply container (what MoveResponsePacked_ClientReceive deserializes into and ServerSendMoveResponse fills). */
 	static FLureMoveResponseDataContainer& ResponseData(ULureCharacterMovementComponent& Movement)
 	{

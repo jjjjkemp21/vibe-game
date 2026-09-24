@@ -14,11 +14,16 @@ Exports (art/export/Fish/), all CENTIMETERS through pb.export_skeletal_fbx (Unit
                                          armature only, one take each, all loops, rotation-only, keyed on the Bonefish
                                          armature (the reference); imported in Unreal as Local Space additives on
                                          A_Fish_Rest frame 0, so every species keeps its own proportions
+  A_Fish_Curled.fbx                      the same kind of file, a 1-frame pose (2 identical keys, frames 0-1): the
+                                         iced catch lying curled in a cooler (T-030; layout proof and slot table:
+                                         art/recipes/anim_fish_cooler.py)
 Spec for Unreal: art/export/Fish/SK_Fish.anim.md. RESULT_JSON: Saved/AgentLogs/blender/anim_fish.result.json.
 Previews (Saved/AgentLogs/previews/):
   SK_Fish_anim.png           overview: both species x 7 clips, 3/4 view from the concave side at each clip's
                              tightest bend (also the pinch check)
   A_Fish_<Clip>_anim.png     per clip: 8 frames x (Bonefish top, side; CoralSnapper top, side at amplitude 0.8)
+  A_Fish_Curled_anim.png     the 1-frame pose, both species: lying on each side seen from above (the cooler view,
+                             over the pale straight fish), from the back (it stays flat) and 3/4
   SK_Fish_strobe.png         midline strobes (top view) per clip + the ambient WPO wave for comparison
   SK_Fish_flop_dock.png      Landed_Flop lying on its right side on dock planks (low side view + top view)
   SK_Fish_tuck.png           pectorals as modeled vs tucked (front and bottom views)
@@ -623,6 +628,78 @@ def clip_sheet(fishes, clip, tmp):
     return pb.contact_sheet(cells, PREVIEW_DIR / ("%s_anim.png" % clip.name), cols=len(frames), cell=CELL)
 
 
+def fit_2d(co):
+    """A fish lying on its side, curled in its flank plane (fish X-Z): the smallest-area rectangle around its footprint
+    (length x width, cm), its thickness (fish Y, cm) and its nose-to-tail X extent."""
+    best = None
+    for a10 in range(0, 1800, 5):
+        a = math.radians(a10 / 10.0)
+        c, s = math.cos(a), math.sin(a)
+        u = [p.x * c + p.z * s for p in co]
+        v = [-p.x * s + p.z * c for p in co]
+        L, W = max(u) - min(u), max(v) - min(v)
+        if L < W:
+            L, W = W, L
+        if best is None or L * W < best[0]:
+            best = (L * W, L, W)
+    return {"length_cm": round(best[1] * 100.0, 1), "width_cm": round(best[2] * 100.0, 1),
+            "thickness_cm": round((max(p.y for p in co) - min(p.y for p in co)) * 100.0, 2),
+            "x_extent_cm": round((max(p.x for p in co) - min(p.x for p in co)) * 100.0, 1)}
+
+
+def curled_report(fishes, clip):
+    """Fit numbers of the curled pose per species (RESULT_JSON curled): footprint, thickness and the lie offset on
+    each side (the lowest point below the origin when lying on that side; equal to the straight fish's dock lie)."""
+    out = {}
+    for fish in fishes:
+        pose_fish(fish, clip.pose(0).quats())
+        co = fish.probe.coords()
+        r = fit_2d(co)
+        r["lie_offset_cm"] = {"right_side_down": round(-min(p.y for p in co) * 100.0, 2),
+                              "left_side_down": round(max(p.y for p in co) * 100.0, 2)}
+        out[fish.species] = r
+        pose_fish(fish, fr.Pose().quats())
+    return out
+
+
+def curled_sheet(fishes, clip, tmp):
+    """The 1-frame curled pose: per species, lying on its right side seen from above (= the fish seen from its left,
+    +Y) over the pale straight fish, the same on its left side, from the back (flat = stacks), and 3/4."""
+    cells = []
+    res = (400, 300)
+    for fish in fishes:
+        with solo_render(fishes, fish):
+            pose_fish(fish, clip.pose(0).quats())
+            co = fish.probe.coords()
+            cx = (max(p.x for p in co) + min(p.x for p in co)) / 2.0
+            cz = (max(p.z for p in co) + min(p.z for p in co)) / 2.0
+            ghosts = []                         # the straight fish (the mesh without its armature), pale, behind
+            for gy in (-0.3, 0.3):
+                g = bpy.data.objects.new("PV_Ghost", fish.mesh.data)
+                bpy.context.scene.collection.objects.link(g)
+                g.location = (0.0, gy, 0.0)
+                for slot in g.material_slots:
+                    slot.link = "OBJECT"
+                    slot.material = flat_mat("#9FC3C6")
+                ghosts.append(g)
+            views = [("right side down, from above", (0.0, 3.0, cz + 0.07), Euler((math.pi / 2.0, 0.0, math.pi)), 0),
+                     ("left side down, from above", (0.0, -3.0, cz + 0.07), Euler((math.pi / 2.0, 0.0, 0.0)), 1),
+                     ("from the back (flat)", (0.0, -0.07, 3.0), Euler((0.0, 0.0, 0.0)), None)]
+            for k, (name, loc, rot, gi) in enumerate(views):
+                for j, g in enumerate(ghosts):
+                    g.hide_render = j != gi
+                text = "Curled %s\n%s" % (fish.species, name) + ("\n(pale: the straight fish)" if k == 0 else "")
+                cells.append(render(tmp / ("curled_%s_%d.png" % (fish.species, k)), loc, rot, ortho=0.80, res=res,
+                                    label=text))
+            for g in ghosts:
+                bpy.data.objects.remove(g, do_unlink=True)
+            loc = (cx + 0.35, 0.55, cz + 0.45)
+            cells.append(render(tmp / ("curled_%s_34.png" % fish.species), loc, look_at(loc, (cx, 0.0, cz)),
+                                lens=45.0, res=res, label="Curled %s 3/4" % fish.species))
+        pose_fish(fish, fr.Pose().quats())
+    return pb.contact_sheet(cells, PREVIEW_DIR / ("%s_anim.png" % clip.name), cols=4, cell=res)
+
+
 def midline(fish):
     """Current midline (top view): the nose pole, every body ring's centroid, the tail tip (on the Tail bone)."""
     co = fish.probe.coords()
@@ -807,9 +884,12 @@ def render_previews(fishes, clips, bend_frames, lies, metrics):
     log("overview done")
     out["clips"] = {}
     for clip in clips:
-        out["clips"][clip.name] = clip_sheet(fishes, clip, tmp)
+        if clip.frames == 1:
+            out["clips"][clip.name] = curled_sheet(fishes, clip, tmp)
+        else:
+            out["clips"][clip.name] = clip_sheet(fishes, clip, tmp)
         log("strip " + clip.name)
-    out["strobe"] = strobe_sheet(fishes, clips, tmp)
+    out["strobe"] = strobe_sheet(fishes, [c for c in clips if c.frames > 1], tmp)
     flop = next((c for c in clips if c.role == "Flop"), None)
     if flop is not None:
         out["flop_dock"] = flop_dock_sheet(fishes, flop, lies, tmp)
@@ -842,7 +922,7 @@ def species_report(fish, lie):
     }
 
 
-VERIFY = [("A_Fish_Fight_Dart", 4), ("A_Fish_Swim_Idle", 15)]
+VERIFY = [("A_Fish_Fight_Dart", 4), ("A_Fish_Swim_Idle", 15), ("A_Fish_Curled", 0)]
 
 
 def verify_points(fishes):
@@ -936,6 +1016,10 @@ def main():
                    "role": c.role, "cycle_hz": c.cycle_hz, "notes": c.notes} for c in [fr.REST_CLIP] + fr.CLIPS],
         "metrics": metrics, "keyed_check": keyed, "limits": LIMITS,
     }
+    curled = next((c for c in clips if c.role == "Curled"), None)
+    if curled is not None:
+        extra["curled"] = curled_report(fishes, curled)
+        log("curled %s" % extra["curled"])
 
     if not QUICK:
         exports, units = export_all(fishes, ref)

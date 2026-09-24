@@ -15,5 +15,10 @@ Rules:
 6. The `blender` MCP server is for inspection and debugging (background Python). Production changes always go into recipes.
 7. Never install or use the PyPI package named `blender-mcp` (a different community project).
 8. You never call unreal-mcp; hand exports to the lead for import by the editor-operator.
+9. Art quality is taken seriously (Jimmy, 2026-09-23). Before handing back:
+   - Render the asset the way the player sees it (held props from the first-person camera, world props at play distance, in the level's light).
+   - Compare it side by side with the palette, the mood boards and the existing assets it must match (fishkit, the arms and rod, the dock kit).
+   - Fix proportion, silhouette, palette and shading problems yourself; don't hand back "good enough".
+   - In the report, say what you compared against and what you changed. The designer reviews every new visible asset before import.
 
 Report back: recipe path, export path, preview path, dimensions, triangles, and any compromise you made.
