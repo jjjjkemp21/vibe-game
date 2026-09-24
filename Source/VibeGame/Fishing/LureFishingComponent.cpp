@@ -1382,6 +1382,10 @@ void ULureFishingComponent::HandleStateChanged(const FLureFishingNetState& Previ
 	{
 		PlayArmsMontage(Settings->LandMontage);
 	}
+	if (NetState.ResultId != Previous.ResultId && NetState.LastResult == ELureFishingResult::Snapped && Line)
+	{
+		Line->Snap(); // T-032: the broken line whips back toward the rod, then is gone
+	}
 }
 
 void ULureFishingComponent::PlayArmsMontage(const TSoftObjectPtr<UAnimMontage>& Montage, bool bStop) const
@@ -1463,25 +1467,24 @@ void ULureFishingComponent::UpdateVisuals(float DeltaTime)
 	{
 		if (Row)
 		{
+			// T-032: the line simulates itself (docs/specs/fishing-line.md); it only needs its ends, tension, water and viewer.
 			const FName Socket = GetDefault<ULureFishingSettings>()->BobberLineSocket;
 			const FVector End = (BobberMesh && BobberMesh->DoesSocketExist(Socket)) ? BobberMesh->GetSocketLocation(Socket) : BobberLocation + FVector::UpVector * BobberTop;
-			float Sag = Row->LineSag;
-			if (NetState.State == ELureFishingState::Casting)
-			{
-				Sag *= 0.3f;
-			}
-			else if (NetState.State == ELureFishingState::Hooked && FightNet.bActive)
-			{
-				Sag = FLureFight::LineSag(Row->LineSag, FightNet.GetTension01(), GetFightTuning()); // taut under load, sags when slack
-			}
-			else if (NetState.State == ELureFishingState::Biting || NetState.State == ELureFishingState::Hooked)
-			{
-				Sag = 0.f; // taut: something pulls
-			}
 			FVector ViewLocation;
 			float Fov = 90.f;
 			GetViewer(ViewLocation, Fov);
-			Line->SetLine(GetLineStart(), End, Sag, ViewLocation, Fov, Row->LinePixelWidth, GetDefault<ULureFishingSettings>()->LineReferenceScreenWidth, Row->LineMinWidth);
+			Line->SetViewer(ViewLocation, Fov);
+			Line->SetWidthRule(Row->LinePixelWidth, GetDefault<ULureFishingSettings>()->LineReferenceScreenWidth, Row->LineMinWidth);
+			Line->SetTension(FLureFishingLineRules::StateTension(NetState.State, FightNet.bActive, FightNet.GetTension01(), Line->GetTuning()));
+			if (NetState.bOnWater)
+			{
+				Line->SetWaterSurfaceZ(static_cast<float>(NetState.BobberRest.Z)); // the bobber rests on the surface
+			}
+			else
+			{
+				Line->ClearWaterSurfaceZ();
+			}
+			Line->SetEndpoints(GetLineStart(), End);
 		}
 		else
 		{
@@ -1628,6 +1631,8 @@ void ULureFishingComponent::EnsureBobberAndLine()
 		Line->SetupAttachment(Owner->GetRootComponent());
 		Line->RegisterComponent();
 		Line->Setup(Mesh, LureFishingPrivate::LoadIfExists(Settings->LineMaterial), Settings->LineColor, Row.LineSegments);
+		// T-032: the line reads the drawn rod tip when it simulates (after the camera and arms moved), so it never lags the rod.
+		Line->SetStartProvider(FLureLinePointProvider::CreateUObject(this, &ULureFishingComponent::GetLineStart));
 	}
 }
 

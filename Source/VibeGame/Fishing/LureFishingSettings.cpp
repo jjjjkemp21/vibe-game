@@ -13,6 +13,8 @@ ULureFishingSettings::ULureFishingSettings()
 	// Defaults mirror Config/DefaultGame.ini.
 	FishingTable = TSoftObjectPtr<UDataTable>(FSoftObjectPath(TEXT("/Game/Data/DT_Fishing.DT_Fishing")));
 	DefaultProfileRow = TEXT("Default");
+	FishingLineTable = TSoftObjectPtr<UDataTable>(FSoftObjectPath(TEXT("/Game/Data/DT_FishingLine.DT_FishingLine")));
+	FishingLineRow = TEXT("Default");
 
 	RodMesh = TSoftObjectPtr<UStaticMesh>(FSoftObjectPath(TEXT("/Game/Art/Props/SM_Rod_Basic.SM_Rod_Basic")));
 	BobberMesh = TSoftObjectPtr<UStaticMesh>(FSoftObjectPath(TEXT("/Game/Art/Props/SM_Bobber.SM_Bobber")));
