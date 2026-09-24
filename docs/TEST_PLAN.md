@@ -246,7 +246,9 @@ object, read into the copy, RepNotifies called on change), not a property copy.
   replaces the built-in fallbacks. After the import, check once in main that the component resolves the imported tables (no fallback warning).
 
 ## T-029 fighting fish visual (lane eng3)
-Implementer tests: `Tests/FishVisual/FightFishVisualTest.cpp`, `Project.FishVisual.*`, 9 tests (unreal-engineer).
+Implementer tests: `Tests/FishVisual/FightFishVisualTest.cpp`, `Project.FishVisual.*`, 10 tests (unreal-engineer; the 10th,
+`Adapter.FollowsRodSteeredFight`, added at the T-028 merge: a rod steered against a Bonefish's runs turns it, and the view's line end
+stays on the bobber and the fight's SideDeg, tension = the fight's, fish on the line end every frame).
 Independent tests: `Tests/FishVisual/FightFishVisualQA*.cpp` + `FightFishVisualQATestUtils.h`, `Project.FishVisual.QA.*`, 29 tests (qa-engineer,
 2026-09-23), written from `docs/specs/fight-fish-visual.md` and the header contracts. Two drivers: `FRealScene` (a real server fight, T-007 rules;
 outcomes forced with one-move patterns and a short-spool line) and `FPuppet` (a SimulatedProxy copy whose replicated FightNet/NetState/HookedFish

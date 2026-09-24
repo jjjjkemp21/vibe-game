@@ -16,6 +16,7 @@
 #include "Fish/LureFightFish.h"
 #include "Fish/LureFightFishSubsystem.h"
 #include "Fishing/FightFishViewAdapter.h"
+#include "Fishing/LureRodControl.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Misc/PackageName.h"
 #include <limits>
@@ -759,6 +760,99 @@ namespace LureFightFishTest
 			Kept->Destroy();
 		}
 		TestFalse(TEXT("KeepLandedFish outside the event does nothing"), Visuals->KeepLandedFish(nullptr));
+		return true;
+	}
+
+	// =================================================================================================================
+	// T-028: a rod-steered fight. The fish stays on the line where the bobber rides while the rod turns it.
+	// =================================================================================================================
+
+	IMPLEMENT_SIMPLE_AUTOMATION_TEST(FFishVisualAdapterRodSteered, "Project.FishVisual.Adapter.FollowsRodSteeredFight", Flags)
+	bool FFishVisualAdapterRodSteered::RunTest(const FString& Parameters)
+	{
+		LureFightQA::FFightTables Data;
+		FishQA::FTables Fish;
+		TStrongObjectPtr<UDataTable> Visual;
+		if (!Data.Load(*this) || !FishQA::LoadReal(*this, Fish) || !LoadVisual(*this, Visual))
+		{
+			return false;
+		}
+		FFishInstance Hooked;
+		if (!LureFightQA::RollFish(*this, Fish, TEXT("Bonefish"), TEXT("Common"), 0.5f, 71, Hooked))
+		{
+			return false;
+		}
+		LureFightQA::FWorld World;
+		if (!World.Create(*this))
+		{
+			return false;
+		}
+		ULureFightFishSubsystem* Visuals = World.World->GetSubsystem<ULureFightFishSubsystem>();
+		ULureFishingComponent* Fishing = LureFightQA::SetUpFishing(World.Spawn(LureFightQA::StandAt()), Fish, Data.Gear.Get(), Data.Patterns.Get(), Data.Fight.Get());
+		if (!TestNotNull(TEXT("subsystem"), Visuals) || !TestNotNull(TEXT("fishing"), Fishing))
+		{
+			return false;
+		}
+		Visuals->SetTables(Fish.Species.Get(), Visual.Get());
+		if (!LureFightQA::CastAndWait(*this, World, Fishing) || !TestTrue(TEXT("hooks the Bonefish (Run pattern: sideways runs)"), Fishing->AuthorityHookFish(Hooked)))
+		{
+			return false;
+		}
+		const int32 DefaultStep = Data.Tuning()->ReelDefaultStep - 1;
+		const FVector Player = Fishing->GetOwner()->GetActorLocation();
+		const FVector Rest = FVector(Fishing->GetNetState().BobberRest);
+		const double RestAngle = FMath::RadiansToDegrees(FMath::Atan2(Rest.Y - Player.Y, Rest.X - Player.X));
+
+		int32 Frames = 0;
+		int32 SteeredFrames = 0;
+		int32 OffBobber = 0;
+		int32 OffAngle = 0;
+		int32 OffTension = 0;
+		int32 OffFish = 0;
+		double TurnAgainstRun = 0.0; // sum over steered frames of (SideDeg change x run direction): < 0 = turned against the run
+		float PreviousSideDeg = Fishing->GetFightNet().SideDeg;
+		for (int32 Frame = 0; Frame < 20 * 60 && Fishing->GetFishingState() == ELureFishingState::Hooked; ++Frame)
+		{
+			// The rod held fully against the fish's current run (level, default reel step, not reeling: the fish keeps running).
+			const ELureFightRunSide RunSide = Fishing->GetFightNet().RunSide;
+			const int32 RunDir = FLureRodControl::DirectionFromRunSide(RunSide);
+			Fishing->AuthoritySetFightInput(Fishing->GetFightNet().FightId, 0.f, -static_cast<float>(RunDir), DefaultStep);
+			World.Tick(1);
+
+			const FLureFightNetState& Net = Fishing->GetFightNet();
+			const FFightFishView View = FFightFishViewAdapter::FromComponent(*Fishing);
+			if (!View.bFighting)
+			{
+				continue;
+			}
+			++Frames;
+			if (RunDir != 0 && Net.RunSide == RunSide)
+			{
+				++SteeredFrames;
+				TurnAgainstRun += static_cast<double>(Net.SideDeg - PreviousSideDeg) * RunDir;
+			}
+			PreviousSideDeg = Net.SideDeg;
+
+			OffBobber += FVector::Dist2D(View.LineEnd, Fishing->GetBobberLocation()) > 0.5 ? 1 : 0;
+			if (Net.LineOut > 50.f)
+			{
+				const double ViewAngle = FMath::RadiansToDegrees(FMath::Atan2(View.LineEnd.Y - Player.Y, View.LineEnd.X - Player.X));
+				OffAngle += FMath::Abs(FMath::UnwindDegrees(ViewAngle - RestAngle - Net.SideDeg)) > 0.05 ? 1 : 0;
+			}
+			OffTension += FMath::Abs(View.Tension01 - Net.GetTension01()) > 1.0e-6f ? 1 : 0;
+			if (const ALureFightFish* Actor = Visuals->FindFish(Fishing))
+			{
+				OffFish += FVector::Dist2D(Actor->GetLastTarget(), View.LineEnd) > Actor->GetMouthOffsetCm() * Actor->GetFishScale() + 0.1f ? 1 : 0;
+			}
+		}
+		AddInfo(FString::Printf(TEXT("rod-steered fight: %d frames shown, %d steered against a run, SideDeg turned %.2f deg against the run"), Frames, SteeredFrames, -TurnAgainstRun));
+		TestTrue(FString::Printf(TEXT("the fight showed a fish for a while (%d frames)"), Frames), Frames > 120);
+		TestTrue(FString::Printf(TEXT("the fish ran sideways while the rod steered against it (%d frames)"), SteeredFrames), SteeredFrames > 30);
+		TestTrue(FString::Printf(TEXT("the rod turned the fish against its run (sum %.2f deg < 0)"), TurnAgainstRun), TurnAgainstRun < 0.0);
+		TestEqual(TEXT("frames with the view's line end off the bobber (where the camera and the line look)"), OffBobber, 0);
+		TestEqual(TEXT("frames with the view's line end not at the fight's SideDeg"), OffAngle, 0);
+		TestEqual(TEXT("frames with the view's tension not the fight's (rod pressure included)"), OffTension, 0);
+		TestEqual(TEXT("frames with the fish's target off the line end"), OffFish, 0);
 		return true;
 	}
 

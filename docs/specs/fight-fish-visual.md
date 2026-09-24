@@ -14,7 +14,9 @@ Clips and numbers: `art/export/Fish/SK_Fish.anim.md`. Tuning: `data/tables/DT_Fi
 | `UFishAnimInstance` | `Source/VibeGame/Fish/FishAnimInstance.*` | Parent of ABP_Fish; pulls `Role, PlayRate, Amplitude, RoleBlendTime, DartStartTime` from its `ALureFightFish`. |
 | `ULureFishVisualSettings` | `Source/VibeGame/Fish/FishVisualSettings.*` | Project Settings > Game > Lure Fish Visuals: DT_FishVisual, ABP_Fish class, fallback mesh, optional actor class. |
 
-When T-028 (or later work) changes the fight state, only `FightFishViewAdapter.cpp` needs to follow.
+When T-028 (or later work) changes the fight state, only `FightFishViewAdapter.cpp` needs to follow. T-028 (merged into
+the adapter's lane): the rod turns the fish through `SideDeg` and `Tension`, which the adapter already reads; the rod's own
+state (`RodPitch`, `RodYaw`, `ReelStep`, `RunSide`) is not the fish's and is not read (test `Project.FishVisual.Adapter.FollowsRodSteeredFight`).
 
 ## Rules
 

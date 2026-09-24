@@ -1,6 +1,9 @@
 // Lure: the fish visual's adapter to the fight (T-029). The ONLY place the fish visual reads the fight's replicated
-// structs (FLureFightNetState, FLureFishingNetState) and ULureFishingComponent. When the fight changes (T-028: rod aim,
-// reel speed, new states), update this file; ALureFightFish, ULureFightFishSubsystem and FFightFishVisual stay as they are.
+// structs (FLureFightNetState, FLureFishingNetState) and ULureFishingComponent. When the fight changes, update this file;
+// ALureFightFish, ULureFightFishSubsystem and FFightFishVisual stay as they are.
+// T-028 (rod-steered fight): the rod turns the fish through SideDeg (and its pull/tension through Tension), which this
+// adapter already reads, so the fish follows the rod with no new field. RodPitch/RodYaw/ReelStep/RunSide are the rod's and
+// the HUD's state, not the fish's: not read here. Test: Project.FishVisual.Adapter.FollowsRodSteeredFight.
 
 #pragma once
 
