@@ -9,10 +9,11 @@ Run: powershell -NoProfile -ExecutionPolicy Bypass -File tools/blender-run.ps1 -
 Result: Saved/AgentLogs/blender/anim_fish_cooler.result.json ("slots_ue" = the slot table in SK_Fish.anim.md).
 Previews (Saved/AgentLogs/previews/):
   A_Fish_Curled_cooler.png        contact sheet of the frames below
-  A_Fish_Curled_cooler_fp_counter.png  first person at the shop counter: the open cooler on the counter top (0.9 m),
-                                  0.55 m ahead of the player standing at the counter (eye 1.65 m over the floor),
-                                  the game's FP camera (90 deg, 1920x1080) looking down into it
-  A_Fish_Curled_cooler_fp_floor.png    the cooler on the floor 0.6 m ahead of a standing player (eye to fish ~1.3 m)
+  A_Fish_Curled_cooler_fp_shop.png     THE design view: the cooler put down on the floor, front (latch) toward the
+                                  player, who stands (eye 1.65 m) 0.6 m from its center; game FP camera (90 deg,
+                                  1920x1080) looking down into it
+  A_Fish_Curled_cooler_fp_countertop.png  the open cooler on a 0.9 m counter 0.55 m ahead (weak tie-breaker only)
+  A_Fish_Curled_cooler_fills.png  shop view, 1-4 fish in both species orders (FILL_ORDERS), crops at game pixels
   A_Fish_Curled_cooler_top.png    open cooler straight down (orthographic): 4 curled fish in slots 0-3
   A_Fish_Curled_cooler_big.png    the same with the 1.3x fish NOT clamped (what the display cap prevents)
   A_Fish_Curled_cooler_slots.png  slot diagram: top view, fish tinted by slot, slot numbers, Unreal +X/+Y arrows
@@ -26,9 +27,9 @@ HOW THE SLOTS ARE MADE (deterministic)
   on slots < i. A deterministic annealing search (fixed seed) picks each slot's side, yaw and floor position so that
   the stack is as low as possible, every vertex stays inside the liner (with MARGIN_M) and under the closed lid.
 - The fit limit: the largest scale in LIMIT_PROBE at which 4 fish fit at all (stack under the lid, inside the liner,
-  visibility ignored): 1.05 (2026-09-23). The display cap S_CAP = DISPLAY_CAP = 1.0 is a little under it on purpose:
-  at 1.05 the lower fish are almost fully buried (the top view read as 2-3 fish), at 1.0 every fish shows at least
-  VIS_FEASIBLE of its footprint from above. Slots are designed with every fish at S_CAP; a smaller fish sits in the
+  visibility ignored): 1.0 with the tail-half curl (2026-09-23; 1.05 misses the lid margin by 0.4 mm). The display
+  cap S_CAP = DISPLAY_CAP = 1.0; at it every fish shows at least VIS_FEASIBLE of its footprint from above, and from
+  the shop view every eye and tail tip is visible (view_check, all mixes x 1-4 fish). Slots are designed with every fish at S_CAP; a smaller fish sits in the
   same place on the same bed (it drops onto the bed below it).
 - Exact checks (BVH triangle overlap, every vertex vs the liner and the lid) for all 16 species mixes at scales
   S_CAP, 1.0 and 0.7, plus 32 seeded random mixes where every fish has its own scale in 0.7 .. S_CAP, all with the
@@ -44,6 +45,7 @@ GAME RULE (for the engineer; also in SK_Fish.anim.md)
 import importlib.util
 import json
 import math
+import os
 import random
 import sys
 import time
@@ -58,6 +60,7 @@ from mathutils import Matrix, Vector  # noqa: E402
 from mathutils.bvhtree import BVHTree  # noqa: E402
 
 import fishkit as fk  # noqa: E402
+import fp_preview as fpp  # noqa: E402
 import fishrig as fr  # noqa: E402
 import pipeline_blender as pb  # noqa: E402
 import style  # noqa: E402
@@ -69,13 +72,36 @@ BASE_CELL = 0.0025              # base raster of each lying fish (m), resampled 
 MARGIN_M = 0.004                # every vertex at least this far inside the liner wall
 LID_MARGIN_M = 0.004            # ... and under the closed lid's underside
 GAP_M = 0.003                   # air gap left when a fish is dropped onto another (the height field is sampled)
-VIS_MIN, VIS_WEIGHT = 0.30, 1.00  # each fish should show >= 30 % of its footprint from above (4 fish read as 4)
-VIS_FEASIBLE = 0.18             # a layout where any fish shows less than this is rejected
+VIS_MIN, VIS_WEIGHT = 0.30, 0.30  # each fish should show >= 30 % of its footprint from above (4 fish read as 4)
+VIEW_WEIGHT = 0.05              # per eye or tail hidden from a camera, x the camera's weight below
+RULE_WEIGHT = 0.05              # per degree off the rotation rule (designer must-fix 3)
+# Rotation rule (designer must-fix 3, "no two fish parallel with their crests over each other"): slots alternate
+# sides (mirrored); two slots on the SAME side (0 and 2, 1 and 3) lie at least ROT_APART_MIN apart (nose-to-tail
+# chord lines); and the crests (dorsal fin footprints seen from above) of different fish overlap as little as
+# possible (CREST_WEIGHT, a soft term only). A fixed 20-40 deg yaw step between neighbours was tried first:
+# with the eye/tail rule it found no layout under the lid, and it didn't stop crests meeting (they sit inside each
+# C, so what matters is where the Cs open, not the angle between them). No seed got the crest overlap under ~300
+# cells (5 mm); lead decision 2026-09-23: fin-over-fin overlap is accepted, because the straight snapper crest
+# (fishrig CURLED_BODY_DEG, curl in the tail half) is what removed the jumble. SEED was picked by how the shop view
+# reads (all 4 eyes clear) over the alternative layout without the crest term, whose snapper crests met mid-cooler.
+ROT_APART_MIN = 20.0
+CREST_WEIGHT = 0.0005           # per 5 mm cell where two fish's crests (dorsal fins) lie over each other
+# The player's eye in cooler space (+X = the cooler's front, the latch side, facing the player) and its weight.
+# "shop": the cooler put down on the floor at the counter, the player standing (eye 1.65 m) 0.6 m from its center:
+# every eye and tail must be visible (designer must-fix 2). "countertop": the cooler lifted onto a 0.9 m counter,
+# 0.55 m ahead: the 28 cm deep liner's front wall hides everything low in the front half from this angle; 4 flat
+# fish can't all show their eyes and tails there (see SK_Fish.anim.md), so it only counts as a tie-breaker.
+CAMS = [("shop", (0.60, 0.0, 1.65), 1.0), ("countertop", (0.55, 0.0, 0.75), 0.2)]
+RAY_TOP_Z = 0.345               # above this nothing in or of the cooler can block a view ray
+VIS_FEASIBLE = 0.12             # a layout where any fish shows less than this from straight above is rejected
 LIMIT_PROBE = (1.1, 1.05, 1.0)   # the fit limit (visibility ignored); 1.15+ is far off (stack 34-36 cm > lid 33)
 DISPLAY_CAP = 1.0               # the slots are designed for fish up to this scale (see the module docstring)
 YAW_STEP = 5                    # deg
 SEED = 20260923
+RESTARTS, ITERS = 12, 16000     # annealing effort per design
 SHOW = [("Bonefish", 1.0), ("CoralSnapper", 1.0), ("CoralSnapper", 1.0), ("Bonefish", 1.3)]
+FILL_ORDERS = [("Bonefish", "CoralSnapper", "Bonefish", "CoralSnapper"),
+               ("CoralSnapper", "Bonefish", "CoralSnapper", "Bonefish")]
 SLOT_TINT = ["#E8C46A", "#3FA34D", "#3ED1C4", "#C0392B"]
 
 
@@ -113,6 +139,22 @@ class Curled:
         fish.mesh.hide_render = True
         # lying on its side, lowest point below the origin (right side down / left side down)
         self.lie = {side: float(-(self.co @ lie_rot(side)[:3, :3].T)[:, 2].min()) for side in (1, -1)}
+        # view targets (fish-local, curled): the eye on the side facing up (its center, 3 mm out) and the two tail
+        # fin lobe tips; side +1 lies on its right side, so its left eye (+Y) is up
+        eyes = {}
+        for g in ("Eye_L", "Eye_R"):
+            idx = fr.group_members(fish.mesh, fr.part(g))
+            c = self.co[idx].mean(axis=0)
+            eyes[1 if c[1] > 0.0 else -1] = c + np.array([0.0, math.copysign(0.003, c[1]), 0.0])
+        cau = fr.group_members(fish.mesh, fr.part("Fin_Caudal"))
+        rest = fish.rest_co
+        tips = [min((i for i in cau if rest[i].z > 0.0), key=lambda i: rest[i].x),
+                min((i for i in cau if rest[i].z < 0.0), key=lambda i: rest[i].x)]
+        self.targets = {side: np.array([eyes[side], self.co[tips[0]], self.co[tips[1]]]) for side in (1, -1)}
+        self.nose = self.co[fish.nose_vert]
+        self.tail_mid = self.co[tips].mean(axis=0)
+        dorsal = set(fr.group_members(fish.mesh, fr.part("Fin_Dorsal")))
+        self.dorsal_polys = [q for q in self.polys if all(i in dorsal for i in q)]
 
 
 def lie_rot(side):
@@ -156,8 +198,10 @@ def base_raster(cf, side):
     mn, mx = P.min(axis=0), P.max(axis=0)
     xs = np.arange(math.floor(mn[0] / BASE_CELL) - 1, math.ceil(mx[0] / BASE_CELL) + 2) * BASE_CELL
     ys = np.arange(math.floor(mn[1] / BASE_CELL) - 1, math.ceil(mx[1] / BASE_CELL) + 2) * BASE_CELL
+    crest_tree = BVHTree.FromPolygons([Vector(p) for p in self_pts], cf.dorsal_polys)
     top = np.full((len(xs), len(ys)), np.nan)
     bot = np.full((len(xs), len(ys)), np.nan)
+    crest = np.zeros((len(xs), len(ys)), dtype=bool)
     down, up = Vector((0.0, 0.0, -1.0)), Vector((0.0, 0.0, 1.0))
     zt, zb = mx[2] + 0.05, mn[2] - 0.05
     for i, x in enumerate(xs):
@@ -167,7 +211,8 @@ def base_raster(cf, side):
                 top[i, j] = h[0].z
                 h2 = tree.ray_cast(Vector((x, y, zb)), up, 1.0)
                 bot[i, j] = h2[0].z if h2[0] is not None else h[0].z
-    return xs[0], ys[0], top, bot
+                crest[i, j] = crest_tree.ray_cast(Vector((x, y, zt)), down, 1.0)[0] is not None
+    return xs[0], ys[0], top, bot, crest
 
 
 class Variant:
@@ -188,11 +233,12 @@ class Variant:
         # back into the base raster frame (yaw 0, scale 1); sample the cell's 4 quarter points so thin fins count
         top = np.full(I.shape, -np.inf)
         bot = np.full(I.shape, np.inf)
+        crest = np.zeros(I.shape, dtype=bool)
         for ox, oy in ((-0.25, -0.25), (0.25, -0.25), (-0.25, 0.25), (0.25, 0.25), (0.0, 0.0)):
             Xs, Ys = X + ox * CELL, Y + oy * CELL
             bx = (c * Xs + sn * Ys) / s
             by = (-sn * Xs + c * Ys) / s
-            for x0, y0, t, b in bases:
+            for x0, y0, t, b, cr in bases:
                 ix = np.rint((bx - x0) / BASE_CELL).astype(int)
                 iy = np.rint((by - y0) / BASE_CELL).astype(int)
                 ok = (ix >= 0) & (ix < t.shape[0]) & (iy >= 0) & (iy < t.shape[1])
@@ -202,11 +248,19 @@ class Variant:
                 bv[ok] = b[ix[ok], iy[ok]]
                 top = np.where(np.isnan(tv), top, np.maximum(top, tv * s))
                 bot = np.where(np.isnan(bv), bot, np.minimum(bot, bv * s))
+                if ox == 0.0:
+                    cv = np.zeros(I.shape, dtype=bool)
+                    cv[ok] = cr[ix[ok], iy[ok]]
+                    crest |= cv
         occ = np.isfinite(top)
+        self.ci, self.cj = I[crest], J[crest]                                    # crest / dorsal fin footprint
         self.di, self.dj = I[occ], J[occ]
         self.top, self.bot = top[occ], bot[occ]
         self.top_max = float(self.top.max())
         self.side, self.yaw, self.s = side, yaw_deg, s
+        self.targets = [(cf.targets[side] @ R.T) * s for cf in curls]          # per species: eye, tail tip a, b
+        chord = sum(((cf.nose - cf.tail_mid) @ R.T for cf in curls))           # tail -> nose, both species
+        self.chord_deg = math.degrees(math.atan2(chord[1], chord[0]))
 
 
 def liner_excess(P):
@@ -224,14 +278,16 @@ class Layout:
 
     def __init__(self, floor_z, lid_z):
         self.floor_z, self.lid_z = floor_z, lid_z
-        self.vis_weight = VIS_WEIGHT
+        self.vis_weight, self.view_weight, self.rule_weight = VIS_WEIGHT, VIEW_WEIGHT, RULE_WEIGHT
 
     def drop(self, placements, variants, want_owner=False):
-        """placements: [(variant key, pi, pj)]. Returns (cost, [(origin z, top z, liner excess, visible share)]).
-        Cost (m): the stack's top + VIS_WEIGHT x each slot's shortfall below VIS_MIN of its footprint seen from above
-        + 200 x any liner or lid violation."""
+        """placements: [(variant key, pi, pj)]. Returns (cost, rows [origin z, top z, liner excess, share seen from
+        above, targets hidden per camera]). Cost (m): the stack's top + 200 x any liner or lid violation
+        + vis_weight x each slot's shortfall below VIS_MIN of its footprint seen from above + view_weight x every eye
+        or tail hidden from a camera (x its CAMS weight) + rule_weight x every degree a slot pair breaks the rotation rule."""
         H = np.full((2 * self.NI + 1, 2 * self.NJ + 1), self.floor_z)
         owner = np.full(H.shape, -1)
+        tops = []
         rows, cost, cells = [], 0.0, []
         for k, (key, pi, pj) in enumerate(placements):
             v = variants[key]
@@ -243,6 +299,10 @@ class Layout:
             higher = new_top > under
             H[gi[higher], gj[higher]] = new_top[higher]
             owner[gi[higher], gj[higher]] = k
+            if self.view_weight > 0.0:
+                T = np.full(H.shape, -np.inf)
+                T[gi, gj] = new_top
+                tops.append(T)
             P = v.pts + np.array([pi * CELL, pj * CELL, z])
             ex = liner_excess(P)
             top = z + v.top_max
@@ -253,10 +313,61 @@ class Layout:
             vis = float((owner[gi, gj] == k).mean())
             rows[k].append(vis)
             cost += self.vis_weight * max(0.0, VIS_MIN - vis)
+        if self.view_weight > 0.0:
+            for k, (key, pi, pj) in enumerate(placements):
+                others = [tops[j] for j in range(len(tops)) if j != k]
+                Hk = np.maximum.reduce(others) if others else np.full(H.shape, -np.inf)
+                off = np.array([pi * CELL, pj * CELL, rows[k][0]])
+                hidden = {}
+                for name, cam, w in CAMS:
+                    n = 0
+                    for tg in variants[key].targets:
+                        seen = self.seen(tg + off, Hk, cam)
+                        n += int(not seen[0]) + int(not (seen[1] or seen[2]))
+                    hidden[name] = n
+                    cost += self.view_weight * w * n
+                rows[k].append(hidden)
+        if self.rule_weight > 0.0:
+            n = len(placements)
+            for a_ in range(n):                                           # same side (0/2, 1/3): not parallel
+                for b_ in range(a_ + 2, n, 2):
+                    d = abs((variants[placements[a_][0]].chord_deg - variants[placements[b_][0]].chord_deg + 90.0)
+                            % 180.0 - 90.0)                               # angle between the chord LINES, 0..90
+                    cost += self.rule_weight * max(0.0, ROT_APART_MIN - d)
+            count = np.zeros(H.shape, dtype=np.int8)
+            for key, pi, pj in placements:                                # crests (dorsal fins) over each other
+                v = variants[key]
+                count[v.ci + pi + self.NI, v.cj + pj + self.NJ] += 1
+            crest_overlap = int((count > 1).sum())
+            for r in rows:
+                r.append(crest_overlap)
+            cost += CREST_WEIGHT * crest_overlap
         stack = max(r[1] for r in rows)
         if want_owner:
             return cost + stack, rows, owner
         return cost + stack, rows
+
+    def seen(self, P, Hk, cam):
+        """Per target point (cooler space): is the straight line to the camera clear of the other fish (their height
+        field Hk) and of the cooler wall?"""
+        C = np.array(cam)
+        t_end = np.clip((RAY_TOP_Z - P[:, 2]) / (C[2] - P[:, 2]), 0.0, 1.0)
+        t = np.linspace(0.0, 1.0, 72)[1:][None, :] * t_end[:, None]
+        Q = P[:, None, :] + t[:, :, None] * (C - P)[:, None, :]
+        ii = np.clip(np.rint(Q[..., 0] / CELL).astype(int) + self.NI, 0, 2 * self.NI)
+        jj = np.clip(np.rint(Q[..., 1] / CELL).astype(int) + self.NJ, 0, 2 * self.NJ)
+        blocked = (Hk[ii, jj] > Q[..., 2] + 0.001).any(axis=1)
+        hx, hy = pcs._liner_half_np(Q[..., 2])
+        e = cooler.EXP
+        m = (np.abs(Q[..., 0]) / hx) ** e + (np.abs(Q[..., 1]) / hy) ** e
+        wall = ((m > 1.0) & (Q[..., 2] < cooler.Z_TOP)).any(axis=1)
+        return ~(blocked | wall)
+
+
+def alternate(state):
+    """Designer rule: alternate slots lie on alternate sides (slot 0's side, then mirrored, ...)."""
+    s0 = state[0][0][0]
+    return [((s0 * (1 if k % 2 == 0 else -1), yaw), pi, pj) for k, ((_s, yaw), pi, pj) in enumerate(state)]
 
 
 def anneal(layout, variants, keys, n_slots, rng, iters):
@@ -265,6 +376,7 @@ def anneal(layout, variants, keys, n_slots, rng, iters):
     for k in range(n_slots):
         side, yaw = keys[rng.randrange(len(keys))]
         state.append(((side, yaw), rng.randint(-8, 8), rng.randint(-10, 10)))
+    state = alternate(state)
     cost, _ = layout.drop(state, variants)
     best = (cost, list(state))
     T = 0.02
@@ -279,7 +391,8 @@ def anneal(layout, variants, keys, n_slots, rng, iters):
         elif r < 0.4:
             yaw = (yaw + 180) % 360
         elif r < 0.5:
-            side = -side
+            new = [((-sd, yw), a_, b_) for (sd, yw), a_, b_ in new]          # mirror every slot (keeps alternation)
+            (side, yaw), pi, pj = new[k]
         elif r < 0.9:
             pi += rng.randint(-3, 3)
             pj += rng.randint(-3, 3)
@@ -288,6 +401,7 @@ def anneal(layout, variants, keys, n_slots, rng, iters):
             new[k], new[k2] = new[k2], new[k]
             (side, yaw), pi, pj = new[k]
         new[k] = ((side, yaw), max(-20, min(20, pi)), max(-28, min(28, pj)))
+        new = alternate(new)
         c, _ = layout.drop(new, variants)
         if c < cost or rng.random() < math.exp(-(c - cost) / t):
             state, cost = new, c
@@ -300,9 +414,9 @@ def design(layout, bases, curls, s, rng_seed):
     keys = [(side, yaw) for side in (1, -1) for yaw in range(0, 360, YAW_STEP)]
     variants = {k: Variant(bases[k[0]], curls, k[0], k[1], s) for k in keys}
     best = None
-    for restart in range(10):
+    for restart in range(RESTARTS):
         rng = random.Random(rng_seed + restart)
-        c, st = anneal(layout, variants, keys, 4, rng, 10000)
+        c, st = anneal(layout, variants, keys, 4, rng, ITERS)
         if best is None or c < best[0]:
             best = (c, st)
     cost, state = best
@@ -313,9 +427,14 @@ def design(layout, bases, curls, s, rng_seed):
         labels.append((float((ii - layout.NI).mean() * CELL), float((jj - layout.NJ).mean() * CELL))
                       if len(ii) else (0.0, 0.0))
     fits = all(r[2] <= 0.0 for r in rows) and max(r[1] for r in rows) <= layout.lid_z - LID_MARGIN_M
-    reads = min(r[3] for r in rows) >= VIS_FEASIBLE
+    crest = rows[0][5] if len(rows[0]) > 5 else None
+    reads = min(r[3] for r in rows) >= VIS_FEASIBLE and (layout.view_weight == 0.0
+                                                         or sum(r[4][CAMS[0][0]] for r in rows) == 0)
+    angles = [variants[st[0]].chord_deg for st in state]
     return {"scale": s, "cost": cost, "state": state, "rows": rows, "fits": fits, "reads": reads,
-            "stack_top_m": max(r[1] for r in rows), "visible": [round(r[3], 2) for r in rows], "labels": labels}
+            "stack_top_m": max(r[1] for r in rows), "visible": [round(r[3], 2) for r in rows], "labels": labels,
+            "hidden_targets": [r[4] if len(r) > 4 else None for r in rows],
+            "chord_deg": [round(a_, 1) for a_ in angles], "crest_overlap_cells": crest}
 
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -324,7 +443,7 @@ def design(layout, bases, curls, s, rng_seed):
 def slots_from(des, curls):
     lie_max = max(cf.lie[side] for cf in curls for side in (1, -1))
     out = []
-    for ((side, yaw), pi, pj), (z, top, ex, vis) in zip(des["state"], des["rows"]):
+    for ((side, yaw), pi, pj), (z, top, ex, vis, *_rest) in zip(des["state"], des["rows"]):
         bed = z - lie_max * des["scale"]           # the bed under this slot (lowest point of the envelope)
         if bed < cooler.FLOOR_Z + GAP_M:            # resting on the floor (the raster bottom is sampled): exact
             bed = cooler.FLOOR_Z
@@ -355,6 +474,40 @@ def exact_check(slots, curls_by, species, scales, lid_z):
     low = min(float(P[:, 2].min()) for P in pts_all)
     return {"tri_overlaps": overlaps, "liner_excess_mm": round(ex * 1000.0, 1),
             "lid_gap_mm": round((lid_z - top) * 1000.0, 1), "below_floor_mm": round((cooler.FLOOR_Z - low) * 1000.0, 2)}
+
+
+def view_check(slots, curls_by, species, scales, body_tree, cam):
+    """One fill: species[i] at scales[i] in slot i. For each fish: 0 if its eye and at least one tail fin tip are seen
+    from `cam` (cooler space), else the number of those hidden (eye, tail). Ray casts against the cooler body and every
+    fish; a hit on the fish itself within 15 mm of the target counts as seeing it."""
+    trees, tgts = [], []
+    for slot, sp, s in zip(slots, species, scales):
+        cf = curls_by[sp]
+        M = np.array(fish_matrix(slot, cf, s))
+        P = cf.co @ M[:3, :3].T + M[:3, 3]
+        trees.append(BVHTree.FromPolygons([Vector(p) for p in P], cf.polys))
+        tgts.append(cf.targets[slot["side"]] @ M[:3, :3].T + M[:3, 3])
+    C = Vector(cam)
+    out = []
+    for k, T in enumerate(tgts):
+        seen = []
+        for t in T:
+            t = Vector(t)
+            d = t - C
+            dist = d.length
+            d.normalize()
+            ok = True
+            for j, tree in [(-1, body_tree)] + list(enumerate(trees)):
+                loc, _n, _i, hd = tree.ray_cast(C, d, dist - 0.002)
+                if loc is None:
+                    continue
+                if j == k and (loc - t).length < 0.015:
+                    continue
+                ok = False
+                break
+            seen.append(ok)
+        out.append(int(not seen[0]) + int(not (seen[1] or seen[2])))
+    return out
 
 
 def ue_rotator(M3):
@@ -439,12 +592,20 @@ def render_all(slots, curls_by, s_cap):
     def stage(M, mix, clamp=True):
         for o in fish:
             bpy.data.objects.remove(o, do_unlink=True)
-        fish[:] = place_fish(slots, curls_by, mix, M, s_cap, clamp=clamp)
+        fish[:] = place_fish(slots[:len(mix)], curls_by, mix, M, s_cap, clamp=clamp)
         pcs.place_cooler(parts, M, open_lid=True)
         return M @ Vector((0.0, 0.0, 0.17))
 
-    # 1. at the shop counter: the open cooler on the counter top (0.9 m), the player standing at the counter (eye
-    #    1.65 m over the deck) with the cooler 0.55 m ahead, looking down into it: the game's FP camera
+    def cam_world(M, name):
+        return tuple(M @ Vector(next(c for n, c, _w in CAMS if n == name)))
+
+    # 1. the shop view: the cooler put down on the floor at the counter, front toward the player, who stands with the
+    #    eye 1.65 m up and 0.6 m from its center, looking down into it (the game's FP camera, 90 deg, 1920x1080)
+    M_shop = pcs.xform(0.60, 0.0, pcs.DECK_Z, 180.0)
+    c = stage(M_shop, SHOW)
+    paths.append(pcs.render_eevee(frame("fp_shop"), cam_world(M_shop, "shop"), tuple(c), hfov_deg=90.0,
+                                  resolution=(1920, 1080)))
+    # 2. the same cooler lifted onto a 0.9 m counter, 0.55 m ahead (the old "counter" view; see CAMS)
     counter_top = pcs.DECK_Z + 0.90
     counter = bpy.data.objects.new("PV_Counter", bpy.data.meshes.new("PV_Counter"))
     import bmesh
@@ -455,21 +616,33 @@ def render_all(slots, curls_by, s_cap):
     bm.free()
     counter.data.materials.append(style.make_material("PV_CounterWood", "#6B4A33", "wood"))
     scene.collection.objects.link(counter)
-    c = stage(pcs.xform(0.55, 0.0, counter_top, 180.0), SHOW)
-    paths.append(pcs.render_eevee(frame("fp_counter"), (0.0, 0.0, 0.0), tuple(c), hfov_deg=90.0,
+    M_top = pcs.xform(0.55, 0.0, counter_top, 180.0)
+    c = stage(M_top, SHOW)
+    paths.append(pcs.render_eevee(frame("fp_countertop"), cam_world(M_top, "countertop"), tuple(c), hfov_deg=90.0,
                                   resolution=(1920, 1080)))
     bpy.data.objects.remove(counter, do_unlink=True)
-    # 2. on the floor in front of a standing player, ~1.3 m from the eye to the fish (0.6 m ahead)
-    c = stage(pcs.xform(0.60, 0.0, pcs.DECK_Z, 180.0), SHOW)
-    paths.append(pcs.render_eevee(frame("fp_floor"), (0.0, 0.0, 0.0), tuple(c), hfov_deg=90.0,
-                                  resolution=(1920, 1080)))
-    stage(pcs.xform(1.2, 0.0, pcs.DECK_Z, 180.0), SHOW)
     # 3. straight down (orthographic), then the same with the 1.3x fish NOT clamped
+    M_far = pcs.xform(1.2, 0.0, pcs.DECK_Z, 180.0)
+    stage(M_far, SHOW)
     paths.append(pcs.render_eevee(frame("top"), (1.2, 0.0, pcs.DECK_Z + 3.0), (1.2, 0.0, pcs.DECK_Z), ortho=0.75,
                                   resolution=(1280, 720)))
-    stage(pcs.xform(1.2, 0.0, pcs.DECK_Z, 180.0), SHOW, clamp=False)
+    stage(M_far, SHOW, clamp=False)
     paths.append(pcs.render_eevee(frame("big"), (1.2, 0.0, pcs.DECK_Z + 3.0), (1.2, 0.0, pcs.DECK_Z), ortho=0.75,
                                   resolution=(1280, 720)))
+    # 4. the fills: 1, 2, 3 and 4 fish in both species orders, shop view; game pixels (1:1 crops around the cooler)
+    fills = []
+    for order in FILL_ORDERS:
+        row = []
+        for n in range(1, 5):
+            mix = [(sp, 1.0) for sp in order[:n]]
+            c = stage(M_shop, mix)
+            name = "fill_%s_%d" % ("".join(sp[0] for sp in order), n)
+            row.append((pcs.render_eevee(PREVIEW.parent / "anim_fish_cooler_cells" / (PREVIEW.stem + name + ".png"),
+                                         cam_world(M_shop, "shop"), tuple(c), hfov_deg=90.0,
+                                         resolution=(1920, 1080)), (960, 470)))
+        fills.append(row)
+    fill_sheet = fpp.zoom_sheet(PREVIEW.with_name(PREVIEW.stem.replace("_cooler", "") + "_cooler_fills.png"), fills,
+                                crop=600, scale=1)
     for o in fish:
         bpy.data.objects.remove(o, do_unlink=True)
     # 4. slot diagram (Workbench, cooler at the origin, screen up = Unreal +X = the cooler's front)
@@ -494,7 +667,7 @@ def render_all(slots, curls_by, s_cap):
     for o in tinted + extra:
         bpy.data.objects.remove(o, do_unlink=True)
     pb.contact_sheet(paths, PREVIEW, cols=2, cell=(960, 540))
-    return paths
+    return paths + [fill_sheet]
 
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -521,6 +694,8 @@ def main():
     log("fit %s" % fit)
     parts = cooler.build()
     lid_z = closed_lid_underside(parts)
+    bme = parts["body"].data
+    body_tree = BVHTree.FromPolygons([v.co.copy() for v in bme.vertices], [tuple(q.vertices) for q in bme.polygons])
     for o in list(bpy.data.objects):
         if o.name.startswith(("SM_Cooler", "UCX_SM_Cooler")):
             bpy.data.objects.remove(o, do_unlink=True)
@@ -530,23 +705,25 @@ def main():
     layout = Layout(cooler.FLOOR_Z, lid_z)
     tried = []
 
-    def run(s, vis_weight):
-        layout.vis_weight = vis_weight
+    def run(s, readable):
+        layout.vis_weight, layout.view_weight, layout.rule_weight = \
+            (VIS_WEIGHT, VIEW_WEIGHT, RULE_WEIGHT) if readable else (0.0, 0.0, 0.0)
         d = design(layout, bases, curls, s, SEED)
-        tried.append({"scale": s, "visibility_weighted": vis_weight > 0.0, "fits": d["fits"], "reads": d["reads"],
+        tried.append({"scale": s, "readability_rules": readable, "fits": d["fits"], "reads": d["reads"],
                       "stack_top_cm": round(d["stack_top_m"] * 100.0, 2),
                       "worst_liner_excess_mm": round(max(r[2] for r in d["rows"]) * 1000.0, 1),
-                      "visible": d["visible"]})
+                      "visible": d["visible"], "hidden_targets": d["hidden_targets"], "chord_deg": d["chord_deg"],
+                      "crest_overlap_cells": d["crest_overlap_cells"]})
         log("scale %.2f: %s" % (s, tried[-1]))
         return d
-    # 1. the geometric limit: the largest scale at which 4 fish fit at all (the stack only, visibility ignored)
+    # 1. the geometric limit: the largest scale at which 4 fish fit at all (the stack only, no readability rules)
     fit_limit = None
-    for s in LIMIT_PROBE:
-        if run(s, 0.0)["fits"]:
+    for s in ([] if os.environ.get("FISH_COOLER_SKIP_LIMIT") == "1" else LIMIT_PROBE):
+        if run(s, False)["fits"]:
             fit_limit = s
             break
-    # 2. the slots: designed at the display cap, stack AND visibility
-    chosen = run(DISPLAY_CAP, VIS_WEIGHT)
+    # 2. the slots: designed at the display cap, stack AND readability (eyes, tails, rotation rule, top view)
+    chosen = run(DISPLAY_CAP, True)
     if not (chosen["fits"] and chosen["reads"]):
         raise RuntimeError("no good layout at the display cap %.2f: %s" % (DISPLAY_CAP, tried[-1]))
     s_cap = DISPLAY_CAP
@@ -575,6 +752,22 @@ def main():
              "below_floor_mm": max(c["below_floor_mm"] for c in checks)}
     ok = worst["tri_overlaps"] == 0 and worst["liner_excess_mm"] <= 0.0 and worst["lid_gap_mm_min"] >= 0.0 \
         and worst["below_floor_mm"] <= 0.5
+    # exact view check (real meshes, ray casts): every mix x every fill count, from each camera
+    views = {name: {"hidden_max": 0, "cases": 0, "hidden_cases": []} for name, _c, _w in CAMS}
+    for m in range(16):
+        mix = [names[(m >> i) & 1] for i in range(4)]
+        for n in range(1, 5):
+            for name, cam, _w in CAMS:
+                hid = view_check(slots[:n], curls_by, mix[:n], [s_cap] * n, body_tree, cam)
+                v = views[name]
+                v["cases"] += 1
+                if any(hid):
+                    v["hidden_max"] = max(v["hidden_max"], sum(hid))
+                    v["hidden_cases"].append({"mix": "".join(sp[0] for sp in mix[:n]), "hidden": hid})
+    for name, v in views.items():
+        v["cases_all_visible"] = v["cases"] - len(v["hidden_cases"])
+        log("view %s: %d / %d fills show every eye and tail" % (name, v["cases_all_visible"], v["cases"]))
+    ok = ok and not views[CAMS[0][0]]["hidden_cases"]
     log("exact worst %s ok=%s" % (worst, ok))
     table = slots_ue(slots, s_cap)
     for row in table:
@@ -584,14 +777,14 @@ def main():
     log("renders done")
     result = {
         "asset": "anim_fish_cooler", "preview": str(PREVIEW), "views": paths,
-        "pose": {"head_deg": fr.CURLED_HEAD_DEG, "posterior_deg": fr.CURLED_POST_DEG,
-                 "posterior_share": fr.CURLED_POST_SHARE},
+        "pose": {"head_deg": fr.CURLED_HEAD_DEG, "body_deg": fr.CURLED_BODY_DEG},
         "curled_fit": fit, "liner": {"floor_z_m": cooler.FLOOR_Z, "lid_underside_z_m": round(lid_z, 4),
                                      "margin_mm": MARGIN_M * 1000.0, "lid_margin_mm": LID_MARGIN_M * 1000.0},
         "scale_search": tried, "fit_limit_scale": fit_limit, "display_cap_scale": s_cap,
         "slots_ue": table, "slots_blender": slots,
         "lie_offset_cm": {c.species: round(c.lie[1] * 100.0, 2) for c in curls},
-        "exact_checks_worst": worst, "exact_ok": ok, "shown_mix_check": shown, "unclamped_1_3_check": big,
+        "exact_checks_worst": worst, "exact_ok": ok, "view_checks": views,
+        "rule_chord_deg": chosen["chord_deg"], "shown_mix_check": shown, "unclamped_1_3_check": big,
         "exact_checks": checks,
     }
     if not ok:

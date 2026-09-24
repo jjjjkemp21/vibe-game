@@ -626,21 +626,23 @@ def landed_flop(f):
 # offset as the straight fish, LieOffsetCm), the C is seen from above, and 4 fish stack in two layers. Back-concave
 # rather than belly-concave: the coral snapper's crest stays inside the C (a compact footprint instead of fanning
 # out 10 cm), and a stiff back-arched fish is the classic dead-fish read (a belly-concave arc reads as a leap).
-# Head: the neck (J1) is the only joint in front of the anchored chest, and the snapper's crest root sits 10 cm over
-# it on the concave side, so the head takes CURLED_HEAD_DEG (the crest folds past ~25 deg); the posterior joints take
-# the rest, smoothly (J2..J4 even, the tail root less so the caudal fin follows the curve instead of flicking up).
+# The coral snapper's saw-tooth crest runs from s 0.22 to 0.53, across the neck (J1, s 0.33) and up to J2 (s 0.51).
+# Any bend at J1/J2 squeezes its spines together on the concave side: they cross and read as broken shards (designer
+# review 2026-09-23, 20260923-180000-curled-fish-review.md). So the crest region stays straight: J2 takes no bend, the
+# neck takes CURLED_HEAD_DEG (20, the review's 20-25 cap; the head is rigid, so this only tips the snout and spine 1),
+# and the curl lives in the tail half (J3..J5, behind the crest and the soft dorsal's peak). One pose for every
+# species: the bonefish reads the same way (its dorsal fin also straddles J1).
 # Fins relaxed: pectorals flat on the flank (TUCK_DEG). The pose is symmetric in the flank plane, so a fish lying on
 # its left side is the mirror image: slots alternate sides for variety.
-CURLED_HEAD_DEG = 24.0
-CURLED_POST_DEG = 106.0
-CURLED_POST_SHARE = {"Spine_02": 0.24, "Spine_03": 0.28, "Spine_04": 0.28, "Tail": 0.20}
+CURLED_HEAD_DEG = 20.0
+CURLED_BODY_DEG = {"Spine_02": 0.0, "Spine_03": 36.0, "Spine_04": 44.0, "Tail": 36.0}   # local pitch, toward the back
 
 
 def curled(_f=0.0):
     p = Pose()
     p.pitch["Head"] -= CURLED_HEAD_DEG * DEG                  # nose toward the back (pitch + = nose down)
-    for b, share in CURLED_POST_SHARE.items():
-        p.pitch[b] += share * CURLED_POST_DEG * DEG           # tail toward the back (+ = tail up, see arch())
+    for b, deg in CURLED_BODY_DEG.items():
+        p.pitch[b] += deg * DEG                               # tail toward the back (+ = tail up, see arch())
     return p.pecs(TUCK_DEG, TUCK_DEG)
 
 
