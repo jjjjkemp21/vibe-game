@@ -4,16 +4,11 @@ Format: `- [ ] T-### Title (owner) - acceptance: ... In progress: <agent>, start
 Done tasks move to "Done" as one line; their full text and old Status blocks are in docs/TASKS_ARCHIVE.md. Grep for "In progress" before starting work (don't read the whole file).
 Last processed playtest folder: (none)
 
-## Status 2026-09-23 ~19:20 (lead): see the memory snapshot for agent IDs
-A2 lanes:
-- eng1 T-027: QA (36 tests, bcafb87; 777/778, Saved/AgentLogs/qa/20260923-192528-T027.md): FAIL on B1 (hot spots drift over rocks). Fixing B1 + T-027b reach (unreal-engineer-junior-medium)
-- eng2 T-028 + T-028b: MERGED to main (7617785). T-028b bd337ff (rod-dip exploit closed via DT_FishFight PitchDipPower 0.8, one slack rule, fight ends on teleport/unpossess, reel-step rate limit, stricter validation) + QA d0d8bf0 (5 tests, oracle change verified); 869/870 in lane (only the DT_FishSpecies guard). Re-import DT_FishFight (new column).
-- eng3 T-029: MERGED to main (55ad039), 802/803 after merging main (only the DT_FishSpecies binary guard, fixed by the re-import)
-- eng4 T-030: built (senior) + merged with main and glued to T-029/T-032 (c05ba03, 864/866: DT_FishSpecies guard + cooler bounds missing the lid). Lid-bounds fix running (junior); then senior QA.
-- eng5 T-032: MERGED to main (b799ae6), 763/763 after merging main
-Curled fish in the cooler: designer APPROVED (1b725ad; Saved/AgentLogs/design/20260923-190000-curled-fish-rereview.md). Shop view: cooler on the floor, front (latch) toward the player. Import A_Fish_Curled with the other art.
-Then: merge all (git merge main in each lane, then ff), editor imports + ABP work, level rebuild, full A2 playtest, designer, push.
-Agent efficiency (Jimmy): lead-only rules moved to docs/LEAD.md, TASKS archive, docs/CODEMAP.md in progress (unreal-engineer-junior-medium, main); housekeeping tick every 30 min.
+## Status 2026-09-23 ~20:40 (lead): see the memory snapshot for agent IDs
+main f73f803 (unpushed since 4d64f2c): T-027, T-028+T-028b, T-029 and T-032 merged; built, 933/934 (tests/20260923-202309; only the DT_FishSpecies guard, fixed by the re-import). Startup/default map: L_PalmKey.
+- eng4 T-030: fixes 1a97b46 (F1 starter coolers never overlap; save re-apply never duplicates fish; 900/901 in lane). QA part 2 running (qa-engineer-senior-max: net tests, full run, TEST_PLAN). Then merge into main.
+- Editor (main): A2 import batch running (editor-operator-mid-medium). Next: ABP_FPArms + ABP_Fish graphs (editor-operator-senior-max). After the eng4 merge: build, tests, T-030 tables, rebuild both levels, full A2 playtest (1P + 2P), designer, push.
+Waiting on Jimmy: was the ThirdPerson template level deleted on purpose? (The deletions are unstaged; nobody stages them.)
 
 ## Now: foundation (after setup)
 
