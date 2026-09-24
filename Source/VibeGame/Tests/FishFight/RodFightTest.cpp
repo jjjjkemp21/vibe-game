@@ -1226,7 +1226,7 @@ bool FLureRodHelpers::RunTest(const FString& Parameters)
 }
 
 // =====================================================================================================================
-// The arms read the rod aim (the aim offset); the placeholder rod turn follows it until the aim offset is wired
+// The arms read the rod aim (the aim offset); the placeholder rod turn follows it only while bRodAimOffsetInGraph is off
 // =====================================================================================================================
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLureRodArms, "Project.Fishing.Fight.Rod.ArmsFollowTheRodAim", Flags)
@@ -1270,24 +1270,45 @@ bool FLureRodArms::RunTest(const FString& Parameters)
 	World.Tick(45);
 	const FVector2D Eased = Fishing->GetRodAimForAnimation();
 	TestTrue(FString::Printf(TEXT("the eased aim reaches the rod aim (%.3f, %.3f)"), Eased.X, Eased.Y), Eased.Equals(FVector2D(0.5f, -0.5f), 0.01f));
-	if (const UFPArmsAnimInstance* Anim = Cast<UFPArmsAnimInstance>(Owner.Character->GetFirstPersonArms()->GetAnimInstance()))
+	UFPArmsAnimInstance* Anim = Cast<UFPArmsAnimInstance>(Owner.Character->GetFirstPersonArms()->GetAnimInstance());
+	if (!Anim)
 	{
-		World.Tick(1);
-		TestTrue(FString::Printf(TEXT("the arms' anim instance reads it (yaw %.3f, pitch %.3f)"), Anim->RodAimYaw, Anim->RodAimPitch),
-			FMath::IsNearlyEqual(Anim->RodAimYaw, 0.5f, 0.02f) && FMath::IsNearlyEqual(Anim->RodAimPitch, -0.5f, 0.02f));
+		AddInfo(TEXT("ABP_FPArms is not a UFPArmsAnimInstance here (not imported): only the placeholder-turn mode is checked."));
 	}
-	else
+	const UStaticMeshComponent* RodMesh = Fishing->GetRodMesh();
+	if (!RodMesh)
 	{
-		AddInfo(TEXT("ABP_FPArms is not a UFPArmsAnimInstance here (not imported): the anim-instance check is skipped."));
+		AddInfo(TEXT("SK_FPArms or SM_Rod_Basic is not imported here: the rod turn checks are skipped."));
 	}
-	if (const UStaticMeshComponent* RodMesh = Fishing->GetRodMesh())
+	// Both modes: flag off = the fishing code turns the rod (placeholder); flag on = the graph's aim offset carries it (no turn).
+	const bool bShippedFlag = Anim && Anim->bRodAimOffsetInGraph;
+	for (const bool bInGraph : { false, true })
 	{
-		const FRotator Rotation = RodMesh->GetRelativeRotation();
-		TestNearlyEqual(TEXT("placeholder rod turn: yaw = aim x RodAimLookYawDeg"), static_cast<float>(Rotation.Yaw), 0.5f * T.RodAimLookYawDeg, 0.5f);
+		if (!Anim && bInGraph)
+		{
+			break;
+		}
+		if (Anim)
+		{
+			Anim->bRodAimOffsetInGraph = bInGraph;
+		}
+		World.Tick(2);
+		const TCHAR* Mode = bInGraph ? TEXT("aim offset in graph") : TEXT("placeholder turn");
+		if (Anim)
+		{
+			TestTrue(FString::Printf(TEXT("%s: the arms' anim instance reads the aim (yaw %.3f, pitch %.3f)"), Mode, Anim->RodAimYaw, Anim->RodAimPitch),
+				FMath::IsNearlyEqual(Anim->RodAimYaw, 0.5f, 0.02f) && FMath::IsNearlyEqual(Anim->RodAimPitch, -0.5f, 0.02f));
+		}
+		if (RodMesh)
+		{
+			const float Yaw = static_cast<float>(RodMesh->GetRelativeRotation().Yaw);
+			TestNearlyEqual(bInGraph ? TEXT("aim offset in graph: no placeholder rod turn (yaw ~ 0)") : TEXT("placeholder rod turn: yaw = aim x RodAimLookYawDeg"),
+				Yaw, bInGraph ? 0.f : 0.5f * T.RodAimLookYawDeg, 0.5f);
+		}
 	}
-	else
+	if (Anim)
 	{
-		AddInfo(TEXT("SK_FPArms or SM_Rod_Basic is not imported here: the rod turn check is skipped."));
+		Anim->bRodAimOffsetInGraph = bShippedFlag;
 	}
 	Owner.Release();
 	return true;
