@@ -1,0 +1,76 @@
+LURE - PLAYTEST FEEDBACK (Milestone A2 build, ready 2026-09-24 evening)
+=======================================================================
+This build: main ceb4ac7, pushed to GitHub. It replaces the 2026-09-23 file; you never got
+to play that build.
+
+How to use this file
+- Write anything, in any order, as short or long as you like. Bullet points are fine.
+- Save it (Ctrl+S) whenever you want. When you're done playing, just tell me "done playing"
+  and I'll read the whole file and turn every note into work.
+- For a bug, it helps to say what you did, what happened and what you expected. You can also
+  press F8 in the game to save a screenshot with a note at that moment.
+
+Controls reminder
+- Left mouse: cast. Once a fish bites: hold left mouse to reel.
+- During a fight the mouse steers the rod (the view follows). Mouse wheel: reel faster / slower.
+- E: grab the fish, put it in the cooler, open the cooler, take a fish out, sell.
+- F: pick up / put down the cooler, let a fish go / drop it.
+- The prompt in the top-left always shows what E and F do right now.
+- C: crouch. Z: prone. Shift: sprint. Space: jump.
+
+Already known (no need to write these down)
+- With 4 fish of the same kind in the cooler, they blend together at the shop.
+- Fish you put on the counter sit at its far right end.
+
+
+1. FISH ANYWHERE + HOT SPOTS
+   Try: cast into any water, not just the old spots. Look for bubbling or rippling water
+   (hot spots) and fish there; they should give better fish. Try off the end of the dock.
+   Your notes:
+
+
+
+2. THE FIGHT (mouse steers the rod, reel speed)
+   Try: when the fish runs left, angle the rod up and to the right to turn it. Change the reel
+   speed with the wheel; reeling fast gains line but builds tension. Ease off when tension spikes.
+   Is it fun? Too long, too short, too easy, too hard?
+   Your notes:
+
+
+
+3. SEEING THE FISH WHILE REELING
+   Try: watch the water near the line's end during a fight. Can you see the fish swim and fight?
+   Your notes:
+
+
+
+4. THE FISHING LINE (NEW TODAY: it no longer passes through the dock)
+   Try: cast from the edge of the dock and watch the line lie over the planks instead of cutting
+   through them. Watch the line when it's slack (it should dangle and float on the water) and
+   when it's tight (it should pull straight). Reel a fish in from under the dock: it should come
+   up and hang below the rod tip.
+   Your notes:
+
+
+
+5. FISH ON THE HOOK, HOLDING IT, THE COOLER, SELLING (NEW TODAY: fish pile at the back of the cooler)
+   Try: land a fish (it hangs on the hook), grab it with E, look at it in your hands, put it in
+   your cooler. Open the cooler and look at the fish inside. Pick up the cooler (F), carry it,
+   put it down. Leave a fish out of the cooler for a while (it loses freshness and value). At the
+   shop, take fish out one at a time, put them on the counter and press Sell.
+   Your notes:
+
+
+
+6. PLAYING WITH A FRIEND (2 players), if you try it
+   New today: if one of you takes a fish back off the counter at the same moment the other
+   presses Sell, nothing is sold and you see "That just changed". Selling is all or nothing now.
+   Your notes:
+
+
+
+7. ANYTHING ELSE (bugs, looks, feel, ideas, things you'd like next)
+   Your notes:
+
+
+

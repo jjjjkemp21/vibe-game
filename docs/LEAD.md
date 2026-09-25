@@ -114,6 +114,7 @@ Model and effort per agent. They are pinned in each agent's frontmatter (`model`
   - Brief long tasks in stages, so that one agent does not run past ~250k (seniors ~400k). Big jobs are split into separate agents first; the higher senior limit is for single hard tasks that need the whole picture.
 
 ## Working with Jimmy
+- Every time a build is ready for Jimmy to play (after the push), create a NEW feedback file `Playtest/<yyyy-MM-dd> <milestone/round> playtest feedback.txt` (Jimmy, 2026-09-24). Commit it and point him to it. Use the same layout as the last file: how to use it, controls, "Already known" issues, and one section per feature to try (mark what's NEW in this build), each ending with "Your notes:". Never reuse or edit an older file.
 - He playtests. Feedback notes land in `Saved/Playtest/` once the feedback key exists (see `playtest-feedback` skill). Turn each note into a board item (`bug`/`task`, with `sev`/`pri`), plus a docs/TASKS.md line when it adds scope.
 - Report in plain language: what changed, what to try next time he plays, and anything you need from him.
 - Progress screenshots for Jimmy: `C:\GameDev\VibeGame\Progress\` (not in git). Whenever something visible is verified (a new asset preview, a level screenshot, a playtest shot, a before/after), the lead copies the best 1-3 images there as `<yyyy-MM-dd>_<NN>_<short_plain_description>.png` (NN continues the day's numbering). Only verified, looked-at images; no logs. Superseded photos are pruned by the janitor (newest per subject; mood boards and palette stay).
