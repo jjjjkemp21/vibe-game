@@ -49,6 +49,7 @@ Every agent stops when Jimmy exits. The manager keeps `Saved/AgentLogs/teams/<de
 - Consistency: reuse existing patterns, helpers and names before inventing new ones. Record any new convention in your handbook.
 - Efficiency: the right level for each task (never senior for junior work); lean packets; no duplicate reading across tasks when one agent can carry the context.
 - Honesty: report failures and partial results as they are, with the evidence.
+- One severity scale studio-wide: blocker / major / minor / trivial (definitions in docs/teams/qa.md). Priority P0-P3 (docs/teams/design.md) is proposed by managers and set by the lead.
 - Progress: start every Bash/PowerShell description and every short text line with `[NN%]` (Jimmy).
 
 ## 6. Questions and escalation

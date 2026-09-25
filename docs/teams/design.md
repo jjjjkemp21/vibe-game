@@ -115,9 +115,9 @@ idea). Agent notes starting with `[AGENT TEST]` are never feedback.
 | Content | Missing or wrong thing in a level or table | Layout JSON or table row task for a level-designer or the owning department |
 | Idea / taste | New feature, direction, look, pacing target | Short proposal + one plain question for the lead to ask Jimmy; no work until answered |
 
-Severity (impact): **S1** blocks play or loses progress; **S2** breaks a core loop (fishing, selling, hiding) or reads
-wrong; **S3** annoying but playable; **S4** polish. Priority (when): **P0** before the next build to Jimmy; **P1** this
-milestone; **P2** next milestone; **P3** backlog. Default mapping S1->P0, S2->P1; the lead sets final priority.
+Severity (impact) uses the studio-wide scale defined in docs/teams/qa.md: **blocker** blocks play or loses progress; **major** breaks a core loop (fishing, selling, hiding) or reads
+wrong; **minor** annoying but playable; **trivial** polish. Priority (when): **P0** before the next build to Jimmy; **P1** this
+milestone; **P2** next milestone; **P3** backlog. Default mapping blocker->P0, major->P1; the lead sets final priority.
 
 Taste versus fact: if two good designers could disagree and Jimmy's opinion decides it (look, feel target, scope,
 pacing, difficulty curve), it is taste: ask through the lead with a recommendation. If the spec, data or metrics

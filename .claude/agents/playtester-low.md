@@ -29,6 +29,6 @@ How to play (with `Content/Python/playtest_driver.py`; its docstring lists every
 
 Report (also write it to `Saved/AgentLogs/playtest/<yyyyMMdd-HHmmss>-<topic>/report.md` with the screenshots next to it):
 - Overall PASS or FAIL for the scenario.
-- Bugs: title, severity (blocker/major/minor), repro steps, expected vs actual, screenshot path.
+- Bugs: title, severity (blocker/major/minor/trivial, defined in docs/teams/qa.md), repro steps, expected vs actual, screenshot path.
 - Feel notes: what felt off and a concrete suggestion (which value, which direction).
 - The list of screenshots, each with a one-line description of what it shows (the designer reviews them next).
