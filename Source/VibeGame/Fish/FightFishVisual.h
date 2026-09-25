@@ -94,7 +94,7 @@ struct FFishVisualRow : public FTableRowBase
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Clips", meta=(ClampMin="0"))
 	float DartRightStartTime = 0.6f;
 
-	/** A tired fish: SwimIdle at this rate and AnimAmplitude x ExhaustedAmplitudeScale, rolled onto its side. */
+	/** A tired fish: SwimIdle at this rate and AnimAmplitude x ExhaustedAmplitudeScale, rolled ExhaustedRollDeg (0 = upright; Jimmy 2026-09-24: never on its side). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Clips", meta=(ClampMin="0"))
 	float ExhaustedPlayRate = 0.5f;
 
@@ -102,7 +102,7 @@ struct FFishVisualRow : public FTableRowBase
 	float ExhaustedAmplitudeScale = 0.5f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Clips", meta=(ClampMin="-180", ClampMax="180"))
-	float ExhaustedRollDeg = 70.f;
+	float ExhaustedRollDeg = 0.f;
 
 	// ---- Size ----
 

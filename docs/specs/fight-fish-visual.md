@@ -30,8 +30,9 @@ state (`RodPitch`, `RodYaw`, `ReelStep`, `RunSide`) is not the fish's and is not
   `Mouth` bone sits at the line end (body toward the player), `SurfaceDepth + min(DepthShare x Depth, MaxShownDepth)` under
   the surface, at least `FloorClearance` above the bottom. Smoothing: `AuthoritySmoothTime` on the server/standalone,
   `ProxySmoothTime` elsewhere; jumps over `SnapDistance` snap. Faces its swim when faster than `MinFacingSpeed`, else
-  away from the player; tired fish roll `ExhaustedRollDeg`. **Jimmy, 2026-09-24: a tired fish stays upright with a calm swim, never on its
-  side** (T-058: `ExhaustedRollDeg` 0; a calm swim clip instead of the roll).
+  away from the player; tired fish roll `ExhaustedRollDeg`, which is 0: **Jimmy, 2026-09-24: a tired fish stays upright with a
+  calm swim, never on its side** (T-058a set it to 0, test `Project.FishVisual.ExhaustedUpright`; the column stays for a small
+  roll with a later calm clip, S3).
 - **Clips** (`EFishAnimRole`): first `HookSetThrashTime` s Thrash; then `MoveRoles[MoveId]` (unknown = `UnknownMoveRole`);
   tired = SwimIdle at `ExhaustedPlayRate`, alpha x `ExhaustedAmplitudeScale`; Landed = Flop at alpha 1; escaping = SwimFast.
   Swim roles (listed in `RoleTailBeats`) play at `AnimRate x Speed / (StrideBodyLengths x BodyLength x Hz)` clamped to

@@ -26,7 +26,7 @@
 		"DartRightStartTime": 0.6,
 		"ExhaustedPlayRate": 0.5,
 		"ExhaustedAmplitudeScale": 0.5,
-		"ExhaustedRollDeg": 70.0,
+		"ExhaustedRollDeg": 0.0,
 		"MinScale": 0.25,
 		"MaxScale": 4.0,
 		"DefaultBodyLengthCm": 55.0,
@@ -44,6 +44,6 @@
 		"EscapeTime": 1.0,
 		"EscapeSpeed": 250.0,
 		"EscapeSinkSpeed": 60.0,
-		"DevComment": "T-029 fighting fish look (cosmetic; every machine). MoveRoles: fight move id (DT_FightPattern) -> clip role (EFishAnimRole: SwimIdle, SwimFast, Thrash, Run, Dive, Dart, Flop); a new move needs a line here, unknown moves play UnknownMoveRole. Clip rules from art/export/Fish/SK_Fish.anim.md: swim roles match the tail beat to the fish's speed (stride 0.7 body lengths per beat), others slow down with weight ^ -1/6; Thrash for the first second after the hook set; a tired fish swims slowly on its side. Placement: nose at the line's end, SurfaceDepth under the surface plus 60 % of the fight's dive depth (capped), above the bottom; more smoothing on machines without authority. PLACEHOLDER numbers: tune in playtest."
+		"DevComment": "T-029 fighting fish look (cosmetic; every machine). MoveRoles: fight move id (DT_FightPattern) -> clip role (EFishAnimRole: SwimIdle, SwimFast, Thrash, Run, Dive, Dart, Flop); a new move needs a line here, unknown moves play UnknownMoveRole. Clip rules from art/export/Fish/SK_Fish.anim.md: swim roles match the tail beat to the fish's speed (stride 0.7 body lengths per beat), others slow down with weight ^ -1/6; Thrash for the first second after the hook set; a tired fish swims slowly and stays upright (ExhaustedRollDeg 0, Jimmy 2026-09-24). Placement: nose at the line's end, SurfaceDepth under the surface plus 60 % of the fight's dive depth (capped), above the bottom; more smoothing on machines without authority. PLACEHOLDER numbers: tune in playtest."
 	}
 ]
