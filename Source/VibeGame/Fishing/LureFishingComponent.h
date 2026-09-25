@@ -307,9 +307,13 @@ public:
 	UFUNCTION(BlueprintPure, Category="Lure|Fishing|Fight")
 	FVector2D GetRodAim() const;
 
-	/** GetRodAim eased (DT_FishFight RodAimBlendTime), back to 0 after the fight: the arms' rod-aim aim offset reads this. */
+	/**
+	 *  GetRodAim eased (DT_FishFight RodAimBlendTime), back to 0 after the fight: the arms' rod-aim aim offset reads this.
+	 *  T-075b: for the local owner the yaw is capped so the rod stays within CameraMaxRodYawDeg of the view's center
+	 *  (FLureRodControl::CapViewAim with RodAimSideDeg); other players' copies get the full eased aim.
+	 */
 	UFUNCTION(BlueprintPure, Category="Lure|Fishing|Fight")
-	FVector2D GetRodAimForAnimation() const { return RodAimVisual; }
+	FVector2D GetRodAimForAnimation() const;
 
 	/**
 	 *  Server: the owner's rod input (ServerSetFightInput unpacks into this). Ignored unless FightId is the fight on now;
@@ -544,6 +548,8 @@ private:
 	void UpdateRodAimVisual(float DeltaTime);
 	/** The owner's arms play the rod-aim aim offset (UFPArmsAnimInstance::bRodAimOffsetInGraph): no placeholder rod turn then. */
 	bool ArmsPlayRodAim() const;
+	/** T-075b: the eased aim as the owner's view shows it (yaw capped for a rod that turns FullYawDeg at yaw 1); others: as is. */
+	FVector2D GetViewRodAim(float FullYawDeg) const;
 	void PressReelFaster() { StepReelSpeed(1); }
 	void PressReelSlower() { StepReelSpeed(-1); }
 };
