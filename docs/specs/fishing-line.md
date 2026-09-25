@@ -170,6 +170,17 @@ Player + Dir x LineOut, LineOut <= LandDistance 150 cm at landing), and the hang
   `1 - exp(-dt / HangFaceTime)` of the angle (HangFaceTime 0.25 s; 0 = at once). The nose stays up the line and the mouth on
   the line's end. One rule for both hangs: `FLureFishingLineRules::SideOnHangRotation`, also used by the fallback pendulum
   (GiveFish with no line out). Cosmetic and local: each machine turns the fish toward its own camera.
+- **Wiggle (T-061)**: the hanging actor's own motion moves the line. Each frame, before the step, the line reads the body
+  centre from the pose the actor is drawn with: the centre of a visible skinned mesh's bones (on the actor, or on an actor
+  attached to it: the adopted landed fish), else the bounds centre of another visible primitive. It works in actor space, so
+  the actor's own swing and side-on turn are not a wiggle. The sideways part (square to the line) of that point's speed
+  relative to the mouth is compared with last frame's, and the free end gets the opposite change x **HangWiggleCoupling**
+  (`AddEndVelocity`): the body swinging one way pushes the mouth, and the line with it, the other way, at the clip's own
+  frequency. 1 = physical (the body centre stays put); 0 = off. No bone names and no per-clip data: any clip, including the
+  coming hang clip, works without code. A bigger fish moves more on its own (its pose is scaled with it). Safety: a body
+  centre that jumps more than 20 cm in a frame (a new look) gives no kick, one frame's kick is at most 500 cm/s, and a new
+  look (the shown mesh hidden or replaced) starts over. Cosmetic and local, from the pose each machine draws; nothing
+  replicates. The fallback pendulum (GiveFish with no line out) has no wiggle.
 
 ## The rod tip (the line never lags or cuts through the rod)
 
@@ -237,7 +248,9 @@ FVector Up = Line->GetEndDirection();                     // unit vector from th
 - Collision: a line draped over 4 solids, 12 segments: ~7.6 us per 60 fps frame (the Collision.Allocations info line). The
   overlap query runs only when the line leaves its query box, or every 0.2 s near a Movable solid.
 - Nothing runs while no line is out: the tick is off (`Hide` turns it off; tests check it).
-- Our code allocates nothing per frame (checked with the engine's game-thread allocation hook), with or without solids.
+- Our code allocates nothing per frame (checked with the engine's game-thread allocation hook), with or without solids, and
+  with a wiggling fish hanging on it (Hang.Wiggle.Allocations). The wiggle reads one component's bones per frame; the
+  component is searched again only when it is hidden or gone (every 0.25 s while the actor shows nothing).
   `Init`/`Setup` and the collider reserve allocate once; a gather frame only grows the reserve past about one pier.
 - `ULureLineSegmentComponent` never creates a physics state. A plain spline mesh rebuilds its collision body on every
   update in worlds with trace collision (editor-created and test worlds: `UWorld::CreateWorld` enables it; PIE and packaged
@@ -271,6 +284,7 @@ One row per kind of line; "Default" today. Units, ranges and exact meaning: the 
 | | **HangReelSpeed 500** | cm/s, fastest reel-up of a hanging actor (slows at g/2 near HangLength) |
 | | **HangMaxSwingDeg 70** | degrees (10..90), highest swing from straight under the tip (90 = level) |
 | | HangFaceTime 0.25 | s (0..5), how fast a hanging fish turns its side to the viewer (T-043; 0 = at once) |
+| | HangWiggleCoupling 1 | 0..10, how much a hanging fish's own wiggle moves the line's end (T-061; 1 = physical, 0 = off) |
 | Safety | TeleportDistance 1500 | cm; a tip or end jump farther than this in one frame resets the line |
 | Collision | **CollisionRadius 1** | cm (0..50) the line keeps from solid surfaces (0 = on the surface) |
 | | **GroundFriction 8** | share of its sliding speed line touching a solid loses per second |
@@ -326,6 +340,12 @@ measured 0.03; the first frame turns only part of the way; mouth on the end 0.00
 RealCatch (cast, reel in, land on another player's rod; the local viewer stands at 4 spots on the dock, two of them on opposite
 sides, so a fixed facing can't pass: settled side error <= 5 deg, measured 0.13; mouth within 1 cm of the end, measured 0.04).
 
+`FishingLineHangWiggleTest.cpp` (T-061), `Project.Fishing.Line.Hang.Wiggle.*`, test poses only (a moving primitive; the
+engine's SkeletalCube posed bone by bone), fixed dt, the line stepped directly: Data (the column's range), MovesTheLine (4 cm
+at 2 Hz, coupling 1: end 4.17 cm, middle 2.46 cm at 2 Hz, >= 3x any other probed frequency; coupling 0: the middle stays
+within 0.01 cm), SkinnedPose (3 cm at 3 Hz: middle 1.95 cm), TurningIsNotAWiggle (the fish turns side-on to a viewer
+circling it with its body off the axis: the line stays within 0.05 cm), Allocations (none in 120 frames).
+
 QA's own suite: Project.Fishing.Line.QA.* (`QAFishingLineTest.cpp`).
 
 ## Known limits and follow-ups
@@ -355,4 +375,4 @@ QA's own suite: Project.Fishing.Line.QA.* (`QAFishingLineTest.cpp`).
 - `FLureFight::LineSag` and DT_Fishing `LineSag` no longer shape the line (only the old `SetLine` path reads a sag);
   T-028 can drop them. DT_FishFight `TautTension` shapes it again, through `FLureFight::LineTension` (T-032b).
 - `/Game/Data/DT_FishingLine` must be reimported by the editor-operator after the merge (T-032b added 6 columns, T-043
-  HangFaceTime; until then the built-in row is used).
+  HangFaceTime, T-061 HangWiggleCoupling; until then the built-in row is used).

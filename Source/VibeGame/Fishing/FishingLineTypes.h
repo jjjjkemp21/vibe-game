@@ -146,6 +146,15 @@ struct FLureFishingLineRow : public FTableRowBase
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Hanging", meta=(ClampMin="0", ClampMax="5"))
 	float HangFaceTime = 0.25f;
 
+	/**
+	 *  How much a hanging fish's own wiggle moves the line (T-061): each frame the line's end gets the opposite of the change in
+	 *  the sideways speed of the fish's body centre relative to its mouth, x this (read from the pose the fish is drawn with, so
+	 *  any clip works). 1 = physical: the body centre stays put and the mouth, with the line, moves the other way; 0 = off.
+	 *  A bigger fish moves more on its own (its pose is scaled with it).
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Hanging", meta=(ClampMin="0", ClampMax="10"))
+	float HangWiggleCoupling = 1.f;
+
 	// ---- Safety ----
 
 	/** A rod tip or end that jumps farther than this in one frame (a teleport) resets the line instead of whipping it, cm. */

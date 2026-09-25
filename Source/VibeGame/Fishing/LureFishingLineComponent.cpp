@@ -31,6 +31,13 @@ namespace LureFishingLinePrivate
 	/** One message per session about the built-in tuning (every line resolves it). */
 	bool bReportedFallback = false;
 
+	/** T-061: a body centre that moves farther than this in one frame jumped (a new pose or look): no kick, cm. */
+	constexpr double WiggleMaxStep = 20.0;
+	/** T-061: the largest push one frame's wiggle gives the line's end, cm/s. */
+	constexpr double WiggleMaxKick = 500.0;
+	/** T-061: an actor that shows nothing to read is searched again after this many seconds. */
+	constexpr float WiggleSearchInterval = 0.25f;
+
 	/** Loads a soft reference if its package exists (no load errors for assets not imported yet, e.g. in lanes). */
 	UDataTable* LoadTableIfExists(const TSoftObjectPtr<UDataTable>& Ref)
 	{
@@ -298,6 +305,7 @@ void ULureFishingLineComponent::AttachEndActor(AActor* Actor, float InHangLength
 	HookOffset = InHookOffset.ContainsNaN() ? FVector::ZeroVector : InHookOffset;
 	bOrientEndActor = bOrientAlongLine;
 	bEndActorFacesViewer = bOrientAlongLine && bFaceViewer;
+	ResetWiggle();
 	if (Mode == ELureLineMode::Pinned)
 	{
 		// The line keeps its shape; its end lets go and becomes the actor's hook.
@@ -314,6 +322,7 @@ void ULureFishingLineComponent::AttachEndActor(AActor* Actor, float InHangLength
 void ULureFishingLineComponent::DetachEndActor()
 {
 	EndActor.Reset();
+	ResetWiggle();
 	if (Mode != ELureLineMode::Hanging)
 	{
 		return;
@@ -389,6 +398,7 @@ void ULureFishingLineComponent::StopLine()
 	LastChord = 0.f;
 	bWaterLookedUp = false;
 	EndActor.Reset();
+	ResetWiggle();
 	bViewerSet = false; // T-034: a later line never draws for this line's (stale) viewer; until set again: the local camera
 	SetComponentTickEnabled(false);
 	for (USplineMeshComponent* Segment : Segments)
@@ -439,6 +449,7 @@ void ULureFishingLineComponent::UpdateLine(float DeltaTime)
 		}
 		Mode = ELureLineMode::Pinned;
 	}
+	ApplyEndActorWiggle(Dt); // T-061: before the step, so the line moves with this frame's pose
 	Simulate(Dt);
 	MoveEndActor(Dt);
 	Draw();
@@ -698,6 +709,151 @@ void ULureFishingLineComponent::MoveEndActor(float DeltaTime) const
 		Rotation = FRotationMatrix::MakeFromXY(Sim.GetEndDirection(), Rotation.GetAxisY()).ToQuat();
 	}
 	Actor->SetActorLocationAndRotation(Sim.GetEnd() - Rotation.RotateVector(HookOffset), Rotation, false, nullptr, ETeleportType::TeleportPhysics);
+}
+
+// ---- The hanging actor's wiggle (T-061) ----
+
+void ULureFishingLineComponent::ResetWiggle()
+{
+	WiggleSource.Reset();
+	WiggleBodyLocal = FVector::ZeroVector;
+	WiggleVelocity = FVector::ZeroVector;
+	bWiggleSampled = false;
+	WiggleSearchDelay = 0.f;
+}
+
+USceneComponent* ULureFishingLineComponent::FindWiggleSource(const AActor& Actor)
+{
+	// The pose the fish is drawn with: a visible skinned mesh on it or on an actor attached to it (the adopted landed fish,
+	// T-029), else another visible primitive (a static fish). Never a line segment.
+	USkinnedMeshComponent* Skinned = nullptr;
+	UPrimitiveComponent* Other = nullptr;
+	auto Consider = [&Skinned, &Other](const AActor& From)
+	{
+		From.ForEachComponent<UPrimitiveComponent>(false, [&Skinned, &Other](UPrimitiveComponent* Component)
+		{
+			if (!Component || !Component->IsRegistered() || !Component->IsVisible() || Component->IsA<USplineMeshComponent>())
+			{
+				return;
+			}
+			if (USkinnedMeshComponent* AsSkinned = Cast<USkinnedMeshComponent>(Component))
+			{
+				if (!Skinned && AsSkinned->GetSkinnedAsset() && AsSkinned->GetNumComponentSpaceTransforms() > 0)
+				{
+					Skinned = AsSkinned;
+				}
+			}
+			else if (!Other)
+			{
+				Other = Component;
+			}
+		});
+	};
+	Consider(Actor);
+	if (!Skinned)
+	{
+		Actor.ForEachAttachedActors([&Consider](AActor* Attached)
+		{
+			if (Attached)
+			{
+				Consider(*Attached);
+			}
+			return true;
+		});
+	}
+	return Skinned ? static_cast<USceneComponent*>(Skinned) : static_cast<USceneComponent*>(Other);
+}
+
+bool ULureFishingLineComponent::SampleEndActorBody(const AActor& Actor, float DeltaTime, FVector& OutActorSpace)
+{
+	USceneComponent* Source = WiggleSource.Get();
+	if (!Source || !Source->IsRegistered() || !Source->IsVisible())
+	{
+		// Searched again only when the look changed (hidden, replaced) or, with nothing to read, every WiggleSearchInterval.
+		WiggleSearchDelay -= DeltaTime;
+		if (Source || WiggleSearchDelay <= 0.f)
+		{
+			Source = FindWiggleSource(Actor);
+			WiggleSearchDelay = Source ? 0.f : LureFishingLinePrivate::WiggleSearchInterval;
+			WiggleSource = Source;
+			bWiggleSampled = false; // a new look: start over, no kick
+		}
+		else
+		{
+			Source = nullptr;
+		}
+	}
+	if (!Source)
+	{
+		return false;
+	}
+	FVector World;
+	if (const USkinnedMeshComponent* Skinned = Cast<USkinnedMeshComponent>(Source))
+	{
+		// The centre of the bones as drawn this frame (any clip: the hang clip, the landed flop, a test pose).
+		const TArray<FTransform>& Bones = Skinned->GetComponentSpaceTransforms();
+		if (Bones.Num() == 0)
+		{
+			return false;
+		}
+		FVector Sum = FVector::ZeroVector;
+		for (const FTransform& Bone : Bones)
+		{
+			Sum += Bone.GetTranslation();
+		}
+		World = Skinned->GetComponentTransform().TransformPosition(Sum / Bones.Num());
+	}
+	else if (const UPrimitiveComponent* Primitive = Cast<UPrimitiveComponent>(Source))
+	{
+		World = Primitive->Bounds.Origin;
+	}
+	else
+	{
+		return false;
+	}
+	OutActorSpace = Actor.GetActorTransform().InverseTransformPosition(World);
+	return !OutActorSpace.ContainsNaN();
+}
+
+void ULureFishingLineComponent::ApplyEndActorWiggle(float DeltaTime)
+{
+	using namespace LureFishingLinePrivate;
+	const AActor* Actor = EndActor.Get();
+	const float Coupling = GetTuning().HangWiggleCoupling;
+	FVector Body;
+	if (Mode != ELureLineMode::Hanging || !Actor || bNeedsReset || !Sim.HasState() || !(Coupling > 0.f)
+		|| !SampleEndActorBody(*Actor, DeltaTime, Body))
+	{
+		bWiggleSampled = false;
+		return;
+	}
+	if (!bWiggleSampled)
+	{
+		WiggleBodyLocal = Body;
+		WiggleVelocity = FVector::ZeroVector;
+		bWiggleSampled = true;
+		return;
+	}
+	if (DeltaTime <= UE_KINDA_SMALL_NUMBER)
+	{
+		return; // no time passed (an attach): nothing moved
+	}
+	const FVector LocalStep = Body - WiggleBodyLocal;
+	WiggleBodyLocal = Body;
+	if (LocalStep.SizeSquared() > FMath::Square(WiggleMaxStep))
+	{
+		WiggleVelocity = FVector::ZeroVector; // a jump (a new pose or look), not a wiggle
+		return;
+	}
+	// Sideways only (along the line the mouth can't be pushed), in the world, without the actor's own turning or swinging.
+	FVector Step = Actor->GetActorTransform().TransformVector(LocalStep);
+	const FVector Up = Sim.GetEndDirection();
+	Step -= Up * FVector::DotProduct(Step, Up);
+	const FVector Velocity = Step / DeltaTime;
+	// Momentum: the body speeding up sideways pushes the mouth (the line's end) the other way; x HangWiggleCoupling.
+	const FVector Kick = (-static_cast<double>(Coupling) * (Velocity - WiggleVelocity)).GetClampedToMaxSize(WiggleMaxKick);
+	WiggleVelocity = Velocity;
+	Sim.AddEndVelocity(Kick);
 }
 
 // ---- Drawing ----

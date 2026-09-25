@@ -58,7 +58,7 @@ bool FLureFishingLineRow::Validate(FString& OutProblem) const
 {
 	const float Values[] = { SubstepRate, GravityScale, AirDrag, WaterDrag, SlackShare, TautExponent, LengthResponse, StraightenTime, CastTension,
 		WaitTension, BiteTension, HookedTension, FloatStrength, FloatHeight, WaterRefreshDistance, RecoilSpeed, RecoilTime,
-		RecoilLengthShare, HangEndMass, HangDrag, HangReelSpeed, HangMaxSwingDeg, HangFaceTime, TeleportDistance, CollisionRadius,
+		RecoilLengthShare, HangEndMass, HangDrag, HangReelSpeed, HangMaxSwingDeg, HangFaceTime, HangWiggleCoupling, TeleportDistance, CollisionRadius,
 		GroundFriction, CollisionQueryMargin, CollisionRefreshTime };
 	for (const float Value : Values)
 	{
@@ -112,6 +112,10 @@ bool FLureFishingLineRow::Validate(FString& OutProblem) const
 	if (HangFaceTime > 5.f)
 	{
 		return Fail(FString::Printf(TEXT("HangFaceTime %.3f must be in [0, 5] s"), HangFaceTime));
+	}
+	if (HangWiggleCoupling > 10.f)
+	{
+		return Fail(FString::Printf(TEXT("HangWiggleCoupling %.3f must be in [0, 10]"), HangWiggleCoupling));
 	}
 	if (CollisionRadius > 50.f)
 	{

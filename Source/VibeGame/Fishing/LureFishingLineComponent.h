@@ -260,6 +260,17 @@ private:
 	/** T-043: the hanging actor turns its +Y side to the viewer (with bOrientEndActor). */
 	bool bEndActorFacesViewer = false;
 
+	// T-061: the hanging actor's own wiggle moves the line (HangWiggleCoupling). Read from its drawn pose; nothing replicates.
+	/** What the body centre is read from: a visible skinned mesh (its bones' centre) or another visible primitive (its bounds' centre). */
+	TWeakObjectPtr<USceneComponent> WiggleSource;
+	/** The body centre last frame, actor space (so the actor's own turning and swinging are not a wiggle). */
+	FVector WiggleBodyLocal = FVector::ZeroVector;
+	/** Its sideways speed relative to the mouth last frame, cm/s (world). */
+	FVector WiggleVelocity = FVector::ZeroVector;
+	bool bWiggleSampled = false;
+	/** Seconds until the next search when the actor showed nothing to read (no search every frame). */
+	float WiggleSearchDelay = 0.f;
+
 	// Collision (T-032b): the line lies on and bends around what blocks a cast (docs/specs/fishing-line.md "Collision").
 	FLureLineColliders Colliders;
 	TArray<FOverlapResult> Overlaps;
@@ -287,6 +298,12 @@ private:
 	bool ResolveWater(const FVector& Near, float& OutWaterZ);
 	void Simulate(float DeltaTime);
 	void MoveEndActor(float DeltaTime) const;
+	/** T-061: pushes the free end against the change in the hanging actor's sideways body speed (before the sim steps). */
+	void ApplyEndActorWiggle(float DeltaTime);
+	/** The hanging actor's body centre now, actor space; false if it shows nothing to read. */
+	bool SampleEndActorBody(const AActor& Actor, float DeltaTime, FVector& OutActorSpace);
+	static USceneComponent* FindWiggleSource(const AActor& Actor);
+	void ResetWiggle();
 	void Draw();
 	void ResolveViewer(FVector& OutLocation, float& OutFovDeg) const;
 	void DestroySegments();
