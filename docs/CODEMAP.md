@@ -13,7 +13,7 @@ Paths in the table are under `Source/VibeGame/` unless they start with a top-lev
 | First-person arms / rod poses | `Character/FPArmsAnimInstance.h`, `Character/FPArmsPose.h` EFPArmsPose, `Character/LureArmsBob.h` | art/export/Characters/SK_FPArms.anim.md | DT_Movement (Bob*, RodPose* columns) | Project.Fishing.ArmsPose | - |
 | Fishing: cast, bobber, bite, hook, spots/water | `Fishing/LureFishingComponent.h` ULureFishingComponent, `Fishing/FishingTypes.h`, `Fishing/FishingSpots.h`, `Fishing/LureFishingSettings.h`; water areas + hot spots (T-027): `Fishing/FishingWater.h` (FLureWaterRules, FLureWaterQuery), `Fishing/FishingWaterTypes.h`, `Fishing/LureWaterArea.h`, `Fishing/LureHotSpot.h`, `Fishing/LureHotSpotSpawner.h`, `Fishing/LureHotSpotVisualComponent.h`, `Fishing/LureWaterSettings.h`, `Dev/LureWaterDevCommands.h` | docs/specs/fishing-rules.md, docs/specs/fishing-water-rules.md | DT_Fishing, DT_HotSpot | Project.Fishing.*, Project.Fishing.Water.* | Lure.Water.Probe, Lure.Water.Show, Lure.HotSpot.Spawn, Lure.HotSpot.Clear |
 | Fishing: reel fight, rod steering, gear | `Fishing/FishFight.h` (pure sim), `Fishing/FishFightTypes.h`, `Fishing/LureRodControl.h`, fight state in ULureFishingComponent | docs/specs/reel-fight-rules.md | DT_FishFight, DT_FightPattern, DT_Gear | Project.Fishing.Fight | - |
-| Fishing: the line | `Fishing/LureFishingLineComponent.h`, `Fishing/FishingLineSim.h` (pure rope sim), `Fishing/FishingLineTypes.h` | docs/specs/fishing-line.md | DT_FishingLine | Project.Fishing.Line | - |
+| Fishing: the line | `Fishing/LureFishingLineComponent.h` (owner API, collider gather UpdateColliders/AddCollidersOf, hanging actor), `Fishing/FishingLineSim.h` (pure rope sim FLureLineSim + FLureLineColliders: collision, swing guard, rest lerp), `Fishing/FishingLineTypes.h` (row + rules: CarryRestLength, ReelInRestLength); fight tension `FLureFight::LineTension` in `Fishing/FishFight.h`; tests `Tests/Fishing/FishingLine*Test.cpp` | docs/specs/fishing-line.md | DT_FishingLine | Project.Fishing.Line | - |
 | Fish: species, FFishInstance roll pipeline | `Fish/FishRoll.h` UFishLibrary + FFishTables, `Fish/FishInstance.h` FFishInstance, `Fish/FishTypes.h`, `Fish/FishSettings.h`, `Fish/FishDataValidator.h` | docs/specs/fish-system-rules.md | DT_FishSpecies, DT_FishRarity, DT_FishModifier, DT_FishStat | Project.Fish.* | Lure.GiveFish |
 | Fish: fight-fish visual | `Fish/LureFightFish.h`, `Fish/LureFightFishSubsystem.h`, `Fish/FightFishVisual.h`, `Fish/FishAnimInstance.h`, `Fishing/FightFishViewAdapter.h` | docs/specs/fight-fish-visual.md, art/export/Fish/SK_Fish.anim.md | DT_FishVisual | Project.FishVisual.* | - |
 | Progression: XP, money, selling, cooler, save | `Progression/LureProgressionComponent.h` (GetSaveData/ApplySaveData), `Progression/LureCoolerComponent.h`, `Progression/LureSellPoint.h`, `Progression/LureProgressionLibrary.h`, `Progression/LureProgressionTypes.h` FLureProgressSaveData, `Game/LurePlayerState.h` | docs/specs/progression-rules.md | DT_PlayerLevel, DT_Cooler, DT_FishMarket | Project.Progression.* | - |
@@ -108,14 +108,14 @@ Paths in the table are under `Source/VibeGame/` unless they start with a top-lev
 - `VibeGameGameMode.h` AVibeGameGameMode
 - `VibeGamePlayerController.h` AVibeGamePlayerController
 
-### Tests (`Source/VibeGame/`): folder, prefix (count): 3rd name segment count. Total 1016
+### Tests (`Source/VibeGame/`): folder, prefix (count): 3rd name segment count. Total 1065
 - `Tests/Catch/` Project.Arms.* (3): HoldFishSize 3
-- `Tests/Catch/` Project.Catch.* (84): QA 39, Cooler 7, Net 5, Rules 5, Display 4, Counter 3, Data 3, Hand 3, HoldFishAttach 3, Link 2, S...
+- `Tests/Catch/` Project.Catch.* (108): QA 52, Cooler 7, Net 6, Counter 5, Rules 5, Display 4, Focus 4, Data 3, Hand 3, HoldFishAttach 3,...
 - `Tests/Catch/` Project.FishVisual.* (2): HeldPose 2
 - `Tests/Dev/` Project.Dev.* (12): Teleport 4, GiveFish 3, Commands 1, PlaytestDriver 1, QA 1, Screenshot 1, SetStance 1
 - `Tests/FishFight/` Project.Fishing.* (114): Fight 114
-- `Tests/FishVisual/` Project.FishVisual.* (42): QA 29, Lifecycle 3, Adapter 2, Anim 2, Data 2, Placement 2, AnimGraph 1, Size 1
-- `Tests/Fishing/` Project.Fishing.* (219): QA 90, Water 78, Line 47, CastTrace 4
+- `Tests/FishVisual/` Project.FishVisual.* (44): QA 29, Lifecycle 3, Adapter 2, Anim 2, Data 2, HeldPose 2, Placement 2, AnimGraph 1, Size 1
+- `Tests/Fishing/` Project.Fishing.* (242): QA 90, Water 78, Line 68, CastTrace 4, Fight 2
 - `Tests/Level/` Project.Level.* (3): PalmKey 3
 - `Tests/Movement/` Project.Fishing.* (3): Climb 1, Rules 1, Swim 1
 - `Tests/Movement/` Project.Movement.* (211): QA 171, Swim 33, Camera 3, Climb 3, Stance 1
@@ -152,7 +152,7 @@ Paths in the table are under `Source/VibeGame/` unless they start with a top-lev
 - `docs/specs/catch-handling-rules.md` Catch handling rules (T-030): the fish on the hook, the hand, the physical cooler, freshness and t...
 - `docs/specs/fight-fish-visual.md` Fighting fish visual (T-029)
 - `docs/specs/fish-system-rules.md` Fish system rules (T-008+), lead decisions 2026-09-22
-- `docs/specs/fishing-line.md` Physics fishing line (T-032)
+- `docs/specs/fishing-line.md` Physics fishing line (T-032, T-032b)
 - `docs/specs/fishing-rules.md` Fishing rules (T-006: cast, bobber, bite, hook), unreal-engineer decisions 2026-09-23
 - `docs/specs/fishing-water-rules.md` Fishing water rules (T-027: fish anywhere + hot spots), unreal-engineer decisions 2026-09-23
 - `docs/specs/movement-rules.md` First-person movement rules (T-004), lead decisions 2026-09-22
