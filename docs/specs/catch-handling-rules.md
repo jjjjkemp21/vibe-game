@@ -77,8 +77,9 @@ by the server; clients only ask ("I pressed E on this cooler, expecting Put in")
   While swimming the hands take nothing (`CanHoldItems`): no grab, pick-up or take-out, and coolers offer nothing.
 - **Drop (F)** with a fish in hand: it is tossed `DropForward` in front along the view at hand height (a wall stops it
   just in front), pulled back toward you if it would land inside a standing cooler (coolers ignore the cast channel),
-  then falls straight down: onto the ground, or into the water by the bobber's water rules
-  (`FLureFishingSpots::ResolveLanding` with no flight of its own; a cast-style flight aimed at the water would hit the
+  then falls straight down from the hand's height (a roof above never catches it, T-066): onto the first ground below,
+  or into the water by the bobber's water rule (no ground above the water surface + `LandTolerance`;
+  `LureFishItemPrivate::FallFromHand`, no flight of its own: a cast-style flight aimed at the water would hit the
   dock under your feet). On land (dock, beach, rock, the sell counter) it lies there on its side, still spoiling, and
   anyone can pick it up. **On water it is released**: it swims off (the item is removed) and the owner sees "Released
   the Bonefish". There is no separate throw-back verb: walk to the water and drop it. **Let go (F on the hook)** drops it
