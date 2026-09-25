@@ -8,7 +8,7 @@
 			{ "MoveId": "Swim", "Role": "SwimFast" },
 			{ "MoveId": "Charge", "Role": "SwimFast" },
 			{ "MoveId": "Rest", "Role": "SwimIdle" },
-			{ "MoveId": "Sulk", "Role": "Thrash" }
+			{ "MoveId": "Sulk", "Role": "SwimIdle" }
 		],
 		"UnknownMoveRole": "SwimFast",
 		"RoleTailBeats": [
@@ -17,6 +17,16 @@
 			{ "Role": "Run", "Hz": 3.0 },
 			{ "Role": "Dive", "Hz": 2.0 }
 		],
+		"RoleStaminaRates": [
+			{ "Role": "Run", "FreshRate": 1.0, "TiredRate": 0.6 },
+			{ "Role": "SwimFast", "FreshRate": 1.0, "TiredRate": 0.6 },
+			{ "Role": "Dive", "FreshRate": 1.0, "TiredRate": 0.6 },
+			{ "Role": "Dart", "FreshRate": 1.0, "TiredRate": 0.7 },
+			{ "Role": "Thrash", "FreshRate": 1.0, "TiredRate": 0.7 },
+			{ "Role": "SwimIdle", "FreshRate": 1.0, "TiredRate": 0.8 }
+		],
+		"FreshAmplitudeScale": 1.0,
+		"TiredAmplitudeScale": 0.75,
 		"StrideBodyLengths": 0.7,
 		"MinPlayRate": 0.5,
 		"MaxPlayRate": 2.0,
@@ -47,6 +57,6 @@
 		"EscapeTime": 1.0,
 		"EscapeSpeed": 250.0,
 		"EscapeSinkSpeed": 60.0,
-		"DevComment": "T-029 fighting fish look (cosmetic; every machine). MoveRoles: fight move id (DT_FightPattern) -> clip role (EFishAnimRole: SwimIdle, SwimFast, Thrash, Run, Dive, Dart, Flop); a new move needs a line here, unknown moves play UnknownMoveRole. Clip rules from art/export/Fish/SK_Fish.anim.md: swim roles match the tail beat to the fish's speed (stride 0.7 body lengths per beat), others slow down with weight ^ -1/6; Thrash for the first second after the hook set; a tired fish swims slowly and stays upright (ExhaustedRollDeg 0, Jimmy 2026-09-24). Placement: the mouth at the line's end (never more than MouthMaxLagCm behind it), the fish facing the rod with its body away from the player, swung sideways up to RunSwingDeg while it swims (full at RunSwingFullSpeed; T-048), SurfaceDepth under the surface plus 60 % of the fight's dive depth (capped), above the bottom; more smoothing on machines without authority. PLACEHOLDER numbers: tune in playtest."
+		"DevComment": "T-029 fighting fish look (cosmetic; every machine). MoveRoles: fight move id (DT_FightPattern) -> clip role (EFishAnimRole: SwimIdle, SwimFast, Thrash, Run, Dive, Dart, Flop); a new move needs a line here, unknown moves play UnknownMoveRole. Clip rules from art/export/Fish/SK_Fish.anim.md: while fighting (T-059a, effort not speed) every role plays at AnimRate x weight ^ -1/6 x lerp(TiredRate, FreshRate, stamina) (RoleStaminaRates, art's gate A table) with alpha x lerp(TiredAmplitudeScale, FreshAmplitudeScale, stamina); only the escape swim matches its tail beat to its speed (stride 0.7 body lengths per beat); Sulk holds (SwimIdle); Thrash for the first second after the hook set; a tired fish swims slowly and stays upright (ExhaustedRollDeg 0, Jimmy 2026-09-24). Placement: the mouth at the line's end (never more than MouthMaxLagCm behind it), the fish facing the rod with its body away from the player, swung sideways up to RunSwingDeg while it swims (full at RunSwingFullSpeed; T-048), SurfaceDepth under the surface plus 60 % of the fight's dive depth (capped), above the bottom; more smoothing on machines without authority. PLACEHOLDER numbers: tune in playtest."
 	}
 ]

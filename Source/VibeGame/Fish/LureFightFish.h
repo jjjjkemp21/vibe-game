@@ -116,6 +116,8 @@ private:
 	bool bPlaced = false;
 	bool bDartRight = false;
 	bool bExhausted = false;
+	/** The fight's stamina 0..1 (T-059a: the clip rate and alpha). */
+	float Stamina01 = 1.f;
 	EFishAnimRole LastRole = EFishAnimRole::SwimIdle;
 
 	/** Bottom height under a point (FLureFishingSpots::TraceCast from just under the surface down past the shown depth and past BelowZ), or -BIG_NUMBER. */

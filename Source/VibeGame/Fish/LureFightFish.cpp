@@ -70,6 +70,7 @@ void ALureFightFish::Setup(const FLureFightFishSetup& InSetup)
 
 	Phase = EFightFishPhase::Fighting;
 	Seconds = 0.f;
+	Stamina01 = 1.f;
 	EndSeconds = 0.f;
 	bPlaced = false;
 	Velocity = FVector::ZeroVector;
@@ -114,6 +115,7 @@ void ALureFightFish::ApplyView(const FFightFishView& View, float DeltaTime)
 	const FFishVisualRow& Row = Setup_.Row;
 	Seconds += FMath::Max(0.f, DeltaTime);
 	bExhausted = View.bExhausted;
+	Stamina01 = View.Stamina01;
 	LastWaterZ = View.WaterZ;
 	bHasWaterZ = FMath::IsFinite(View.WaterZ);
 
@@ -153,6 +155,7 @@ void ALureFightFish::UpdateAnim(EFightFishPhase InPhase, FName MoveId, const FVe
 	In.AnimRate = Setup_.AnimRate;
 	In.AnimAmplitude = Setup_.AnimAmplitude;
 	In.bDartRight = bDartRight;
+	In.Stamina01 = Stamina01;
 	FFishAnimState State = FFightFishVisual::ComputeAnimState(Setup_.Row, In);
 	if (State.Role == EFishAnimRole::Dart && LastRole != EFishAnimRole::Dart)
 	{

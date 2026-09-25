@@ -44,8 +44,14 @@ state (`RodPitch`, `RodYaw`, `ReelStep`, `RunSide`) is not the fish's and is not
   roll with a later calm clip, S3).
 - **Clips** (`EFishAnimRole`): first `HookSetThrashTime` s Thrash; then `MoveRoles[MoveId]` (unknown = `UnknownMoveRole`);
   tired = SwimIdle at `ExhaustedPlayRate`, alpha x `ExhaustedAmplitudeScale`; Landed = Flop at alpha 1; escaping = SwimFast.
-  Swim roles (listed in `RoleTailBeats`) play at `AnimRate x Speed / (StrideBodyLengths x BodyLength x Hz)` clamped to
-  `[MinPlayRate, MaxPlayRate]`; others at `AnimRate x (ReferenceWeight / Weight)^OtherRateWeightExponent`. A dart starts at
+  Sulk plays SwimIdle (T-059a: a sulking fish holds). **While fighting (not tired), effort, not speed (T-059a, art S3 gate
+  A)**: every role plays at `AnimRate x (ReferenceWeight / Weight)^OtherRateWeightExponent x lerp(TiredRate, FreshRate,
+  stamina)` (`RoleStaminaRates`: Run/SwimFast/Dive 1.0/0.6, Dart/Thrash 1.0/0.7, SwimIdle 1.0/0.8; a role not listed = 1)
+  with alpha `AnimAmplitude x lerp(TiredAmplitudeScale 0.75, FreshAmplitudeScale 1, stamina)`; the fish's speed (reeling
+  it in) never changes it. Stamina = `FLureFightNetState::Stamina` through `FFightFishView::Stamina01` (the adapter's one
+  line) and `FFightFishAnimInput::Stamina01` (default 1: the held/landed fish keep their rule). Only the escape swim
+  (roles in `RoleTailBeats`) plays at `AnimRate x Speed / (StrideBodyLengths x BodyLength x Hz)` clamped to
+  `[MinPlayRate, MaxPlayRate]`; the flop at the weight rate. Tests `Project.FishVisual.PlayRateByStamina.*`. A dart starts at
   0 (turning to the fish's left) or `DartRightStartTime` (right).
 
 ## Hand-off to T-030 (the landed fish)

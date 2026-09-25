@@ -46,6 +46,24 @@ struct FFishRoleTailBeat
 	float Hz = 1.f;
 };
 
+/** T-059a: a role's play-rate factor from the fish's stamina while it fights (DT_FishVisual RoleStaminaRates). */
+USTRUCT(BlueprintType)
+struct FFishRoleStaminaRate
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Fish Visual")
+	EFishAnimRole Role = EFishAnimRole::SwimFast;
+
+	/** Rate factor at full stamina (1). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Fish Visual", meta=(ClampMin="0"))
+	float FreshRate = 1.f;
+
+	/** Rate factor at stamina 0 (a spent fish beats slower). In between: linear. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Fish Visual", meta=(ClampMin="0"))
+	float TiredRate = 1.f;
+};
+
 /**
  *  DT_FishVisual row (row Default): how the fighting fish looks and moves. Cosmetic only: every machine computes it from
  *  replicated state; nothing here changes the fight.
@@ -64,9 +82,24 @@ struct FFishVisualRow : public FTableRowBase
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Clips")
 	EFishAnimRole UnknownMoveRole = EFishAnimRole::SwimFast;
 
-	/** Speed-matched roles and their clip tail beat. Other roles play at AnimRate x (ReferenceWeight / Weight)^OtherRateWeightExponent. */
+	/** Speed-matched roles and their clip tail beat: only the escape swim uses them (T-059a); other roles, and the landed flop, play at AnimRate x (ReferenceWeight / Weight)^OtherRateWeightExponent. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Clips")
 	TArray<FFishRoleTailBeat> RoleTailBeats;
+
+	/**
+	 *  T-059a: while it fights (not tired), a clip plays at AnimRate x (ReferenceWeight / Weight)^OtherRateWeightExponent x
+	 *  lerp(TiredRate, FreshRate, stamina): effort, not speed (reeling a spent fish in never speeds its tail up). A role not
+	 *  listed: factor 1.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Clips", meta=(DataTableImportOptional))
+	TArray<FFishRoleStaminaRate> RoleStaminaRates;
+
+	/** T-059a: while it fights (not tired), alpha = AnimAmplitude x lerp(TiredAmplitudeScale, FreshAmplitudeScale, stamina). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Clips", meta=(ClampMin="0", ClampMax="1", DataTableImportOptional))
+	float FreshAmplitudeScale = 1.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Clips", meta=(ClampMin="0", ClampMax="1", DataTableImportOptional))
+	float TiredAmplitudeScale = 0.75f;
 
 	/** Swim roles: PlayRate = AnimRate x Speed / (StrideBodyLengths x BodyLength x Hz), clamped to [MinPlayRate, MaxPlayRate]. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Clips", meta=(ClampMin="0.01"))
@@ -227,6 +260,8 @@ struct FFightFishView
 	float DepthCm = 0.f;
 	/** Tension / line strength. */
 	float Tension01 = 0.f;
+	/** The fish's stamina 0..1 (T-059a: the clip rate and alpha follow it). */
+	float Stamina01 = 1.f;
 
 	/** The player (fight center), the end of the line in the water (XY; its Z is the water surface) and the surface height. */
 	FVector PlayerLocation = FVector::ZeroVector;
@@ -266,6 +301,8 @@ struct FFightFishAnimInput
 	float AnimAmplitude = 1.f;
 	/** The dart goes to the fish's right (else its left). */
 	bool bDartRight = false;
+	/** The fish's stamina 0..1 while it fights (T-059a). 1 = fresh (callers outside the fight keep the default). */
+	float Stamina01 = 1.f;
 };
 
 /** The fish visual's rules (pure; tests call them directly). */
@@ -280,13 +317,17 @@ struct FFightFishVisual
 	/** Tail beat of a speed-matched role, Hz; 0 = not speed-matched. */
 	static float TailBeatHz(const FFishVisualRow& Row, EFishAnimRole Role);
 
+	/** Stamina rate factor of a role: lerp(TiredRate, FreshRate, Stamina01) from Row.RoleStaminaRates; 1 if not listed. */
+	static float StaminaRate(const FFishVisualRow& Row, EFishAnimRole Role, float Stamina01);
+
 	/**
 	 *  The clip state:
-	 *    Landed -> Flop, alpha 1, "other" rate.   Escaping -> SwimFast.
+	 *    Landed -> Flop, alpha 1, "other" rate.   Escaping -> SwimFast, speed-matched rate.
 	 *    Fighting: the first HookSetThrashTime s -> Thrash; exhausted -> SwimIdle at ExhaustedPlayRate, alpha x ExhaustedAmplitudeScale;
-	 *    else RoleForMove(MoveId).
-	 *  Rate: speed-matched roles AnimRate x Speed / (StrideBodyLengths x BodyLength x Hz) clamped to [MinPlayRate, MaxPlayRate];
-	 *  others AnimRate x (ReferenceWeight / Weight)^OtherRateWeightExponent. Alpha = AnimAmplitude (0..1) except Flop (1).
+	 *    else RoleForMove(MoveId). Not exhausted (T-059a, effort not speed): rate AnimRate x weight factor x StaminaRate,
+	 *    alpha AnimAmplitude x lerp(TiredAmplitudeScale, FreshAmplitudeScale, stamina).
+	 *  Speed-matched rate (escape): AnimRate x Speed / (StrideBodyLengths x BodyLength x Hz) clamped to [MinPlayRate, MaxPlayRate].
+	 *  Weight factor ("other" rate): (ReferenceWeight / Weight)^OtherRateWeightExponent. Alpha 0..1; Flop always 1.
 	 */
 	static FFishAnimState ComputeAnimState(const FFishVisualRow& Row, const FFightFishAnimInput& In);
 
