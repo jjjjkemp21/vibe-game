@@ -18,6 +18,7 @@
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
 #include "EnhancedInputComponent.h"
+#include "Environment/LureDayClockComponent.h"
 #include "Fish/FishRoll.h"
 #include "Fish/FishSettings.h"
 #include "Fishing/FishingSpots.h"
@@ -755,7 +756,7 @@ FLureFishingEnvironment ULureFishingComponent::MakeEnvironment() const
 {
 	const ULureFishingSettings* Settings = GetDefault<ULureFishingSettings>();
 	FLureFishingEnvironment Environment;
-	Environment.TimeOfDayHours = TimeOfDayOverride >= 0.f ? TimeOfDayOverride : Settings->DefaultTimeOfDayHours;
+	Environment.TimeOfDayHours = TimeOfDayOverride >= 0.f ? TimeOfDayOverride : ULureDayClockComponent::GetHourOr(this, Settings->DefaultTimeOfDayHours); // T-068a: the clock
 	const FLureGearStats Gear = GetGearStats();
 	Environment.BaitTag = BaitTag.IsValid() ? BaitTag
 		: (Gear.BaitTag.IsValid() ? Gear.BaitTag : FGameplayTag::RequestGameplayTag(Settings->DefaultBait, /*ErrorIfNotFound*/ false));

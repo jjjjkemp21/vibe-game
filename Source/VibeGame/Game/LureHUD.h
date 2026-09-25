@@ -10,7 +10,7 @@
  *  Draws the local player's status lines as plain white text: progression (money, level, XP, cooler, the interact
  *  prompt) top-left, with the short notices ("Level up! Level 2", "Sold 2 fish for 48 coins") right under them; fishing
  *  (cast power, bite/hook prompt, fight, results) and a refused stance ("Too deep to crouch here.") in the lower-left,
- *  so the centre of the view (line, bobber, water) stays clear. No styling on purpose.
+ *  so the centre of the view (line, bobber, water) stays clear; the clock ("06:40 Dawn", T-068a) top-centre. No styling on purpose.
  */
 UCLASS()
 class ALureHUD : public AHUD
@@ -26,6 +26,9 @@ public:
 
 	/** The notices still showing for PlayerController's own player (ULureProgressionComponent::GetNoticeLines) */
 	static TArray<FString> GetNoticeLines(const APlayerController* PlayerController);
+
+	/** T-068a: the clock line "06:40 Dawn" from WorldContext's GameState clock (empty without one). Drawn top-centre. */
+	static FString GetClockText(const UObject* WorldContext);
 
 	/** T-051: the debug menu (a dark box with the bind list and mouse sensitivity, top-right) or, when closed, its one-line hint. */
 	void DrawDebugMenu();
