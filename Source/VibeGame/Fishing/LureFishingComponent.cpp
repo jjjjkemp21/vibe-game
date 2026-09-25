@@ -1544,6 +1544,17 @@ void ULureFishingComponent::UpdateVisuals(float DeltaTime)
 		else
 		{
 			Line->Hide();
+			if (Line->GetEndActor())
+			{
+				// T-034: a fish hangs on the line (T-032), so it is still drawn: keep its viewer current. Without this the widths
+				// were sized for where the eye was when the line last was out (a GiveFish far from the last cast: centimetres thick).
+				FVector ViewLocation;
+				float Fov = 90.f;
+				GetViewer(ViewLocation, Fov);
+				Line->SetViewer(ViewLocation, Fov);
+				const FLureFishingRow& HangRow = GetProfile();
+				Line->SetWidthRule(HangRow.LinePixelWidth, GetDefault<ULureFishingSettings>()->LineReferenceScreenWidth, HangRow.LineMinWidth);
+			}
 		}
 	}
 }

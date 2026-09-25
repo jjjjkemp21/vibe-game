@@ -387,6 +387,7 @@ void ULureFishingLineComponent::StopLine()
 	LastChord = 0.f;
 	bWaterLookedUp = false;
 	EndActor.Reset();
+	bViewerSet = false; // T-034: a later line never draws for this line's (stale) viewer; until set again: the local camera
 	SetComponentTickEnabled(false);
 	for (USplineMeshComponent* Segment : Segments)
 	{

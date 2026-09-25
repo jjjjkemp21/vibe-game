@@ -183,28 +183,46 @@ int32 ALureSellCounter::QuoteAll() const
 	return Total;
 }
 
+TArray<float> ALureSellCounter::GetSpotOffsets(float HalfLengthY, float Spacing)
+{
+	const float Step = FMath::Max(10.0f, Spacing);
+	const int32 Spots = FMath::Max(1, FMath::FloorToInt(2.0f * FMath::Max(0.0f, HalfLengthY) / Step));
+	TArray<float> Offsets;
+	Offsets.Reserve(Spots);
+	for (int32 Index = 0; Index < Spots; ++Index)
+	{
+		// Centred along the counter: symmetric around 0, the outermost half a step inside the ends.
+		Offsets.Add(Step * (Index - 0.5f * (Spots - 1)));
+	}
+	// Nearest the centre first; of two at the same distance, + before -.
+	Offsets.Sort([](float A, float B)
+	{
+		const float DistA = FMath::Abs(A);
+		const float DistB = FMath::Abs(B);
+		return !FMath::IsNearlyEqual(DistA, DistB, 0.01f) ? DistA < DistB : A > B;
+	});
+	return Offsets;
+}
+
 FTransform ALureSellCounter::GetPlacementSpot() const
 {
 	const TArray<ALureFishItem*> OnCounter = GetFishOnCounter();
 	const float Spacing = FMath::Max(10.0f, FishSpacing);
-	const int32 Spots = FMath::Max(1, FMath::FloorToInt(2.0f * CounterHalfSize.Y / Spacing));
+	const TArray<float> Offsets = GetSpotOffsets(CounterHalfSize.Y, Spacing);
 	const FTransform Frame = GetActorTransform();
-	FVector Chosen = FVector::ZeroVector;
-	for (int32 Index = 0; Index < Spots; ++Index)
+	// A full counter falls back to the centre spot (the first in the order).
+	FVector Chosen = Frame.TransformPositionNoScale(FVector(0.0, Offsets[0], 0.0));
+	for (const float Offset : Offsets)
 	{
-		const FVector Local(0.0, -CounterHalfSize.Y + Spacing * (Index + 0.5f), 0.0);
-		const FVector World = Frame.TransformPositionNoScale(Local);
+		const FVector World = Frame.TransformPositionNoScale(FVector(0.0, Offset, 0.0));
 		const bool bTaken = OnCounter.ContainsByPredicate([&World, Spacing](const ALureFishItem* Fish)
 		{
 			return FVector::Dist2D(Fish->GetActorLocation(), World) < 0.5f * Spacing;
 		});
-		if (!bTaken || Index == 0)
+		if (!bTaken)
 		{
 			Chosen = World;
-			if (!bTaken)
-			{
-				break;
-			}
+			break;
 		}
 	}
 	// On the real top surface under the spot (the origin should be on it; a small trace keeps a misplaced marker honest).

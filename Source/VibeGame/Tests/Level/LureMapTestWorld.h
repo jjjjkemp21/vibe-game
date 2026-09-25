@@ -75,8 +75,10 @@ namespace LureMapTest
 			}
 		}
 
-		/** Destroys the test world and frees its map copy (keep flags cleared, then a garbage collection). Safe to call twice. */
-		void Release()
+		/** Destroys the test world and frees its map copy (keep flags cleared, then a garbage collection). Safe to call twice.
+		 *  bCollectGarbage false skips the collection: a test that makes many map worlds in a row collects once per batch
+		 *  itself (CollectGarbage(GARBAGE_COLLECTION_KEEPFLAGS)); TestNoMapCopiesLeft still collects and checks at the end. */
+		void Release(bool bCollectGarbage = true)
 		{
 			if (Wrapper.GetTestWorld())
 			{
@@ -103,7 +105,10 @@ namespace LureMapTest
 				Package->ClearFlags(RF_Standalone);
 			}
 			InstancePackage = NAME_None;
-			CollectGarbage(GARBAGE_COLLECTION_KEEPFLAGS);
+			if (bCollectGarbage)
+			{
+				CollectGarbage(GARBAGE_COLLECTION_KEEPFLAGS);
+			}
 		}
 
 		/** Loads MapPackage (e.g. /Game/Maps/L_PalmKey). False, with a test error, if the map or the world can't be made. */
