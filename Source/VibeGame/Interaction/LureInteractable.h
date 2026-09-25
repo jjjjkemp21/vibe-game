@@ -39,7 +39,11 @@ enum class ELureInteractVerb : uint8
 	PutDownCooler,
 	PlaceFishOnCounter,
 	TakeFishFromCounter,
-	SellCounter
+	SellCounter,
+	/** T-064: the cooler you carry, open: turn its open side away from you ("Show the fish") */
+	ShowCooler,
+	/** T-064: the cooler you show: turn its open side back toward you ("Turn it back") */
+	TurnBackCooler
 };
 
 /** What a key would do on an interactable right now. Verb None with a prompt is an info line (e.g. "Cooler full (4/4)"). */

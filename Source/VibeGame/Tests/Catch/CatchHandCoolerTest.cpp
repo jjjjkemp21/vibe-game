@@ -452,10 +452,11 @@ bool FCatchCoolerCarry::RunTest(const FString& Parameters)
 	TestEqual(TEXT("carrying slows you by the row's multiplier"), Rig.Player->GetLureMovement()->GetMaxSpeed(), Walk * Multiplier, 0.5f);
 	TestEqual(TEXT("... the hands report it"), Rig.Hands->GetMoveSpeedMultiplier(), Multiplier, 1.0e-4f);
 	TestEqual(TEXT("a carried cooler doesn't collide"), static_cast<int32>(Cooler->GetCollisionBox()->GetCollisionEnabled()), static_cast<int32>(ECollisionEnabled::NoCollision));
-	TestFalse(TEXT("its lid can't be opened while carried"), Cooler->AuthoritySetLidOpen(true));
+	TestFalse(TEXT("the lid closed when it was picked up"), Cooler->IsLidOpen());
 	const FLureResolvedInteraction E = Rig.Key(ELureInteractKey::Primary);
 	const FLureResolvedInteraction F = Rig.Key(ELureInteractKey::Secondary);
-	TestTrue(TEXT("both keys put it down"), E.Verb == ELureInteractVerb::PutDownCooler && F.Verb == ELureInteractVerb::PutDownCooler && E.Target == Cooler);
+	// T-064: a carried closed cooler: E opens it in your hands, F puts it down (Project.Catch.HeldCooler.Open.*)
+	TestTrue(TEXT("carried and closed: E opens it, F puts it down"), E.Verb == ELureInteractVerb::OpenCooler && F.Verb == ELureInteractVerb::PutDownCooler && E.Target == Cooler && F.Target == Cooler);
 	TestEqual(TEXT("HUD"), FString::Join(ULureCatchLibrary::GetPlaceholderLines(LCT::ControllerOf(Rig.Player)), TEXT(" | ")), FString(TEXT("Carrying: Starter cooler (2/4, closed)")));
 	ALureFishItem* Loose = ALureFishItem::SpawnFish(Rig.W.World, FLureCaughtFish::Landed(LCT::MakeFish(TEXT("Bonefish"), 5, 1, 1.5f, 63), Rig.W.Now()),
 		FTransform(FVector(60.0f, 40.0f, LCT::DockTop)));
@@ -467,7 +468,7 @@ bool FCatchCoolerCarry::RunTest(const FString& Parameters)
 	Rig.W.Tick(2);
 	TestTrue(TEXT("the carried cooler goes along"), FVector::Dist2D(Cooler->GetActorLocation(), Rig.Player->GetActorLocation()) < 150.0f);
 
-	TestTrue(TEXT("E puts it down"), Rig.Use->PressKey(ELureInteractKey::Primary));
+	TestTrue(TEXT("F puts it down"), Rig.Use->PressKey(ELureInteractKey::Secondary));
 	const FVector Down = Cooler->GetActorLocation();
 	const float Distance = ULureCatchSubsystem::GetTuningFor(Rig.W.World).PutDownDistance;
 	TestTrue(TEXT("free"), Cooler->IsFree() && !Rig.Hands->IsHoldingSomething());
@@ -498,7 +499,7 @@ bool FCatchCoolerPutDownRoom::RunTest(const FString& Parameters)
 	Rig.Progression->ClearNotices();
 	FTransform Spot;
 	TestFalse(TEXT("a wall in front: no room"), Cooler->FindPutDownSpot(Rig.Player, Spot));
-	TestFalse(TEXT("E refuses"), Rig.Use->PressKey(ELureInteractKey::Primary));
+	TestFalse(TEXT("F refuses"), Rig.Use->PressKey(ELureInteractKey::Secondary));
 	TestTrue(TEXT("... it stays in the hands"), Rig.Hands->GetCarriedCooler() == Cooler);
 	TestTrue(FString::Printf(TEXT("... and says why (%s)"), *LCT::NoticesOf(Rig.Player)), LCT::NoticesOf(Rig.Player).Contains(TEXT("No room to put the cooler down here")));
 	Wall->Destroy();

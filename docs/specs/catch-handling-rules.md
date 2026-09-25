@@ -104,7 +104,9 @@ by the server; clients only ask ("I pressed E on this cooler, expecting Put in")
 | nothing | open, empty | Close | Close |
 | a fish | any, room | Put it in (a closed lid gives a short clack, `LidPulsePitch`: the lid state is kept) | Drop the fish |
 | a fish | full | nothing (info "Cooler full (4/4)") | Drop the fish |
-| this cooler | - | Put down | Put down |
+| this cooler (you carry it, T-064) | lid closed | Open ("Open the cooler (3/4)") | Put down |
+| this cooler | lid open, mouth toward you | Show it ("Show the fish": turn the open side away) | Close |
+| this cooler | showing (mouth away) | Turn it back | Close (T-065: "Dump 3 fish" when it has fish) |
 
 - **Carry:** both hands, arms pose **CarryCooler**, rod stowed (no fishing), move speed x `CarrySpeedMultiplier` of
   the row on land (Starter 0.8; sprint too). The lid closes when you pick it up. Put down = in front of you at
@@ -114,11 +116,29 @@ by the server; clients only ask ("I pressed E on this cooler, expecting Put in")
   jump doesn't raise the limit) and **never in a sell counter's area**,
   where the box fits (tries 100 % and 85 % of the distance, then just clear of your capsule); else "No room to put the
   cooler down here" and you keep carrying. An open cooler must be closed (F) before F picks it up.
+- **Open and show while carrying (T-064, Jimmy A2 notes):** only the carrier uses a carried cooler (others get no verbs,
+  and the server's verb check refuses a stale request). E opens the lid in your hands: the contents switch to the open
+  spoiling rate as for a standing open cooler, and the fish show inside. Open, E shows it: the open side turns away from
+  you, "as if showing it to someone"; E again turns it back. F closes it (closing while showing = turn back + close).
+  **Showing** is one replicated flag on the cooler (`bShowing`, server-set, replicated to everyone: the others are who
+  you show it to), set only while it is carried in a hand with the lid open, and cleared whenever it is not carried or
+  the lid closes. **Any put-down** (F, prone, water, getting caught, leaving) ends showing and keeps the lid as it is
+  (an open cooler put down stands open). Pick-up still closes the lid.
+- **The turn (cosmetic, every rendering machine):** the cooler's own visual (`VisualRoot`) turns in the cooler's own
+  axes about the middle of its box, then shifts (never its attachment, so it composes with the arms' `cooler` bone):
+  carrier's machine, open toward you = `CarriedOpenRotation/Offset` (the top tilted toward the eye, blended over
+  `LidOpenTime`), showing = `CarriedShowRotation/Offset` (the top turned away, blended over DT_Catch `ShowTurnTime`);
+  other machines, showing = `ThirdPersonShowRotation/Offset` (the top turned along the carrier's forward; no tilt when
+  just open). Settings in `ULureCatchSettings`, PLACEHOLDER. The arms keep the CarryCooler pose: the hands don't sit on
+  the handles while it is turned (an art need: a show pose). On arms without the `cooler` bone (the fixed-offset
+  fallback, the cooler's front away from the eye) the first-person turns point the wrong way; that fallback is for
+  missing art only.
 - Automatic put-down (server): going **prone** puts it down in front of you (hide first, come back for it); falling into
   the **water** puts it down at your last dry ground spot. Both turn its front toward you
   (`ALureCoolerActor::GetYawFacing`). It is never lost. Lying prone you can't pick a cooler up (F shows "Stand up to
   carry the cooler"); E still opens it.
-- **Contents display (cosmetic, every rendering machine):** while the lid is open and the cooler stands, the top fish
+- **Contents display (cosmetic, every rendering machine):** while the lid is open and the cooler stands or is carried
+  (T-064; on the carrier's machine the shown fish are first-person primitives like the cooler), the top fish
   of the pile show inside, curled and stacked: the DT_CoolerDisplay row named like the cooler type. `Slots` = the
   animation-artist's slot table (`art/export/Fish/SK_Fish.anim.md` "Cooler display"), relative to the body's
   `Contents` socket, bottom of the pile first (slot 0 = the lowest shown fish; taking one out re-seats the rest). A
@@ -220,7 +240,8 @@ by the server; clients only ask ("I pressed E on this cooler, expecting Put in")
 ## Network (what replicates, what each machine does)
 - Server-authoritative: every change goes through `Authority*` functions that refuse on clients (with a Warning).
 - Replicated: items' `Hold` and `Placement`, a fish's record and counter; a cooler's lid, lid pulse, owner, guid,
-  starter flag and its storage (records, row, capacity, rate), always relevant; the counter (see above).
+  starter flag, showing flag (T-064) and its storage (records, row, capacity, rate), always relevant; the counter (see
+  above). A late joiner gets a carried cooler's lid and showing state with its first update (the look is set at once).
 - Each machine reads its own data tables for looks and names (DT_Cooler row, DT_Freshness, DT_Catch, DT_CoolerDisplay,
   the fish tables): the carrier's machine predicts the carry speed from its own DT_Cooler row, so every machine must
   have the same tables (they are cooked content).
@@ -279,7 +300,8 @@ by the server; clients only ask ("I pressed E on this cooler, expecting Put in")
 - `data/tables/DT_Freshness.csv` (FLureFreshnessRow): Default = grace 120 s, spoil 600 s, exponent 1.0, min 0.3.
 - `data/tables/DT_Catch.csv` (FLureCatchRow, row Default): HangLineLength 40 cm, HangDamping 1.2 /s, ReachDistance
   250 cm, FocusAngleDeg 20, DropForward 60 cm, DropArcTime 0.35 s, PutDownDistance 80 cm,
-  PutDownMaxFall 300 cm, LidOpenPitch 100 deg, LidOpenTime 0.25 s, LidPulsePitch 30 deg.
+  PutDownMaxFall 300 cm, LidOpenPitch 100 deg, LidOpenTime 0.25 s, LidPulsePitch 30 deg, ShowTurnTime 0.4 s (T-064,
+  optional column: older CSVs import with the default; the data test validates it in [0, 10] s).
 - `data/tables/DT_CoolerDisplay.json` (FLureCoolerDisplayRow, rows Starter and Large): the 4-slot table of
   SK_Fish.anim.md (`anim_fish_cooler.py`, 2026-09-23), FishPose `/Game/Art/Fish/A_Fish_Curled`, PoseTime 0,
   MaxFishScale 1.0, LieOffsetCm 4.25 (Bonefish 4.24, CoralSnapper 4.26: one value until the species table has look
@@ -287,7 +309,8 @@ by the server; clients only ask ("I pressed E on this cooler, expecting Put in")
   every row names a DT_Cooler row and that LieOffsetCm is in [0, 50].
 - Project Settings > Game > Catch Handling (`[/Script/VibeGame.LureCatchSettings]`): table paths, the fish mesh search
   (the species row's `Mesh`, else `/Game/Art/Fish/SK_<Species>`, else `SM_<Species>`), attach sockets and offsets, the
-  starter cooler spawn. Keys: `AltInteractKeys` in Lure Character settings.
+  carried cooler's open and show turns (T-064: `CarriedOpenRotation/Offset` pitch -35, `CarriedShowRotation/Offset`
+  pitch +72 and 8 cm up, `ThirdPersonShowRotation/Offset` pitch -90 and 10 cm up), the starter cooler spawn. Keys: `AltInteractKeys` in Lure Character settings.
 - All numbers are PLACEHOLDER until Jimmy plays it.
 
 ## Where the code lives

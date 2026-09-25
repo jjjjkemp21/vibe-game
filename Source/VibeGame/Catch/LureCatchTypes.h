@@ -190,6 +190,10 @@ struct FLureCatchRow : public FTableRowBase
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Held Fish", meta=(ClampMin="0.01", DataTableImportOptional))
 	float HoldFishScaleLarge = 1.6f;
 
+	/** T-064: seconds a carried open cooler takes to turn its open side away from you ("Show the fish") or back (cosmetic) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Cooler", meta=(ClampMin="0", Units="s", DataTableImportOptional))
+	float ShowTurnTime = 0.4f;
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Catch", meta=(MultiLine=true, DataTableImportOptional))
 	FString DevComment;
 
