@@ -1,0 +1,94 @@
+LURE - PLAYTEST FEEDBACK (Sprint 1 build, ready 2026-09-24 late evening)
+=========================================================================
+This build: main 4be9e11, pushed to GitHub. It covers Sprint 1 (line + fight fixes) and Sprint 4 (the cooler),
+plus the first piece of Sprint 5 (a clock on the HUD) and new fish fight animations.
+
+How to use this file
+- Write anything, in any order, as short or long as you like. Bullet points are fine.
+- Save it (Ctrl+S) whenever you want. When you're done playing, tell me "done playing" and I'll read the whole
+  file and turn every note into work.
+- For a bug, it helps to say what you did, what happened and what you expected. F8 in the game saves a
+  screenshot with a note at that moment.
+
+Controls reminder
+- Left mouse: cast. Once a fish bites: hold left mouse to reel. Mouse wheel: reel faster / slower.
+- During a fight the mouse steers the rod (the view follows).
+- E: grab the fish, put it in the cooler, open the cooler (also while carrying it), show it, take a fish out, sell.
+- F: pick up / put down the cooler, close it, dump the fish out of a carried cooler you're showing, let a fish go.
+- F6: the new debug menu (all key binds + mouse sensitivity).
+- The prompt in the top-left always shows what E and F do right now.
+- C: crouch. Z: prone. Shift: sprint. Space: jump.
+
+Already known (no need to write these down)
+- When you open or show a carried cooler, your hands sit a little off the handles. The proper arm poses are done and
+  come in the next build.
+- The clock at the top says 08:00 and doesn't move yet. The day/night sky comes in a later build; the clock starts
+  then.
+- The arms don't show the cast "wind-up" yet (it's done in art; next build).
+- A tired fish swims upright now, but its calmer "tired" swim and the hanging-fish animation come in the next build.
+
+- The bigger bobber (it's easier to see now) still hides part of a small fish during the fight, and in the last 1-2 m
+  of a fight it covers the fish you're lifting. Sprint 2 makes the bobber go under the water during a fight.
+- The carried cooler still takes about a quarter of your screen height. A lower carry pose comes next build.
+- When you "show" the cooler, your own view is mostly the cooler's underside. The proper Show pose comes next build.
+- Letting a fish go (F) on the dock drops it on the planks instead of into the water.
+- A tired fish you lift at the dock lies flat in the air for a moment before it hangs from the line.
+
+1. THE FIGHT (your notes: uneven, too slow)
+   Try: hook a Bonefish from a full cast. The fight should now be even: no near-snap spike right after the hook, and
+   the fish keeps pulling instead of going easy after a second. Reeling is 50% faster; a well-played beginner fish
+   lands in about 12-13 seconds. Watch the water at the bobber: you now see the fish beside it, angled across the
+   line, head toward the side it runs to, with the line at its mouth.
+   Is 12-13 seconds right for a beginner fish? Too short, too long?
+   Also: when you steer the rod hard, your view swings far to the side (up to about 90 degrees). Is that OK, or
+   should the view turn less?
+   Note: a big (7 kg) snapper now needs the better reef rod; on the starter rod it snaps the line.
+   Your notes:
+
+
+
+2. WALKING WHILE REELING + THE DOCK (your bugs)
+   Try: while reeling, walk sideways and backwards. The bobber and fish now stay where they are in the water and only
+   come toward you as you reel. Reel a fish in from the dock and step back: it's lifted up the side of the dock and
+   comes in over the planks; the line bends over the edge instead of passing through.
+   Your notes:
+
+
+
+3. THE BOBBER AND THE LINE (your bugs)
+   Try: cast. The bobber is bigger now so you can see it far out, and on a bite it gets pulled right under and pops
+   back up (you shouldn't need the "BITE!" text). Right after the cast the line has some tension instead of lying
+   flat on the water. Let a landed fish
+   hang: the line keeps its thickness. Cast under the shop roof: the bobber no longer lands on the roof.
+   Your notes:
+
+
+
+4. THE HANGING FISH (your bugs)
+   Try: land a fish and walk around it. It turns its side toward you, stays hooked by the mouth, and its flops move
+   the line near it sideways.
+   Your notes:
+
+
+
+5. THE COOLER (your notes)
+   Try: carry a cooler with fish. It bobs with your arms. Press E to open it while carrying (the lid folds back so you
+   can see), E again to show it (turn it away, like showing a friend). While showing, F dumps the fish out. F closes
+   it, F puts it down. Drop a fish under the shop roof: it lands on the floor now.
+   Your notes:
+
+
+
+6. DEBUG MENU (F6)
+   Try: press F6. It lists every key and lets you set mouse sensitivity. It's rough on purpose; the real UI comes later.
+   Your notes:
+
+
+
+7. ANYTHING ELSE (bugs, looks, feel, ideas, things you'd like next)
+   Your notes:
+
+
+--- Jimmy's Feedback---
+
+
