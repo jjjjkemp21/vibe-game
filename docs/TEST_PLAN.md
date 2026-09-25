@@ -339,6 +339,24 @@ object, read into the copy, RepNotifies called on change), not a property copy.
 - The binary assets (DT_Gear, DT_FightPattern, DT_FishFight) don't exist until the editor-operator imports them in main; the settings path then
   replaces the built-in fallbacks. After the import, check once in main that the component resolves the imported tables (no fallback warning).
 
+### A3 gate QA (QA-A3a, 2026-09-24): fight + line, S1 items T-044/045/046/047/049/050/061(line)/071
+- Coverage audit: implementer tests cover each item's acceptance (Line.Hang.WidthOverTime; Line.WaitTension.*; Fight.Anchor.*;
+  Fight.DockEdge.*; Fight.Even.* / LandTime.*; Cast.UnderRoof.*; Line.Hang.Wiggle.*), plus the updated QA tests (T-046q, T-045q).
+- New QA tests, `Tests/FishFight/QAS1FightAnchorTest.cpp` (pure sim, spec "The fish stays put"): `Project.Fishing.Fight.QA.S1.`
+  WalkTowardShortensTheLine (LineOut = real distance, fish put, never lengthens), WalkInToLandDistanceLands (LandDistance +1 cm on /
+  -1 cm Landed), WalkOutPastTheSpoolSpools (spool -1 cm on / +1 cm Spooled), WalkRoundPastTheSwingLimitStaysPut (player circles
+  MaxSideDeg + 40 deg: drift < 0.01 cm), NonFinitePlayerPositionIsIgnored (NaN/Inf MovePlayer: fight bit-identical).
+- `Tests/Fishing/QAS1CastLandingTest.cpp` (T-071, spec "Landing height"): `Project.Fishing.QA.S1.Cast.` DefaultSearchHeightEdges
+  (surface 5 cm under eye+500 found, 5 cm over missed), SearchHeightComesFromTheRow (row 600 finds it, row 0 misses),
+  TallSearchStillStopsUnderARoof (row 3000 under a 20 m roof lands on the ground; open-sky control reaches the slab). Dry world
+  (settings copy with bUseFallbackWaterZ off: the sea-level fallback otherwise makes every point "water").
+- Gaps (A3 gate), not covered on purpose:
+  - T-049/T-050 fight pacing and length bounds: handed to S2 (reel-fight-rules.md "Handed to S2 (T-052)"); Even.* covers the spike/cliff.
+  - T-044 width over time on a client proxy line: the proxy runs the same component (Net.ProxyLineMatchesServer); server-side 60 s test only.
+  - T-061 wiggle on a client: cosmetic, local, nothing replicates; same code on every machine; playtester 2-player check.
+  - T-047 dock edge on a client beyond the replicated Lift (Anchor.ClientsSeeTheReplicatedFishLocation, DockEdge.World.*): playtester co-op.
+  - T-071 negative LandingSearchHeight: the code clamps to 0, the spec is silent; DT_Fishing data validation owns the range.
+
 ## T-027 fish anywhere + hot spots (lane eng1)
 - Implementer: `Project.Fishing.Water.*` (FishingWaterTest/FishingHotSpotTest). 11 T-006 tests were updated to the new rules; QA reviewed each:
   all are legitimate rule updates (spot-less water now bites, NoSpecies path kept by empty fallbacks), none weakened.
