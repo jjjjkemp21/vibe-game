@@ -149,7 +149,7 @@ void ULureDayClockComponent::BeginPlay()
 	if (CanChange())
 	{
 		// Rule 1: a session starts at StartHour, at the data's pace.
-		Rebase(Clock.GetRow().StartHour, 1.f);
+		Rebase(Clock.GetRow().StartHour, Clock.GetRow().StartTimeScale);
 	}
 	else
 	{

@@ -64,6 +64,10 @@ bool FLureDayClock::Validate(const FLureDayCycleRow& InRow, TArray<FString>* Out
 	{
 		Problem(FString::Printf(TEXT("StartHour %g is not in [0, 24]"), InRow.StartHour));
 	}
+	if (!FMath::IsFinite(InRow.StartTimeScale) || InRow.StartTimeScale < 0.f)
+	{
+		Problem(FString::Printf(TEXT("StartTimeScale %g must be >= 0"), InRow.StartTimeScale));
+	}
 	return bOk;
 }
 

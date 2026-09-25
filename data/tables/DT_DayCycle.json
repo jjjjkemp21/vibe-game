@@ -3,6 +3,7 @@
 		"Name": "Default",
 		"DayLengthMinutes": 20,
 		"StartHour": 8,
+		"StartTimeScale": 0,
 		"DawnStart": 5,
 		"DayStart": 7,
 		"DuskStart": 17,

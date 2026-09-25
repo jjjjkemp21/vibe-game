@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Misc/AutomationTest.h"
+#include <limits>
 
 #if WITH_DEV_AUTOMATION_TESTS && !UE_BUILD_SHIPPING && WITH_EDITOR
 
@@ -183,6 +184,8 @@ bool FLureDayClockDataTest::RunTest(const FString& Parameters)
 		{ TEXT("DawnMinutes negative"), [](FLureDayCycleRow& R) { R.DawnMinutes = -2.f; } },
 		{ TEXT("DayLengthMinutes 0"), [](FLureDayCycleRow& R) { R.DayLengthMinutes = 0.f; } },
 		{ TEXT("StartHour 25"), [](FLureDayCycleRow& R) { R.StartHour = 25.f; } },
+		{ TEXT("StartTimeScale negative"), [](FLureDayCycleRow& R) { R.StartTimeScale = -1.f; } },
+		{ TEXT("StartTimeScale NaN"), [](FLureDayCycleRow& R) { R.StartTimeScale = std::numeric_limits<float>::quiet_NaN(); } },
 	};
 	for (const FBad& Case : Bad)
 	{
@@ -410,7 +413,14 @@ bool FLureDayClockWorldTest::RunTest(const FString& Parameters)
 	Clock->SetDayCycleRow(Row);
 	TestTrue(FString::Printf(TEXT("the session starts at StartHour 08:00 (%s)"), *Clock->GetClockText()), LureDayClockTest::HourDiff(Clock->GetHour(), 8.0) < LureDayClockTest::GameMinute);
 	TestEqual(TEXT("... in the Day phase"), LureDayClockTest::Name(Clock->GetPhase()), TEXT("Day"));
-	TestNearlyEqual(TEXT("... at scale 1"), Clock->GetTimeScale(), 1.f);
+	// Until T-068b's sky rig the shipped row starts frozen (StartTimeScale 0): a fresh world stays at 08:00.
+	TestNearlyEqual(TEXT("... frozen (shipped StartTimeScale 0)"), Clock->GetTimeScale(), 0.f);
+	for (int32 Tick = 0; Tick < 20; ++Tick)
+	{
+		Wrapper.TickTestWorld(0.5f);
+	}
+	TestEqual(TEXT("a fresh world is still at 08:00 Day 10 s later"), Clock->GetClockText(), FString(TEXT("08:00 Day")));
+	TestTrue(TEXT("SetTimeScale 1 (run the day)"), Clock->SetTimeScale(1.f));
 
 	const TStrongObjectPtr<ULureDayClockTestListener> Listener(NewObject<ULureDayClockTestListener>());
 	Clock->OnPhaseChanged.AddDynamic(Listener.Get(), &ULureDayClockTestListener::OnPhaseChanged);
@@ -586,6 +596,7 @@ bool FLureDayClockNetSetTest::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
+	TestTrue(TEXT("the server runs the clock (scale 1)"), ServerClock->SetTimeScale(1.f));
 	auto ClientClock = [&Worlds](int32 Index) { return ULureDayClockComponent::Get(Worlds.Clients[Index].GetWorld()); };
 	auto AllMatch = [&]()
 	{
@@ -669,6 +680,7 @@ bool FLureDayClockNetLateJoinTest::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
+	TestTrue(TEXT("the server runs the clock (scale 1)"), ServerClock->SetTimeScale(1.f));
 	// Mid-day on the server: 5 s of play, then 14:30 and 10 more seconds (the late client's world starts at time 0).
 	Worlds.TickAll(300);
 	TestTrue(TEXT("Set 14:30"), ServerClock->SetHour(14.5f));
