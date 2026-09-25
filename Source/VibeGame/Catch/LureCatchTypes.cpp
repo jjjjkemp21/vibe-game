@@ -182,8 +182,9 @@ FLureCoolerDisplayRow FLureCoolerDisplayRow::GetFallbackRow()
 	{
 		float X, Y, BedZ, Yaw, Roll;
 	};
-	static const FSlotData Table[] = { { -7.5f, 2.5f, 0.0f, -85.0f, 90.0f }, { -5.5f, 2.0f, 6.28f, 55.0f, -90.0f },
-		{ -6.5f, -1.0f, 12.35f, -40.0f, 90.0f }, { -10.0f, -2.5f, 18.72f, 80.0f, -90.0f } };
+	// T-030t: re-solved by the animation artist (DT_CoolerDisplay.json, 05ecd6d).
+	static const FSlotData Table[] = { { -8.5f, 2.5f, 0.0f, -85.0f, 90.0f }, { -7.0f, 1.5f, 6.4f, 60.0f, -90.0f },
+		{ -6.0f, -1.0f, 12.44f, -40.0f, 90.0f }, { -9.5f, -2.5f, 18.75f, 85.0f, -90.0f } };
 	FLureCoolerDisplayRow Row;
 	for (const FSlotData& Data : Table)
 	{

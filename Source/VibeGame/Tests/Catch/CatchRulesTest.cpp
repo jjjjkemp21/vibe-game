@@ -289,8 +289,8 @@ namespace LureCatchRulesTest
 			TestEqual(TEXT("the lie offset of the reference fish (4.24 / 4.26 cm)"), StarterDisplay->LieOffsetCm, 4.25f, 0.02f);
 			if (StarterDisplay->Slots.Num() == 4)
 			{
-				// SK_Fish.anim.md slot 2 (6.5, 1, 12.35), yaw 140, turned 180 deg about Z with the whole pile (T-030g: the back wall)
-				TestTrue(TEXT("slot 2 is the table's (-6.5, -1, 12.35), yaw -40, roll 90"), StarterDisplay->Slots[2].Location.Equals(FVector(-6.5, -1.0, 12.35), 1.0e-3)
+				// DT_CoolerDisplay slot 2 as re-solved by the animation artist (T-030t): (-6.0, -1.0, 12.44), yaw -40, roll 90
+				TestTrue(TEXT("slot 2 is the table's (-6.0, -1.0, 12.44), yaw -40, roll 90"), StarterDisplay->Slots[2].Location.Equals(FVector(-6.0, -1.0, 12.44), 1.0e-3)
 					&& StarterDisplay->Slots[2].Rotation.Equals(FRotator(0.0f, -40.0f, 90.0f), 1.0e-3f));
 			}
 			// A cooler type without a row gets the built-in layout: the shipped Starter row.
