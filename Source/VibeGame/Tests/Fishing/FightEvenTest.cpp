@@ -405,31 +405,6 @@ namespace LureFightEvenTest
 	}
 
 	/**
-	 *  The fish tires over the fight, not in its first seconds: played well from a full cast, the reference bonefish still has
-	 *  at least half its stamina 5 s in (the old tune had spent most of it by then, so the rest of the fight was easy).
-	 */
-	IMPLEMENT_SIMPLE_AUTOMATION_TEST(FFightEvenPressureLasts, "Project.Fishing.Fight.Even.PressureLasts", Flags)
-	bool FFightEvenPressureLasts::RunTest(const FString& Parameters)
-	{
-		FSetup Setup;
-		FFishInstance Fish;
-		if (!Setup.Load(*this) || !RollFish(*this, Setup.Fish, TEXT("Bonefish"), TEXT("Common"), BonefishReferenceKg, 41, Fish))
-		{
-			return false;
-		}
-		float NewMin = 1.f, OldMax = 0.f;
-		for (int32 Seed = 1; Seed <= NumSeeds; ++Seed)
-		{
-			NewMin = FMath::Min(NewMin, Play(Setup.Shipped, Fish, TEXT("Run"), Seed, FPolicy()).StaminaAt5);
-			OldMax = FMath::Max(OldMax, Play(Setup.Old, Fish, TEXT("Run"), Seed, FPolicy()).StaminaAt5);
-		}
-		AddInfo(FString::Printf(TEXT("stamina 5 s into a well-played fight (1.5 kg Common, 18 m): shipped >= %.2f, old tune <= %.2f"), NewMin, OldMax));
-		TestTrue(FString::Printf(TEXT("5 s in, the fish keeps at least half its stamina (%.2f)"), NewMin), NewMin >= 0.5f);
-		TestTrue(FString::Printf(TEXT("the old tune had spent it by then (%.2f)"), OldMax), OldMax < 0.5f);
-		return true;
-	}
-
-	/**
 	 *  Tough fish stay tough: the reference Coral Snapper (Common 2.5 kg, level 3) snaps the starter line when you hold reel at the
 	 *  fastest step, every time; the well-played player lands most of them (tension management matters, it is not luck).
 	 */
@@ -466,7 +441,11 @@ namespace LureFightEvenTest
 	// T-050: a faster reel; the fight's length comes from the tension
 	// =================================================================================================================
 
-	/** The well-played reference bonefish from a full cast lands in 15-20 s (median over the seeds), every fight in 12-25 s. */
+	/**
+	 *  The well-played reference bonefish from a full cast lands in 11-15 s (median over the seeds), every fight in 9-18 s.
+	 *  Lead decision 2026-09-24 (S1): Jimmy called A2's 15.8 s "way too slow" and wants beginner fish easy; the target is ~12-13 s
+	 *  (was 15-20 s, every fight 12-25 s, with StaminaPerStat 18).
+	 */
 	IMPLEMENT_SIMPLE_AUTOMATION_TEST(FFightLandTimeWellPlayed, "Project.Fishing.Fight.LandTime.WellPlayedBeginnerBonefish", Flags)
 	bool FFightLandTimeWellPlayed::RunTest(const FString& Parameters)
 	{
@@ -480,18 +459,27 @@ namespace LureFightEvenTest
 		const FLandTimes Old = LandTimes(Setup.Old, Fish, FPolicy());
 		AddInfo(FString::Printf(TEXT("1.5 kg Common from 18 m, %d seeds, well-played: shipped median %.1f s (%.1f-%.1f, lost %d); old tune median %.1f s (%.1f-%.1f, lost %d)"),
 			NumSeeds, New.Median, New.Min, New.Max, New.Lost, Old.Median, Old.Min, Old.Max, Old.Lost));
+		// Handed to S2 (T-052): "pressure lasts" (the fish keeps half its stamina 5 s in) is reported here, not tested.
+		float StaminaAt5Min = 1.f;
+		for (int32 Seed = 1; Seed <= NumSeeds; ++Seed)
+		{
+			StaminaAt5Min = FMath::Min(StaminaAt5Min, Play(Setup.Shipped, Fish, TEXT("Run"), Seed, FPolicy()).StaminaAt5);
+		}
+		AddInfo(FString::Printf(TEXT("S2 note (T-052): stamina 5 s into the well-played fight >= %.2f"), StaminaAt5Min));
 		TestEqual(TEXT("well-played lands every one"), New.Lost, 0);
-		TestTrue(FString::Printf(TEXT("median landing time 15-20 s (%.1f s)"), New.Median), New.Median >= 15.f && New.Median <= 20.f);
-		TestTrue(FString::Printf(TEXT("every fight lands in 12-25 s (%.1f-%.1f s)"), New.Min, New.Max), New.Min >= 12.f && New.Max <= 25.f);
+		TestTrue(FString::Printf(TEXT("median landing time 11-15 s (%.1f s)"), New.Median), New.Median >= 11.f && New.Median <= 15.f);
+		TestTrue(FString::Printf(TEXT("every fight lands in 9-18 s (%.1f-%.1f s)"), New.Min, New.Max), New.Min >= 9.f && New.Max <= 18.f);
 		return true;
 	}
 
 	/**
 	 *  Jimmy: "the speed of the battle should be dictated by the tension management (allowing a fish to run as to not snap your
-	 *  line increases fight time)". (1) The reel is fast: cranking the whole distance in at the default step with nothing
-	 *  pulling back takes at most 60 % of the well-played fight (the old reel took ~90 %: the crank WAS the fight). (2) A timid
-	 *  player who lets the fish run early (eases off at 60 %, reels again under 40 %) takes at least 1.3x as long; a bold one (eases
-	 *  at 95 %, reels under 80 %) is no slower than well-played.
+	 *  line increases fight time)". (1) The reel is faster than the old one (T-050: ReelSpeed +50 %), so cranking the whole distance
+	 *  in takes less time. (2) A bold player (eases at 95 %, reels under 80 %) is no slower than well-played, and well-played and
+	 *  timid players (ease at 60 %, reel under 40 %) land every one.
+	 *  Lead decision 2026-09-24 (S1, StaminaPerStat 5): "the crank is at most 60 % of the fight" and "timid takes >= 1.3x" are
+	 *  handed to Sprint 2's fight design (T-052); both need a fish that keeps pulling (stamina/tension-driven pacing). Today's
+	 *  numbers are in docs/specs/reel-fight-rules.md ("Handed to S2 (T-052)") and in this test's info line.
 	 */
 	IMPLEMENT_SIMPLE_AUTOMATION_TEST(FFightLandTimeTension, "Project.Fishing.Fight.LandTime.TensionSetsThePace", Flags)
 	bool FFightLandTimeTension::RunTest(const FString& Parameters)
@@ -527,12 +515,11 @@ namespace LureFightEvenTest
 		const FPace Old = Pace(Setup.Old);
 		AddInfo(FString::Printf(TEXT("1.5 kg Common from 18 m (medians): shipped crank %.1f s, well-played %.1f s, timid %.1f s, bold %.1f s; old tune crank %.1f s, well-played %.1f s, timid %.1f s, bold %.1f s"),
 			New.Crank, New.Well, New.Timid, New.Bold, Old.Crank, Old.Well, Old.Timid, Old.Bold));
-		TestTrue(FString::Printf(TEXT("the crank alone is at most 60 %% of the fight (%.1f of %.1f s)"), New.Crank, New.Well), New.Crank <= 0.6f * New.Well);
-		TestTrue(FString::Printf(TEXT("letting it run early costs time: timid x%.2f >= 1.3"), New.Timid / FMath::Max(0.01f, New.Well)), New.Timid >= 1.3f * New.Well);
+		AddInfo(FString::Printf(TEXT("S2 notes (T-052): crank share %.0f %% (old %.0f %%), timid x%.2f (old x%.2f)"), 100.f * New.Crank / FMath::Max(0.01f, New.Well),
+			100.f * Old.Crank / FMath::Max(0.01f, Old.Well), New.Timid / FMath::Max(0.01f, New.Well), Old.Timid / FMath::Max(0.01f, Old.Well)));
+		TestTrue(FString::Printf(TEXT("the faster reel cranks the distance in quicker than the old one (%.1f vs %.1f s)"), New.Crank, Old.Crank), New.Crank < Old.Crank);
 		TestTrue(FString::Printf(TEXT("bold is no slower (%.1f vs %.1f s)"), New.Bold, New.Well), New.Bold <= New.Well);
 		TestEqual(TEXT("well-played and timid players land every one"), New.Lost, 0);
-		TestTrue(FString::Printf(TEXT("the old tune fails it: the crank was %.0f %% of the fight, timid x%.2f"), 100.f * Old.Crank / FMath::Max(0.01f, Old.Well), Old.Timid / FMath::Max(0.01f, Old.Well)),
-			Old.Crank > 0.6f * Old.Well && Old.Timid < 1.3f * Old.Well);
 		return true;
 	}
 }

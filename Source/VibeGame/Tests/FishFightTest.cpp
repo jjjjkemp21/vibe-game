@@ -653,10 +653,9 @@ bool FLureFightGearDecidesOutcome::RunTest(const FString& Parameters)
 		if (Weak.Outcome == ELureFightOutcome::Landed) { ++WeakLanded; WeakTime += Weak.Elapsed; }
 		if (Strong.Outcome == ELureFightOutcome::Landed) { ++StrongLanded; StrongTime += Strong.Elapsed; }
 	}
-	// T-049 (even fight, 2026-09-24): fish keep their stamina through the fight (StaminaPerStat 3 -> 18), and a careful player
-	// holds the tension under the line's strength, so the biggest (7 kg, level 3) snapper no longer tires on the starter line
-	// before it snaps it: that fish now needs the reef kit (was: "careful lands it with either kit").
-	AddInfo(FString::Printf(TEXT("careful: the starter kit lands the 7 kg snapper %d/8 (T-049: it needs the reef kit now)"), WeakLanded));
+	// Lead decision 2026-09-24 (S1, StaminaPerStat 5): the 7 kg level-3 snapper needs the reef kit on careful play (a gear
+	// progression outcome; reverses the 2026-09-23 call "careful lands it with either kit"). It snaps the starter line at its first dive.
+	AddInfo(FString::Printf(TEXT("careful: the starter kit lands the 7 kg snapper %d/8 (lead decision 2026-09-24: it needs the reef kit)"), WeakLanded));
 	TestTrue(FString::Printf(TEXT("careful: the reef kit lands it (%d/8)"), StrongLanded), StrongLanded > 0);
 	const double WeakMean = WeakLanded > 0 ? WeakTime / WeakLanded : 0.0;
 	const double StrongMean = StrongLanded > 0 ? StrongTime / StrongLanded : 0.0;
@@ -703,7 +702,7 @@ bool FLureFightGearDecidesOutcome::RunTest(const FString& Parameters)
 			return Fishing->GetFishingState() != ELureFishingState::Hooked;
 		}, 60 * 180);
 		const ELureFishingResult Result = Fishing->GetNetState().LastResult;
-		// Careful play lands the 7 kg snapper with the reef kit; since T-049 (fish keep their stamina) it snaps the starter line.
+		// Careful play lands the 7 kg snapper with the reef kit and snaps the starter line (lead decision 2026-09-24, S1; was: either kit).
 		const ELureFishingResult Expected = bRightGear ? ELureFishingResult::Landed : ELureFishingResult::Snapped;
 		TestEqual(FString::Printf(TEXT("%s: %s (%s)"), *Label, *ResultName(Expected), *OutcomeName(Fishing->GetFightNet().Outcome)), ResultName(Result), ResultName(Expected));
 		if (bRightGear)
@@ -1840,8 +1839,7 @@ bool FLureFightBonefishRunBalance::RunTest(const FString& Parameters)
 	auto Fraction = [](float Kg) { return (Kg - 0.5f) / 4.f; };
 
 	// 1. The playtest's fish (Rare, 2.04 kg) and a 3 kg Common: holding reel through a Run snaps the starter line; the careful
-	//    player (eases off above 90 % of the line) lands them. T-049/T-050 (2026-09-24): these bigger fish keep their stamina now,
-	//    so they are long fights from 10 m (was 8-16 s; now within 50 s).
+	//    player (eases off above 90 % of the line) lands them within the 8-16 s fight length.
 	struct FCase { const TCHAR* Rarity; float Kg; int32 Seed; };
 	for (const FCase& Case : { FCase{ TEXT("Rare"), 2.04f, 31 }, FCase{ TEXT("Common"), 3.f, 32 } })
 	{
@@ -1858,7 +1856,7 @@ bool FLureFightBonefishRunBalance::RunTest(const FString& Parameters)
 			TestEqual(FString::Printf(TEXT("%s: holding reel through the Run snaps the starter line (peak %.0f %%, %.1f s)"), *Label, 100.f * Hold.PeakTension01, Hold.Elapsed),
 				OutcomeName(Hold.Outcome), OutcomeName(ELureFightOutcome::Snapped));
 			TestEqual(FString::Printf(TEXT("%s: careful play lands it (%.1f s)"), *Label, Careful.Elapsed), OutcomeName(Careful.Outcome), OutcomeName(ELureFightOutcome::Landed));
-			TestTrue(FString::Printf(TEXT("%s: ... in 8-50 s (%.1f s)"), *Label, Careful.Elapsed), Careful.Elapsed >= 8.f && Careful.Elapsed <= 50.f);
+			TestTrue(FString::Printf(TEXT("%s: ... in 8-16 s (%.1f s)"), *Label, Careful.Elapsed), Careful.Elapsed >= 8.f && Careful.Elapsed <= 16.f);
 		}
 	}
 
@@ -1907,13 +1905,13 @@ bool FLureFightBonefishRunBalance::RunTest(const FString& Parameters)
 	TestTrue(TEXT("fixture: the roll pipeline gave bonefish"), Rolled >= 190);
 	TestTrue(FString::Printf(TEXT("holding reel snaps a real share of bonefish (%d of %d, want 25-60 %%)"), HoldSnaps, Rolled), HoldSnaps >= Rolled / 4 && HoldSnaps <= Rolled * 3 / 5);
 	TestTrue(FString::Printf(TEXT("careful play is clearly safer (loses %d of %d)"), CarefulLosses, Rolled), CarefulLosses <= Rolled / 50);
-	// T-049/T-050 (2026-09-24): the fish pulls hard between runs too and keeps its stamina, so easing off only for the runs
-	// without watching the bar no longer saves the big ones (was: at most 2 % lost); it still loses clearly fewer than holding reel.
-	// Fight lengths follow the fish now (was: careful p10 >= 7.5 s, p90 <= 16 s; run-aware median <= 16 s).
+	// T-049 (lead decision 2026-09-24): the fish pulls harder between runs, so easing off only for the runs without watching the bar
+	// loses clearly fewer than holding (was: at most 2 %; that bound is handed to S2's run-aware safety, T-052).
 	TestTrue(FString::Printf(TEXT("easing off during every run loses clearly fewer than holding (%d vs %d of %d, at most 60 %%)"), AwareLosses, HoldSnaps, Rolled), AwareLosses * 5 <= HoldSnaps * 3);
-	TestTrue(FString::Printf(TEXT("careful fights: p10 %.1f s >= 6, p90 %.1f s <= 60 (the big and rare ones)"), Percentile(CarefulTimes, 0.1f), Percentile(CarefulTimes, 0.9f)),
-		Percentile(CarefulTimes, 0.1f) >= 6.f && Percentile(CarefulTimes, 0.9f) <= 60.f);
-	TestTrue(FString::Printf(TEXT("easing off during every run: median within 25 s (%.1f s)"), Percentile(AwareTimes, 0.5f)), Percentile(AwareTimes, 0.5f) <= 25.f);
+	// T-050's faster reel (+50 %) shortens small-fish fights: p10 >= 6 s (was 7.5 s); p90 <= 22 s (was 16 s) for the big and rare ones.
+	TestTrue(FString::Printf(TEXT("careful fights take about 6-22 s (p10 %.1f s >= 6, p90 %.1f s <= 22)"), Percentile(CarefulTimes, 0.1f), Percentile(CarefulTimes, 0.9f)),
+		Percentile(CarefulTimes, 0.1f) >= 6.f && Percentile(CarefulTimes, 0.9f) <= 22.f);
+	TestTrue(FString::Printf(TEXT("easing off during every run: median within 16 s (%.1f s)"), Percentile(AwareTimes, 0.5f)), Percentile(AwareTimes, 0.5f) <= 16.f);
 
 	// 4. The Coral Snapper stays the harder fish: the reference snapper snaps a held line every time and a careful fight is longer.
 	FFishInstance Snapper;

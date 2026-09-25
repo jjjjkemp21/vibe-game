@@ -344,7 +344,7 @@ struct FLureFishFightRow : public FTableRowBase
 
 	/** Stamina pool = stamina stat x this, in tension-seconds (the fish tires by working against the line's tension). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Fish", meta=(ClampMin="0"))
-	float StaminaPerStat = 18.f;
+	float StaminaPerStat = 5.f;
 
 	/** Multiply the pull by UFishSettings::LevelScaling (fish level vs player level; fish above your level pull harder). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Fish")
