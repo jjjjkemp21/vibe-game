@@ -31,7 +31,7 @@ import numpy as np  # noqa: E402
 import pipeline_blender as pb  # noqa: E402
 from levels import layout as L  # noqa: E402
 
-EXPORT = False  # gate A (T-069d stage 1): blockout preview + stats only. Stage 2 sets True.
+EXPORT = True  # False = gate A blockout only (preview + stats, no FBX)
 
 LAYOUT = REPO / "data" / "levels" / "L_PalmKey.json"
 LAND_EXCLUDE_GROUPS = {"sea", "water", "islet"}
@@ -297,6 +297,26 @@ def unreal_xy(p):
     return (p[0], -p[1])  # Blender -> Unreal
 
 
+GLYPHS = {  # 4 x 6 stroke font (x right, y up)
+    "U": [((0, 6), (0, 0)), ((0, 0), (4, 0)), ((4, 0), (4, 6))],
+    "N": [((0, 0), (0, 6)), ((0, 6), (4, 0)), ((4, 0), (4, 6))],
+    "R": [((0, 0), (0, 6)), ((0, 6), (4, 6)), ((4, 6), (4, 3)), ((4, 3), (0, 3)), ((0, 3), (4, 0))],
+    "E": [((0, 0), (0, 6)), ((0, 6), (4, 6)), ((0, 3), (3, 3)), ((0, 0), (4, 0))],
+    "A": [((0, 0), (2, 6)), ((2, 6), (4, 0)), ((1, 3), (3, 3))],
+    "L": [((0, 6), (0, 0)), ((0, 0), (4, 0))],
+    "P": [((0, 0), (0, 6)), ((0, 6), (4, 6)), ((4, 6), (4, 3)), ((4, 3), (0, 3))],
+    "I": [((2, 0), (2, 6)), ((1, 0), (3, 0)), ((1, 6), (3, 6))],
+    "G": [((4, 6), (0, 6)), ((0, 6), (0, 0)), ((0, 0), (4, 0)), ((4, 0), (4, 3)), ((4, 3), (2, 3))],
+    "H": [((0, 0), (0, 6)), ((4, 0), (4, 6)), ((0, 3), (4, 3))],
+    "T": [((0, 6), (4, 6)), ((2, 6), (2, 0))],
+    "X": [((0, 0), (4, 6)), ((0, 6), (4, 0))],
+    "Y": [((0, 6), (2, 3)), ((4, 6), (2, 3)), ((2, 3), (2, 0))],
+    "+": [((0, 3), (4, 3)), ((2, 1), (2, 5))],
+    "=": [((0, 2), (4, 2)), ((0, 4), (4, 4))],
+}
+AXES_CAPTION = "UP = UNREAL +X   RIGHT = UNREAL +Y"
+
+
 class Canvas:
     def __init__(self, size, center, span):
         self.n = size
@@ -312,6 +332,17 @@ class Canvas:
     def line(self, a, b, rgb, width=1):
         r0, c0 = self.px(*a)
         r1, c1 = self.px(*b)
+        self.line_px(r0, c0, r1, c1, rgb, width)
+
+    def text(self, row, col, s, rgb, scale=5, width=2):
+        """Stroke-font label; (row, col) = top-left pixel of the first glyph."""
+        for ch in s:
+            for (x0, y0), (x1, y1) in GLYPHS.get(ch, ()):
+                self.line_px(row + (6 - y0) * scale, col + x0 * scale, row + (6 - y1) * scale, col + x1 * scale, rgb,
+                             width)
+            col += 6 * scale
+
+    def line_px(self, r0, c0, r1, c1, rgb, width=1):
         steps = int(max(abs(r1 - r0), abs(c1 - c0)) * 2) + 2
         t = np.linspace(0.0, 1.0, steps)
         rr = np.round(r0 + (r1 - r0) * t).astype(int)
@@ -377,6 +408,7 @@ def blockout(path):
         a, b, c, d = (rect[0], rect[2]), (rect[1], rect[2]), (rect[1], rect[3]), (rect[0], rect[3])
         for s, e in ((a, b), (b, c), (c, d), (d, a)):
             cv.line(s, e, BOUND_RGB, w)
+    cv.text(10, 10, AXES_CAPTION, (0, 0, 0), scale=6, width=3)
     paths.append(cv.save(PREVIEW_DIR / "exp_watergrid_top.png"))
     # 2. Near/far corner close-up (Unreal +X,+Y corner = Blender (+H, -H)), 40 m window
     H = NEAR_HALF
@@ -393,8 +425,86 @@ def blockout(path):
             ox, oy = cv.cx - span * 0.42, cv.cy - span * 0.42
             cv.line((ox, oy), (ox + 3, oy), BOUND_RGB, 3)   # +X north (up)
             cv.line((ox, oy), (ox, oy + 3), LAND_RGB, 3)    # +Y east (right)
+            r, c = cv.px(ox + 3, oy)
+            cv.text(int(r) - 15, int(c) + 12, "UNREAL +X", BOUND_RGB, scale=5, width=3)
+            r, c = cv.px(ox, oy + 3)
+            cv.text(int(r) - 50, int(c) - 40, "UNREAL +Y", LAND_RGB, scale=5, width=3)
+        cv.text(10, 10, AXES_CAPTION, (0, 0, 0), scale=3, width=2)
         paths.append(cv.save(PREVIEW_DIR / ("exp_watergrid_%s.png" % name)))
     return pb.contact_sheet(paths, path, cols=2, cell=(1024, 1024), bg=(1, 1, 1))
+
+
+def _fbx_find(elem, path):
+    """All sub-elements along a path of ids (bytes) in an io_scene_fbx.parse_fbx tree."""
+    found = [elem]
+    for pid in path:
+        found = [c for e in found for c in e.elems if c.id == pid]
+    return found
+
+
+def fbx_raw_colors(path):
+    """Unique vertex color R values (rounded to 1/255) as written in the FBX file itself."""
+    from io_scene_fbx import parse_fbx
+    root, _ = parse_fbx.parse(str(path))
+    rs = set()
+    for colors in _fbx_find(root, [b"Objects", b"Geometry", b"LayerElementColor", b"Colors"]):
+        arr = colors.props[0]
+        rs |= {round(arr[i] * 255) for i in range(0, len(arr), 4)}
+    return sorted(rs)
+
+
+def reimport(path):
+    before = set(bpy.data.objects)
+    pb.ensure_fbx_exporter()
+    bpy.ops.import_scene.fbx(filepath=str(path))
+    objs = [o for o in bpy.data.objects if o not in before and o.type == "MESH"]
+    assert len(objs) == 1, objs
+    o = objs[0]
+    mw = o.matrix_world
+    # Blender world meters -> Unreal cm (x, -y, z); integer cm keys (all vertices are on a whole-meter lattice)
+    co = [mw @ v.co for v in o.data.vertices]
+    ue = [(v.x * 100.0, -v.y * 100.0, v.z * 100.0) for v in co]
+    tris = [tuple(p.vertices) for p in o.data.polygons]
+    names = (o.name, o.data.name, [m.name for m in o.data.materials])
+    bpy.data.objects.remove(o, do_unlink=True)
+    return ue, tris, names
+
+
+def verify_fbx(near_path, far_path):
+    out = {}
+    n_ue, n_tris, n_names = reimport(near_path)
+    f_ue, f_tris, f_names = reimport(far_path)
+    out["names"] = {"near": n_names, "far": f_names}
+    out["triangles"] = {"near": len(n_tris), "far": len(f_tris),
+                        "all_triangles": all(len(t) == 3 for t in n_tris + f_tris)}
+    for key, ue in (("near", n_ue), ("far", f_ue)):
+        out["bounds_unreal_cm_" + key] = [[round(min(v[i] for v in ue), 3), round(max(v[i] for v in ue), 3)]
+                                          for i in range(3)]
+    # Diagonal rule on the re-imported near mesh, Unreal axes: every cell's diagonal (-X,-Y) -> (+X,+Y)
+    cells = {}
+    for t in n_tris:
+        pts = [n_ue[i] for i in t]
+        for k in range(3):
+            a, b = pts[k], pts[(k + 1) % 3]
+            if abs(a[0] - b[0]) > 1 and abs(a[1] - b[1]) > 1:
+                lo, hi = (a, b) if a[0] < b[0] else (b, a)
+                cells[(round(min(a[0], b[0])), round(min(a[1], b[1])))] = (
+                    [round(lo[0], 3), round(lo[1], 3)], [round(hi[0], 3), round(hi[1], 3)], hi[1] > lo[1])
+    ok = sum(1 for v in cells.values() if v[2])
+    out["near_cells_with_diagonal"] = len(cells)
+    out["near_diagonals_minus_to_plus_unreal"] = ok
+    out["near_diagonals_wrong"] = len(cells) - ok
+    out["near_diagonal_list_first_and_last_unreal_cm"] = [cells[k][:2] for k in (min(cells), max(cells))]
+    # Seam on the re-imported files: near boundary vertices vs far inner vertices (Unreal cm)
+    h = NEAR_HALF * 100.0
+    nb = {(round(v[0]), round(v[1])): v for v in n_ue if max(abs(v[0]), abs(v[1])) >= h - 0.5}
+    fb = {(round(v[0]), round(v[1])): v for v in f_ue if max(abs(v[0]), abs(v[1])) <= h + 0.5}
+    out["seam_vertices"] = [len(nb), len(fb), len(set(nb) & set(fb))]
+    out["seam_max_distance_cm"] = max(math.dist(nb[k], fb[k]) for k in nb if k in fb)
+    out["near_lattice_max_error_cm"] = max(max(abs(v[0] / 200.0 - round(v[0] / 200.0)),
+                                               abs(v[1] / 200.0 - round(v[1] / 200.0))) * 200.0 for v in n_ue)
+    out["fbx_color_R_bytes"] = {"near": fbx_raw_colors(near_path), "far": fbx_raw_colors(far_path)}
+    return out
 
 
 near_n = len(near_obj.data.polygons)
@@ -425,7 +535,8 @@ if EXPORT:
     pb.export_fbx([near_obj], near_args.out)
     pb.export_fbx([far_obj], far_args.out)
     stats["exports"] = [near_args.out, far_args.out]
+    stats["fbx_check"] = verify_fbx(near_args.out, far_args.out)
 
-preview = blockout(PREVIEW_DIR / "SM_WaterGrid_blockout.png")
+preview = blockout(PREVIEW_DIR / ("SM_WaterGrid.png" if EXPORT else "SM_WaterGrid_blockout.png"))
 stats["preview"] = preview
 print("RESULT_JSON:" + json.dumps(stats))
