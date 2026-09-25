@@ -297,6 +297,9 @@ T-032b (namespaces `LureLineCollisionTests`, `LureLineHangTests`, `LureLineTautT
   Component.LandedFishBelowTip.
 - `FishingLineTautTest.cpp`, `Project.Fishing.Line.Taut.*`: Rules.CarryRestLength, Sim.ClosingEndsStayStraight,
   Sim.RestLerpNoPop, Component.StraightensUnderTension (43 % and 84 % of the strength).
+- `FishingLineFastTurnTest.cpp`, `Project.Fishing.Line.FastTurn.*` (T-041c): Slack540, Slack1080, Taut1080. End pinned on
+  the water 12 m out, tip swept on a 150 cm arc (200 cm up) for 0.3 s then held 1 s, dt 1/60, built-in row: no segment
+  points back along the chord and no segments cross in XY on any frame; stretch <= 3 %.
 
 QA's own suite: Project.Fishing.Line.QA.* (`QAFishingLineTest.cpp`).
 
@@ -315,6 +318,14 @@ QA's own suite: Project.Fishing.Line.QA.* (`QAFishingLineTest.cpp`).
     cast can disagree slightly on such a box.
 - One water height per line (a line spanning two water levels floats at the end's).
 - A player who turns away from the bobber sees the line run back from the tip over the rod (no wrapping around the tip).
+- "Ghost loop for ~1 s during a fast turn" (A2 playtest, T-041c) is not the simulation: `Project.Fishing.Line.FastTurn.*`
+  measures 0 loop frames of 78 (0.3 s turn + 1 s hold) at 540 and 1080 deg/s, slack (WaitTension) and taut (HookedTension);
+  worst stretch 1.26 % (slack, 1080 deg/s), 0.16 % otherwise. Hypothesis: a render artefact, TSR (temporal upscaling/AA)
+  history ghosting on the 1-3 px spline-mesh segments that are reshaped every frame while the camera turns fast. No render
+  settings changed. Editor check to schedule: in PIE, cast, flick the view 180 deg and back, and compare frames with
+  `r.AntiAliasingMethod 0` / `2` (FXAA) against TSR (4); check whether the reshaped segments output motion vectors
+  (`r.Velocity.EnableVertexDeformation`, `r.Velocity.ForceOutput`) and whether the smear follows the old line position (history) or the sim's current points
+  (`ShowDebug`/debug draw of `GetPoints`).
 - Other players' lines start from an estimated rod tip (no third-person rod yet; unchanged from T-006).
 - `FLureFight::LineSag` and DT_Fishing `LineSag` no longer shape the line (only the old `SetLine` path reads a sag);
   T-028 can drop them. DT_FishFight `TautTension` shapes it again, through `FLureFight::LineTension` (T-032b).
