@@ -10,7 +10,7 @@ Counts: todo 1, done 12.
 
 ## A3
 
-Counts: todo 19, doing 20, review 1, done 4.
+Counts: todo 19, doing 18, review 2, merge 1, done 5.
 
 - 47 obj lead - todo P0 - - - A3 Milestone A3: Jimmy's A2 playtest notes, delivered in sprint
 - 49 obj design - todo P1 - - - S2 Sprint 2: fight redesign (limited line + snap, reel in / let
@@ -36,22 +36,22 @@ Counts: todo 19, doing 20, review 1, done 4.
 - 55 bug eng senior doing P0 eng4 a9531b4 - T-045 Walking while reeling drags bobber + fish along; they must s
 - 56 bug eng junior doing P0 eng9 ad992d6 - T-046 After a cast the line has zero tension and lies on the water
 - 57 bug eng senior doing P0 eng4 a9531b4 - T-047 Stepping back on the dock pulls fish + line through the dock
-- 58 bug eng mid doing P0 eng6 a8d9dda - T-048 Hooked fish in the water looks hooked by the tail; the line
-- 59 task eng mid doing P0 eng5 a79cdc8 - T-049 Even fight: no near-snap spike right after the hook, no easy
-- 60 task eng mid doing P0 eng5 a79cdc8 - T-050 Reel-in speed much faster now (data); fully tension-driven f
-- 61 task eng mid doing P0 eng8 a51f13c - T-051 Simple debug menu: list of all key binds + mouse sensitivity
+- 59 task eng mid doing P0 eng5 ac8bb14 - T-049 Even fight: no near-snap spike right after the hook, no easy
+- 60 task eng mid doing P0 eng5 ac8bb14 - T-050 Reel-in speed much faster now (data); fully tension-driven f
 - 44 task eng mid doing P1 eng7 a1fcfff - T-043 A fish hanging on the line turns its side toward the viewer
 - 50 obj art - doing P1 - - - S3 Sprint 3: fish that look alive (upright calm when tired, fas
 - 51 obj eng - doing P1 - - - S4 Sprint 4: cooler handling (bob with arms, open while held +
-- 68 task art senior doing P1 main a01d4d5 - T-058 Exhausted fish (stamina 0) stays upright with a calm swim, n
-- 69 task art senior doing P1 main a01d4d5 - T-059 Fish with stamina: fast, fighting 'run' swim
-- 70 bug art senior doing P1 main a01d4d5 - T-060 Dangling fish: head stays fixed at the hook, only the body w
+- 68 task art senior doing P1 main acae828 45% T-058 Exhausted fish (stamina 0) stays upright with a calm swim, n
+- 69 task art senior doing P1 main acae828 45% T-059 Fish with stamina: fast, fighting 'run' swim
+- 70 bug art senior doing P1 main acae828 45% T-060 Dangling fish: head stays fixed at the hook, only the body w
 - 71 task eng mid doing P1 eng7 a1fcfff - T-061 A dangling fish's wiggle moves the line (like turning the ca
 - 72 task art senior doing P1 main a07a490 - T-062 Cast charge shown in the arms, not only the rod
 - 74 task eng mid doing P1 eng3 a5c1cea - T-064 Open the cooler while holding it (lid opens, fish visible) a
 - 80 task eng junior doing P1 eng9 ad992d6 - T-041e Fishing line material: enable Responsive AA so TSR stops gho
-- 82 bug eng junior doing P1 eng10 ac17c86 - T-071 Cast bobber under a roof lands on the roof: FishingSpots::Re
+- 92 task eng mid doing P1 eng6 a8d9dda - T-059a Fight clip play rate from stamina, not actor speed (fresh fa
+- 58 bug eng mid review P0 eng6 a8d9dda - T-048 Hooked fish in the water looks hooked by the tail; the line
 - 83 task eng mid review P0 eng6 a8d9dda - T-058a Quick win: exhausted fish lies on its side because DT_FishVi
+- 61 task eng mid merge P0 eng8 a51f13c - T-051 Simple debug menu: list of all key binds + mouse sensitivity
 
 ## (no milestone)
 
