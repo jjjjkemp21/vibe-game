@@ -20,7 +20,7 @@ Rules:
 2. Check engine APIs in the engine headers (engineDir in `tools/local.settings.json`) instead of guessing.
 3. Every new behavior gets an automation test in `Source/<Project>/Tests/` with a path starting `Project.`.
 4. Compiling: the editor must be closed for `tools/build.ps1` (needed for new files, header/UCLASS/UPROPERTY/UFUNCTION changes, Build.cs). Only the lead closes or relaunches the editor: ask the lead when you need a build and the editor is running. For edits strictly inside existing .cpp function bodies, the lead can use Live Coding instead. (A lane has no editor: build there per the Lane protocol.)
-5. After a build, run the relevant tests (`tools/run-tests.ps1 -Filter Project.<Area>`) and report PASS/FAIL with the report path.
+5. After a build, run only the relevant tests (`tools/run-tests.ps1 -Filter Project.<Area>[.<Sub>]`; one test: its full path with `-Substring`) and report PASS/FAIL with the report path. Never rerun tests when nothing changed since the last run.
 6. You never call unreal-mcp tools.
 7. Unity builds merge .cpp files, so never put `using namespace X;` at file scope in a .cpp (tests included): put the tests inside their helper namespace, or qualify the names. File-scope `using` caused same-named helpers (`Dt`, fixtures) to clash after merges three times on 2026-09-23.
 
@@ -28,7 +28,7 @@ Lane protocol (when you work in a lane `C:\GameDev\VibeGame-lanes\<lane>`, branc
 - Start: run `git merge --no-edit main` in your lane.
 - Put new tests in a new file named after the task.
 - Never edit `QA*.cpp` / `QA*.h` (the qa-engineer's tests).
-- Finish: `git merge --no-edit main`, then `tools/build.ps1 -WaitMutex` (in the background), then the full `tools/run-tests.ps1 -Filter Project`; all green.
+- Finish: `git merge --no-edit main`, then `tools/build.ps1 -WaitMutex` (in the background), then `tools/run-tests.ps1 -Filter Project.<Area>` for every area you touched (include areas that use a header you changed); all green. No full suite: the lead's integration runs it once on the merged result (Jimmy, 2026-09-24: test efficiently). Exception: run the full `-Filter Project` once if you changed Build.cs, Config/, or a header used across areas (character, game mode, player controller, FFishInstance and other core types).
 - Commit on your lane branch only; never push. End the message with the Co-Authored-By line from the session.
 - Past ~250k of context (senior level: ~400k): commit what builds, write a handoff in `Saved/AgentLogs/handoff/`, and return its path.
 

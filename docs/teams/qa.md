@@ -79,7 +79,7 @@ Never start a playtester without a live booking, and never keep a booking while 
 
 ## 8. Release gate evidence QA owns
 For each release gate (verification skill), QA hands the lead:
-- The **full suite** `tools/run-tests.ps1 -Filter Project` on the exact commit being published: pass/total, 0 failures, the report dir `Saved/AgentLogs/tests/<timestamp>/`.
+- The **full suite** `tools/run-tests.ps1 -Filter Project` on the same code tree (Source/, data/, Config/) as the commit being published; the lead's last integration run counts when that tree is unchanged: pass/total, 0 failures, the report dir `Saved/AgentLogs/tests/<timestamp>/`.
 - The **new QA tests** for every Standard/Full task since the last publish (names or TEST_PLAN rows).
 - **Playtester PASS** for every changed player-facing feature (report folder), including 2-player where networked.
 - **Open bugs** by severity, with any blocker/major explicitly listed (the gate fails on them unless the lead defers).
@@ -93,7 +93,7 @@ Every QA task updates the map: system -> tests -> level -> author -> gaps, plus 
 On top of STUDIO.md section 5:
 - Cases are derived from the acceptance criteria and the spec, and cover the tier's depth; every criterion maps to at least one test or playtest step.
 - Tests are deterministic, independent and named per section 3; the new tests pass or fail exactly as reported.
-- The full `-Filter Project` suite was run after `git merge main` in the lane; the result and report dir are recorded.
+- The tests for the covered areas (`-Filter Project.<Area>`) were run after `git merge main` in the lane; the result and report dir are recorded. The full suite runs once at integration.
 - Every bug is written per section 4, with a failing regression test where reachable.
 - TEST_PLAN is updated (tests, gaps, bugs); seams are requested from the lead, not built.
 - Only QA-owned files are committed, on the lane branch, with the Co-Authored-By line.
