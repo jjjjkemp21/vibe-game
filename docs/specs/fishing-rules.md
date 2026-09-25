@@ -20,6 +20,12 @@ The lead may overrule any of these; a change is a data edit unless marked (code)
   CastArcHeightRatio * distance.
 - Landing: in front of anything solid on the way; on the water surface if the ground there is not above it (LandTolerance
   2 cm), otherwise on land (a dock, a beach, a rock): the bobber lies there, nothing bites, a press reels in.
+- Landing height (T-071): the downward ground search at the landing point starts `LandingSearchHeight` (DT_Fishing,
+  default 500 cm) above the cast origin (or the water, if higher), but never above the first solid surface straight above
+  the cast origin (a roof over the caster): the flight starts under that roof, so under a roof the bobber lands on the
+  ground/deck/water under it (or past it), never on the roof top. From open ground (nothing overhead) a cast onto a roof
+  still lands on the roof. A zero-distance call (landing straight below the origin) follows the same rule. (The fish
+  drop has its own under-roof rule since T-066, catch-handling-rules.md.) Tests: `Project.Fishing.Cast.UnderRoof.*`.
 - "Solid" (fishing-loop playtest fix, 2026-09-23): the cast traces use the `LureCast` trace channel
   (`ECC_GameTraceChannel1`, Config/DefaultEngine.ini, default Block; the Trigger/OverlapAll/Pawn profiles ignore it) and
   `FLureFishingSpots::TraceCast`, which passes through anything that isn't solid level geometry: every volume and
@@ -74,6 +80,10 @@ The lead may overrule any of these; a change is a data edit unless marked (code)
 - `Cast` (LMB, gamepad RT): hold to charge, release to cast; while the line is out a press hooks (or reels in early).
 - `Hook`: the same hook press as its own action, no default key (a key can be added in the settings). One key drives one
   action, so the QA "no key bound to two actions" rule holds.
+- Every bind is listed in game by the debug menu (T-051): **F6** opens / closes it (F1 is the engine's wireframe debug key,
+  Shift+F1 frees the mouse in editor play, F8 is the playtest note). While it is open, `-` / `=` (or numpad - / +) step the
+  mouse sensitivity (limits in ULureCharacterSettings::MouseSensitivity, value saved per machine in GameUserSettings.ini).
+  The list comes from the live mapping context, so a new bind shows up there with no menu change.
 
 ## Rod, bobber, line (cosmetic)
 - Rod: SM_Rod_Basic on SK_FPArms' `hand_r_rod` bone (SnapToTargetNotIncludingScale + absolute scale: world scale 1 whatever

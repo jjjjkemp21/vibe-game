@@ -828,7 +828,7 @@ bool ULureFishingComponent::AuthorityCast(float Charge01, float AimYawDegrees)
 
 	const float Distance = FLureFishingRules::CastDistance(Row, CastCharge) * FMath::Max(0.f, GetGearStats().CastDistanceMultiplier);
 	const FLureCastLanding Landing = FLureFishingSpots::ResolveLanding(World, Owner, Origin, FVector2D(Eye.X, Eye.Y),
-		FVector2D(Aim.Vector().X, Aim.Vector().Y), Distance, *Settings);
+		FVector2D(Aim.Vector().X, Aim.Vector().Y), Distance, *Settings, &Row);
 
 	// T-027: every body of water can be fished; the water area under the bobber decides its habitat (fishing-water-rules.md).
 	WaterContext = FLureWaterQuery::DescribeWater(World, Landing.Rest, Landing.bOnWater, Landing.WaterZ);
@@ -1708,7 +1708,7 @@ void ULureFishingComponent::EnsureBobberAndLine()
 		Line = NewObject<ULureFishingLineComponent>(Owner, TEXT("FishingLine"), RF_Transient);
 		Line->SetupAttachment(Owner->GetRootComponent());
 		Line->RegisterComponent();
-		Line->Setup(Mesh, LureFishingPrivate::LoadIfExists(Settings->LineMaterial), Settings->LineColor, Row.LineSegments);
+		Line->Setup(Mesh, Settings->LoadLineMaterial(), Settings->LineColor, Row.LineSegments);
 		// T-032: the line reads the drawn rod tip when it simulates (after the camera and arms moved), so it never lags the rod.
 		Line->SetStartProvider(FLureLinePointProvider::CreateUObject(this, &ULureFishingComponent::GetLineStart));
 	}

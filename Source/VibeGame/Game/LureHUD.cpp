@@ -5,6 +5,7 @@
 #include "Engine/Engine.h"
 #include "Engine/Font.h"
 #include "Character/LurePlayerCharacter.h"
+#include "Dev/LureDebugMenu.h"
 #include "Fishing/LureFishingComponent.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
@@ -51,6 +52,8 @@ void ALureHUD::DrawHUD()
 		return;
 	}
 	UFont* Font = GEngine->GetMediumFont();
+
+	DrawDebugMenu(); // T-051, top-right
 
 	// Progression (T-010): money, level, XP, cooler and the interact prompt, top-left; the notices right under them.
 	float TopY = Margin;
@@ -103,5 +106,55 @@ void ALureHUD::DrawHUD()
 	{
 		DrawText(Lines[Index], FLinearColor::White, Margin, Y, Font);
 		Y += Heights[Index] + 4.f;
+	}
+}
+
+void ALureHUD::DrawDebugMenu()
+{
+	const ULureDebugMenu* Menu = ULureDebugMenu::Get(GetOwningPlayerController());
+	if (!Menu || !Canvas || !GEngine)
+	{
+		return;
+	}
+	UFont* Font = GEngine->GetSmallFont();
+	if (!Menu->IsOpen())
+	{
+		const FString Hint = ULureDebugMenu::GetHintLine();
+		if (!Hint.IsEmpty())
+		{
+			float Width = 0.f;
+			float Height = 0.f;
+			GetTextSize(Hint, Width, Height, Font);
+			DrawText(Hint, FLinearColor(1.f, 1.f, 1.f, 0.7f), FMath::Max(Margin, Canvas->ClipX - Margin - Width), Margin, Font);
+		}
+		return;
+	}
+
+	// Plain placeholder: a dark box with white lines (no styling until Jimmy directs the UI).
+	const TArray<FString> Lines = Menu->GetLines();
+	constexpr float Padding = 10.f;
+	constexpr float LineGap = 2.f;
+	float BoxWidth = 0.f;
+	float BoxHeight = 0.f;
+	TArray<float> Heights;
+	for (const FString& Line : Lines)
+	{
+		float Width = 0.f;
+		float Height = 0.f;
+		GetTextSize(Line.IsEmpty() ? FString(TEXT(" ")) : Line, Width, Height, Font);
+		Heights.Add(Height);
+		BoxWidth = FMath::Max(BoxWidth, Width);
+		BoxHeight += Height + LineGap;
+	}
+	BoxWidth += 2.f * Padding;
+	BoxHeight += 2.f * Padding;
+	const float X = FMath::Max(Margin, Canvas->ClipX - Margin - BoxWidth);
+	const float Y = Margin;
+	DrawRect(FLinearColor(0.f, 0.f, 0.f, 0.75f), X, Y, BoxWidth, BoxHeight);
+	float LineY = Y + Padding;
+	for (int32 Index = 0; Index < Lines.Num(); ++Index)
+	{
+		DrawText(Lines[Index], FLinearColor::White, X + Padding, LineY, Font);
+		LineY += Heights[Index] + LineGap;
 	}
 }

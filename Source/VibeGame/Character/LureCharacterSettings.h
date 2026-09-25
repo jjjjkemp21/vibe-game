@@ -11,10 +11,43 @@
 class UDataTable;
 
 /**
+ *  T-051: the player's mouse sensitivity (a multiplier on mouse look, both axes; the gamepad stick is not scaled).
+ *  The value itself is a per-machine preference (ULureUserSettings, GameUserSettings.ini); these are its data limits.
+ */
+USTRUCT(BlueprintType)
+struct FLureMouseSensitivityTuning
+{
+	GENERATED_BODY()
+
+	/** Used until the player changes it, and when the saved value is missing or unreadable. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Look", meta=(ClampMin="0.01"))
+	float Default = 1.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Look", meta=(ClampMin="0.01"))
+	float Min = 0.1f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Look", meta=(ClampMin="0.01"))
+	float Max = 5.f;
+
+	/** One press of the debug menu's sensitivity keys changes it by this much. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Look", meta=(ClampMin="0.001"))
+	float Step = 0.1f;
+
+	/** A usable copy: Min >= 0.01, Max >= Min, Default inside [Min, Max], Step > 0 (bad data never breaks the look). */
+	FLureMouseSensitivityTuning Sanitized() const;
+
+	/** Value clamped to [Min, Max] (Default when not finite). Call on a Sanitized() tuning. */
+	float Clamp(float Value) const;
+
+	/** Current moved by Steps steps (negative = lower), snapped to the step grid and clamped. Call on a Sanitized() tuning. */
+	float StepFrom(float Current, int32 Steps) const;
+};
+
+/**
  *  Data and control settings for ALurePlayerCharacter, in [/Script/VibeGame.LureCharacterSettings] (DefaultGame.ini).
  *  Movement tuning itself is in DT_Movement (one row per Stand, Sprint, Crouch, Prone).
  *  Default keys: WASD/arrows + mouse, Space jump, Left Shift sprint (hold), C or Left Ctrl crouch (toggle), Z prone (toggle);
- *  gamepad: left stick move, right stick look, A jump, L3 sprint, B crouch, D-pad down prone. F8 stays free for playtest notes.
+ *  gamepad: left stick move, right stick look, A jump, L3 sprint, B crouch, D-pad down prone. F6 debug menu (T-051); F8 stays free for playtest notes.
  */
 UCLASS(Config=Game, DefaultConfig, meta=(DisplayName="Lure Character"))
 class ULureCharacterSettings : public UDeveloperSettings
@@ -62,6 +95,10 @@ public:
 	/** Gamepad look speed at full stick, degrees per second (X = yaw, Y = pitch). */
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category="Controls|Look")
 	FVector2D GamepadLookRate = FVector2D(150.f, 110.f);
+
+	/** T-051: mouse sensitivity limits (default, min, max, step). The player's own value is saved per machine (ULureUserSettings). */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category="Controls|Look")
+	FLureMouseSensitivityTuning MouseSensitivity;
 
 	/** Invert vertical look (mouse and gamepad). */
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category="Controls|Look")
@@ -118,4 +155,15 @@ public:
 	/** Alt Interact: the second verb (pick up / put down the cooler, close it, drop or release a fish; T-030) */
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category="Controls|Keys")
 	TArray<FKey> AltInteractKeys;
+
+	/** T-051: opens / closes the debug menu (every key bind + mouse sensitivity). F6: F1 is the engine's wireframe debug key. */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category="Controls|Keys")
+	TArray<FKey> DebugMenuKeys;
+
+	/** T-051: lower / raise the mouse sensitivity one step while the debug menu is open (they do nothing when it is closed). */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category="Controls|Keys")
+	TArray<FKey> MouseSensitivityDownKeys;
+
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category="Controls|Keys")
+	TArray<FKey> MouseSensitivityUpKeys;
 };

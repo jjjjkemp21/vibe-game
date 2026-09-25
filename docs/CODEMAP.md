@@ -9,7 +9,7 @@ Paths in the table are under `Source/VibeGame/` unless they start with a top-lev
 | System | Entry files / classes | Spec | Data tables | Tests prefix | Dev console commands |
 |---|---|---|---|---|---|
 | Movement: walk, sprint, crouch, prone, swim, climb, ladder | `Character/LurePlayerCharacter.h` ALurePlayerCharacter, `Character/LureCharacterMovementComponent.h`, `Character/LureMovementTypes.h`, `Character/LureSwimTypes.h`, `Character/LureWaterVolume.h`, `Character/LureLadder.h`, `Character/LureCharacterSettings.h` | docs/specs/movement-rules.md, docs/specs/swimming.md | DT_Movement | Project.Movement.* | Lure.Teleport, Lure.SetStance |
-| Input | `Character/LureInputSubsystem.h` ULureInputSubsystem (runtime Enhanced Input actions + mapping context) | - | - | Project.Movement.Input, Project.Fishing.Input | - |
+| Input | `Character/LureInputSubsystem.h` ULureInputSubsystem (runtime Enhanced Input actions + mapping context; mouse look scale x the saved sensitivity), `Game/LureUserSettings.h` ULureUserSettings (per-machine mouse sensitivity, GameUserSettings.ini) | - | ULureCharacterSettings (keys, MouseSensitivity limits) | Project.Movement.Input, Project.Fishing.Input | - |
 | First-person arms / rod poses | `Character/FPArmsAnimInstance.h`, `Character/FPArmsPose.h` EFPArmsPose, `Character/LureArmsBob.h` | art/export/Characters/SK_FPArms.anim.md | DT_Movement (Bob*, RodPose* columns) | Project.Fishing.ArmsPose | - |
 | Fishing: cast, bobber, bite, hook, spots/water | `Fishing/LureFishingComponent.h` ULureFishingComponent, `Fishing/FishingTypes.h`, `Fishing/FishingSpots.h`, `Fishing/LureFishingSettings.h`; water areas + hot spots (T-027): `Fishing/FishingWater.h` (FLureWaterRules, FLureWaterQuery), `Fishing/FishingWaterTypes.h`, `Fishing/LureWaterArea.h`, `Fishing/LureHotSpot.h`, `Fishing/LureHotSpotSpawner.h`, `Fishing/LureHotSpotVisualComponent.h`, `Fishing/LureWaterSettings.h`, `Dev/LureWaterDevCommands.h` | docs/specs/fishing-rules.md, docs/specs/fishing-water-rules.md | DT_Fishing, DT_HotSpot | Project.Fishing.*, Project.Fishing.Water.* | Lure.Water.Probe, Lure.Water.Show, Lure.HotSpot.Spawn, Lure.HotSpot.Clear |
 | Fishing: reel fight, rod steering, gear | `Fishing/FishFight.h` (pure sim), `Fishing/FishFightTypes.h`, `Fishing/LureRodControl.h`, fight state in ULureFishingComponent | docs/specs/reel-fight-rules.md | DT_FishFight, DT_FightPattern, DT_Gear | Project.Fishing.Fight | - |
@@ -18,8 +18,8 @@ Paths in the table are under `Source/VibeGame/` unless they start with a top-lev
 | Fish: fight-fish visual | `Fish/LureFightFish.h`, `Fish/LureFightFishSubsystem.h`, `Fish/FightFishVisual.h`, `Fish/FishAnimInstance.h`, `Fishing/FightFishViewAdapter.h` | docs/specs/fight-fish-visual.md, art/export/Fish/SK_Fish.anim.md | DT_FishVisual | Project.FishVisual.* | - |
 | Progression: XP, money, selling, cooler, save | `Progression/LureProgressionComponent.h` (GetSaveData/ApplySaveData), `Progression/LureCoolerComponent.h`, `Progression/LureSellPoint.h`, `Progression/LureProgressionLibrary.h`, `Progression/LureProgressionTypes.h` FLureProgressSaveData, `Game/LurePlayerState.h` | docs/specs/progression-rules.md | DT_PlayerLevel, DT_Cooler, DT_FishMarket | Project.Progression.* | - |
 | Interaction | `Interaction/LureInteractable.h` (interface), `Interaction/LureInteractionComponent.h`, `Interaction/LureInteractionSubsystem.h` | docs/specs/progression-rules.md | - | Project.Progression.Interact | - |
-| Game frame + HUD | `Game/LureGameMode.h`, `Game/LureHUD.h` (placeholder text HUD) | - | - | - | - |
-| Dev / playtest tools | `Dev/LureDevCommands.h`, `Playtest/PlaytestFeedbackSubsystem.h` (F8 note key), `Content/Python/playtest_driver.py` (PIE driver) | .claude/skills/playtest-feedback | - | Project.Dev.*, Project.Playtest.* | Lure.Teleport, Lure.SetStance, Lure.GiveFish, Lure.Screenshot, Lure.Water.*, Lure.HotSpot.* |
+| Game frame + HUD | `Game/LureGameMode.h`, `Game/LureHUD.h` (placeholder text HUD; draws the debug menu top-right) | - | - | - | - |
+| Dev / playtest tools | `Dev/LureDevCommands.h`, `Dev/LureDebugMenu.h` ULureDebugMenu (F6: every key bind + mouse sensitivity, T-051), `Playtest/PlaytestFeedbackSubsystem.h` (F8 note key), `Content/Python/playtest_driver.py` (PIE driver) | .claude/skills/playtest-feedback | - | Project.Dev.*, Project.Playtest.* | Lure.Teleport, Lure.SetStance, Lure.GiveFish, Lure.Screenshot, Lure.Water.*, Lure.HotSpot.* |
 | Levels | `Content/Python/levels/build_level.py` (builder), `levels/layout.py` (shared expansion), layouts `data/levels/*.json` | docs/levels/*.md | - | - | - |
 | Editor Python | `Content/Python/pipeline_unreal.py` (reusable editor ops), `vibegame_tools.py` (MCP toolset, run_python), `pipeline_cli.py`, `init_unreal.py` | .claude/skills/unreal-pipeline | - | - | - |
 | Art | `art/recipes/*.py` (one per asset), `art/lib/` (pipeline_blender, style palette, meshkit, fishkit, fishrig, fp_preview), `art/export/**` FBX + `*.anim.md` specs | docs/ART_STYLE.md, .claude/skills/blender-pipeline | - | - | - |
@@ -52,16 +52,17 @@ Paths in the table are under `Source/VibeGame/` unless they start with a top-lev
 - `Character/FPArmsPose.h` EFPArmsPose | first-person arms pose selection (T-006). Spec: art/export/Characters/SK_FPArms.anim.md ("Switch...
 - `Character/LureArmsBob.h` FLureArmsMotionSettings | procedural first-person arms bob and look sway (T-004). Spec: art/export/Characters...
 - `Character/LureCharacterMovementComponent.h` ULureCharacterMovementComponent | first-person movement with sprint, crouch and prone (T-0...
-- `Character/LureCharacterSettings.h` ULureCharacterSettings | character settings (T-004). Project Settings > Game > Lure Character; stor...
+- `Character/LureCharacterSettings.h` FLureMouseSensitivityTuning, ULureCharacterSettings | character settings (T-004). Project Settings...
 - `Character/LureInputSubsystem.h` ULureInputSubsystem | runtime Enhanced Input actions and mapping context (T-004).
 - `Character/LureLadder.h` ALureLadder | ladder out of the water (T-026). Spec: docs/specs/swimming.md.
 - `Character/LureMovementTypes.h` ELureStance, ELureMovementState, FLureMovementRow | movement data types (T-004). Tuning lives in data/t...
 - `Character/LurePlayerCharacter.h` ALurePlayerCharacter | first-person player character (T-004).
 - `Character/LureSwimTypes.h` ELureCustomMovementMode, FLureClimbPlan | swimming and climbing types (T-026; the jump climb from the T-004...
 - `Character/LureWaterVolume.h` ALureWaterVolume | water volume (T-026). The level builder places these over the water; spec docs/specs/s...
+- `Dev/LureDebugMenu.h` ULureDebugMenu | the debug menu (T-051): every key bind plus the mouse sensitivity, as plain text drawn by ALureHUD.
 - `Dev/LureDevCommands.h` | dev-only console commands for scripted playtests (T-025). Everything below the log category is compiled out
 - `Dev/LureWaterDevCommands.h` | dev-only console commands for the water model and hot spots (T-027). Compiled out of Shipping builds.
-- `Fish/FightFishVisual.h` FFishMoveAnimRole, FFishRoleTailBeat, FFishVisualRow | the fish you see fighting on the line (T-029). Data row...
+- `Fish/FightFishVisual.h` FFishMoveAnimRole, FFishRoleTailBeat, FFishRoleStaminaRate, FFishVisualRow | the fish you see fighting on the...
 - `Fish/FishAnimInstance.h` EFishAnimRole, FFishAnimState, UFishAnimInstance | fish anim instance (T-029). Parent class of ABP_Fish (grap...
 - `Fish/FishDataValidator.h`
 - `Fish/FishInstance.h` FFishInstance, FFishRollContext
@@ -92,6 +93,7 @@ Paths in the table are under `Source/VibeGame/` unless they start with a top-lev
 - `Game/LureGameMode.h` ALureGameMode | game mode (T-004).
 - `Game/LureHUD.h` ALureHUD | placeholder HUD (T-006). Plain text only until Jimmy directs the UI (CLAUDE.md, 2026-09-22).
 - `Game/LurePlayerState.h` ALurePlayerState | player state (T-010).
+- `Game/LureUserSettings.h` ULureUserSettings | the player's own preferences on this machine (T-051: mouse sensitivity). Local only, neve...
 - `Interaction/LureInteractable.h` ELureInteractKey, ELureInteractVerb, FLureInteraction, ULureInteractable | things the player can use w...
 - `Interaction/LureInteractionComponent.h` FLureResolvedInteraction, ULureInteractionComponent | the player's use keys (T-010 Interact; T...
 - `Interaction/LureInteractionSubsystem.h` ULureInteractionSubsystem | per-world list of interactable actors (T-010).
@@ -108,14 +110,14 @@ Paths in the table are under `Source/VibeGame/` unless they start with a top-lev
 - `VibeGameGameMode.h` AVibeGameGameMode
 - `VibeGamePlayerController.h` AVibeGamePlayerController
 
-### Tests (`Source/VibeGame/`): folder, prefix (count): 3rd name segment count. Total 1068
+### Tests (`Source/VibeGame/`): folder, prefix (count): 3rd name segment count. Total 1133
 - `Tests/Catch/` Project.Arms.* (3): HoldFishSize 3
-- `Tests/Catch/` Project.Catch.* (111): QA 52, Cooler 7, Net 7, Counter 5, Display 5, Rules 5, Focus 4, Data 3, Hand 3, HoldFishAttach 3,...
+- `Tests/Catch/` Project.Catch.* (137): QA 57, HeldCooler 16, Cooler 7, Counter 7, Net 7, Display 5, Rules 5, Focus 4, Data 3, Drop 3, Ha...
 - `Tests/Catch/` Project.FishVisual.* (2): HeldPose 2
-- `Tests/Dev/` Project.Dev.* (12): Teleport 4, GiveFish 3, Commands 1, PlaytestDriver 1, QA 1, Screenshot 1, SetStance 1
+- `Tests/Dev/` Project.Dev.* (18): DebugMenu 6, Teleport 4, GiveFish 3, Commands 1, PlaytestDriver 1, QA 1, Screenshot 1, SetStance 1
 - `Tests/FishFight/` Project.Fishing.* (114): Fight 114
-- `Tests/FishVisual/` Project.FishVisual.* (44): QA 29, Lifecycle 3, Adapter 2, Anim 2, Data 2, HeldPose 2, Placement 2, AnimGraph 1, Size 1
-- `Tests/Fishing/` Project.Fishing.* (242): QA 90, Water 78, Line 68, CastTrace 4, Fight 2
+- `Tests/FishVisual/` Project.FishVisual.* (50): QA 29, Lifecycle 3, MouthOnLine 3, Adapter 2, Anim 2, Data 2, HeldPose 2, Placement 2, P...
+- `Tests/Fishing/` Project.Fishing.* (269): QA 96, Line 85, Water 78, Cast 4, CastTrace 4, Fight 2
 - `Tests/Level/` Project.Level.* (3): PalmKey 3
 - `Tests/Movement/` Project.Fishing.* (3): Climb 1, Rules 1, Swim 1
 - `Tests/Movement/` Project.Movement.* (211): QA 171, Swim 33, Camera 3, Climb 3, Stance 1
@@ -150,7 +152,9 @@ Paths in the table are under `Source/VibeGame/` unless they start with a top-lev
 - `docs/levels/L_Dev_Movement.md` L_Dev_Movement: movement test course (T-004 A28 / T-005)
 - `docs/levels/L_PalmKey.md` L_PalmKey: vertical slice island (T-005 greybox)
 - `docs/specs/catch-handling-rules.md` Catch handling rules (T-030): the fish on the hook, the hand, the physical cooler, freshness and t...
+- `docs/specs/day-night-water.md` Day/night and living water (T-067; builds T-068 = T-013 and T-069): design spec
 - `docs/specs/fight-fish-visual.md` Fighting fish visual (T-029)
+- `docs/specs/fight-v2.md` Fight v2: line length, reel in / let out, tension-driven fight length, retrieve, bobber dip (T-052): design spec
 - `docs/specs/fish-system-rules.md` Fish system rules (T-008+), lead decisions 2026-09-22
 - `docs/specs/fishing-line.md` Physics fishing line (T-032, T-032b)
 - `docs/specs/fishing-rules.md` Fishing rules (T-006: cast, bobber, bite, hook), unreal-engineer decisions 2026-09-23

@@ -1094,12 +1094,20 @@ namespace LureFishingLineTest
 		const UStaticMeshComponent* Bobber = Fishing->GetBobberMesh();
 		const FVector BobberEnd = (Bobber && Bobber->DoesSocketExist(Socket)) ? Bobber->GetSocketLocation(Socket) : Fishing->GetBobberLocation();
 		TestTrue(TEXT("it ends at the bobber"), Line->GetPoints().Last().Equals(BobberEnd, Bobber && Bobber->DoesSocketExist(Socket) ? 0.5 : 60.0));
+		// T-046: the waiting line has WaitTension, so it is lifted off the water (not lying on it) and never sinks.
 		int32 Floating = 0;
+		int32 Inner = 0;
+		double Lowest = TNumericLimits<double>::Max();
 		for (int32 Index = 1; Index < Line->GetPoints().Num() - 1; ++Index)
 		{
-			Floating += FMath::Abs(Line->GetPoints()[Index].Z - Row.FloatHeight) <= 1.5 ? 1 : 0;
+			const double Z = Line->GetPoints()[Index].Z;
+			Floating += FMath::Abs(Z - Row.FloatHeight) <= 1.5 ? 1 : 0;
+			Lowest = FMath::Min(Lowest, Z);
+			++Inner;
 		}
-		TestTrue(FString::Printf(TEXT("the slack line lies on the water (%d points at the surface)"), Floating), Floating >= 2);
+		TestTrue(FString::Printf(TEXT("the waiting line is lifted: at most half of its inner points at the float height (%d of %d)"), Floating, Inner), Floating * 2 <= Inner);
+		TestTrue(FString::Printf(TEXT("the waiting line never sinks below the float height (lowest inner point %.2f cm, float height %.2f cm)"), Lowest, Row.FloatHeight),
+			Inner == 0 || Lowest >= Row.FloatHeight - 1.5);
 		const double SlackDeviation = MaxDeviation(Line->GetPoints());
 
 		// A fish on a weak line: the line shows the fight's tension, then snaps and whips back.

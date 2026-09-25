@@ -88,8 +88,11 @@ public:
 	 */
 	bool AuthorityDrop(APawn* Pawn, const FVector& Origin, const FVector2D& StartXY, const FVector2D& Direction2D, float Distance);
 
-	/** Releases it into the water: removed at once, Pawn's player notified */
+	/** Releases it into the water: removed at once, Pawn's player notified (unless AuthoritySetQuietRelease) */
 	void AuthorityRelease(APawn* Pawn);
+
+	/** T-065: a release sends no "Released the <fish>" notice (a cooler dump sends one summary instead); server only */
+	void AuthoritySetQuietRelease(bool bQuiet) { bQuietRelease = bQuiet; }
 
 	// ---- Look ----
 
@@ -187,6 +190,9 @@ protected:
 
 	UPROPERTY(Replicated, BlueprintReadOnly, Category="Lure|Fish Item")
 	TObjectPtr<ALureSellCounter> Counter;
+
+	/** Server: AuthorityRelease stays silent (T-065 dump) */
+	bool bQuietRelease = false;
 
 	UFUNCTION()
 	void OnRep_Catch();

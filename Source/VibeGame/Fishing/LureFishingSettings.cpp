@@ -4,6 +4,8 @@
 #include "Animation/AnimMontage.h"
 #include "Character/LureInputSubsystem.h"
 #include "Engine/DataTable.h"
+#include "Fishing/FishingTypes.h"
+#include "Misc/PackageName.h"
 #include "Engine/StaticMesh.h"
 #include "Materials/MaterialInterface.h"
 #include "Sound/SoundBase.h"
@@ -19,7 +21,7 @@ ULureFishingSettings::ULureFishingSettings()
 	RodMesh = TSoftObjectPtr<UStaticMesh>(FSoftObjectPath(TEXT("/Game/Art/Props/SM_Rod_Basic.SM_Rod_Basic")));
 	BobberMesh = TSoftObjectPtr<UStaticMesh>(FSoftObjectPath(TEXT("/Game/Art/Props/SM_Bobber.SM_Bobber")));
 	LineMesh = TSoftObjectPtr<UStaticMesh>(FSoftObjectPath(TEXT("/Engine/BasicShapes/Cylinder.Cylinder")));
-	LineMaterial = TSoftObjectPtr<UMaterialInterface>(FSoftObjectPath(TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial")));
+	LineMaterial = TSoftObjectPtr<UMaterialInterface>(FSoftObjectPath(TEXT("/Game/Materials/M_FishingLine.M_FishingLine"))); // T-041e
 	LineColor = FLinearColor(0.93f, 0.92f, 0.86f); // off-white: reads over dark water and bright sky
 
 	RodAttachBone = TEXT("hand_r_rod");
@@ -44,6 +46,27 @@ ULureFishingSettings::ULureFishingSettings()
 	DefaultLoadout.Rod = TEXT("Rod_Starter");
 	DefaultLoadout.Line = TEXT("Line_Mono");
 	DefaultLoadout.Hook = TEXT("Hook_Shrimp");
+}
+
+const TCHAR* ULureFishingSettings::FallbackLineMaterialPath = TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial");
+
+UMaterialInterface* ULureFishingSettings::LoadLineMaterial() const
+{
+	if (UMaterialInterface* Loaded = LineMaterial.Get())
+	{
+		return Loaded;
+	}
+	const FString Package = LineMaterial.ToSoftObjectPath().GetLongPackageName();
+	if (!Package.IsEmpty() && FPackageName::DoesPackageExist(Package))
+	{
+		if (UMaterialInterface* Loaded = LineMaterial.LoadSynchronous())
+		{
+			return Loaded;
+		}
+	}
+	// Warns on every fallback (no warn-once state): only called when a line is set up, never per tick.
+	UE_LOG(LogLureFishing, Warning, TEXT("Line material '%s' is missing or failed to load; using %s."), *LineMaterial.ToString(), FallbackLineMaterialPath);
+	return LoadObject<UMaterialInterface>(nullptr, FallbackLineMaterialPath);
 }
 
 #if WITH_EDITOR

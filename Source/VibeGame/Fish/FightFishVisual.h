@@ -46,6 +46,24 @@ struct FFishRoleTailBeat
 	float Hz = 1.f;
 };
 
+/** T-059a: a role's play-rate factor from the fish's stamina while it fights (DT_FishVisual RoleStaminaRates). */
+USTRUCT(BlueprintType)
+struct FFishRoleStaminaRate
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Fish Visual")
+	EFishAnimRole Role = EFishAnimRole::SwimFast;
+
+	/** Rate factor at full stamina (1). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Fish Visual", meta=(ClampMin="0"))
+	float FreshRate = 1.f;
+
+	/** Rate factor at stamina 0 (a spent fish beats slower). In between: linear. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Fish Visual", meta=(ClampMin="0"))
+	float TiredRate = 1.f;
+};
+
 /**
  *  DT_FishVisual row (row Default): how the fighting fish looks and moves. Cosmetic only: every machine computes it from
  *  replicated state; nothing here changes the fight.
@@ -64,9 +82,24 @@ struct FFishVisualRow : public FTableRowBase
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Clips")
 	EFishAnimRole UnknownMoveRole = EFishAnimRole::SwimFast;
 
-	/** Speed-matched roles and their clip tail beat. Other roles play at AnimRate x (ReferenceWeight / Weight)^OtherRateWeightExponent. */
+	/** Speed-matched roles and their clip tail beat: only the escape swim uses them (T-059a); other roles, and the landed flop, play at AnimRate x (ReferenceWeight / Weight)^OtherRateWeightExponent. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Clips")
 	TArray<FFishRoleTailBeat> RoleTailBeats;
+
+	/**
+	 *  T-059a: while it fights (not tired), a clip plays at AnimRate x (ReferenceWeight / Weight)^OtherRateWeightExponent x
+	 *  lerp(TiredRate, FreshRate, stamina): effort, not speed (reeling a spent fish in never speeds its tail up). A role not
+	 *  listed: factor 1.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Clips", meta=(DataTableImportOptional))
+	TArray<FFishRoleStaminaRate> RoleStaminaRates;
+
+	/** T-059a: while it fights (not tired), alpha = AnimAmplitude x lerp(TiredAmplitudeScale, FreshAmplitudeScale, stamina). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Clips", meta=(ClampMin="0", ClampMax="1", DataTableImportOptional))
+	float FreshAmplitudeScale = 1.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Clips", meta=(ClampMin="0", ClampMax="1", DataTableImportOptional))
+	float TiredAmplitudeScale = 0.75f;
 
 	/** Swim roles: PlayRate = AnimRate x Speed / (StrideBodyLengths x BodyLength x Hz), clamped to [MinPlayRate, MaxPlayRate]. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Clips", meta=(ClampMin="0.01"))
@@ -94,7 +127,7 @@ struct FFishVisualRow : public FTableRowBase
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Clips", meta=(ClampMin="0"))
 	float DartRightStartTime = 0.6f;
 
-	/** A tired fish: SwimIdle at this rate and AnimAmplitude x ExhaustedAmplitudeScale, rolled onto its side. */
+	/** A tired fish: SwimIdle at this rate and AnimAmplitude x ExhaustedAmplitudeScale, rolled ExhaustedRollDeg (0 = upright; Jimmy 2026-09-24: never on its side). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Clips", meta=(ClampMin="0"))
 	float ExhaustedPlayRate = 0.5f;
 
@@ -102,7 +135,7 @@ struct FFishVisualRow : public FTableRowBase
 	float ExhaustedAmplitudeScale = 0.5f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Clips", meta=(ClampMin="-180", ClampMax="180"))
-	float ExhaustedRollDeg = 70.f;
+	float ExhaustedRollDeg = 0.f;
 
 	// ---- Size ----
 
@@ -153,9 +186,25 @@ struct FFishVisualRow : public FTableRowBase
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Placement", meta=(ClampMin="0"))
 	float RotationSmoothTime = 0.12f;
 
-	/** Below this speed the fish faces away from the player (pulling on the line) instead of along its swim, cm/s. */
+	/** Escaping fish: below this speed it faces away from the player instead of along its swim. Fighting fish: below it no body swing and no pitch, cm/s. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Placement", meta=(ClampMin="0"))
 	float MinFacingSpeed = 20.f;
+
+	/**
+	 *  T-048: a fighting fish faces the rod (its mouth is its point nearest the player, the body away from the player). While
+	 *  it swims, its body swings sideways up to this angle (head toward the side it swims to), so it reads as pulling away,
+	 *  degrees. At most 80: the body never gets between the line and the mouth seen from above.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Placement", meta=(ClampMin="0", ClampMax="80", DataTableImportOptional))
+	float RunSwingDeg = 35.f;
+
+	/** Swim speed at which the body swing is full (RunSwingDeg); slower = proportionally less, cm/s. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Placement", meta=(ClampMin="1", DataTableImportOptional))
+	float RunSwingFullSpeed = 200.f;
+
+	/** The smoothing never lets the fish's mouth trail the line end (the bobber) by more than this, horizontally, cm. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Placement", meta=(ClampMin="0", DataTableImportOptional))
+	float MouthMaxLagCm = 5.f;
 
 	/** Most nose-up / nose-down while rising or diving, degrees. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Placement", meta=(ClampMin="0", ClampMax="89"))
@@ -211,6 +260,8 @@ struct FFightFishView
 	float DepthCm = 0.f;
 	/** Tension / line strength. */
 	float Tension01 = 0.f;
+	/** The fish's stamina 0..1 (T-059a: the clip rate and alpha follow it). */
+	float Stamina01 = 1.f;
 
 	/** The player (fight center), the end of the line in the water (XY; its Z is the water surface) and the surface height. */
 	FVector PlayerLocation = FVector::ZeroVector;
@@ -250,6 +301,8 @@ struct FFightFishAnimInput
 	float AnimAmplitude = 1.f;
 	/** The dart goes to the fish's right (else its left). */
 	bool bDartRight = false;
+	/** The fish's stamina 0..1 while it fights (T-059a). 1 = fresh (callers outside the fight keep the default). */
+	float Stamina01 = 1.f;
 };
 
 /** The fish visual's rules (pure; tests call them directly). */
@@ -264,13 +317,17 @@ struct FFightFishVisual
 	/** Tail beat of a speed-matched role, Hz; 0 = not speed-matched. */
 	static float TailBeatHz(const FFishVisualRow& Row, EFishAnimRole Role);
 
+	/** Stamina rate factor of a role: lerp(TiredRate, FreshRate, Stamina01) from Row.RoleStaminaRates; 1 if not listed. */
+	static float StaminaRate(const FFishVisualRow& Row, EFishAnimRole Role, float Stamina01);
+
 	/**
 	 *  The clip state:
-	 *    Landed -> Flop, alpha 1, "other" rate.   Escaping -> SwimFast.
+	 *    Landed -> Flop, alpha 1, "other" rate.   Escaping -> SwimFast, speed-matched rate.
 	 *    Fighting: the first HookSetThrashTime s -> Thrash; exhausted -> SwimIdle at ExhaustedPlayRate, alpha x ExhaustedAmplitudeScale;
-	 *    else RoleForMove(MoveId).
-	 *  Rate: speed-matched roles AnimRate x Speed / (StrideBodyLengths x BodyLength x Hz) clamped to [MinPlayRate, MaxPlayRate];
-	 *  others AnimRate x (ReferenceWeight / Weight)^OtherRateWeightExponent. Alpha = AnimAmplitude (0..1) except Flop (1).
+	 *    else RoleForMove(MoveId). Not exhausted (T-059a, effort not speed): rate AnimRate x weight factor x StaminaRate,
+	 *    alpha AnimAmplitude x lerp(TiredAmplitudeScale, FreshAmplitudeScale, stamina).
+	 *  Speed-matched rate (escape): AnimRate x Speed / (StrideBodyLengths x BodyLength x Hz) clamped to [MinPlayRate, MaxPlayRate].
+	 *  Weight factor ("other" rate): (ReferenceWeight / Weight)^OtherRateWeightExponent. Alpha 0..1; Flop always 1.
 	 */
 	static FFishAnimState ComputeAnimState(const FFishVisualRow& Row, const FFightFishAnimInput& In);
 
@@ -278,12 +335,37 @@ struct FFightFishVisual
 	static float ShownDepth(const FFishVisualRow& Row, float FightDepthCm);
 
 	/**
-	 *  Where the fish's center goes: the line end, MouthOffsetCm back along Forward (so the nose is at the line end), at
-	 *  WaterZ - ShownDepth; never lower than FloorZ + FloorClearance (FloorZ = -BIG_NUMBER: no floor), never above the surface.
+	 *  Where the fish's center goes: CenterForMouth(MouthTarget(...), Forward, MouthOffsetCm): the line end, MouthOffsetCm back
+	 *  along Forward's horizontal part (so the nose is over the line end, pitched or not), at WaterZ - ShownDepth; never lower
+	 *  than FloorZ + FloorClearance (FloorZ = -BIG_NUMBER: no floor), never above the surface.
 	 */
 	static FVector TargetLocation(const FFishVisualRow& Row, const FFightFishView& View, const FVector& Forward, float MouthOffsetCm, float FloorZ);
 
-	/** Facing: along Velocity when faster than MinFacingSpeed (pitch from the climb, clamped), else away from the player, level. */
+	/** The fight's line point: XY = the line end (where the mouth goes), Z = the fish's center height (as TargetLocation). */
+	static FVector MouthTarget(const FFishVisualRow& Row, const FFightFishView& View, float FloorZ);
+
+	/** The fish's center for a line point (XY of the mouth, Z of the center): XY - Forward.XY x MouthOffsetCm (Forward normalized in 3D), same Z. */
+	static FVector CenterForMouth(const FVector& MouthPoint, const FVector& Forward, float MouthOffsetCm);
+
+	/**
+	 *  One smoothing step of the line point toward Target: exponential (SmoothAlpha(DeltaTime, SmoothTime)), then pulled so it
+	 *  never trails Target by more than MouthMaxLagCm horizontally (the mouth stays under the bobber). Z is only smoothed.
+	 */
+	static FVector StepMouth(const FFishVisualRow& Row, const FVector& MouthPoint, const FVector& Target, float DeltaTime, float SmoothTime);
+
+	/**
+	 *  T-048, the fighting fish's facing: toward the player from its mouth (the body away from the rod), level. While the mouth
+	 *  moves faster than MinFacingSpeed the body swings sideways: RunSwingDeg x min(1, speed / RunSwingFullSpeed), the head
+	 *  toward the side it swims to (straight in or out: the side it already leans to), and the end that leads the swim follows
+	 *  the climb or dive (pitch clamped to MaxPitchDeg). Tired: no swing, roll ExhaustedRollDeg (0 = upright).
+	 */
+	static FRotator FightFacing(const FFishVisualRow& Row, const FVector& MouthVelocity, const FVector& MouthLocation, const FVector& PlayerLocation,
+		const FRotator& Current, bool bExhausted);
+
+	/** Rotation with its yaw kept within RunSwingDeg (clamped to [0, 80]) of the direction mouth -> player; pitch and roll kept. */
+	static FRotator ClampToLine(const FFishVisualRow& Row, const FRotator& Rotation, const FVector& MouthLocation, const FVector& PlayerLocation);
+
+	/** Escaping fish's facing: along Velocity when faster than MinFacingSpeed (pitch from the climb, clamped), else away from the player, level. */
 	static FRotator FacingRotation(const FFishVisualRow& Row, const FVector& Velocity, const FVector& FishLocation, const FVector& PlayerLocation,
 		const FRotator& Current, bool bExhausted);
 

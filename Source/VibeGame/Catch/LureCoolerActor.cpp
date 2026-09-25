@@ -166,6 +166,7 @@ void ALureCoolerActor::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Out
 	DOREPLIFETIME(ALureCoolerActor, OwningPlayerState);
 	DOREPLIFETIME(ALureCoolerActor, CoolerGuid);
 	DOREPLIFETIME(ALureCoolerActor, bStarter);
+	DOREPLIFETIME(ALureCoolerActor, bShowing); // everyone: the others are who you show it to
 }
 
 ALureCoolerActor* ALureCoolerActor::SpawnCooler(UWorld* World, FName CoolerId, const FTransform& Transform, APlayerState* OwnerState, const FGuid& Guid, bool bInStarter)
@@ -309,17 +310,40 @@ bool ALureCoolerActor::AuthoritySetLidOpen(bool bOpen)
 		UE_LOG(LogLureCatch, Warning, TEXT("%s: AuthoritySetLidOpen is server-only; ignored on this client."), *GetName());
 		return false;
 	}
-	if (!IsFree() && bOpen)
+	if (!IsFree() && GetHoldMode() != ELureHoldMode::Hand)
 	{
-		return false; // not while someone carries it
+		return false; // standing, or in its carrier's hands (T-064; who may is the verbs' rule)
 	}
 	bLidOpen = bOpen;
+	if (!bOpen)
+	{
+		bShowing = false; // close while showing = turn back and close
+	}
 	if (Storage)
 	{
 		Storage->SetDecayRate(bOpen ? GetRow().OpenDecayRate : GetRow().ClosedDecayRate);
 	}
 	ForceNetUpdate();
 	OnRep_Lid();
+	return true;
+}
+
+bool ALureCoolerActor::AuthoritySetShowing(bool bShow)
+{
+	if (!HasAuthority())
+	{
+		UE_LOG(LogLureCatch, Warning, TEXT("%s: AuthoritySetShowing is server-only; ignored on this client."), *GetName());
+		return false;
+	}
+	if (bShow && (GetHoldMode() != ELureHoldMode::Hand || !bLidOpen))
+	{
+		return false; // only a carried, open cooler is shown
+	}
+	if (bShowing != bShow)
+	{
+		bShowing = bShow;
+		ForceNetUpdate();
+	}
 	return true;
 }
 
@@ -371,6 +395,84 @@ ALureFishItem* ALureCoolerActor::AuthorityTakeFishOut(APawn* Pawn)
 	}
 	UE_LOG(LogLureCatch, Log, TEXT("%s took %s out of %s (%d/%d left)."), *GetNameSafe(Pawn), *Record.Fish.SpeciesId.ToString(), *GetName(), GetNumFish(), GetCapacity());
 	return Item;
+}
+
+int32 ALureCoolerActor::AuthorityDumpFish(APawn* Pawn, int32* OutReleased)
+{
+	if (OutReleased)
+	{
+		*OutReleased = 0;
+	}
+	ULureHandsComponent* Hands = ULureHandsComponent::Get(Pawn);
+	UWorld* World = GetWorld();
+	if (!HasAuthority() || !World || !Hands || !IsHeldBy(Pawn, ELureHoldMode::Hand) || !bLidOpen || !bShowing || !Storage || GetNumFish() == 0)
+	{
+		return 0; // only its carrier, while showing it (the carrier alone changes a carried cooler: no contents token)
+	}
+	const FLureCatchRow& Tuning = ULureCatchSubsystem::GetTuningFor(this);
+	// The server's drop origin is the carrier's eye, as for "Drop the <fish>"; the cooler's mouth only starts the flight.
+	const FVector Eye = Pawn->GetPawnViewLocation();
+	const FVector Origin = Eye - FVector::UpVector * 25.0f;
+	const FRotator ViewYaw(0.0f, Pawn->GetViewRotation().Yaw, 0.0f);
+	const FVector2D Forward(ViewYaw.Vector());
+	const FVector2D Right(ViewYaw.RotateVector(FVector::RightVector));
+	const FTransform Mouth(ViewYaw, GetMouthLocation());
+	int32 Dumped = 0;
+	int32 Released = 0;
+	FLureCaughtFish Record;
+	while (Storage->RemoveLastFish(Record)) // the top first; the record keeps its exposure, the item spoils at rate 1 from now
+	{
+		ALureFishItem* Item = ALureFishItem::SpawnFish(World, Record, Mouth);
+		if (!Item)
+		{
+			Storage->AddFish(Record); // back on top: nothing is lost
+			break;
+		}
+		const FVector2D Offset = Forward * Tuning.DropForward + Right * GetDumpSideOffset(Dumped, Tuning.DumpSpacing);
+		Item->AuthoritySetQuietRelease(true); // one summary notice below instead of one per fish
+		if (Item->AuthorityDrop(Pawn, Origin, FVector2D(Eye.X, Eye.Y), Offset, static_cast<float>(Offset.Size())))
+		{
+			Item->AuthoritySetQuietRelease(false);
+		}
+		else
+		{
+			++Released;
+		}
+		++Dumped;
+	}
+	if (Dumped > 0)
+	{
+		FString Notice = FText::Format(LOCTEXT("Dumped", "Dumped {0} fish"), FText::AsNumber(Dumped)).ToString();
+		if (Released > 0)
+		{
+			Notice += FText::Format(LOCTEXT("DumpedReleased", ", {0} released"), FText::AsNumber(Released)).ToString();
+		}
+		Hands->ClientNotice(Notice);
+		UE_LOG(LogLureCatch, Log, TEXT("%s dumped %d fish out of %s (%d released)."), *GetNameSafe(Pawn), Dumped, *GetName(), Released);
+		ForceNetUpdate();
+	}
+	if (OutReleased)
+	{
+		*OutReleased = Released;
+	}
+	return Dumped;
+}
+
+float ALureCoolerActor::GetDumpSideOffset(int32 Index, float Spacing)
+{
+	if (Index <= 0)
+	{
+		return 0.0f;
+	}
+	const float Step = static_cast<float>((Index + 1) / 2) * FMath::Max(0.0f, Spacing);
+	return Index % 2 ? Step : -Step; // right first, then left
+}
+
+FVector ALureCoolerActor::GetMouthLocation() const
+{
+	// The body box's top face (actor frame = the visual root's frame when unturned), moved with the drawn visual (the show turn).
+	const FVector TopLocal(BoxCenter.X, BoxCenter.Y, BoxCenter.Z + BoxHalfExtent.Z);
+	return GetVisualTransform().TransformPosition(TopLocal);
 }
 
 bool ALureCoolerActor::AuthorityPickUp(APawn* Pawn)
@@ -630,15 +732,32 @@ FLureInteraction ALureCoolerActor::GetInteraction(const APawn* Pawn, ELureIntera
 	{
 		return FLureInteraction();
 	}
+	const FText Count = FText::Format(LOCTEXT("Count", "{0}/{1}"), FText::AsNumber(GetNumFish()), FText::AsNumber(GetCapacity()));
 	if (IsHeldBy(Pawn, ELureHoldMode::Hand))
 	{
-		return FLureInteraction::Make(ELureInteractVerb::PutDownCooler, LOCTEXT("PutDown", "Put the cooler down"));
+		// T-064: the cooler in your hands. Closed: E opens, F puts it down. Open toward you: E shows it, F closes.
+		// Showing: E turns it back, F dumps the fish (T-065; an empty one: F closes).
+		const bool bPrimary = Key == ELureInteractKey::Primary;
+		if (!bLidOpen)
+		{
+			return bPrimary ? FLureInteraction::Make(ELureInteractVerb::OpenCooler, FText::Format(LOCTEXT("Open", "Open the cooler ({0})"), Count))
+				: FLureInteraction::Make(ELureInteractVerb::PutDownCooler, LOCTEXT("PutDown", "Put the cooler down"));
+		}
+		if (bPrimary)
+		{
+			return bShowing ? FLureInteraction::Make(ELureInteractVerb::TurnBackCooler, LOCTEXT("TurnBack", "Turn it back"))
+				: FLureInteraction::Make(ELureInteractVerb::ShowCooler, LOCTEXT("Show", "Show the fish"));
+		}
+		if (bShowing && GetNumFish() > 0)
+		{
+			return FLureInteraction::Make(ELureInteractVerb::DumpCooler, FText::Format(LOCTEXT("Dump", "Dump {0} fish"), FText::AsNumber(GetNumFish())));
+		}
+		return FLureInteraction::Make(ELureInteractVerb::CloseCooler, FText::Format(LOCTEXT("Close", "Close the cooler ({0})"), Count));
 	}
 	if (Hands->GetCarriedCooler() || Hands->GetHangingFish() || !Hands->CanHoldItems())
 	{
 		return FLureInteraction(); // both hands busy, a fish still on the hook (grab it first), or swimming
 	}
-	const FText Count = FText::Format(LOCTEXT("Count", "{0}/{1}"), FText::AsNumber(GetNumFish()), FText::AsNumber(GetCapacity()));
 	if (const ALureFishItem* Fish = Hands->GetHeldFish())
 	{
 		if (Key != ELureInteractKey::Primary)
@@ -679,9 +798,21 @@ bool ALureCoolerActor::PerformInteraction(APawn* Pawn, ELureInteractVerb Verb)
 	switch (Verb)
 	{
 	case ELureInteractVerb::OpenCooler:
-		return AuthoritySetLidOpen(true);
 	case ELureInteractVerb::CloseCooler:
-		return AuthoritySetLidOpen(false);
+		if (!IsFree() && !IsHeldBy(Pawn, ELureHoldMode::Hand))
+		{
+			return false; // a carried cooler: its carrier only
+		}
+		return AuthoritySetLidOpen(Verb == ELureInteractVerb::OpenCooler);
+	case ELureInteractVerb::ShowCooler:
+	case ELureInteractVerb::TurnBackCooler:
+		if (!IsHeldBy(Pawn, ELureHoldMode::Hand))
+		{
+			return false;
+		}
+		return AuthoritySetShowing(Verb == ELureInteractVerb::ShowCooler);
+	case ELureInteractVerb::DumpCooler:
+		return IsHeldBy(Pawn, ELureHoldMode::Hand) && AuthorityDumpFish(Pawn) > 0;
 	case ELureInteractVerb::PutFishInCooler:
 		return AuthorityPutFishIn(Pawn, Hands->GetHeldFish());
 	case ELureInteractVerb::TakeFishFromCooler:
@@ -742,6 +873,12 @@ FTransform ALureCoolerActor::GetThirdPersonAttachment() const
 void ALureCoolerActor::OnHoldChanged(const FLureItemHold& OldHold)
 {
 	ApplyCollision();
+	if (HasAuthority() && bShowing && GetHoldMode() != ELureHoldMode::Hand)
+	{
+		bShowing = false; // any put-down ends showing (the lid stays as it is)
+		ForceNetUpdate();
+	}
+	UpdateHeldPose(0.0f); // after RefreshPresentation: the held turn from this frame on (or the blends reset)
 	RefreshDisplay();
 }
 
@@ -914,9 +1051,10 @@ int32 ALureCoolerActor::GetNumDisplayedFish() const
 	return Count;
 }
 
-TArray<FBox> ALureCoolerActor::GetDisplayedFishBounds() const
+TArray<FBox> ALureCoolerActor::GetDisplayedFishBounds(const USceneComponent* Space) const
 {
 	TArray<FBox> Boxes;
+	const FTransform FromWorld = Space ? Space->GetComponentTransform() : FTransform::Identity;
 	if (!bDisplayVisible)
 	{
 		return Boxes;
@@ -947,13 +1085,14 @@ TArray<FBox> ALureCoolerActor::GetDisplayedFishBounds() const
 				const FTransform ToWorld = Skinned->GetComponentTransform();
 				for (const FVector3f& Position : Positions)
 				{
-					Box += ToWorld.TransformPosition(FVector(Position));
+					const FVector World = ToWorld.TransformPosition(FVector(Position));
+					Box += Space ? FromWorld.InverseTransformPosition(World) : World;
 				}
 			}
 		}
 		if (!Box.IsValid)
 		{
-			Box = Fish->Bounds.GetBox();
+			Box = Space ? Fish->Bounds.GetBox().InverseTransformBy(FromWorld) : Fish->Bounds.GetBox();
 		}
 		Boxes.Add(Box);
 	}
@@ -1064,11 +1203,52 @@ void ALureCoolerActor::UpdatePresentation(float DeltaSeconds)
 	const float Speed = Tuning.LidOpenPitch / FMath::Max(0.01f, Tuning.LidOpenTime);
 	LidPitch = Tuning.LidOpenTime > 0.0f ? FMath::FInterpConstantTo(LidPitch, Target, DeltaSeconds, Speed) : Target;
 	LidPivot->SetRelativeRotation(FRotator(LidPitch, 0.0f, 0.0f));
-	const bool bShow = bLidOpen && LidPitch > 10.0f && IsFree();
+	// Standing, or open in its carrier's hands (T-064)
+	const bool bShow = bLidOpen && LidPitch > 10.0f && (IsFree() || GetHoldMode() == ELureHoldMode::Hand);
 	if (bShow != bDisplayVisible)
 	{
 		SetDisplayVisible(bShow);
 	}
+	UpdateHeldPose(DeltaSeconds);
+}
+
+FTransform ALureCoolerActor::GetHeldPoseTransform(bool bFirstPerson, float OpenAlpha, float ShowAlpha) const
+{
+	const ULureCatchSettings* Settings = GetDefault<ULureCatchSettings>();
+	const FQuat OpenTurn = bFirstPerson ? Settings->CarriedOpenRotation.Quaternion() : FQuat::Identity;
+	const FVector OpenShift = bFirstPerson ? Settings->CarriedOpenOffset : FVector::ZeroVector;
+	const FQuat ShowTurn = (bFirstPerson ? Settings->CarriedShowRotation : Settings->ThirdPersonShowRotation).Quaternion();
+	const FVector ShowShift = bFirstPerson ? Settings->CarriedShowOffset : Settings->ThirdPersonShowOffset;
+	const float Open = FMath::SmoothStep(0.0f, 1.0f, FMath::Clamp(OpenAlpha, 0.0f, 1.0f));
+	const float Show = FMath::SmoothStep(0.0f, 1.0f, FMath::Clamp(ShowAlpha, 0.0f, 1.0f));
+	const FQuat Turn = FQuat::Slerp(FQuat::Slerp(FQuat::Identity, OpenTurn, Open), ShowTurn, Show).GetNormalized();
+	const FVector Shift = FMath::Lerp(FMath::Lerp(FVector::ZeroVector, OpenShift, Open), ShowShift, Show);
+	// About the middle of the box (the pivot is its bottom center), then the shift.
+	return FTransform(Turn, BoxCenter - Turn.RotateVector(BoxCenter) + Shift);
+}
+
+void ALureCoolerActor::UpdateHeldPose(float DeltaSeconds)
+{
+	if (!VisualRoot || !IsRenderingMachine())
+	{
+		return;
+	}
+	if (GetHoldMode() != ELureHoldMode::Hand || !GetHolder())
+	{
+		// Standing (or put down): the base class owns the visual (its rest and the drop flight).
+		OpenPoseAlpha = 0.0f;
+		ShowPoseAlpha = 0.0f;
+		return;
+	}
+	const FLureCatchRow& Tuning = ULureCatchSubsystem::GetTuningFor(this);
+	auto Step = [DeltaSeconds](float& Alpha, bool bOn, float Seconds)
+	{
+		const float Target = bOn ? 1.0f : 0.0f;
+		Alpha = Seconds > 0.0f ? FMath::FInterpConstantTo(Alpha, Target, DeltaSeconds, 1.0f / Seconds) : Target;
+	};
+	Step(OpenPoseAlpha, bLidOpen, Tuning.LidOpenTime);
+	Step(ShowPoseAlpha, bLidOpen && bShowing, Tuning.ShowTurnTime);
+	VisualRoot->SetRelativeTransform(GetHeldPoseTransform(bFirstPersonRendering, OpenPoseAlpha, ShowPoseAlpha));
 }
 
 #undef LOCTEXT_NAMESPACE
