@@ -18,14 +18,23 @@ Lead-only scripts: `tools/lead-check.ps1` (running agents' context size + disk; 
 - Lanes (lead side): the main checkout is the editor lane (editor-operator, playtester, art commits, integration by the lead). The lead merges a lane into `main` after its tests pass (`git merge main` in the lane, then `git merge --ff-only lane/<x>` in main), then rebuilds the main checkout (editor closed briefly) before editor or playtest work. Use as many lanes and agents as the work needs for speed and accuracy (Jimmy, 2026-09-23). Give each lane one task, and pick parallel tasks that don't edit the same files; if two must share a file (e.g. DT_Movement), keep the edits additive and say so in both briefs. Create a lane with `git worktree add ../VibeGame-lanes/<lane> -b lane/<lane> <base>` and copy `tools/local.settings.json` into it. A QA lane (`qa1`) exists for independent test work while the editor runs in main. Anything touching the running editor, or closing/building/relaunching it, is serialized by the lead.
 - After each merge batch, rerun `tools/codemap.ps1` so docs/CODEMAP.md stays true.
 
+## Studio model (Jimmy approved 2026-09-24; full rules in docs/teams/STUDIO.md)
+- The lead is the producer and the only one who talks to Jimmy. Objectives with several tasks, or cross-system features, go to a department manager: `engineering-manager-high`, `art-manager-high`, `qa-manager-medium`, `design-manager-high`. Each plans, dispatches its own junior/mid/senior team, reviews every result against its handbook (`docs/teams/<dept>.md`), and keeps a team log `Saved/AgentLogs/teams/<dept>.md`. Read the logs, not transcripts.
+- Tiny one-off tasks skip managers: the lead starts a single worker directly. No managers for the editor-operator, the janitor, or integration.
+- The lead keeps: priorities and the top of TASKS.md; editor bookings (one user; check the editor runs the right build before granting); integration with `tools/integrate.ps1 -Lanes a,b` (merge, build, full tests, ff main, one evidence line); push; the release gate; the severity/priority call (blocker/major/minor/trivial, P0-P3).
+- Brief a manager with an objective: id, goal, acceptance criteria, priority/order, links, known constraints. Expect a 5-line confirmation (understanding, plan outline, risks, questions).
+- Manager questions: answer when confident; anything about taste, scope, priorities, or anything unsure goes to Jimmy in plain language, one question at a time (Jimmy, 2026-09-24).
+- Workers have no Agent tool (the tree is at most lead -> manager -> worker). Manager decisions already made by the lead (2026-09-24): one severity scale; tech debt in docs/TECH_DEBT.md; art manager may start designer-low for art previews; QA naming `QA<Task><Topic>Test.cpp`, `Project.<Area>.QA.*`; design edits GAME_DESIGN.md only to record dated Jimmy decisions; static meshes get `art/export/<Category>/<Asset>.import.md`.
+- Rollout: pilot engineering-manager-high on the first batch after the A2 push, then art, QA and design.
+
 ## Starting agents (optimized pipeline; Jimmy, 2026-09-24)
 - **Group by shared context, split by independence** (Jimmy, 2026-09-24; refines his earlier "don't stack one agent with many tasks"):
   - Split into parallel agents when the pieces touch different files or systems and don't need each other's understanding: they finish faster side by side.
   - Keep pieces with one agent, in order, when they share files or functions, depend on each other, or need the same big reading (e.g. T-032b parts B+C). A second agent would spend 50-100k re-reading.
   - A follow-up in an area an agent just finished: resume that agent (SendMessage) if its context is under ~150k and still relevant; otherwise start a fresh agent with pointers.
   - Never bundle past the context limit (250k; seniors 400k): stage it instead. Never bundle unrelated items just to have fewer agents (the first T-030h brief bundled 3 unrelated fixes).
-- Agents start lean by design: each agent file has a `tools:` allowlist (no Agent/Artifact/Workflow/connector tools), preloads its pipeline skill with `skills:`, and carries its role's standard protocol (lane start/finish, commit, handoff at ~250k, report format). Junior/senior files are generated from the mid file: edit the mid file, then run `tools/gen-agents.ps1`.
-- Steps: pick the level (table below) -> `tools/lane.ps1 -Free` gives a clean lane already at main (creates the next one if none is free; `-List` shows all) -> spawn with `run_in_background` -> add the task line to docs/TASKS.md and the agent to the memory snapshot table.
+- Agents start lean by design: each worker agent file has a `tools:` allowlist (no Agent/Artifact/Workflow/connector tools; managers additionally get Agent + SendMessage to run their team), preloads its pipeline skill with `skills:`, and carries its role's standard protocol (lane start/finish, commit, handoff at ~250k, report format). Junior/senior files are generated from the mid file: edit the mid file, then run `tools/gen-agents.ps1`.
+- Steps: pick the level (table below) -> `tools/lane.ps1 -Free` gives a clean lane already at main (creates the next one if none is free; `-List` shows all) -> spawn with `run_in_background` -> add the task line to docs/TASKS.md and the agent to the memory snapshot table. Workers started by a manager are logged only in its team log (Saved/AgentLogs/teams/<dept>.md); the lead copies the task-id-level lines into TASKS.md.
 - New lanes need a full first compile (slow, serialized by the build mutex); prefer reusing free lanes.
 
 ## Briefing agents (keep every brief lean; Jimmy, 2026-09-23)
@@ -57,13 +66,14 @@ Model and effort per agent. They are pinned in each agent's frontmatter (`model`
   | playtester | - | `playtester-low` | - |
   | designer | - | `designer-low` | - |
   | janitor | - | `janitor-low` | - |
+  | managers | - | `engineering-manager-high`, `art-manager-high`, `qa-manager-medium`, `design-manager-high` | - |
   Elsewhere in this file and in the skills, a plain role name (e.g. "editor-operator") means that role at any level.
   Junior and senior agent files are generated from the role's mid-level file by `tools/gen-agents.ps1` (same tools, skills and body, plus a level paragraph), so each role's rules live in one file and no agent spends a step reading another agent file.
   A junior that finds the task bigger than briefed stops and reports back, and the lead re-assigns it to a senior.
   **Art is taken seriously (Jimmy, 2026-09-23).** A good-looking game in one art style matters as much as working systems.
     - Levels: anything the player sees often or up close (arms, rod, fish, cooler, boat, creatures, NPCs, anything held, carried or interacted with) goes to at least a mid artist. New shapes, species and hero assets go to senior. Junior artists only do fixes, re-exports, recolors, variants of approved assets and small background props.
     - Briefs: give artists the palette and mood boards, the existing assets to match, and the distance and camera it's seen from.
-    - Review: every new visible asset or clip gets a designer review of its previews against ART_STYLE.md before the editor imports it, and the artist fixes the must-fix items. The lead also looks at the previews.
+    - Review: every new visible asset or clip gets a designer review of its previews against ART_STYLE.md before the editor imports it, and the artist fixes the must-fix items. The art manager looks at every preview; the lead spot-checks the final preview before an import is booked.
   **Mixed-difficulty tasks (Jimmy, 2026-09-23).** Split a task into parts by difficulty and give each part its own agent at the right level. Example: a senior designs and builds the core system; a mid adds the standard feature plumbing; a junior adds data rows, the placeholder text UI and routine tests. Give each part its own files or lane, brief the order and hand-offs (a junior starts from the senior's committed API), and list the parts on the task line in docs/TASKS.md.
   **Ultracode, used sparingly (Jimmy, 2026-09-23).** Only for the very toughest work, and only where a single senior (effort max) isn't enough. That means:
     (a) a foundational design that is expensive to undo later, such as the multiplayer sync model, the creature AI and senses foundation, or the noise/mic pipeline; or
