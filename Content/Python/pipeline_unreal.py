@@ -170,6 +170,20 @@ def import_datatable(src_path, dest_path, row_struct):
     return result
 
 
+def reimport_table(dest_path, src_path):
+    """Re-import an existing DataTable (dest_path, e.g. /Game/Data/DT_Catch) from its CSV/JSON source, keeping its row struct.
+    Used by tools/integrate.ps1 in the batch lane, so a lane that changes a table's source (and maybe its row struct)
+    lands with a matching binary asset. A table that does not exist yet needs import_datatable with its row struct."""
+    table = unreal.load_asset(dest_path)
+    if table is None or not isinstance(table, unreal.DataTable):
+        raise RuntimeError("No existing DataTable at " + dest_path + " (new tables need import_datatable)")
+    struct = table.get_editor_property("row_struct")
+    if struct is None:
+        raise RuntimeError(dest_path + " has no row struct")
+    result = import_datatable(src_path, dest_path, struct.get_path_name())
+    return {"table": result["table"], "row_struct": result["row_struct"], "rows": len(result["rows"])}
+
+
 def _fbx_options(kind, skeleton=None, import_materials=False, update_ref_pose=False):
     """Legacy FBX importer options (used with unreal.FbxFactory, which bypasses Interchange).
 
