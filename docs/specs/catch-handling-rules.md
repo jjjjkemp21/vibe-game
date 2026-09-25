@@ -137,7 +137,11 @@ by the server; clients only ask ("I pressed E on this cooler, expecting Put in")
   it from a standing player farther than about 1 m, so a lone fish at the front was invisible from 2 m (A2 playtest).
   At the back every shown fish, from the smallest possible weight (scale ~0.68) to any capped one (1.0), clears the
   sight line over the front rim from the put-down distance out to 1.5 m (`Project.Catch.Display.EveryFishVisible`);
-  farther than that a lone fish on the floor can still hide behind the wall. No row = the built-in layout (= the
+  farther than that a lone fish on the floor can still hide behind the wall. Every shown fish also lies inside the liner
+  and under the closed lid, for any slot layout: its posed vertices (`ALureCoolerActor::GetDisplayedFishBounds`), in
+  Contents-socket space, stay within X +-17.5, Y +-25.5, Z 0..28 cm (the liner floor footprint up to the lid's underside)
+  with a 1.0 cm tolerance; an axis-aligned check, so the liner's rounded corners are not checked
+  (`Project.Catch.Display.FishInsideLiner`). No row = the built-in layout (= the
   shipped Starter row); a missing pose = straight fish.
 - **The lid's look follows `bLidOpen`** on every machine: open = `LidOpenPitch`, closed = 0, animated over
   `LidOpenTime`, set without animation when the cooler first appears (a fresh cooler, a late-joining client). A fish

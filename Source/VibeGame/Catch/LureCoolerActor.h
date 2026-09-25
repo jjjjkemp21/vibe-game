@@ -117,6 +117,14 @@ public:
 	/** Fish shown inside right now (lid open, up to the display slots) */
 	int32 GetNumDisplayedFish() const;
 
+	/** Read-only check: the world box of each fish shown inside right now, bottom of the pile first (empty while hidden).
+	 *  Skinned fish are measured per vertex in their current pose (the component bounds report the straight mesh);
+	 *  static meshes, or skinned ones without CPU vertex data, fall back to the component bounds. */
+	TArray<FBox> GetDisplayedFishBounds() const;
+
+	/** The Contents point the shown fish lie relative to (the body's Contents socket) */
+	USceneComponent* GetContentsRoot() const { return ContentsRoot; }
+
 	/** The size a fish of WeightKg shows at inside: the fight fish's weight scale (T-030d), capped at Row.MaxFishScale */
 	static float GetDisplayFishScale(float WeightKg, float ReferenceWeightKg, const FFishVisualRow& VisualRow, const FLureCoolerDisplayRow& Row);
 

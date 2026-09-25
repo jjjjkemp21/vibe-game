@@ -31,6 +31,9 @@
 #include "Misc/PackageName.h"
 #include "Net/UnrealNetwork.h"
 #include "Progression/LureCoolerComponent.h"
+#include "Rendering/SkeletalMeshLODRenderData.h"
+#include "Rendering/SkeletalMeshRenderData.h"
+#include "Rendering/SkinWeightVertexBuffer.h"
 #include "UObject/ConstructorHelpers.h"
 
 #define LOCTEXT_NAMESPACE "LureCooler"
@@ -900,6 +903,52 @@ int32 ALureCoolerActor::GetNumDisplayedFish() const
 		Count += (Fish && Fish->IsVisible()) ? 1 : 0;
 	}
 	return Count;
+}
+
+TArray<FBox> ALureCoolerActor::GetDisplayedFishBounds() const
+{
+	TArray<FBox> Boxes;
+	if (!bDisplayVisible)
+	{
+		return Boxes;
+	}
+	for (const UPrimitiveComponent* Fish : DisplayFish)
+	{
+		if (!Fish || !Fish->IsVisible())
+		{
+			continue;
+		}
+		FBox Box(ForceInit);
+		const USkeletalMeshComponent* Skinned = Cast<USkeletalMeshComponent>(Fish);
+		const FSkeletalMeshRenderData* RenderData = Skinned ? Skinned->GetSkeletalMeshRenderData() : nullptr;
+		if (RenderData && RenderData->LODRenderData.Num() > 0 && Skinned->GetComponentSpaceTransforms().Num() > 0)
+		{
+			const FSkeletalMeshLODRenderData& LOD = RenderData->LODRenderData[0];
+			const FSkinWeightVertexBuffer* Weights = Skinned->GetSkinWeightBuffer(0);
+			const bool bCpuData = LOD.StaticVertexBuffers.PositionVertexBuffer.GetVertexData() != nullptr
+				&& Weights && Weights->GetDataVertexBuffer() && Weights->GetDataVertexBuffer()->GetWeightData() != nullptr;
+			if (bCpuData)
+			{
+				// Component space in the current pose, then out to the world (the component transform carries the shown scale)
+				USkeletalMeshComponent* Mutable = const_cast<USkeletalMeshComponent*>(Skinned);
+				TArray<FMatrix44f> RefToLocals;
+				Skinned->CacheRefToLocalMatrices(RefToLocals);
+				TArray<FVector3f> Positions;
+				USkinnedMeshComponent::ComputeSkinnedPositions(Mutable, Positions, RefToLocals, LOD, *Weights);
+				const FTransform ToWorld = Skinned->GetComponentTransform();
+				for (const FVector3f& Position : Positions)
+				{
+					Box += ToWorld.TransformPosition(FVector(Position));
+				}
+			}
+		}
+		if (!Box.IsValid)
+		{
+			Box = Fish->Bounds.GetBox();
+		}
+		Boxes.Add(Box);
+	}
+	return Boxes;
 }
 
 void ALureCoolerActor::RefreshDisplay()

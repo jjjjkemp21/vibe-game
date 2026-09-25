@@ -27,6 +27,7 @@
 #include "Fish/FightFishVisual.h"
 #include "Fish/FishTypes.h"
 #include "GameFramework/PlayerController.h"
+#include "Internationalization/Regex.h"
 #include "Interaction/LureInteractionComponent.h"
 #include "Progression/LureCoolerComponent.h"
 #include "Progression/LureProgressionLibrary.h"
@@ -538,8 +539,19 @@ bool FHudCarriedCoolerCount::RunTest(const FString& Parameters)
 	Rig.W.Tick(2);
 	const FString Joined = FString::Join(ULureProgressionLibrary::GetPlaceholderStatusLines(Controller), TEXT(" | "));
 	TestTrue(FString::Printf(TEXT("carrying theirs: the count is the carried cooler's (%s)"), *StatusLine()), StatusLine().EndsWith(TEXT("Cooler 1/4")));
-	TestTrue(FString::Printf(TEXT("... one count on screen: it matches the Carrying line (%s)"), *Joined), Joined.Contains(TEXT("Carrying: Starter cooler (1/4, closed)"))
-		&& !Joined.Contains(TEXT("0/4")));
+	TestTrue(FString::Printf(TEXT("... the Carrying line shows it (%s)"), *Joined), Joined.Contains(TEXT("Carrying: Starter cooler (1/4, closed)")));
+	{
+		// Only the cooler counts ("Cooler N/M" and "<name> cooler (N/M, ...)"), so other N/M text (XP, level) can't match
+		const FRegexPattern CoolerCount(TEXT("[Cc]ooler \\(?(\\d+)/(\\d+)"));
+		FRegexMatcher Matcher(CoolerCount, Joined);
+		TArray<FString> Counts;
+		while (Matcher.FindNext())
+		{
+			Counts.Add(Matcher.GetCaptureGroup(1) + TEXT("/") + Matcher.GetCaptureGroup(2));
+		}
+		TestTrue(FString::Printf(TEXT("... one count on screen: every cooler count is the carried one's 1/4 (%s)"), *Joined),
+			Counts.Num() > 0 && Counts.FilterByPredicate([](const FString& Count) { return Count != TEXT("1/4"); }).Num() == 0);
+	}
 	TestEqual(TEXT("my own cooler still counts itself"), ULureCatchLibrary::GetOwnCoolerStatus(Rig.Player->GetPlayerState()), FString(TEXT("Cooler 0/4")));
 
 	TestTrue(TEXT("put it down"), Theirs->AuthorityPutDown());
