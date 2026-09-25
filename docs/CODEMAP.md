@@ -108,14 +108,14 @@ Paths in the table are under `Source/VibeGame/` unless they start with a top-lev
 - `VibeGameGameMode.h` AVibeGameGameMode
 - `VibeGamePlayerController.h` AVibeGamePlayerController
 
-### Tests (`Source/VibeGame/`): folder, prefix (count): 3rd name segment count. Total 1054
+### Tests (`Source/VibeGame/`): folder, prefix (count): 3rd name segment count. Total 1068
 - `Tests/Catch/` Project.Arms.* (3): HoldFishSize 3
 - `Tests/Catch/` Project.Catch.* (111): QA 52, Cooler 7, Net 7, Counter 5, Display 5, Rules 5, Focus 4, Data 3, Hand 3, HoldFishAttach 3,...
 - `Tests/Catch/` Project.FishVisual.* (2): HeldPose 2
 - `Tests/Dev/` Project.Dev.* (12): Teleport 4, GiveFish 3, Commands 1, PlaytestDriver 1, QA 1, Screenshot 1, SetStance 1
 - `Tests/FishFight/` Project.Fishing.* (114): Fight 114
 - `Tests/FishVisual/` Project.FishVisual.* (44): QA 29, Lifecycle 3, Adapter 2, Anim 2, Data 2, HeldPose 2, Placement 2, AnimGraph 1, Size 1
-- `Tests/Fishing/` Project.Fishing.* (228): QA 90, Water 78, Line 54, CastTrace 4, Fight 2
+- `Tests/Fishing/` Project.Fishing.* (242): QA 90, Water 78, Line 68, CastTrace 4, Fight 2
 - `Tests/Level/` Project.Level.* (3): PalmKey 3
 - `Tests/Movement/` Project.Fishing.* (3): Climb 1, Rules 1, Swim 1
 - `Tests/Movement/` Project.Movement.* (211): QA 171, Swim 33, Camera 3, Climb 3, Stance 1
@@ -152,7 +152,7 @@ Paths in the table are under `Source/VibeGame/` unless they start with a top-lev
 - `docs/specs/catch-handling-rules.md` Catch handling rules (T-030): the fish on the hook, the hand, the physical cooler, freshness and t...
 - `docs/specs/fight-fish-visual.md` Fighting fish visual (T-029)
 - `docs/specs/fish-system-rules.md` Fish system rules (T-008+), lead decisions 2026-09-22
-- `docs/specs/fishing-line.md` Physics fishing line (T-032)
+- `docs/specs/fishing-line.md` Physics fishing line (T-032, T-032b)
 - `docs/specs/fishing-rules.md` Fishing rules (T-006: cast, bobber, bite, hook), unreal-engineer decisions 2026-09-23
 - `docs/specs/fishing-water-rules.md` Fishing water rules (T-027: fish anywhere + hot spots), unreal-engineer decisions 2026-09-23
 - `docs/specs/movement-rules.md` First-person movement rules (T-004), lead decisions 2026-09-22

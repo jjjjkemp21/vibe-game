@@ -5,12 +5,14 @@
 #include "CoreMinimal.h"
 #include "Components/SceneComponent.h"
 #include "Components/SplineMeshComponent.h"
+#include "Engine/OverlapResult.h"
 #include "Fishing/FishingLineSim.h"
 #include "Fishing/FishingLineTypes.h"
 #include "LureFishingLineComponent.generated.h"
 
 class AActor;
 class UMaterialInterface;
+class UPrimitiveComponent;
 class UStaticMesh;
 
 /** Gives a world point on demand (the rod tip where the rod is drawn this frame). */
@@ -181,6 +183,9 @@ public:
 
 	const FLureLineSim& GetSimulation() const { return Sim; }
 
+	/** The solids the line collides with, as last gathered (T-032b; empty while an actor hangs). */
+	const FLureLineColliders& GetColliders() const { return Colliders; }
+
 	/** Simulates DeltaTime and redraws. The tick calls it once per frame; tests may call it directly. */
 	void UpdateLine(float DeltaTime);
 
@@ -249,6 +254,25 @@ private:
 	float HangLength = 100.f;
 	FVector HookOffset = FVector::ZeroVector;
 	bool bOrientEndActor = true;
+
+	// Collision (T-032b): the line lies on and bends around what blocks a cast (docs/specs/fishing-line.md "Collision").
+	FLureLineColliders Colliders;
+	TArray<FOverlapResult> Overlaps;
+	TArray<FPlane> PlaneScratch;
+	/** Where the solids were gathered: the line's box grown by CollisionQueryMargin. */
+	FBox QueryBox = FBox(ForceInit);
+	/** Seconds since the last gather. */
+	float CollisionClock = 0.f;
+	bool bCollidersValid = false;
+	/** A gathered solid is Movable: it is gathered again every CollisionRefreshTime. */
+	bool bMovableColliders = false;
+
+	/** Reserves the gather's memory once, so a line in the same place never allocates. */
+	void ReserveColliders();
+	/** Gathers the solids again when the line (tip, end, points) nears the edge of QueryBox, or a movable one's refresh is due. */
+	void UpdateColliders(const FVector& Tip, const FVector& End, float DeltaTime);
+	/** Adds Component's simple collision shapes (instance Item of an instanced mesh), or its bounds without any. */
+	void AddCollidersOf(UPrimitiveComponent& Component, int32 Item);
 
 	void ResolveTuning() const;
 	void StartLine(ELureLineMode NewMode);
