@@ -184,6 +184,38 @@ function Invoke-LaneScript([string]$Path, [string]$Script, [string]$ScriptArgs) 
     return [pscustomobject]@{ Ok = $ok; ExitCode = $p.ExitCode; Status = $st; Message = $msg; LogPath = $(if ($st) { [string]$st.logPath } else { '' }) }
 }
 
+# Re-imports every data/tables/DT_* source that differs from $BaseRef into its /Game/Data asset, headless, with the
+# batch lane's own fresh build (so new row-struct fields exist), then commits the assets in the batch lane. Lanes never
+# touch .uasset; this is the one place the pipeline writes DataTable binaries outside the editor (T-072, 2026-09-24).
+function Sync-DataTables([string]$Path, [string]$BaseRef) {
+    $changed = @(git -C $Path diff --name-only $BaseRef HEAD -- 'data/tables' 2>$null | Where-Object { $_ -match '^data/tables/DT_[^/]+\.(csv|json)$' })
+    if ($changed.Count -eq 0) { return $null }
+    $assets = @()
+    foreach ($f in $changed) {
+        $tbl = [IO.Path]::GetFileNameWithoutExtension($f)
+        $asset = 'Content/Data/' + $tbl + '.uasset'
+        if (-not (Test-Path -LiteralPath ($Path + '/' + $asset))) { Write-Host ('  table ' + $tbl + ': no asset yet (new table) - left for the editor-operator'); continue }
+        $argsJson = '{"dest_path":"/Game/Data/' + $tbl + '","src_path":"' + ($Path + '/' + $f) + '"}'
+        Write-Host ('  re-importing ' + $tbl + ' from ' + $f + ' (headless, batch lane build)')
+        $since = Get-Date
+        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File ($Path + '/tools/unreal-python.ps1') -Function reimport_table -ArgsJson $argsJson | Out-Host
+        $st = $null; $statusPath = $Path + '/Saved/AgentLogs/status/unreal-python.json'
+        if (Test-Path $statusPath) { try { $st = Get-Content -Path $statusPath -Raw -Encoding UTF8 | ConvertFrom-Json } catch { $st = $null } }
+        $fresh = $false
+        if ($st -and $st.updatedAt) { try { $fresh = ([datetime]$st.updatedAt) -ge $since.AddSeconds(-2) } catch { $fresh = $false } }
+        if (($LASTEXITCODE -ne 0) -or (-not $fresh) -or ($st.state -ne 'succeeded')) { return ('re-import of ' + $tbl + ' failed in ' + $Path + ': ' + $(if ($st) { [string]$st.message } else { 'no status' })) }
+        $assets += $asset
+    }
+    if ($assets.Count -eq 0) { return $null }
+    $dirty = @(git -C $Path status --porcelain -- $assets 2>$null | Where-Object { $_ })
+    if ($dirty.Count -eq 0) { Write-Host '  re-imported tables unchanged'; return $null }
+    git -C $Path add -- $assets 2>&1 | Out-Null
+    git -C $Path commit -q -m ('integrate: re-import ' + (($assets | ForEach-Object { [IO.Path]::GetFileNameWithoutExtension($_) }) -join ', ') + ' from source') -- $assets 2>&1 | Out-Host
+    if ($LASTEXITCODE -ne 0) { return ('committing the re-imported tables failed in ' + $Path) }
+    Write-Host ('  committed re-imported tables: ' + ($assets -join ', '))
+    return $null
+}
+
 # Files a fast-forward of main to $Ref would change that are dirty/untracked in main's working tree.
 function Get-MainOverlap([string]$Ref) {
     $dirty = @()
@@ -322,6 +354,8 @@ while ($true) {
         Write-Status -Name $name -State 'running' -Message ('round ' + $round + ': build + tests in ' + $Batch)
         $build = Invoke-LaneScript $bl.Path 'build' ''
         if (-not $build.Ok) { Fail ('build failed in ' + $Batch + ' (round ' + $round + '): ' + $build.Message) @{ buildLog = $build.LogPath } }
+        $err = Sync-DataTables $bl.Path $mergedMain
+        if ($err) { Fail $err }
         $tests = Invoke-LaneScript $bl.Path 'run-tests' '-Filter Project'
         if (-not $tests.Ok) { Fail ('tests failed in ' + $Batch + ' (round ' + $round + '): ' + $tests.Message) @{ testLog = $tests.LogPath } }
         $needBuild = $false
@@ -343,6 +377,8 @@ while ($true) {
 if (@(Get-DirtyLines $bl.Path).Count -gt 0) { Fail ('batch lane ' + $Batch + ' became dirty during the run') }
 $ov = Get-MainOverlap $bl.Branch
 if ($ov.Overlap.Count -gt 0) { Fail ('refusing the fast-forward: it would touch uncommitted files in main: ' + ($ov.Overlap -join ', ')) }
+$assetChanges = @(git -C $root diff --name-only ('HEAD..' + $bl.Branch) -- 'Content' 2>$null | Where-Object { $_ })
+if (($assetChanges.Count -gt 0) -and ((Get-EditorProcesses).Count -gt 0)) { Fail ('refusing the fast-forward: it changes ' + $assetChanges.Count + ' asset(s) (e.g. ' + $assetChanges[0] + ') while the main editor is open; close it (tools/stop-editor.ps1) and rerun') }
 $out = (git -C $root merge --ff-only $bl.Branch 2>&1 | Out-String)
 if ($LASTEXITCODE -ne 0) { Fail ('git merge --ff-only ' + $bl.Branch + ' in main failed (nothing forced): ' + $out.Trim()) }
 $mainShort = (git -C $root rev-parse --short HEAD)

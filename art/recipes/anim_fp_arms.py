@@ -80,6 +80,13 @@ PRONE (designer B-M2 + Jimmy 2026-09-22: you can fish while lying prone; the rod
   real rod sits 8 deg off the fist's channel, hidden inside the fist.
 - The clearance numbers (RESULT_JSON "prone") are measured on the skinned mesh plus the SM_Rod_Basic mesh on every
   frame, with the StanceDip additive on top, and along simulated crossfades between every pair of rod poses.
+
+CAST (T-062, Jimmy A2: the charge must show in the arms, not only the rod): Poser.cast_charge / cast_release build
+A_FPArms_Cast_Charge (36 frames; Unreal evaluates it at CastCharge01 * length, frame 0 = HoldRod_Idle frame 0) and
+A_FPArms_Cast_Release (24-frame one-shot montage, notify CastRelease at CAST_RELEASE_FRAME, last frame = HoldRod_Idle
+frame 0). Each frame is six channels on HoldRod_Idle frame 0 (rod swing about the grip, grip offset, chest pitch,
+shoulder reach) plus elbow poles, with both hands solved from the rod (see the CAST_* constants). Not exported yet:
+gate A of T-062 (key poses) is under review.
 """
 import importlib.util
 import math
@@ -1036,6 +1043,124 @@ def carry_targets(B, sides, t, roll_deg=None, sign=None):
     return out
 
 
+# ---------------------------------------------------------------------------------------------------------------
+# T-062 cast: A_FPArms_Cast_Charge (Unreal evaluates it at CastCharge01) + A_FPArms_Cast_Release (one-shot montage)
+# ---------------------------------------------------------------------------------------------------------------
+# A cast pose = six channels applied to HoldRod_Idle frame 0 (breath phase 0), plus the elbow poles:
+#   swing     rod pitch about the grip (deg, + = tip back/up), about cast_swing_axis() (horizontal, across the rod)
+#   gx/gy/gz  grip offset (m, chest frame: x forward, y left, z up)
+#   cp        'arms' (chest) pitch about ARMS_PIVOT (deg, + = lean back: everything in front of the chest rises)
+#   shx       both shoulders forward (m, - = drawn back)
+# Both hands are solved from the rod exactly as in HoldRod_Idle (right fist on the grip, left fist on the crank knob),
+# so no grip slides on any frame. All channels 0 = HoldRod_Idle frame 0.
+# Why the wind-up is not bigger (T-062 gate A search): in first person the forearms and elbows are off-screen at every
+# charge, so the arms read through the fists. More grip travel back or right cuts the right fist at the right edge;
+# more lift, more lean or a rod past vertical carries the left fist (on the crank knob) into the centre 40 % box.
+CAST_CHANNELS = ("swing", "gx", "gy", "gz", "cp", "shx")
+CAST_IDLE = {ch: 0.0 for ch in CAST_CHANNELS}
+CAST_WIND = dict(swing=38.0, gx=-0.04, gy=-0.035, gz=-0.005, cp=2.0, shx=-0.01)   # charge 1 = Cast_Release frame 0
+CAST_CHARGE_FRAMES = 36        # 1.2 s = DT_Fishing ChargeTime; Unreal samples time = CastCharge01 * length
+CAST_RELEASE_FRAMES = 24       # 0.8 s one-shot
+CAST_RELEASE_FRAME = 3         # notify CastRelease (0.100 s): rod ~38 deg up, tip at full speed = the line leaves
+CAST_SETTLE_FROM = 9           # end of the follow-through hold; one ease from here into HoldRod_Idle frame 0
+# Release keys (frame: channels). 0-3: drive (the hands lead, the rod lags back), whip, RELEASE; 4-6: follow-through
+# (rod tip down at the water); 6-9: a short moving hold; then the settle (cast_release_channels). After the release
+# the hands stop (gx ~ constant) and the shoulders reach on (shx >= gx): the bent elbow keeps the forearm off the rear
+# grip, which runs under the forearm like a braced butt (an extended arm put the grip through the forearm, in view).
+CAST_RELEASE_KEYS = {
+    0: dict(CAST_WIND),
+    1: dict(swing=44.0, gx=0.0, gy=-0.03, gz=0.0, cp=1.0, shx=0.0),
+    2: dict(swing=24.0, gx=0.035, gy=-0.02, gz=0.01, cp=-0.3, shx=0.01),
+    3: dict(swing=4.0, gx=0.055, gy=-0.012, gz=0.022, cp=-1.0, shx=0.02),
+    4: dict(swing=-16.0, gx=0.056, gy=-0.008, gz=0.036, cp=-1.3, shx=0.05),
+    5: dict(swing=-30.0, gx=0.058, gy=-0.006, gz=0.048, cp=-1.5, shx=0.058),
+    6: dict(swing=-37.0, gx=0.06, gy=-0.005, gz=0.055, cp=-1.5, shx=0.06),
+    9: dict(swing=-35.5, gx=0.057, gy=-0.005, gz=0.053, cp=-1.3, shx=0.058),
+    CAST_RELEASE_FRAMES: dict(CAST_IDLE),
+}
+CAST_R_POLE_WIND = Vector((-0.15, -1.0, -0.7))   # right elbow further out at the wind-up (hold: RIGHT_POLE_HOLD)
+CAST_L_POLE_WIND = Vector((0.1, 0.9, -0.6))      # left elbow a little forward and higher (hold: LEFT_POLE_HOLD)
+CAST_FT_POLE_AZ_DEG = 335.0    # right elbow swings out (pole_dir) through the follow-through, away from the rear grip
+                               # (340-345 clear a little more but twist the forearm 52-60 deg vs 12 at the idle)
+
+
+def ease_out(x, k):
+    x = max(0.0, min(1.0, x))
+    return 1.0 - (1.0 - x) ** k
+
+
+def settle_ease(t):
+    """0..1 -> 0..1: zero speed at both ends, peak speed at t = 1/3, a long soft landing (double zero at 1)."""
+    t = max(0.0, min(1.0, t))
+    return 1.0 - (1.0 - t) ** 3 * (1.0 + 3.0 * t)
+
+
+def pchip(xs, ys, x):
+    """Monotone cubic (Fritsch-Carlson) through the keys (xs, ys) with zero end slopes: no overshoot between keys,
+    the clip starts and ends at rest (clean montage blends)."""
+    n = len(xs)
+    if x <= xs[0]:
+        return ys[0]
+    if x >= xs[-1]:
+        return ys[-1]
+    h = [xs[i + 1] - xs[i] for i in range(n - 1)]
+    d = [(ys[i + 1] - ys[i]) / h[i] for i in range(n - 1)]
+    m = [0.0] * n
+    for i in range(1, n - 1):
+        if d[i - 1] * d[i] > 0.0:
+            w1, w2 = 2 * h[i] + h[i - 1], h[i] + 2 * h[i - 1]
+            m[i] = (w1 + w2) / (w1 / d[i - 1] + w2 / d[i])
+    i = max(j for j in range(n - 1) if xs[j] <= x)
+    t = (x - xs[i]) / h[i]
+    h00, h10, h01, h11 = 2 * t ** 3 - 3 * t ** 2 + 1, t ** 3 - 2 * t ** 2 + t, -2 * t ** 3 + 3 * t ** 2, t ** 3 - t ** 2
+    return h00 * ys[i] + h10 * h[i] * m[i] + h01 * ys[i + 1] + h11 * h[i] * m[i + 1]
+
+
+def cast_swing_axis():
+    """Horizontal axis across the HoldRod_Idle rod: swinging about it is a pure pitch of the rod."""
+    d0 = holdrod_rod(0.0).to_3x3().col[0].normalized()
+    return d0.cross(Vector((0.0, 0.0, 1.0))).normalized()
+
+
+def cast_charge_channels(c):
+    """Charge 0..1 -> channels. The rod leads (fast ease-out: the press answers at once), the grip follows, the chest
+    leans in last (smoothstep from 15 %), so the last third reads as building tension."""
+    s_rod, s_grip, s_body = ease_out(c, 1.8), ease_out(c, 1.5), smoothstep((c - 0.15) / 0.85)
+    s = {"swing": s_rod, "gx": s_grip, "gy": s_grip, "gz": s_grip, "cp": s_body, "shx": s_body}
+    return {ch: CAST_IDLE[ch] + (CAST_WIND[ch] - CAST_IDLE[ch]) * s[ch] for ch in CAST_CHANNELS}
+
+
+def cast_release_channels(f):
+    """Release frame (may be fractional) -> channels: monotone cubic through CAST_RELEASE_KEYS up to CAST_SETTLE_FROM,
+    then one settle_ease into the idle (no hitch in the deceleration)."""
+    if f >= CAST_SETTLE_FROM:
+        s = settle_ease((f - CAST_SETTLE_FROM) / float(CAST_RELEASE_FRAMES - CAST_SETTLE_FROM))
+        a, b = CAST_RELEASE_KEYS[CAST_SETTLE_FROM], CAST_RELEASE_KEYS[CAST_RELEASE_FRAMES]
+        return {ch: a[ch] + (b[ch] - a[ch]) * s for ch in CAST_CHANNELS}
+    keys = sorted(k for k in CAST_RELEASE_KEYS if k <= CAST_SETTLE_FROM)
+    return {ch: pchip(keys, [CAST_RELEASE_KEYS[k][ch] for k in keys], f) for ch in CAST_CHANNELS}
+
+
+def cast_poles(s_wind, w_ft=0.0):
+    """Elbow poles: hold -> wind-up by s_wind; the right one turned towards CAST_FT_POLE_AZ_DEG by w_ft."""
+    r = RIGHT_POLE_HOLD.lerp(CAST_R_POLE_WIND, s_wind)
+    return r.lerp(pole_dir(CAST_FT_POLE_AZ_DEG), w_ft), LEFT_POLE_HOLD.lerp(CAST_L_POLE_WIND, s_wind)
+
+
+def cast_targets(B, knob_grip, ch, r_pole, l_pole):
+    """Channels + poles -> ('arms' bone matrix, arm targets). The rod is HoldRod_Idle frame 0's, swung and moved,
+    then carried by the chest turn; shoulders and poles turn with the chest."""
+    R0 = holdrod_rod(0.0)
+    D = about_point(rot3((0.0, 1.0, 0.0), -ch["cp"]), ARMS_PIVOT)
+    rod = D @ mat4(rot3(cast_swing_axis(), ch["swing"]) @ R0.to_3x3(),
+                   R0.translation + Vector((ch["gx"], ch["gy"], ch["gz"])))
+    Rb = D.to_3x3()
+    sh = Rb @ Vector((ch["shx"], 0.0, 0.0))
+    tg = rod_hands_targets(B, rod, knob_grip, 0.0, RIGHT_SHOULDER_HOLD + sh, Rb @ r_pole, LEFT_SHOULDER_HOLD + sh,
+                           Rb @ l_pole)
+    return D @ B["arms"], tg
+
+
 class Poser:
     """Pose sources for the actions and the previews. Each returns (P, metrics); arms_M applies the additive
     StanceDip on top (moves everything rigidly about the chest pivot), for previews and clearance checks."""
@@ -1081,6 +1206,27 @@ class Poser:
         t = f / FPS
         P, m = full_pose(self.B, self.sides, self.B["arms"], carry_targets(self.B, self.sides, t),
                          cooler=cooler_matrix(t))
+        return self._dip(P, arms_M), m
+
+    def cast_charge(self, f, arms_M=None):
+        """A_FPArms_Cast_Charge at frame f (charge = f / CAST_CHARGE_FRAMES, f may be fractional). Frame 0 IS
+        HoldRod_Idle frame 0; the last frame IS Cast_Release frame 0."""
+        c = f / float(CAST_CHARGE_FRAMES)
+        if c <= 0.0:
+            return self.hold(0, arms_M)
+        r_pole, l_pole = cast_poles(ease_out(c, 1.7))
+        body, tg = cast_targets(self.B, self.knob_grip, cast_charge_channels(c), r_pole, l_pole)
+        P, m = full_pose(self.B, self.sides, body, tg)
+        return self._dip(P, arms_M), m
+
+    def cast_release(self, f, arms_M=None):
+        """A_FPArms_Cast_Release at frame f. Frame 0 = the full wind-up; the last frame IS HoldRod_Idle frame 0."""
+        if f >= CAST_RELEASE_FRAMES:
+            return self.hold(0, arms_M)
+        w_ft = smoothstep((f - 2) / 4.0) * (1.0 - smoothstep((f - 12) / 12.0))
+        r_pole, l_pole = cast_poles(1.0 - smoothstep(f / 6.0), w_ft)
+        body, tg = cast_targets(self.B, self.knob_grip, cast_release_channels(f), r_pole, l_pole)
+        P, m = full_pose(self.B, self.sides, body, tg)
         return self._dip(P, arms_M), m
 
     def aim(self, name):
