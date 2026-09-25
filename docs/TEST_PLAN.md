@@ -465,7 +465,7 @@ the test writes, so any sequence of ids, moves and endings is cheap). Tables fro
 ### A3 gate QA (QA-A3b, Full tier): T-048, T-048b, T-043, T-058a, T-059a, T-061 (fish side)
 Implementer tests already cover every acceptance criterion: `MouthOnLine.{PureRules, ActorFollowsRuns, BobberOverMouth}` (T-048),
 `SwimFacing.*` (T-048b, 5), `ExhaustedUpright` (T-058a), `PlayRateByStamina.{Rules, AdapterAndActor}` (T-059a), `Fishing.Line.Hang.SideOn.*` (T-043),
-`Fishing.Line.Hang.Wiggle.*` (T-061). Independent boundary tests: `Tests/FishVisual/QAS1FightFishVisualTest.cpp`, `Project.FishVisual.QA.S1.*`, 10 tests.
+`Fishing.Line.Hang.Wiggle.*` (T-061). Independent boundary tests: `Tests/FishVisual/QAS1FightFishVisualTest.cpp`, `Project.FishVisual.QA.S1.*`, 10 tests (the swing tests zero `BodyAngleDeg` to test the swing alone; the T-075 base angle is covered by `Project.FishVisual.T075.*`).
 
 | Tests (`Project.FishVisual.QA.S1.` + ...) | Item | What they prove |
 |---|---|---|

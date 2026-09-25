@@ -52,6 +52,7 @@ namespace LureFishVisualQAS1
 			return false;
 		}
 		OutRow = *Row;
+		OutRow.BodyAngleDeg = 0.f; // Isolate the swing from T-075's base body angle (covered by Project.FishVisual.T075.*).
 		return true;
 	}
 
