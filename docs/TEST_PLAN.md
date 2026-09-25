@@ -194,7 +194,7 @@ Covers the A2 playtest regressions (lid look, big fish in the display, view-ray 
 | Hud | `Hud.CoolerCountFollowsCarried` | Status and Carrying counts agree. The count follows when I carry my own cooler, a friend's Large one (x/8, updating live as fish are added or taken), when a friend carries mine (their screen shows mine, mine shows my own), and for a player with no cooler (empty until they carry one). |
 | Net | `Net.LidJoinsOpenWithoutSwing` | A client that joins while the lid is open sees it open from its first frame (no swing from 0) and shows the fish. A put-in while open doesn't move the lid. Close reaches the client and shuts within LidOpenTime. A second late client sees a closed cooler with an old pulse shut from its first frame. |
 | Net | `Net.ClackSeenByBothClients` | A real client E puts a fish into another player's closed cooler. Both clients see a short clack (at least 0.8x and at most LidPulsePitch, no longer than LidOpenTime), the state stays closed, and the prompt says Open. |
-| Net | `Net.HudCountsCarriedCoolerOnClients` | Client 0 picks up client 1's cooler with a real F. On client 0, status and Carrying both read 1/4 and follow a server-side add (2/4). Client 1 still shows its own count. After put-down, client 0 is back to its own 0/4. |
+| Net | `Net.HudCountsCarriedCoolerOnClients` | Client 0 picks up client 1's cooler with a real F. On client 0, status and Carrying both read 1/4 and follow a server-side add (2/4). Client 1 still shows its own count. After put-down (F, T-064), client 0 is back to its own 0/4. |
 
 Bugs found: none in production code.
 Notes for the next QA agent:

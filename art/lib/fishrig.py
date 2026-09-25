@@ -594,17 +594,21 @@ def swim_fast(f):
 
 # --- Fight_Run (T-007 move Run): an all-out run against the line. 4 Hz (6 strokes in 1.5 s). The move restarts the
 # clip (Reset Child on Activation), so it opens with the strongest surge (f0-15), keeps driving, shakes its head
-# against the line (f24-36, 3 shakes at 7.5 Hz, the body answering 2 frames later), gasps (a weaker stroke with the
+# against the line (f24-36, 2.4 shakes at 6 Hz, the body answering 2 frames later), gasps (a weaker stroke with the
 # pectorals flared, f33-42) and surges again at the wrap. The body rolls into the strokes at irregular times (flank
 # flashes, up to 22 deg) and the head wags and nods against the line with every stroke; pectorals flat.
+# Gate B timing: the shakes were 7.5 Hz (a 4-frame period). Unreal interpolates the 30 fps keys linearly, so a 4-frame
+# sine plays as a jagged triangle and the tail tip jumped to 90 mm/frame for one frame (48 either side); a 5-frame period
+# (6 Hz, as in Fight_Dive) keeps the shake violent without the one-frame jerk.
 RUN_N, RUN_CYC, RUN_AMP = 45, 6, 0.17
+RUN_SHAKE_PERIOD = 5.0
 RUN_STROKE = Keys([(0, 1.15), (8, 1.1), (15, 1.0), (22, 1.08), (30, 0.95), (37, 0.72), (42, 0.95)], RUN_N)
 RUN_ROLL = Keys([(0, 0.0), (6, 19.0), (12, -12.0), (18, 15.0), (25, -22.0), (31, 10.0), (38, -7.0)], RUN_N)
 RUN_PEC = Keys([(0, TUCK_DEG), (32, TUCK_DEG), (37, 8.0), (41, 8.0)], RUN_N)
 
 
 def _run_shake(f):
-    return 9.0 * _burst(f, 24.0, 12.0) * math.sin(2.0 * math.pi * (f - 24.0) / 4.0)
+    return 9.0 * _burst(f, 24.0, 12.0) * math.sin(2.0 * math.pi * (f - 24.0) / RUN_SHAKE_PERIOD)
 
 
 def fight_run(f):
@@ -763,27 +767,37 @@ def curled(_f=0.0):
     return p.pecs(TUCK_DEG, TUCK_DEG)
 
 
-# --- Swim_Tired (S3 / T-058, the exhausted fish: bExhausted, stamina 0): UPRIGHT (no roll beyond a 2 deg balance
-# wobble) and spent. It starts in a glide (the moment it gives up; the role change restarts the clip), then one slow
-# laboured stroke (f20-46), a weaker return (f46-62), a glide, a half-hearted flick (f68-80) and a glide into the loop;
-# the head a little nose-up, the tail hanging (sagging most in the glides), the pectorals flared out and sculling
-# slowly to stay upright. 2 wave cycles in 3 s (0.67 Hz), stroke strength keyed.
+# --- Swim_Tired (S3 / T-058, the exhausted fish: bExhausted, stamina 0): UPRIGHT (a lean of at most 3.5 deg) and
+# spent. It starts in a glide (the moment it gives up; the role change restarts the clip), then one slow, heavy
+# stroke (f20-46: the tail sweeps wide to one side, the tail half lifts out of its sag and the head heaves up), a weaker
+# return (f46-62), a glide, a half-hearted flick (f68-80) and a glide into the loop. In the glides the tail hangs
+# (sags 14 deg), the nose drops level and the pectorals flare out, sculling slowly to keep it upright; they fold in
+# for the stroke. 2 wave cycles in 3 s (0.67 Hz), stroke strength keyed.
 # Calmer than any fight clip, and not the even, relaxed cruise of Swim_Idle (1 Hz, level, regular).
-TIRED_N, TIRED_CYC, TIRED_AMP = 90, 2, 0.085
-TIRED_STROKE = Keys([(0, 0.12), (14, 0.15), (26, 0.7), (36, 1.0), (46, 0.8), (58, 0.55), (66, 0.25), (74, 0.15),
-                     (84, 0.12)], TIRED_N)
-TIRED_FLICK = Keys([(0, 0.0), (68, 0.0), (72, 0.4), (76, -0.15), (80, 0.0)], TIRED_N)
-TIRED_SAG = Keys([(0, -12.0), (18, -12.0), (36, -7.0), (58, -8.0), (70, -11.0), (84, -12.0)], TIRED_N)
+# Gate B (N1, the stroke must read from the dock at 5 m): the stroke's amplitude went up (0.085 -> 0.13; frequency
+# unchanged) and it now shows side-on too: tail-half lift 14 -> 3 deg sag, head heave 3 -> 9 deg nose-up, a lean into
+# the stroke. Seen from the dock at 5 m the tail tip now swings 14 px (front / behind; was 10) and 6 px side-on (was 4)
+# (anim_fish_views.py RESULT_JSON).
+TIRED_N, TIRED_CYC, TIRED_AMP = 90, 2, 0.13
+TIRED_STROKE = Keys([(0, 0.10), (14, 0.12), (26, 0.7), (36, 1.0), (46, 0.8), (58, 0.55), (66, 0.22), (74, 0.12),
+                     (84, 0.10)], TIRED_N)
+TIRED_FLICK = Keys([(0, 0.0), (68, 0.0), (72, 0.5), (76, -0.18), (80, 0.0)], TIRED_N)
+TIRED_SAG = Keys([(0, -14.0), (18, -14.0), (38, -3.0), (56, -6.0), (70, -12.0), (84, -14.0)], TIRED_N)
+TIRED_HEAD = Keys([(0, -3.0), (20, -3.0), (38, -9.0), (58, -6.0), (72, -3.0)], TIRED_N)     # pitch, - = nose up
+TIRED_LEAN = Keys([(0, 0.0), (24, 0.0), (36, 3.5), (50, -2.5), (64, 0.5), (76, 0.0)], TIRED_N)
+TIRED_PEC = Keys([(0, 16.0), (20, 16.0), (34, 6.0), (48, 8.0), (64, 16.0)], TIRED_N)
+TIRED_MAX_LEAN_DEG = 5.0          # the upright check (anim_fish.py RESULT_JSON tired_upright)
 
 
 def swim_tired(f):
     p = Pose().wave(TIRED_AMP * TIRED_STROKE(f), TIRED_CYC * f / TIRED_N)
     p.flick(TIRED_FLICK(f))
-    p.head(pitch_deg=-5.0 + 1.0 * _sin(f, TIRED_N, 1))              # a little nose-up, slowly nodding
+    p.head(pitch_deg=TIRED_HEAD(f))                                 # heaves up with the stroke, level in the glides
     p.arch(TIRED_SAG(f))                                            # tail hanging, sagging most in the glides
-    p.roll += 2.0 * DEG * _sin(f, TIRED_N, TIRED_CYC, 0.25)         # balance wobble, with the pectoral sculls
-    s = 8.0 * _sin(f, TIRED_N, TIRED_CYC)
-    return p.pecs(12.0 + s, 12.0 - s)
+    p.roll += TIRED_LEAN(f) * DEG                                   # a small lean into the stroke; upright otherwise
+    s = 6.0 * _sin(f, TIRED_N, TIRED_CYC)
+    pec = TIRED_PEC(f)
+    return p.pecs(pec + s, pec - s)
 
 
 # --- Hooked_Hang (S3 / T-060): the landed fish dangling from the hook, nose up the line, its right side turned to the

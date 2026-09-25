@@ -923,14 +923,15 @@ namespace LureCatchQANet
 				ServerBox.Max.Z >= Whole.Max.Z - 1.0);
 		}
 
-		// The friend can use it as before: pick it up (F) with both fish, and put it down again (E).
+		// The friend can use it as before: pick it up (F) with both fish, and put it down again (F, T-064).
 		Net.LookAt(0, Cooler0->GetInteractionLocation());
 		Worlds.TickAll(2);
 		TestEqual(TEXT("the friend's F picks it up"), LCT::VerbName(Net.Keys(0)->ResolveInteraction(KeyF).Verb), LCT::VerbName(EVerb::PickUpCooler));
 		TestTrue(TEXT("friend: F"), Net.Keys(0)->PressKey(KeyF));
 		TestTrue(TEXT("the friend carries it (server and its machine)"), Net.Until([&]() { return Cooler->IsHeldBy(Friend, ELureHoldMode::Hand) && Cooler0->IsHeldBy(Net.Mine(0), ELureHoldMode::Hand); }));
 		TestEqual(TEXT("... with both fish"), Cooler->GetNumFish(), 2);
-		TestTrue(TEXT("friend: E puts it down"), Net.Keys(0)->PressKey(KeyE));
+		TestEqual(TEXT("the friend's F puts it down"), LCT::VerbName(Net.Keys(0)->ResolveInteraction(KeyF).Verb), LCT::VerbName(EVerb::PutDownCooler));
+		TestTrue(TEXT("friend: F puts it down"), Net.Keys(0)->PressKey(KeyF));
 		TestTrue(TEXT("free again on both machines"), Net.Until([&]() { return Cooler->IsFree() && Cooler0->IsFree(); }));
 		for (const FFishInstance& Fish : Inside)
 		{

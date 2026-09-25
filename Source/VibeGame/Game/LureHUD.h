@@ -27,6 +27,9 @@ public:
 	/** The notices still showing for PlayerController's own player (ULureProgressionComponent::GetNoticeLines) */
 	static TArray<FString> GetNoticeLines(const APlayerController* PlayerController);
 
+	/** T-051: the debug menu (a dark box with the bind list and mouse sensitivity, top-right) or, when closed, its one-line hint. */
+	void DrawDebugMenu();
+
 	/** Screen margin (px) of the top-left and lower-left text blocks */
 	static constexpr float Margin = 24.f;
 	/** The lower-left block's last line ends this far (px) above the bottom edge */

@@ -1235,8 +1235,8 @@ namespace LureCoolerLidFocusQA
 		Theirs->GetStorage()->AddFish(FLureCaughtFish::Landed(LCT::MakeFish(TEXT("Bonefish"), 10, 1, 1.5f, 1702), FLureFreshness::GetServerTime(Net.Server)));
 		TestTrue(FString::Printf(TEXT("client 0: 2/4 after a fish is added (%s)"), *Counts(0).All), Net.Until([&]() { return Counts(0).Status == TEXT("2/4") && Counts(0).Carrying == TEXT("2/4"); }));
 
-		// Put it down (E): client 0 counts its own again.
-		if (!Net.Press(*this, 0, nullptr, Net.Mine(0)->GetPawnViewLocation() + Net.Mine(0)->GetActorForwardVector() * 100.0f + FVector(0.0f, 0.0f, -100.0f), KeyE,
+		// Put it down (F, T-064): client 0 counts its own again.
+		if (!Net.Press(*this, 0, nullptr, Net.Mine(0)->GetPawnViewLocation() + Net.Mine(0)->GetActorForwardVector() * 100.0f + FVector(0.0f, 0.0f, -100.0f), KeyF,
 			ELureInteractVerb::PutDownCooler, TEXT("client 0 puts it down")))
 		{
 			return false;
