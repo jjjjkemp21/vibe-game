@@ -28,7 +28,17 @@ Show, then the candidates; rows: FP day with the centre box, the other player's 
 crop and as the true 90 deg frame, side view, right-fist close-up). Measures: body/lid/fish share of the centre box;
 fist pixels visible (vs. props removed and no frame edge) and the visible wrist-and-hand skin, both against the
 accepted carry; the fish / open-mouth / lid pixels the other player sees; arms-in-hull depth; breath-loop reach.
-POSES[Show] stays the gate A pose until the lead picks a candidate.
+POSES[Show] = candidate A (x59_z29_t65_P1_S8, accepted at gate A2); the A2 strip keeps gate A's Show as its reference.
+
+Gate B (the DEFAULT run, T064A_STAGE unset or "B"): keys both loops (frames 0-90 = 3.0 s, the carry's breath phases;
+frame 90 = frame 0), checks them on the keyed actions (pops, loop seam, fists vs rope sockets, arms in the cooler hull,
+elbow bend), checks the rig against the committed SK_FPArms.fbx, exports art/export/Characters/A_FPArms_CarryCooler_
+{Open,Show}.fbx with pb.export_skeletal_fbx (cm; SK_FPArms.fbx itself is NOT re-exported: the mesh and the 18 bones are
+unchanged), re-imports them, simulates the Unreal crossfades Carry<->Open, Carry<->Show, Open<->Show (plain blend,
+the gate A Two Bone IK plan, and the gate B fix: cooler fit to the fists + IK), and renders the STOP 2 previews
+SK_FPArms_cooler_{open,open_lid100,show}_fp[_dusk].png, _show_outside.png, _grips.png, _crossfade_ik.png,
+_crossfade_fp.png, _anim.png. T064A_RENDER=0 skips the renders; T064A_XFADE_ONLY=1 runs only the crossfade numbers.
+The owner's lid: 235 deg in both poses (LID_FP_*; eng follow-up), other players see LidOpenPitch 100.
 """
 import importlib.util
 import json
@@ -51,7 +61,7 @@ RECIPES = REPO / "art" / "recipes"
 PREVIEW_DIR = REPO / "Saved" / "AgentLogs" / "previews"
 ASSET = "SK_FPArms"
 CATEGORY = "Characters"
-STAGE = os.environ.get("T064A_STAGE", "A")
+STAGE = os.environ.get("T064A_STAGE", "B")
 
 
 def load_module(stem):
@@ -82,12 +92,17 @@ POSES = {
     # the box fills the centre).
     "A_FPArms_CarryCooler_Open": {"handles": Vec((0.48, 0.0, -0.27)), "tilt": -55.0, "roll": None, "sign": None,
                                   "pole": Vec((-0.1, -1.0, 0.05)), "shoulder": Vec((0.0, 0.0, -0.01))},
-    # Show: mouth turned 65 deg away (46 deg past the carry): the front wall (latch, sticker) faces up at the
-    # bottom of the view, the mouth faces whoever stands in front. Shoulders 3 cm forward / 5 cm out, elbows out and
-    # down so the forearms pass outside the box's side walls.
-    "A_FPArms_CarryCooler_Show": {"handles": Vec((0.48, 0.0, -0.22)), "tilt": 65.0, "roll": None, "sign": None,
-                                  "pole": Vec((-0.3, -1.0, -0.5)), "shoulder": Vec((0.03, -0.05, -0.02))},
+    # Show (gate A2 candidate A = x59_z29_t65_P1_S8, accepted by art-mgr 2026-09-24): mouth turned 65 deg away (46
+    # deg past the carry), held low and out, a presenting pose: handles 59 cm ahead / 29 cm below the eye, elbows
+    # down, shoulders 7 cm forward / 8 cm out. The front wall (latch) faces up at the bottom of the view with both
+    # fists at the lower corners; the mouth, fish and lid face whoever stands in front (the outside read comes first).
+    "A_FPArms_CarryCooler_Show": {"handles": Vec((0.59, 0.0, -0.29)), "tilt": 65.0, "yaw": 0.0, "roll": None,
+                                  "sign": None, "pole": Vec((0.0, -0.6, -1.0)), "shoulder": Vec((0.07, -0.08, -0.02)),
+                                  "hull_top": 48},
 }
+# gate A's Show (the A2 strip's reference column)
+GATE_A_SHOW = {"handles": Vec((0.48, 0.0, -0.22)), "tilt": 65.0, "roll": None, "sign": None,
+               "pole": Vec((-0.3, -1.0, -0.5)), "shoulder": Vec((0.03, -0.05, -0.02))}
 LID_PROPOSAL_DEG = 235.0            # Eng follow-up proposal: first-person carried-open lid folded back level (180 + 55)
 EXPLORE = []       # (key, clip, overrides): the gate A pose search (T064A_EXPLORE=1)
 for _t, _hz in ((45.0, -0.22), (50.0, -0.24), (45.0, -0.25), (55.0, -0.22)):
@@ -546,7 +561,7 @@ SHOW_POLES = {"P0": (-0.3, -1.0, -0.5), "P1": (0.0, -0.6, -1.0), "P2": (-0.3, -1
 SHOW_GRID = [("x%d_z%d_t%d_%s" % (round(x * 100), round(-z * 100), t, pk), show_cfg(x, z, t, pole=pv))
              for x in (0.58, 0.60, 0.62) for z in (-0.27, -0.29) for t in (65.0, 70.0)
              for pk, pv in SHOW_POLES.items()]
-SHOW_REF = ("gateA_show", dict(POSES[SHOW]))
+SHOW_REF = ("gateA_show", dict(GATE_A_SHOW))
 # Search 4: x 59-60 with the shoulders 3 cm further out (S8) against the forearm-in-wall clip of search 3's x 60 rows.
 SHOW_GRID += [("x%d_z%d_t%d_%s_S%d" % (round(x * 100), round(-z * 100), t, pk, round(-sy * 100)),
                show_cfg(x, z, t, pole=SHOW_POLES[pk],
@@ -642,9 +657,9 @@ class ObserverStage:
     """Moves the carrier (arms, cooler, fish) into the observer's camera space (the FP renderer's camera sits at the
     origin looking +X, level) and adds a placeholder body (grey torso + head) so the view reads as a person."""
 
-    def __init__(self, ctx, P, cooler, fish, lid):
+    def __init__(self, ctx, P, cooler, fish, lid, O=None):
         self.ctx, self.cooler, self.fish = ctx, cooler, fish
-        self.Oi = observer_matrix().inverted()
+        self.Oi = (O if O is not None else observer_matrix()).inverted()
         ctx["arm_obj"].matrix_world = self.Oi          # the skinned mesh moves with its armature (the modifier
         ctx["mesh_obj"].matrix_world = self.Oi         # deforms in armature space: both or neither)
         Cp = self.Oi @ P["cooler"]
@@ -700,11 +715,11 @@ class ObserverStage:
         px_per_ray = ((u1 - u0) / nu * W / 2.0) * ((v1 - v0) / nv * H / 2.0)
         return {k: int(round(v * px_per_ray)) for k, v in counts.items()}
 
-    def render(self, path, label, hfov, res=(960, 540)):
+    def render(self, path, label, hfov, res=(960, 540), kind="day"):
         half_w = 0.05 * math.tan(math.radians(hfov) / 2.0)
         cleanup = fa.stage_label(label, (0, 0, 0), (0, -1, 0), (0, 0, 1), (1, 0, 0), half_w, res, rel_size=0.04)
         try:
-            fp_preview.render_fp(path, "day", resolution=res, hfov_deg=hfov, samples=24)
+            fp_preview.render_fp(path, kind, resolution=res, hfov_deg=hfov, samples=24)
         finally:
             cleanup()
         return str(path)
@@ -721,14 +736,15 @@ class ObserverStage:
         bpy.context.view_layer.update()
 
 
-def show_eval(ctx, cfg, cooler, fish, outside=True):
-    """Solve + measure one Show candidate at frame 0 (lid at LID_OPEN_PITCH_DEG)."""
+def show_eval(ctx, cfg, cooler, fish, outside=True, lid=LID_OPEN_PITCH_DEG):
+    """Solve + measure one Show candidate at frame 0 (the FP numbers with the lid at `lid`; the observer always sees
+    LID_OPEN_PITCH_DEG, the replicated value)."""
     B, sides, arm_obj, mesh_obj = ctx["B"], ctx["sides"], ctx["arm_obj"], ctx["mesh_obj"]
     cfg["_roll"], cfg["_sign"] = solve_roll(ctx, cfg, cooler)
     P, m = pose(B, sides, cfg, 0)
     fa.apply_basis(arm_obj, fa.pose_to_basis(B, P))
     bpy.context.view_layer.update()
-    cooler.place(P["cooler"], LID_OPEN_PITCH_DEG)
+    cooler.place(P["cooler"], lid)
     fish.place(P["cooler"])
     groups = {"lid": {cooler.lid.name}, "cooler": {cooler.body.name}, "fish": {o.name for o in fish.objs},
               "arms": {mesh_obj.name}}
@@ -756,7 +772,7 @@ def show_eval(ctx, cfg, cooler, fish, outside=True):
         try:
             res["observer_px"] = st.read(groups)
         finally:
-            st.close(P, LID_OPEN_PITCH_DEG)
+            st.close(P, lid)
     res["passes"] = (min(f["visible_pct"] for f in fists.values()) >= FIST_MIN_PCT
                      and cov["cooler"] <= BODY_MAX_PCT)
     return res, P, groups
@@ -877,6 +893,564 @@ def gate_a2(ctx):
     return out, full
 
 
+# ---------------------------------------------------------------------------------------------------------------
+# Gate B (the default run): the two 3.0 s loops keyed and exported (cm, pb.export_skeletal_fbx), motion / contact /
+# re-import checks, the crossfade + Two Bone IK simulation, and the STOP 2 previews.
+# ---------------------------------------------------------------------------------------------------------------
+EXPORT_DIR = REPO / "art" / "export" / CATEGORY
+OPEN = "A_FPArms_CarryCooler_Open"
+CARRY = "A_FPArms_CarryCooler_Idle"          # anim_fp_arms' carry (read-only), the crossfade partner
+ACTIONS = [(OPEN, 0, fa.LOOP_FRAMES), (SHOW, 0, fa.LOOP_FRAMES)]   # 0-90 = 3.0 s, frame 90 = frame 0
+LID_FP_OPEN_DEG = LID_PROPOSAL_DEG           # accepted at gate A: the owner's carried-open lid (eng follow-up)
+LID_FP_SHOW_DEG = float(os.environ.get("T064A_SHOW_LID", "235"))   # the owner's lid while showing (see the spec)
+LID_OPEN_TIME_S = 0.25                       # DT_Catch LidOpenTime (the lid's own opening, engineering)
+SHOW_TURN_TIME_S = 0.4                       # DT_Catch ShowTurnTime = the arm-pose blend time
+IK_TOL_MM = 10.0                             # art-mgr: fists within 1 cm of the ropes through every crossfade
+XFADE_PAIRS = [(CARRY, OPEN), (CARRY, SHOW), (OPEN, SHOW)]
+XFADE_ALPHAS = [i / 10.0 for i in range(1, 10)]
+XFADE_FRAMES = (0, 45)                       # sync group FPArmsBreath: both clips at the same phase
+XFADE_MODES = ("none", "ik", "ik_rel", "fit", "fit_ik")
+SOCKET_OF = {"l": "SOCKET_Handle_R", "r": "SOCKET_Handle_L"}   # the cooler faces the player
+HAND_CHILDREN = {"r": ("fingers_r", "thumb_r", "hand_r_rod", "hand_l_crank", "hand_r_fish"),
+                 "l": ("fingers_l", "thumb_l")}
+PROBES = [("hand_r", "head"), ("hand_l", "head"), ("fingers_r", "tail"), ("fingers_l", "tail"), ("thumb_r", "tail"),
+          ("thumb_l", "tail"), ("lowerarm_r", "head"), ("lowerarm_l", "head"), ("cooler", "head")]
+RENDER = os.environ.get("T064A_RENDER", "1") == "1"
+
+
+def short(name):
+    return name.replace("A_FPArms_CarryCooler_", "").replace("A_FPArms_", "")
+
+
+def clip_pose(ctx, name, f):
+    if name == CARRY:
+        return ctx["poser"].carry(f)[0]
+    return pose(ctx["B"], ctx["sides"], ctx["cfgs"][name], f)[0]
+
+
+def fp_lid(name):
+    """The lid the OWNER sees in each pose (other players: LID_OPEN_PITCH_DEG when open, from the replicated state)."""
+    return {CARRY: 0.0, OPEN: LID_FP_OPEN_DEG, SHOW: LID_FP_SHOW_DEG}[name]
+
+
+def static(arm_obj):
+    ad = arm_obj.animation_data
+    if ad:
+        for tr in ad.nla_tracks:
+            tr.mute = True
+        ad.action = None
+
+
+def set_pose(ctx, P):
+    static(ctx["arm_obj"])
+    fa.apply_basis(ctx["arm_obj"], fa.pose_to_basis(ctx["B"], P))
+    bpy.context.view_layer.update()
+
+
+def pose_now(arm_obj):
+    return {p.name: p.matrix.copy() for p in arm_obj.pose.bones}
+
+
+def ue_vec_cm(v):
+    return [round(v.x * 100.0, 1), round(-v.y * 100.0, 1), round(v.z * 100.0, 1)]
+
+
+def grip_point(P, B, sides, s):
+    return (P["hand_" + s] @ B["hand_" + s].inverted() @ fa.rod_rest_matrix(sides[s])).translation
+
+
+def grip_errors_mm(P, ctx, cooler):
+    C = P["cooler"]
+    return {s: round((grip_point(P, ctx["B"], ctx["sides"], s) - C @ cooler.sockets[SOCKET_OF[s]]).length * 1000.0, 1)
+            for s in ("l", "r")}
+
+
+def hand_in_cooler(P, s):
+    return P["cooler"].inverted() @ P["hand_" + s].translation
+
+
+def two_bone_ik(Pm, s, target, keep_rel=False):
+    """Unreal FAnimNode_TwoBoneIK on upperarm/lowerarm/hand: the upper arm turns by the shortest arc to the new elbow,
+    the lower arm to the target; the hand keeps its COMPONENT-space rotation (bTakeRotationFromEffectorSpace and
+    bMaintainEffectorRelRot off; keep_rel=True simulates bMaintainEffectorRelRot); joint target = the input elbow
+    (the bend plane is kept); no stretching (a target out of reach is clamped to full reach). The twist bone and the
+    hand's children follow rigidly."""
+    P = dict(Pm)
+    S, E, W = (Pm[b + "_" + s].translation for b in ("upperarm", "lowerarm", "hand"))
+    L1, L2 = (E - S).length, (W - E).length
+    d = target - S
+    reach = (L1 + L2) * 0.999                  # fa.ik_elbow's own limit is 0.9995
+    clamped = d.length > reach
+    T = S + d.normalized() * reach if clamped else target
+    E2 = fa.ik_elbow(S, T, L1, L2, E - S)
+    R1 = (E - S).rotation_difference(E2 - S).to_matrix()
+    R2 = (R1 @ (W - E)).rotation_difference(T - E2).to_matrix()
+    Rl = R2 @ R1
+    P["upperarm_" + s] = fa.mat4(R1 @ Pm["upperarm_" + s].to_3x3(), S)
+    P["lowerarm_" + s] = fa.mat4(Rl @ Pm["lowerarm_" + s].to_3x3(), E2)
+    tw = Pm["lowerarm_twist_" + s]
+    P["lowerarm_twist_" + s] = fa.mat4(Rl @ tw.to_3x3(), E2 + Rl @ (tw.translation - E))
+    Rh = (Rl @ Pm["hand_" + s].to_3x3()) if keep_rel else Pm["hand_" + s].to_3x3()
+    P["hand_" + s] = fa.mat4(Rh, T)
+    D = P["hand_" + s] @ Pm["hand_" + s].inverted()
+    for c in HAND_CHILDREN[s]:
+        P[c] = D @ Pm[c]
+    return P, clamped
+
+
+def crossfade(ctx, Pa, Pb, alpha, mode):
+    """Unreal's linear crossfade of two clip poses at `alpha` (+ the proposed Two Bone IK). mode: "none", "ik"
+    (position only, hand keeps its component rotation: the proposal) or "ik_rel" (bMaintainEffectorRelRot).
+    IK target per fist = the blended `cooler` bone @ lerp(hand-in-cooler of A, of B, alpha): constants per clip."""
+    B, arm_obj = ctx["B"], ctx["arm_obj"]
+    static(arm_obj)
+    fa.apply_basis(arm_obj, fa.blend_basis(fa.pose_to_basis(B, Pa), fa.pose_to_basis(B, Pb), alpha))
+    bpy.context.view_layer.update()
+    Pm = pose_now(arm_obj)
+    clamped = False
+    if mode == "fit":
+        return fit_cooler(Pm, ctx), False
+    if mode == "fit_ik":
+        # fit, then close the rest (the grips' spacing changes a little in a blend) with a position-only two-bone IK
+        # per arm: each hand moves by (its socket - its grip point); the hand keeps its component rotation
+        Pm = fit_cooler(Pm, ctx)
+        cooler = ctx["cooler_stage"]
+        for s in ("l", "r"):
+            d = Pm["cooler"] @ cooler.sockets[SOCKET_OF[s]] - grip_point(Pm, B, ctx["sides"], s)
+            Pm, c = two_bone_ik(Pm, s, Pm["hand_" + s].translation + d)
+            clamped = clamped or c
+        return Pm, clamped
+    if mode != "none":
+        for s in ("l", "r"):
+            target = Pm["cooler"] @ hand_in_cooler(Pa, s).lerp(hand_in_cooler(Pb, s), alpha)
+            Pm, c = two_bone_ik(Pm, s, target, keep_rel=(mode == "ik_rel"))
+            clamped = clamped or c
+    return Pm, clamped
+
+
+def fit_cooler(Pm, ctx):
+    """The gate B fix (eng follow-up, a small C++ skeletal-control node after the pose blend): move the `cooler` bone
+    to the blended FISTS instead of the fists to the cooler. Grip points = each hand's rope-grip point (a constant in
+    hand space); the cooler keeps its blended rotation, turned by the shortest arc that lines its handle axis up with
+    the grip-to-grip line, and is placed so the midpoint of its two handle sockets sits midway between the grips. The
+    cooler then turns about its handles (not about its base, which is what swings the handles off the fists in a
+    plain blend). At an authored pose it changes nothing (the grips are on the sockets already)."""
+    B, sides = ctx["B"], ctx["sides"]
+    cooler = ctx["cooler_stage"]
+    gl, gr = grip_point(Pm, B, sides, "l"), grip_point(Pm, B, sides, "r")
+    sl, sr = cooler.sockets[SOCKET_OF["l"]], cooler.sockets[SOCKET_OF["r"]]
+    C = Pm["cooler"]
+    a_c = (C.to_3x3() @ (sl - sr)).normalized()
+    R = a_c.rotation_difference((gl - gr).normalized()).to_matrix() @ C.to_3x3()
+    P = dict(Pm)
+    P["cooler"] = fa.mat4(R, (gl + gr) * 0.5 - R @ ((sl + sr) * 0.5))
+    return P
+
+
+def xfade_lid(a, b, alpha):
+    """The owner's lid during a crossfade: opens over LidOpenTime while the arms blend over ShowTurnTime."""
+    la, lb = fp_lid(a), fp_lid(b)
+    k = min(1.0, alpha * SHOW_TURN_TIME_S / LID_OPEN_TIME_S) if la != lb else 1.0
+    return la + (lb - la) * k
+
+
+def crossfade_checks(ctx, cooler):
+    out = {}
+    for a, b in XFADE_PAIRS:
+        key = "%s->%s" % (short(a), short(b))
+        row = {m: {"max_mm": {"l": 0.0, "r": 0.0}, "worst_alpha": None, "hull": {"verts": 0, "depth_mm": 0.0},
+                   "hull_by_group": {}, "clamped": False}
+               for m in XFADE_MODES}
+        row["ik_clamped"] = False
+        row["fit_cooler_shift_max_cm"] = 0.0
+        for f in XFADE_FRAMES:
+            Pa, Pb = clip_pose(ctx, a, f), clip_pose(ctx, b, f)
+            for alpha in XFADE_ALPHAS:
+                for m in XFADE_MODES:
+                    P, cl = crossfade(ctx, Pa, Pb, alpha, m)
+                    e = grip_errors_mm(P, ctx, cooler)
+                    r = row[m]
+                    if max(e.values()) > max(r["max_mm"].values()):
+                        r["worst_alpha"] = [f, alpha]
+                    r["max_mm"] = {s: max(r["max_mm"][s], e[s]) for s in e}
+                    r["clamped"] = r["clamped"] or cl
+                    if m == "ik":
+                        row["ik_clamped"] = row["ik_clamped"] or cl
+                    if m == "fit":
+                        Pn = pose_now(ctx["arm_obj"])
+                        row["fit_cooler_shift_max_cm"] = round(max(
+                            row["fit_cooler_shift_max_cm"],
+                            100.0 * max((P["cooler"] @ v - Pn["cooler"] @ v).length
+                                        for v in cooler.sockets.values())), 1)
+                    if f == 0 and alpha in (0.3, 0.5, 0.7):
+                        set_pose(ctx, P)
+                        cooler.place(P["cooler"], xfade_lid(a, b, alpha))
+                        n, dep = fa.inside_convex(arms_points(ctx), cooler.ucx)
+                        r["hull"] = {"verts": max(n, r["hull"]["verts"]),
+                                     "depth_mm": round(max(dep, r["hull"]["depth_mm"]), 1)}
+                        for g, (n_, d_) in penetration_by_group(ctx, cooler).items():
+                            old = r["hull_by_group"].get(g, [0, 0.0])
+                            r["hull_by_group"][g] = [max(old[0], n_), round(max(old[1], d_), 1)]
+        row["ik_ok"] = max(row["ik"]["max_mm"].values()) <= IK_TOL_MM
+        row["fit_ok"] = max(row["fit"]["max_mm"].values()) <= IK_TOL_MM
+        row["fit_ik_ok"] = max(row["fit_ik"]["max_mm"].values()) <= IK_TOL_MM
+        out[key] = row
+    return out
+
+
+def print_xfades(xf):
+    for key, row in xf.items():
+        print("GATEB XFADE %-10s %s" % (key, " | ".join(
+            "%s L%5.1f R%5.1f hull %d/%.1f%s" % (m, row[m]["max_mm"]["l"], row[m]["max_mm"]["r"], row[m]["hull"]["verts"],
+                                                row[m]["hull"]["depth_mm"], " CLAMPED" if row[m]["clamped"] else "")
+            for m in XFADE_MODES)), flush=True)
+        print("GATEB XFADE %-10s fit moves the cooler up to %.1f cm; hull by group: %s"
+              % (key, row["fit_cooler_shift_max_cm"], {m: row[m]["hull_by_group"] for m in XFADE_MODES}), flush=True)
+
+
+def build_actions(ctx):
+    B, arm_obj = ctx["B"], ctx["arm_obj"]
+    return {name: fa.key_action(arm_obj, name, list(range(f0, f1 + 1)),
+                                lambda f, n=name: fa.pose_to_basis(B, clip_pose(ctx, n, f)))
+            for name, f0, f1 in ACTIONS}
+
+
+def motion_and_contact(ctx, cooler):
+    """On the KEYED actions: per-frame steps and loop seam (pops), each fist's grip point vs its rope socket (sliding),
+    the cooler's breath range, arms inside the cooler hull and the elbow bend over the loop."""
+    arm_obj, B, sides = ctx["arm_obj"], ctx["B"], ctx["sides"]
+    out = {}
+    for name, f0, f1 in ACTIONS:
+        pos, drift, cs, qs, bends = [], 0.0, [], [], []
+        hull = {"verts": 0, "depth_mm": 0.0, "by_group": {}}
+        for f in range(f0, f1 + 1):
+            fa.play(arm_obj, name, f)
+            P = pose_now(arm_obj)
+            pos.append([getattr(arm_obj.pose.bones[b], end).copy() for b, end in PROBES])
+            drift = max([drift] + list(grip_errors_mm(P, ctx, cooler).values()))
+            cs.append(P["cooler"].translation.copy())
+            qs.append(P["cooler"].to_quaternion())
+            if f % 6 == 0:
+                cooler.place(P["cooler"], fp_lid(name))
+                n, dep = fa.inside_convex(arms_points(ctx), cooler.ucx)
+                hull["verts"], hull["depth_mm"] = max(hull["verts"], n), round(max(hull["depth_mm"], dep), 1)
+                for g, (n_, d_) in penetration_by_group(ctx, cooler).items():
+                    old = hull["by_group"].get(g, [0, 0.0])
+                    hull["by_group"][g] = [max(old[0], n_), round(max(old[1], d_), 1)]
+                bends.append(min(v["elbow_bend_deg"] for v in pose(B, sides, ctx["cfgs"][name], f)[1].values()))
+        steps = [max((a - b).length for a, b in zip(pos[i + 1], pos[i])) for i in range(len(pos) - 1)]
+        out[name] = {"frames": [f0, f1], "max_step_mm": round(max(steps) * 1000, 2),
+                     "first_last_delta_mm": round(max((a - b).length for a, b in zip(pos[-1], pos[0])) * 1000, 3),
+                     "loop_seam_step_mm": round(max((a - b).length for a, b in zip(pos[1], pos[0])) * 1000, 2),
+                     "fist_to_rope_max_mm": round(drift, 2),
+                     "cooler_breath_range_cm": [round((max(p[i] for p in cs) - min(p[i] for p in cs)) * 100, 2)
+                                                for i in range(3)],
+                     "cooler_breath_max_turn_deg": round(max(math.degrees(qs[0].rotation_difference(q).angle)
+                                                             for q in qs), 2),
+                     "arms_in_cooler_hull": hull, "loop_min_elbow_bend_deg": min(bends)}
+    static(arm_obj)
+    return out
+
+
+def export_clips(ctx):
+    arm_obj = ctx["arm_obj"]
+    ad = arm_obj.animation_data
+    ad.action = None
+    paths, units = {}, {}
+    for name, _f0, _f1 in ACTIONS:
+        for tr in ad.nla_tracks:
+            tr.mute = tr.name != name
+        path = EXPORT_DIR / (name + ".fbx")
+        units[name] = pb.export_skeletal_fbx(path, arm_obj, [], bake_anim=True)
+        paths[name] = str(path)
+    static(arm_obj)
+    fa.rest_pose(arm_obj)
+    return paths, units
+
+
+def skeleton_check(ctx):
+    """The rig this recipe keys against the committed SK_FPArms.fbx (SKEL_FPArms): same 18 bones, same rest."""
+    B, k = ctx["B"], pb.SKELETAL_FBX_CM_PER_UNIT
+    snap = fa.snapshot()
+    arm, _mesh = fa.import_fbx(EXPORT_DIR / "SK_FPArms.fbx")
+    mw = arm.matrix_world
+    names = [b.name for b in arm.data.bones]
+    res = {"bones": len(names), "same_names": sorted(names) == sorted(B),
+           "head_err_mm": round(max((arm.data.bones[n].head_local - B[n].translation * k).length for n in B) * 10, 3),
+           "axis_err_deg": round(max(math.degrees((mw.to_3x3().normalized() @ arm.data.bones[n].matrix_local.to_3x3())
+                                                  .to_quaternion().rotation_difference(B[n].to_3x3().to_quaternion())
+                                                  .angle) for n in B), 3)}
+    fa.cleanup_since(snap)
+    return res
+
+
+def reimport_check(ctx, paths):
+    scene = bpy.context.scene
+    fps = scene.render.fps
+    res = {}
+    for name, _f0, f1 in ACTIONS:
+        snap = fa.snapshot()
+        arm, _m = fa.import_fbx(paths[name])
+        act = arm.animation_data.action if arm.animation_data else None
+        entry = {"action": act.name if act else None, "bones": len(arm.data.bones),
+                 "frame_range": [round(c, 2) for c in act.frame_range] if act else None,
+                 "armature_object_scale": [round(c, 6) for c in arm.matrix_world.to_scale()]}
+        sdev, err, rot = 0.0, 0.0, 0.0
+        for f in range(0, f1 + 1, 3):
+            scene.frame_set(f)
+            sdev = max([sdev] + [fa.scale_dev(p.matrix) for p in arm.pose.bones])
+        for f in (0, 30, 45, 60, 90):
+            scene.frame_set(f)
+            P = clip_pose(ctx, name, f)
+            for n in ctx["B"]:
+                M = arm.matrix_world @ arm.pose.bones[n].matrix
+                err = max(err, (M.translation - P[n].translation).length)
+                rot = max(rot, math.degrees(M.to_quaternion().rotation_difference(P[n].to_quaternion()).angle))
+        entry.update({"posed_bone_scale_dev": sdev, "max_pose_error_mm": round(err * 1000, 3),
+                      "max_pose_error_deg": round(rot, 3)})
+        res[name] = entry
+        fa.cleanup_since(snap)
+    scene.render.fps = fps
+    return res
+
+
+def socket_markers(C, cooler, hex_color="#E0402A", size=0.012):
+    objs = [fa.box("PV_Sock_" + s, C @ cooler.sockets[SOCKET_OF[s]], (size, size, size), hex_color)
+            for s in ("l", "r")]
+    bpy.context.view_layer.update()
+
+    def cleanup():
+        for o in objs:
+            me = o.data
+            bpy.data.objects.remove(o, do_unlink=True)
+            bpy.data.meshes.remove(me)
+    return cleanup
+
+
+def top_view(path, P, cooler, label):
+    """Above-and-behind the eye, looking down at the handles (both fists and ropes, about 1 px per mm)."""
+    C = P["cooler"]
+    mid = C @ ((cooler.sockets["SOCKET_Handle_L"] + cooler.sockets["SOCKET_Handle_R"]) * 0.5)
+    return fa.shot(path, Vec((mid.x - 0.30, 0.0, mid.z + 0.62)), mid, lens=30.0, res=(960, 540), label=label)
+
+
+def gate_b(ctx):
+    cooler = OpenCooler()
+    fish = StagedFish()
+    ctx["cooler_stage"] = cooler
+    mesh_obj = ctx["mesh_obj"]
+    ctx["fists"] = fist_indices(mesh_obj)
+    ctx["fist_polys"] = fist_polygons(mesh_obj, ctx["fists"])
+    ctx["wrist_polys"] = fist_polygons(mesh_obj, fist_indices(mesh_obj, ("hand", "fingers", "thumb", "lowerarm_twist")))
+    ctx["cfgs"] = {}
+    out = {"lid": {"LidOpenPitch_replicated": LID_OPEN_PITCH_DEG, "fp_open": LID_FP_OPEN_DEG,
+                   "fp_show": LID_FP_SHOW_DEG}}
+    for name in POSES:
+        cfg = dict(POSES[name])
+        r_, s_ = solve_roll(ctx, cfg, cooler)
+        cfg.update(roll=r_, sign=s_, _roll=r_, _sign=s_)
+        ctx["cfgs"][name] = cfg
+    out["grip_roll"] = {short(n): [c["_roll"], c["_sign"]] for n, c in ctx["cfgs"].items()}
+    print("GATEB rolls %s" % out["grip_roll"], flush=True)
+
+    # 1. keyed actions + checks on them, exports, re-import
+    build_actions(ctx)
+    if os.environ.get("T064A_XFADE_ONLY") == "1":
+        out["crossfades"] = crossfade_checks(ctx, cooler)
+        print_xfades(out["crossfades"])
+        return {"exports": {OPEN: ""}, "crossfades": out["crossfades"]}, {}
+    out["motion"] = motion_and_contact(ctx, cooler)
+    print("GATEB motion %s" % json.dumps(out["motion"]), flush=True)
+    out["skeleton_vs_SK_FPArms_fbx"] = skeleton_check(ctx)
+    paths, units = export_clips(ctx)
+    out["exports"], out["fbx_units"] = paths, units
+    out["reimport_check"] = reimport_check(ctx, paths)
+    print("GATEB reimport %s | skeleton %s" % (json.dumps(out["reimport_check"]),
+                                               out["skeleton_vs_SK_FPArms_fbx"]), flush=True)
+
+    # 2. numbers for the spec: the cooler bone at frame 0 (Unreal component space), hand targets in cooler space
+    out["unreal"] = {}
+    for name in (CARRY, OPEN, SHOW):
+        P0 = clip_pose(ctx, name, 0)
+        out["unreal"][short(name)] = {"cooler_f0": fa.ue_transform(P0["cooler"]),
+                                      "hand_in_cooler_cm": {"hand_" + s: ue_vec_cm(hand_in_cooler(P0, s))
+                                                            for s in ("l", "r")},
+                                      "fist_to_rope_f0_mm": grip_errors_mm(P0, ctx, cooler)}
+    # the grip node's constants: each fist's rope-grip point at the bind pose (component space, cm) and the sockets
+    out["unreal"]["grip_node"] = {
+        "grip_ref_cs_cm": {"hand_" + s: ue_vec_cm(fa.rod_rest_matrix(ctx["sides"][s]).translation) for s in ("l", "r")},
+        "hand_ref_cs_cm": {"hand_" + s: ue_vec_cm(ctx["B"]["hand_" + s].translation) for s in ("l", "r")},
+        "sockets_cooler_cm": {k: ue_vec_cm(v) for k, v in cooler.sockets.items() if "Handle" in k}}
+    print("GATEB unreal %s" % json.dumps(out["unreal"]), flush=True)
+
+    # 3. frame-0 look measurements (the owner's lid) + the observer's read of Show
+    res_open = {}
+    for lid in (LID_FP_OPEN_DEG, LID_OPEN_PITCH_DEG):
+        r, _P = evaluate(ctx, dict(ctx["cfgs"][OPEN], lid=lid), cooler, fish)
+        res_open["lid%d" % lid] = {k: r[k] for k in ("coverage_pct", "lid_top_screen_pct", "cooler_top_screen_pct",
+                                                     "wrists", "inside_by_group")}
+    out["open_f0"] = res_open
+    res_show = {}
+    for lid in sorted({LID_OPEN_PITCH_DEG, LID_FP_SHOW_DEG, LID_FP_OPEN_DEG}):
+        r, _P, _g = show_eval(ctx, dict(ctx["cfgs"][SHOW]), cooler, fish, outside=(lid == LID_FP_SHOW_DEG), lid=lid)
+        res_show["lid%d" % lid] = {k: r[k] for k in r if k != "unreal_cooler"}
+        print("GATEB show lid %d: %s" % (lid, a2_line("show", r)), flush=True)
+    out["show_f0"] = res_show
+    for k, v in res_open.items():
+        print("GATEB open %s: centre box %s" % (k, v["coverage_pct"]["centre_box"]), flush=True)
+
+    # 4. crossfades: fists vs ropes without / with the proposed IK
+    out["crossfades"] = crossfade_checks(ctx, cooler)
+    print_xfades(out["crossfades"])
+    full =gate_b_previews(ctx, cooler, fish, out) if RENDER else {}
+    return out, full
+
+
+def gate_b_previews(ctx, cooler, fish, out):
+    B, sides, arm_obj = ctx["B"], ctx["sides"], ctx["arm_obj"]
+    full = {}
+
+    def pose_scene(P, lid):
+        set_pose(ctx, P)
+        cooler.place(P["cooler"], lid)
+        fish.place(P["cooler"])
+
+    # FP frames (frame 0), 1920x1080, centre box drawn
+    P_open = clip_pose(ctx, OPEN, 0)
+    for lid, tag in ((LID_FP_OPEN_DEG, ""), (LID_OPEN_PITCH_DEG, "_lid%d" % LID_OPEN_PITCH_DEG)):
+        c = out["open_f0"]["lid%d" % lid]["coverage_pct"]["centre_box"]
+        what = ("MAIN: lid %d (owner only, eng follow-up)" % lid if not tag
+                else "FALLBACK: lid %d (LidOpenPitch, no follow-up)" % lid)
+        for kind in ("day", "dusk"):
+            pose_scene(P_open, lid)
+            cb = stage_centre_box()
+            try:
+                fn = "SK_FPArms_cooler_open%s_fp%s.png" % (tag, "" if kind == "day" else "_dusk")
+                full["open%s_%s" % (tag, kind)] = fa.fp_frame(
+                    PREVIEW_DIR / fn, kind, "CarryCooler_Open f0 %s | %s | centre box: lid %.0f%% cooler %.0f%% "
+                    "fish %.0f%% arms %.0f%%" % (kind, what, c["lid"], c["cooler"], c["fish"], c["arms"]))
+            finally:
+                cb()
+    P_show = clip_pose(ctx, SHOW, 0)
+    rs = out["show_f0"]["lid%d" % LID_FP_SHOW_DEG]
+    c, f = rs["centre_box_pct"], rs["fists"]
+    for kind in ("day", "dusk"):
+        pose_scene(P_show, LID_FP_SHOW_DEG)
+        cb = stage_centre_box()
+        try:
+            full["show_" + kind] = fa.fp_frame(
+                PREVIEW_DIR / ("SK_FPArms_cooler_show_fp%s.png" % ("" if kind == "day" else "_dusk")), kind,
+                "CarryCooler_Show f0 %s | owner's lid %d | centre box: cooler %.1f%% lid %.1f%% fish %.1f%% | fists "
+                "visible L %.0f%% R %.0f%%" % (kind, LID_FP_SHOW_DEG, c["cooler"], c["lid"], c["fish"],
+                                               f["l"]["visible_pct"], f["r"]["visible_pct"]))
+        finally:
+            cb()
+
+    # outside: the other player at 2.5 m (eye 1.70 m), straight on (2x crop + true 90 deg) and 35 deg to the right
+    o = rs.get("observer_px", {})
+    cells = []
+    set_pose(ctx, P_show)
+    st = ObserverStage(ctx, P_show, cooler, fish, LID_OPEN_PITCH_DEG)
+    try:
+        cells.append(st.render(PREVIEW_DIR / "exp_t064a_b_out2x.png",
+                               "Show f0, other player 2.5 m ahead (eye 1.70), 2x crop\nfish %d px, mouth %d px, "
+                               "lid %d px (lid %d)" % (o.get("fish", 0), o.get("liner", 0), o.get("lid", 0),
+                                                       LID_OPEN_PITCH_DEG), ZOOM_HFOV_DEG))
+        cells.append(st.render(PREVIEW_DIR / "exp_t064a_b_out90.png", "same, the true 90 deg frame",
+                               fp_preview.FP_HFOV_DEG))
+    finally:
+        st.close(P_show, LID_FP_SHOW_DEG)
+    a = math.radians(35.0)
+    pos = Vec((2.5 * math.cos(a), -2.5 * math.sin(a), OBSERVER_EYE_M - EYE_M))
+    tgt = P_show["cooler"].translation
+    yaw = math.degrees(math.atan2(tgt.y - pos.y, tgt.x - pos.x))
+    O = Matrix.Translation(pos) @ fa.rot3((0, 0, 1), yaw).to_4x4()
+    st = ObserverStage(ctx, P_show, cooler, fish, LID_OPEN_PITCH_DEG, O=O)
+    try:
+        cells.append(st.render(PREVIEW_DIR / "exp_t064a_b_out35.png",
+                               "Show f0, other player 2.5 m away, 35 deg to the carrier's right, 2x crop",
+                               ZOOM_HFOV_DEG))
+    finally:
+        st.close(P_show, LID_FP_SHOW_DEG)
+    full["show_outside"] = pb.contact_sheet(cells, PREVIEW_DIR / "SK_FPArms_cooler_show_outside.png", cols=3,
+                                            cell=(960, 540))
+
+    # grip close-ups: both fists of both clips, frame 0 (Workbench), rope sockets marked red
+    cells = []
+    for name in (OPEN, SHOW):
+        P = clip_pose(ctx, name, 0)
+        pose_scene(P, fp_lid(name))
+        m = pose(B, sides, ctx["cfgs"][name], 0)[1]
+        hull = out["motion"][name]["arms_in_cooler_hull"]["by_group"]
+        mk = socket_markers(P["cooler"], cooler)
+        try:
+            for s, sock in (("r", "SOCKET_Handle_L"), ("l", "SOCKET_Handle_R")):
+                h = P["cooler"] @ cooler.sockets[sock]
+                mid = P["cooler"] @ Vec((0.0, 0.0, cooler.sockets[sock].z))
+                side = (h - mid).normalized()                 # out along the handle axis, past the fist
+                w = m[s]
+                sink = max([hull.get(g, [0, 0.0])[1] for g in ("fingers_" + s, "thumb_" + s, "hand_" + s)])
+                cells.append(fa.shot(PREVIEW_DIR / ("exp_t064a_b_grip_%s_%s.png" % (short(name).lower(), s)),
+                                     h + side * 0.38 + Vec((-0.10, 0.0, 0.14)), h, lens=35.0, res=(960, 540),
+                                     label="%s f0 %s fist, side-on | wrist flex %.0f dev %.0f twist %.0f | "
+                                           "fingers %.0f mm into the wall"
+                                           % (short(name), "R" if s == "r" else "L", w["wrist_flex_deg"],
+                                              w["wrist_dev_deg"], w["twist_deg"], sink)))
+        finally:
+            mk()
+    full["grips"] = pb.contact_sheet(cells, PREVIEW_DIR / "SK_FPArms_cooler_grips.png", cols=2, cell=(960, 540))
+
+    # crossfade strips at mid-blend (frame 0): top view and FP; plain blend, + IK, + cooler fit
+    cells, cells_fp = [], []
+    for a_, b_ in XFADE_PAIRS:
+        key = "%s->%s" % (short(a_), short(b_))
+        row = out["crossfades"][key]
+        Pa, Pb = clip_pose(ctx, a_, 0), clip_pose(ctx, b_, 0)
+        lid = xfade_lid(a_, b_, 0.5)
+        fps_, tops = [], []
+        for m in ("none", "ik", "fit_ik"):
+            P, _cl = crossfade(ctx, Pa, Pb, 0.5, m)
+            e = grip_errors_mm(P, ctx, cooler)
+            pose_scene(P, lid)
+            tag = {"none": "plain blend", "ik": "+ Two Bone IK (gate A plan)",
+                   "fit_ik": "+ cooler fit + IK (gate B fix)"}[m]
+            stem = "exp_t064a_b_xf_%s_%s" % (key.replace("->", "_"), m)
+            cb = stage_centre_box()
+            try:
+                fps_.append(fa.fp_frame(PREVIEW_DIR / (stem + "_fp.png"), "day",
+                                        "%s 50%%, %s\nfists off the ropes %.1f cm here, max %.1f cm over the blend"
+                                        % (key, tag, max(e.values()) / 10, max(row[m]["max_mm"].values()) / 10),
+                                        res=(960, 540), samples=16))
+            finally:
+                cb()
+            mk = socket_markers(P["cooler"], cooler)
+            try:
+                tops.append(top_view(PREVIEW_DIR / (stem + "_top.png"), P, cooler,
+                                     "%s 50%%, %s, from above (red = rope sockets)" % (key, tag)))
+            finally:
+                mk()
+        cells += tops
+        cells_fp += fps_
+    full["crossfade"] = pb.contact_sheet(cells, PREVIEW_DIR / "SK_FPArms_cooler_crossfade_ik.png", cols=3,
+                                         cell=(960, 540))
+    full["crossfade_fp"] = pb.contact_sheet(cells_fp, PREVIEW_DIR / "SK_FPArms_cooler_crossfade_fp.png", cols=3,
+                                            cell=(960, 540))
+
+    # breath strip from the keyed actions (frames 0 / 23 / 45 / 68), FP
+    cells = []
+    for name, _f0, _f1 in ACTIONS:
+        for fr in (0, 23, 45, 68):
+            fa.play(arm_obj, name, fr)
+            C = arm_obj.pose.bones["cooler"].matrix.copy()
+            cooler.place(C, fp_lid(name))
+            fish.place(C)
+            cells.append(fa.fp_frame(PREVIEW_DIR / ("exp_t064a_b_anim_%s_%02d.png" % (short(name).lower(), fr)),
+                                     "day", "%s f%d (keyed action)" % (short(name), fr), res=(640, 360), samples=8))
+    static(arm_obj)
+    full["anim"] = pb.contact_sheet(cells, PREVIEW_DIR / "SK_FPArms_cooler_anim.png", cols=4, cell=(640, 360))
+    return full
+
+
 def main():
     args = pb.parse_args(ASSET, CATEGORY)
     ctx = fa.setup()
@@ -884,6 +1458,12 @@ def main():
     for n in ("_roll", "_sign"):
         for cfg in POSES.values():
             cfg.pop(n, None)
+    if STAGE == "B":
+        res, full = gate_b(ctx)
+        args.out = res["exports"][OPEN]
+        args.preview = full.get("open_day")
+        pb.report(args, [ctx["mesh_obj"]], {"stage": STAGE, "gate_b": res, "preview_full": full})
+        return
     if STAGE in ("A2", "A2S"):
         res, full = gate_a2(ctx)
         args.out = ""
