@@ -25,7 +25,9 @@ ULureCatchSettings::ULureCatchSettings()
 	HeldFishContactPoint = FVector(7.6f, 2.9f, -4.2f);
 	HeldFishCameraOffset = FVector(45.0f, 16.0f, -24.0f);
 	HeldFishCameraRotation = FRotator(0.0f, -70.0f, 0.0f);
-	// The cooler's top shows at the bottom of a 90 degree view (pivot = bottom center, long side left-right).
+	// First person: the CarryCooler clip's cooler pivot bone (SK_FPArms.anim.md "CarryCooler"); zero relative transform.
+	CarriedCoolerSocket = TEXT("cooler");
+	// Fallback without that bone: the cooler's top shows at the bottom of a 90 degree view (pivot = bottom center, long side left-right).
 	CarriedCoolerOffset = FVector(60.0f, 0.0f, -59.0f);
 	CarriedCoolerRotation = FRotator::ZeroRotator;
 

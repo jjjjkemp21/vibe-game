@@ -118,6 +118,33 @@ namespace LureFishItemPrivate
 		}
 		return Target;
 	}
+
+	/**
+	 *  T-066: where a dropped fish at XY falls, straight down from FromZ (the hand's height): the first solid surface below it,
+	 *  never one above (a roof over the player). The water releases it when no ground stands above the water surface +
+	 *  LandTolerance (the cast landing rule). Nothing below at all: it stays at FromZ.
+	 */
+	FLureCastLanding FallFromHand(const UWorld* World, const AActor* IgnoreActor, const FVector2D& XY, float FromZ, const ULureFishingSettings& Settings)
+	{
+		FLureCastLanding Landing;
+		float WaterZ = 0.0f;
+		Landing.bFoundWater = FLureFishingSpots::FindWaterSurfaceZ(World, XY, Settings, WaterZ);
+		Landing.WaterZ = WaterZ;
+		const float BottomZ = Landing.bFoundWater ? WaterZ - 1.0f : FromZ - 100000.0f;
+		FHitResult Ground;
+		const FCollisionQueryParams Params(SCENE_QUERY_STAT(LureFishDropFall), false, IgnoreActor);
+		const bool bGround = World && FLureFishingSpots::TraceCast(World, Ground, FVector(XY.X, XY.Y, FromZ), FVector(XY.X, XY.Y, BottomZ), Params);
+		if (Landing.bFoundWater && (!bGround || Ground.ImpactPoint.Z <= WaterZ + Settings.LandTolerance))
+		{
+			Landing.Rest = FVector(XY.X, XY.Y, WaterZ);
+			Landing.bOnWater = true;
+		}
+		else
+		{
+			Landing.Rest = bGround ? FVector(Ground.ImpactPoint) : FVector(XY.X, XY.Y, FromZ);
+		}
+		return Landing;
+	}
 }
 
 ALureFishItem::ALureFishItem()
@@ -327,7 +354,7 @@ bool ALureFishItem::AuthorityDrop(APawn* Pawn, const FVector& Origin, const FVec
 	const FVector From = GetVisualTransform().GetLocation();
 
 	// Where it lands: tossed Distance ahead at Origin's height (a wall stops it just in front), clear of standing coolers,
-	// then straight down onto the ground, or the water (the cast landing rules with no flight of their own). A cast-style
+	// then straight down from Origin's height onto the first ground below, or the water (the cast landing rule). A cast-style
 	// flight aimed at the water would hit the dock under the player's feet and drop the fish there.
 	const FVector2D Direction = Direction2D.GetSafeNormal();
 	FVector2D Target = StartXY + Direction * FMath::Max(0.0f, Distance);
@@ -342,8 +369,8 @@ bool ALureFishItem::AuthorityDrop(APawn* Pawn, const FVector& Origin, const FVec
 		}
 	}
 	Target = LureFishItemPrivate::KeepClearOfCoolers(World, Target, Direction);
-	const FLureCastLanding Landing = FLureFishingSpots::ResolveLanding(World, Pawn, FVector(Target.X, Target.Y, Origin.Z), Target, Direction, 0.0f,
-		*GetDefault<ULureFishingSettings>());
+	// T-066: it falls from Origin's height (the hand, or under the rod tip), so a roof above never catches it.
+	const FLureCastLanding Landing = LureFishItemPrivate::FallFromHand(World, Pawn, Target, static_cast<float>(Origin.Z), *GetDefault<ULureFishingSettings>());
 	if (Landing.bOnWater)
 	{
 		AuthorityRelease(Pawn);

@@ -87,7 +87,15 @@ public:
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category="Held Fish")
 	FRotator HeldFishCameraRotation;
 
-	/** The carried cooler's pivot (bottom center) relative to the first-person arms component (the CarryCooler clip's hands at the handles) */
+	/**
+	 *  Bone or socket of the first-person arms whose frame is the carried cooler's pivot (SK_FPArms.anim.md "CarryCooler": bone
+	 *  cooler, bottom centre, the cooler's own axes). The cooler snaps to it with a zero relative transform, so it rides the
+	 *  clip's idle breath. None or missing = CarriedCoolerOffset/Rotation below.
+	 */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category="Carried Cooler")
+	FName CarriedCoolerSocket;
+
+	/** Fallback (arms without CarriedCoolerSocket): the carried cooler's pivot (bottom center) relative to the first-person arms component, or the camera without arms */
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category="Carried Cooler")
 	FVector CarriedCoolerOffset;
 

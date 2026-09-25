@@ -664,7 +664,8 @@ class Board:
             since = self.one("SELECT MAX(ts) AS ts FROM events WHERE item=? AND verb='status'", (r['id'],))['ts']
             last = self.one('SELECT * FROM events WHERE item=? ORDER BY id DESC LIMIT 1', (r['id'],))
             items.append((r, age(since or r['updated']), last))
-            if r['status'] == 'doing' and not (r['agent'] and agent_running(r['agent'])):
+            # objectives and questions are owned by managers/the lead, who sleep while their workers run: never orphans
+            if r['status'] == 'doing' and r['kind'] in ('task', 'bug') and not (r['agent'] and agent_running(r['agent'])):
                 orphans.append(r)
         if self.js:
             self.emit(dumps({'items': [dict(r, age=ag, last=dict(e) if e else None) for r, ag, e in items],

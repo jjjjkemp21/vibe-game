@@ -424,13 +424,20 @@ def chain_yaws_from_midline(ys):
 
 class Pose:
     """Local rotations of one frame, composed from components. yaw/pitch/roll in radians per chain bone (relative to
-    the parent, identity rest), pectoral flap in degrees (+ flare, - tuck)."""
+    the parent, identity rest), pectoral flap in degrees (+ flare, - tuck).
+    twist: per-bone local roll about the spine line (rad), for the body twist of A_Fish_Hooked_Hang (0 everywhere else,
+    and a zero twist leaves the quaternion untouched, so the older clips are bit-identical).
+    head_fixed: the Head's local rotation becomes the inverse of the chest's, so the head (and Mouth, the hook) stays
+    still in component space while the body moves behind it (A_Fish_Hooked_Hang; breaks the anchored-chest rule, so
+    such a clip must never be held at Grip)."""
 
     def __init__(self):
         self.yaw = {b: 0.0 for b in CHAIN}
         self.pitch = {b: 0.0 for b in CHAIN}
+        self.twist = {b: 0.0 for b in CHAIN}
         self.roll = 0.0
         self.pec = {"L": 0.0, "R": 0.0}
+        self.head_fixed = False
 
     def wave(self, amp, cycles, lam=WAVE_LAMBDA):
         for b, a in chain_yaws_from_midline(midline_wave(amp, cycles, lam)).items():
@@ -467,13 +474,43 @@ class Pose:
         self.pec["R"] += right_deg
         return self
 
+    def arch_body(self, deg, shares):
+        """Pitch spread over bones by shares {bone: share} (+ = the tail end toward the back)."""
+        for b, share in shares.items():
+            self.pitch[b] += share * deg * DEG
+        return self
+
+    def yaw_body(self, deg, shares):
+        """Yaw spread over bones by shares {bone: share} (+ = the tail end toward the fish's RIGHT, like the swim
+        wave's posterior yaws; CURL_DEG's negative posterior values put the tail on the left)."""
+        for b, share in shares.items():
+            self.yaw[b] += share * deg * DEG
+        return self
+
+    def twist_body(self, deg, shares):
+        """Body twist about the spine line spread over bones by shares {bone: share} (+ = the fish's left side turns
+        up, like roll)."""
+        for b, share in shares.items():
+            self.twist[b] += share * deg * DEG
+        return self
+
     def quats(self):
         """{bone: Quaternion} local rotations (every bone of BONES)."""
         q = {n: Quaternion() for n, _p, _d in BONES}
         for b in CHAIN:
             q[b] = (Quaternion((0.0, 0.0, 1.0), self.yaw[b]) @ Quaternion((0.0, 1.0, 0.0), self.pitch[b]))
+            if self.twist[b] != 0.0:
+                q[b] = q[b] @ Quaternion((1.0, 0.0, 0.0), self.twist[b])
         q["Spine_01"] = q["Spine_01"] @ Quaternion((1.0, 0.0, 0.0), self.roll)
-        yaw_h = math.degrees(self.yaw["Head"])            # + = nose left: the fish's left side is the concave one
+        if self.head_fixed:
+            # Head (child of Spine_01, same pivot J1, identity rest frames): its component rotation is chest x head, so
+            # the chest's inverse keeps it (and Mouth) exactly still. The pectoral clearance rule below then uses the
+            # head's yaw relative to the chest, the same relative bend the flank sees in a normal head turn.
+            q["Head"] = q["Spine_01"].inverted()
+            fwd = q["Head"] @ Vector((1.0, 0.0, 0.0))
+            yaw_h = math.degrees(math.atan2(fwd.y, fwd.x))
+        else:
+            yaw_h = math.degrees(self.yaw["Head"])        # + = nose left: the fish's left side is the concave one
         pec_l = self.pec["L"] + PEC_TURN_FLARE * max(0.0, yaw_h)
         pec_r = self.pec["R"] + PEC_TURN_FLARE * max(0.0, -yaw_h)
         q["Fin_Pectoral_L"] = Quaternion(PEC_HINGE_L, pec_l * DEG)
@@ -519,52 +556,101 @@ def swim_idle(f):
     return p.pecs(6.0 + s, 6.0 - s)
 
 
-# --- Swim_Fast: burst swim, 2.5 Hz, pectorals half tucked.
-FAST_N, FAST_CYC, FAST_AMP = 24, 2, 0.115
+# FIGHT CLIPS (S3 / T-059, 2026-09-24). Seen from the dock (eye 1.7 m, fish 5-12 m out, 25-60 cm deep) the player
+# looks at a fighting fish from 9-22 deg above, mostly from behind (a run) or side-on (a swim across). A purely lateral
+# tail wave reads from behind but hardly side-on, so every fight clip now works in all three axes:
+#   yaw   - the tail wave (bigger, faster), head wags / shakes "against the line";
+#   roll  - whole-fish roll on Spine_01 (the chest's roll is allowed): the silver or red FLANK FLASHES as it twists,
+#           the strongest cue from above and from the side (from above a 20 deg roll widens the fish ~40 % and shows
+#           the bright flank instead of the dark back);
+#   pitch - head nods / throws and a small tail porpoise, which read side-on.
+# Rhythm: irregular (keyed roll and stroke strength), never a metronome. The chest never yaws or pitches (anchor).
+# Play rate (SK_Fish.anim.md "Eng follow-ups (S3)"): authored for a FRESH fish at rate 1.0; the game should drive the
+# rate and amplitude from stamina (effort), not from the fish's ground speed (a hooked fish pulls in place).
+FIGHT_WAVE_LAMBDA = 0.9
+
+
+def _stroke_sin(cycles, phase=0.0):
+    return math.sin(2.0 * math.pi * (cycles + phase))
+
+
+# --- Swim_Fast (T-007 moves Swim and Charge, unknown moves, the escape after a snap): a hard swim against the line,
+# a notch below Fight_Run. 3 Hz (3 strokes in 1 s), stroke strength keyed (strong, weak, strong), the head wags against
+# the line, the body rolls into its strokes (flank flashes), a small porpoise; pectorals half tucked, fluttering.
+FAST_N, FAST_CYC, FAST_AMP = 30, 3, 0.14
+FAST_STROKE = Keys([(0, 1.08), (10, 0.9), (20, 1.12)], FAST_N)
+FAST_ROLL = Keys([(0, 0.0), (5, 12.0), (12, -8.0), (18, 6.0), (24, -12.0)], FAST_N)
 
 
 def swim_fast(f):
-    p = Pose().wave(FAST_AMP, FAST_CYC * f / FAST_N)
-    fl = 3.0 * _sin(f, FAST_N, FAST_CYC * 2)
+    c = FAST_CYC * f / FAST_N
+    p = Pose().wave(FAST_AMP * FAST_STROKE(f), c, lam=FIGHT_WAVE_LAMBDA)
+    p.head(yaw_deg=4.0 * _stroke_sin(c, 0.5), pitch_deg=3.0 * _stroke_sin(c, 0.15))
+    p.arch(4.0 * _stroke_sin(c, 0.35))
+    p.roll += FAST_ROLL(f) * DEG
+    fl = 4.0 * _sin(f, FAST_N, FAST_CYC * 2)
     return p.pecs(0.6 * TUCK_DEG + fl, 0.6 * TUCK_DEG - fl)
 
 
-# --- Fight_Run (T-007 move Run): all-out run away from the angler. 3 Hz, big tail, pectorals flat, the head
-# shivers against the line; a stronger stroke every loop keeps it from looking mechanical.
-RUN_N, RUN_CYC, RUN_AMP = 30, 3, 0.14
+# --- Fight_Run (T-007 move Run): an all-out run against the line. 4 Hz (6 strokes in 1.5 s). The move restarts the
+# clip (Reset Child on Activation), so it opens with the strongest surge (f0-15), keeps driving, shakes its head
+# against the line (f24-36, 3 shakes at 7.5 Hz, the body answering 2 frames later), gasps (a weaker stroke with the
+# pectorals flared, f33-42) and surges again at the wrap. The body rolls into the strokes at irregular times (flank
+# flashes, up to 22 deg) and the head wags and nods against the line with every stroke; pectorals flat.
+RUN_N, RUN_CYC, RUN_AMP = 45, 6, 0.17
+RUN_STROKE = Keys([(0, 1.15), (8, 1.1), (15, 1.0), (22, 1.08), (30, 0.95), (37, 0.72), (42, 0.95)], RUN_N)
+RUN_ROLL = Keys([(0, 0.0), (6, 19.0), (12, -12.0), (18, 15.0), (25, -22.0), (31, 10.0), (38, -7.0)], RUN_N)
+RUN_PEC = Keys([(0, TUCK_DEG), (32, TUCK_DEG), (37, 8.0), (41, 8.0)], RUN_N)
+
+
+def _run_shake(f):
+    return 9.0 * _burst(f, 24.0, 12.0) * math.sin(2.0 * math.pi * (f - 24.0) / 4.0)
 
 
 def fight_run(f):
-    amp = RUN_AMP * (1.0 + 0.10 * _sin(f, RUN_N, 1))
-    p = Pose().wave(amp, RUN_CYC * f / RUN_N, lam=0.9)
-    shiver = 3.0 * _sin(f, RUN_N, 6)
-    p.head(yaw_deg=shiver)
-    p.roll += 3.0 * DEG * _sin(f, RUN_N, RUN_CYC, 0.25)
-    return p.pecs(TUCK_DEG, TUCK_DEG)
+    c = RUN_CYC * f / RUN_N
+    p = Pose().wave(RUN_AMP * RUN_STROKE(f), c, lam=0.85)
+    p.head(yaw_deg=6.0 * _stroke_sin(c, 0.5) + _run_shake(f), pitch_deg=5.0 * _stroke_sin(c, 0.1),
+           react_yaw_deg=_run_shake(f - HEAD_REACT_LAG))
+    p.arch(6.0 * _stroke_sin(c, 0.3))
+    p.roll += RUN_ROLL(f) * DEG
+    pec = RUN_PEC(f)
+    return p.pecs(pec, pec)
 
 
-# --- Fight_Dive (T-007 move Dive): heavy, digging strokes nose-down toward the reef, 2 Hz; head tilted down,
-# body arched into the dive, a slow roll that flashes the flank, one stubborn head-shake burst per loop.
-DIVE_N, DIVE_CYC, DIVE_AMP = 60, 4, 0.15
+# --- Fight_Dive (T-007 move Dive): digging for the reef. 3 Hz (6 strokes in 2 s), head 13 deg nose-down and nodding
+# down with every stroke, the body arched into the dive, the tail porpoising; a slow twist that flashes the flank
+# (up to 28 deg, one way then the other) and two stubborn head-shake bursts (f8-20, f38-50, 6 Hz, the second mirrored).
+DIVE_N, DIVE_CYC, DIVE_AMP = 60, 6, 0.16
+DIVE_ROLL = Keys([(0, 0.0), (12, 28.0), (24, 10.0), (34, -26.0), (48, -8.0)], DIVE_N)
+
+
+def _dive_shake(f):
+    a = 11.0 * _burst(f, 8.0, 12.0) * math.sin(2.0 * math.pi * (f - 8.0) / 5.0)
+    b = -11.0 * _burst(f, 38.0, 12.0) * math.sin(2.0 * math.pi * (f - 38.0) / 5.0)
+    return a + b
 
 
 def fight_dive(f):
-    p = Pose().wave(DIVE_AMP, DIVE_CYC * f / DIVE_N, lam=1.0)
-    shake = 9.0 * _burst(f, 36.0, 14.0) * _sin(f, DIVE_N, 10)          # 5 Hz shakes, f36-50
-    shake_lag = 9.0 * _burst(f - HEAD_REACT_LAG, 36.0, 14.0) * _sin(f - HEAD_REACT_LAG, DIVE_N, 10)
-    p.head(yaw_deg=shake, pitch_deg=12.0 + 2.0 * _sin(f, DIVE_N, DIVE_CYC), react_yaw_deg=shake_lag)
-    p.arch(-10.0)                                                        # tail tip down: body arched into the dive
-    p.roll += 10.0 * DEG * _sin(f, DIVE_N, 1)
+    c = DIVE_CYC * f / DIVE_N
+    p = Pose().wave(DIVE_AMP, c, lam=1.0)
+    p.head(yaw_deg=_dive_shake(f), pitch_deg=13.0 + 5.0 * _stroke_sin(c, 0.25),
+           react_yaw_deg=_dive_shake(f - HEAD_REACT_LAG))
+    p.arch(-10.0 + 4.0 * _stroke_sin(c, 0.4))              # tail tip down: body arched into the dive, porpoising
+    p.roll += DIVE_ROLL(f) * DEG
     return p.pecs(TUCK_DEG, TUCK_DEG)
 
 
-# --- Fight_Dart (T-007 move Dart): C-start darts, left then right. Coil (4 f), power stroke (4 f), two fading
-# beats, glide. A dart LEFT coils concave-left (k > 0) and strokes right.
+# --- Fight_Dart (T-007 move Dart): C-start darts, left then right (f18 = DartRightStartTime 0.6 s). Coil (4 f),
+# power stroke (4 f), three fading beats instead of a glide. A dart LEFT coils concave-left (k > 0) and strokes right.
+# The fish banks into each C-start (left side down in a dart left: negative roll), so the dart reads side-on too.
 DART_N = 36
-_DART_KEYS = [(0, 0.0), (4, 1.0), (8, -0.55), (11, 0.28), (14, -0.10), (18, 0.0)]
+_DART_KEYS = [(0, 0.0), (4, 1.0), (8, -0.6), (11, 0.38), (14, -0.2), (16, 0.06), (18, 0.0)]
 DART_CURL = Keys(_DART_KEYS[:-1] + mirror_keys(_DART_KEYS[:-1], 18), DART_N)
+_DART_ROLL = [(0, 0.0), (4, -24.0), (8, 18.0), (11, -9.0), (14, 4.0)]
+DART_ROLL = Keys(_DART_ROLL + mirror_keys(_DART_ROLL, 18), DART_N)
 # pectorals (both fins): flared as a brake while it coils, slapped flat for the power stroke (2 frames), held flat
-# through the beats, eased back out in the glide. Keyed (periodic, monotone) so there is no one-frame pop.
+# through the beats, eased back out. Keyed (periodic, monotone) so there is no one-frame pop.
 _DART_PEC = [(0, 12.0), (2, 18.0), (4, TUCK_DEG), (10, TUCK_DEG), (15, 10.0)]
 DART_PEC = Keys(_DART_PEC + [(f + 18, v) for f, v in _DART_PEC], DART_N)
 
@@ -572,32 +658,63 @@ DART_PEC = Keys(_DART_PEC + [(f + 18, v) for f, v in _DART_PEC], DART_N)
 def fight_dart(f):
     k = DART_CURL(f)
     p = Pose().curl(k)
+    p.roll += DART_ROLL(f) * DEG
     pec = DART_PEC(f)
     return p.pecs(pec, pec)
 
 
-# --- Hooked_Thrash (the hook set, T-007 move Sulk, the last metres): head shakes (5 Hz bursts) with the body
-# answering, then coil - snap - rebound; mirrored second phrase. Pectorals flared and fluttering, body twisting.
+# --- Hooked_Thrash (the hook set: the first ~1 s of every fight plays f0-35; T-007 move Sulk loops it): whole-body
+# shakes (5 Hz: the head throws 18 deg with a 9 deg nod a quarter-cycle later, so the nose whips in an ellipse, while
+# the body wags in quick C-bends and rolls up to 28 deg with every shake), then coil - snap - rebound with a tail slap
+# in pitch; mirrored second phrase. The body twists hard with every move (up to 24 deg: flank flashes), pectorals
+# flared and fluttering, the tail flutters as each phrase dies out.
 THRASH_N = 90
-_THRASH_CURL = [(0, 0.0), (16, 0.0), (22, 0.85), (26, -0.65), (30, 0.30), (34, -0.10), (40, 0.0)]
+_THRASH_CURL = [(0, 0.0), (14, 0.0), (20, 0.95), (25, -0.8), (29, 0.45), (33, -0.2), (38, 0.05), (42, 0.0)]
 THRASH_CURL = Keys(_THRASH_CURL + mirror_keys(_THRASH_CURL, 45), THRASH_N)
-THRASH_ROLL = Keys([(0, 0.0), (10, 12.0), (20, -8.0), (30, 10.0), (45, 0.0), (55, -12.0), (65, 8.0), (75, -10.0)],
-                   THRASH_N)
+_THRASH_ROLL = [(0, 0.0), (14, 0.0), (20, -22.0), (25, 24.0), (30, -12.0), (37, 5.0)]
+THRASH_ROLL = Keys(_THRASH_ROLL + mirror_keys(_THRASH_ROLL, 45), THRASH_N)
+THRASH_SHAKE_CURL, THRASH_SHAKE_ROLL = 0.45, 28.0            # body wag (curl strength) and roll per head shake
+_THRASH_SLAP = [(0, 0.0), (18, 0.0), (21, 6.0), (25, -8.0), (29, 4.0), (34, 0.0)]
+THRASH_SLAP = Keys(_THRASH_SLAP + mirror_keys(_THRASH_SLAP, 45, 1.0), THRASH_N)
 
 
 def _thrash_shake(f):
     """Head shake (deg): two bursts of ~2.5 shakes at 5 Hz, the second mirrored."""
-    a = 15.0 * _burst(f, 1.0, 15.0) * math.sin(2.0 * math.pi * (f - 1.0) / 6.0)
-    b = -15.0 * _burst(f, 46.0, 15.0) * math.sin(2.0 * math.pi * (f - 46.0) / 6.0)
+    a = 18.0 * _burst(f, 1.0, 15.0) * math.sin(2.0 * math.pi * (f - 1.0) / 6.0)
+    b = -18.0 * _burst(f, 46.0, 15.0) * math.sin(2.0 * math.pi * (f - 46.0) / 6.0)
+    return a + b
+
+
+def _thrash_nod(f):
+    """Head nod (deg, + nose down) with the shakes, a quarter shake later."""
+    a = 9.0 * _burst(f, 1.0, 15.0) * math.sin(2.0 * math.pi * (f - 2.5) / 6.0)
+    b = 9.0 * _burst(f, 46.0, 15.0) * math.sin(2.0 * math.pi * (f - 47.5) / 6.0)
+    return a + b
+
+
+def _thrash_flutter(f):
+    """Tail flutter (a flick strength, 7.5 Hz) as each phrase dies out (f37-45, f82-90; the windows end at 0, so the
+    loop seam stays smooth)."""
+    a = _burst(f, 37.0, 8.0) * math.sin(2.0 * math.pi * (f - 37.0) / 4.0)
+    b = -_burst(f, 82.0, 8.0) * math.sin(2.0 * math.pi * (f - 82.0) / 4.0)
+    return 0.2 * (a + b)
+
+
+def _thrash_wag(f):
+    """Whole-body wag with the shakes (-1..1, a quarter shake after the head; mirrored in the second phrase)."""
+    a = _burst(f, 1.0, 15.0) * math.sin(2.0 * math.pi * (f - 2.5) / 6.0)
+    b = -_burst(f, 46.0, 15.0) * math.sin(2.0 * math.pi * (f - 47.5) / 6.0)
     return a + b
 
 
 def hooked_thrash(f):
-    p = Pose().curl(THRASH_CURL(f))
-    p.head(yaw_deg=_thrash_shake(f), react_yaw_deg=_thrash_shake(f - HEAD_REACT_LAG))
-    p.roll += THRASH_ROLL(f) * DEG
-    fl = 8.0 * _sin(f, THRASH_N, 18)
-    return p.pecs(22.0 + fl, 22.0 - fl)
+    wag = _thrash_wag(f)
+    p = Pose().curl(THRASH_CURL(f) + THRASH_SHAKE_CURL * wag).flick(_thrash_flutter(f))
+    p.head(yaw_deg=_thrash_shake(f), pitch_deg=_thrash_nod(f), react_yaw_deg=_thrash_shake(f - HEAD_REACT_LAG))
+    p.arch(THRASH_SLAP(f))
+    p.roll += (THRASH_ROLL(f) + THRASH_SHAKE_ROLL * wag) * DEG
+    fl = 10.0 * _sin(f, THRASH_N, 18)
+    return p.pecs(24.0 + fl, 24.0 - fl)
 
 
 # --- Landed_Flop: out of the water. Curls concave to the fish's LEFT only (k >= 0, flicks >= 0) and slaps flat, so
@@ -646,24 +763,94 @@ def curled(_f=0.0):
     return p.pecs(TUCK_DEG, TUCK_DEG)
 
 
+# --- Swim_Tired (S3 / T-058, the exhausted fish: bExhausted, stamina 0): UPRIGHT (no roll beyond a 2 deg balance
+# wobble) and spent. It starts in a glide (the moment it gives up; the role change restarts the clip), then one slow
+# laboured stroke (f20-46), a weaker return (f46-62), a glide, a half-hearted flick (f68-80) and a glide into the loop;
+# the head a little nose-up, the tail hanging (sagging most in the glides), the pectorals flared out and sculling
+# slowly to stay upright. 2 wave cycles in 3 s (0.67 Hz), stroke strength keyed.
+# Calmer than any fight clip, and not the even, relaxed cruise of Swim_Idle (1 Hz, level, regular).
+TIRED_N, TIRED_CYC, TIRED_AMP = 90, 2, 0.085
+TIRED_STROKE = Keys([(0, 0.12), (14, 0.15), (26, 0.7), (36, 1.0), (46, 0.8), (58, 0.55), (66, 0.25), (74, 0.15),
+                     (84, 0.12)], TIRED_N)
+TIRED_FLICK = Keys([(0, 0.0), (68, 0.0), (72, 0.4), (76, -0.15), (80, 0.0)], TIRED_N)
+TIRED_SAG = Keys([(0, -12.0), (18, -12.0), (36, -7.0), (58, -8.0), (70, -11.0), (84, -12.0)], TIRED_N)
+
+
+def swim_tired(f):
+    p = Pose().wave(TIRED_AMP * TIRED_STROKE(f), TIRED_CYC * f / TIRED_N)
+    p.flick(TIRED_FLICK(f))
+    p.head(pitch_deg=-5.0 + 1.0 * _sin(f, TIRED_N, 1))              # a little nose-up, slowly nodding
+    p.arch(TIRED_SAG(f))                                            # tail hanging, sagging most in the glides
+    p.roll += 2.0 * DEG * _sin(f, TIRED_N, TIRED_CYC, 0.25)         # balance wobble, with the pectoral sculls
+    s = 8.0 * _sin(f, TIRED_N, TIRED_CYC)
+    return p.pecs(12.0 + s, 12.0 - s)
+
+
+# --- Hooked_Hang (S3 / T-060): the landed fish dangling from the hook, nose up the line, its right side turned to the
+# viewer (LureFishItem::UpdateHooked). The HEAD IS LOCKED (head_fixed: Mouth, the hook, moves 0.0 mm in component
+# space on every frame, both species) and the body kicks behind it: bursts and pauses, 4 s loop.
+# One choreography channel k (+ = curl toward the fish's LEFT) drives the kicks, and a twist envelope turns the body
+# during each burst, so every kick reads side-on:
+#   yaw   - the lateral curl, the fish's natural kick (at k = 1 the tail root turns 80 deg), which alone moves the
+#           tail toward / away from the viewer and reads weakly side-on;
+#   twist - during a burst the body twists about the spine, the same way for both kick directions (up to 50 deg at the
+#           tail, belly turned toward the viewer: the pale belly flashes). The twisted curl plane now tilts toward the
+#           screen, so both kicks swing across the screen. (A twist that followed k sent the tail to the same side for
+#           both kicks: the curl's screen component is lateral x sin(twist).)
+#   arch  - the tail half bends toward the belly (k > 0) or the back (k < 0), in the screen plane (30 deg), adding to
+#           the twisted curl.
+# So at k > 0 the tail swings to the belly side on screen, at k < 0 to the back side. A slow twist sway keeps the
+# pauses alive. The pectorals flare during the kicks and relax in the pauses.
+HANG_N = 120
+HANG_K = Keys([(0, 0.0), (6, 0.0), (9, -0.22), (14, 1.0), (19, -0.85), (24, 0.7), (29, -0.5), (34, 0.3),
+               (39, -0.12), (44, 0.06), (49, -0.03), (54, 0.0),
+               (72, 0.0), (75, 0.2), (80, -0.8), (85, 0.62), (90, -0.36), (95, 0.14), (100, -0.05), (104, 0.0),
+               (106, 0.0), (109, 0.28), (113, -0.1), (117, 0.0)], HANG_N)
+HANG_TWIST_ENV = Keys([(0, 0.0), (5, 0.0), (12, 1.0), (34, 0.85), (48, 0.2), (58, 0.0), (71, 0.0), (78, 0.9),
+                       (94, 0.75), (104, 0.1), (109, 0.35), (116, 0.05)], HANG_N)
+HANG_CURL_DEG, HANG_TWIST_DEG, HANG_ARCH_DEG, HANG_SWAY_DEG = 80.0, 50.0, 30.0, 8.0
+HANG_YAW_SHARE = {"Spine_01": 0.16, "Spine_02": 0.16, "Spine_03": 0.20, "Spine_04": 0.23, "Tail": 0.25}
+HANG_TWIST_SHARE = {"Spine_01": 0.30, "Spine_02": 0.25, "Spine_03": 0.20, "Spine_04": 0.15, "Tail": 0.10}
+HANG_ARCH_SHARE = {"Spine_03": 0.25, "Spine_04": 0.35, "Tail": 0.40}
+HANG_PEC = Keys([(0, 4.0), (8, 4.0), (12, 24.0), (40, 22.0), (52, 6.0), (72, 6.0), (76, 20.0), (98, 18.0),
+                 (106, 5.0), (110, 12.0), (115, 4.0)], HANG_N)
+
+
+def hooked_hang(f):
+    k = HANG_K(f)
+    p = Pose()
+    p.head_fixed = True
+    p.yaw_body(-HANG_CURL_DEG * k, HANG_YAW_SHARE)                  # k > 0: tail toward the fish's left
+    p.twist_body(-HANG_TWIST_DEG * HANG_TWIST_ENV(f) + HANG_SWAY_DEG * _sin(f, HANG_N, 2), HANG_TWIST_SHARE)
+    p.arch_body(-HANG_ARCH_DEG * k, HANG_ARCH_SHARE)                # k > 0: tail toward the belly
+    pec = HANG_PEC(f)
+    fl = 0.2 * (pec - 4.0) * _sin(f, HANG_N, 20)                    # 5 Hz flutter while flared, still in the pauses
+    return p.pecs(pec + fl, pec - fl)
+
+
 def rest_pose_fn(_f):
     return Pose()
 
 
 CLIPS = [
     ClipDef("A_Fish_Swim_Idle", IDLE_N, swim_idle, "SwimIdle", cycle_hz=IDLE_CYC * FPS / IDLE_N,
-            notes="slow cruise / hover; fight move Rest (calm = reel now); the tired fish (slow rate + actor roll)"),
+            notes="slow cruise / hover; fight move Rest (calm = reel now)"),
     ClipDef("A_Fish_Swim_Fast", FAST_N, swim_fast, "SwimFast", cycle_hz=FAST_CYC * FPS / FAST_N,
-            notes="fast swim; fight moves Swim and Charge"),
+            notes="hard swim against the line; fight moves Swim and Charge, the escape swim"),
     ClipDef("A_Fish_Hooked_Thrash", THRASH_N, hooked_thrash, "Thrash",
-            notes="head shakes + coil/snap; the hook set, fight move Sulk, the last metres"),
-    ClipDef("A_Fish_Fight_Run", RUN_N, fight_run, "Run", cycle_hz=RUN_CYC * FPS / RUN_N, notes="fight move Run"),
+            notes="head throws + coil/snap, body twisting; the hook set, fight move Sulk"),
+    ClipDef("A_Fish_Fight_Run", RUN_N, fight_run, "Run", cycle_hz=RUN_CYC * FPS / RUN_N,
+            notes="fight move Run: surge, head shakes against the line, gasp"),
     ClipDef("A_Fish_Fight_Dive", DIVE_N, fight_dive, "Dive", cycle_hz=DIVE_CYC * FPS / DIVE_N,
-            notes="fight move Dive"),
-    ClipDef("A_Fish_Fight_Dart", DART_N, fight_dart, "Dart", notes="fight move Dart: a dart left, then right"),
+            notes="fight move Dive: digging nose-down, flank-flashing twist, head shakes"),
+    ClipDef("A_Fish_Fight_Dart", DART_N, fight_dart, "Dart", notes="fight move Dart: a dart left, then right, banking"),
     ClipDef("A_Fish_Landed_Flop", FLOP_N, landed_flop, "Flop", notes="out of the water: in hand or on a dock"),
     ClipDef("A_Fish_Curled", 1, curled, "Curled", loop=False,
             notes="1-frame pose, dead still: the iced catch lying curled in a cooler (T-030 display slots)"),
+    ClipDef("A_Fish_Swim_Tired", TIRED_N, swim_tired, "Tired", cycle_hz=TIRED_CYC * FPS / TIRED_N,
+            notes="the exhausted fish (stamina 0): upright, laboured strokes, glides, a weak flick"),
+    ClipDef("A_Fish_Hooked_Hang", HANG_N, hooked_hang, "Hang",
+            notes="dangling on the hook: head locked (Mouth still), body kicks in bursts and pauses; never at Grip"),
 ]
 REST_CLIP = ClipDef("A_Fish_Rest", 1, rest_pose_fn, "Rest", notes="1-frame straight fish: the additive base pose")
 
