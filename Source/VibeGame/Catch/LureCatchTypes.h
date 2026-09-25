@@ -194,6 +194,13 @@ struct FLureCatchRow : public FTableRowBase
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Cooler", meta=(ClampMin="0", Units="s", DataTableImportOptional))
 	float ShowTurnTime = 0.4f;
 
+	/**
+	 *  T-065: cm between the fish dumped out of a shown cooler, across the view: the top fish lands DropForward straight
+	 *  ahead, the next ones DumpSpacing, -DumpSpacing, 2 x DumpSpacing ... to the side (right first). 0 = one pile.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Cooler", meta=(ClampMin="0", Units="cm", DataTableImportOptional))
+	float DumpSpacing = 25.0f;
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Catch", meta=(MultiLine=true, DataTableImportOptional))
 	FString DevComment;
 
