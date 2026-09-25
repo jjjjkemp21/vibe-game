@@ -11,6 +11,7 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "Tests/AutomationCommon.h"
+#include "Engine/World.h"
 #include "UObject/StrongObjectPtr.h"
 #include "Catch/LureCatchTypes.h"
 #include "Fish/FishInstance.h"
@@ -142,6 +143,46 @@ namespace LureCatchTest
 
 	FString VerbName(ELureInteractVerb Verb);
 	FString BlockName(ELureCastBlock Block);
+
+	/**
+	 *  T-030n: runs Press once, inside World's first tick in which Ready() holds, right after that tick's network receive and
+	 *  before its actors tick: where a real key handler runs (the player's input is processed in the controller's
+	 *  TG_PrePhysics tick), i.e. after the last frame's prompt record. Removes itself when destroyed.
+	 *  (Moved here from SaleRaceKeyPressTest.cpp so the QA key-race tests share it.)
+	 */
+	struct FPressInTick
+	{
+		FDelegateHandle Handle;
+		bool bDone = false;
+
+		FPressInTick() = default;
+		FPressInTick(const FPressInTick&) = delete;
+		FPressInTick& operator=(const FPressInTick&) = delete;
+		~FPressInTick() { Remove(); }
+
+		void Arm(const UWorld* World, TFunction<bool()> Ready, TFunction<void()> Press)
+		{
+			Remove();
+			bDone = false;
+			Handle = FWorldDelegates::OnWorldPreActorTick.AddLambda([this, World, Ready = MoveTemp(Ready), Press = MoveTemp(Press)](UWorld* Ticking, ELevelTick, float)
+			{
+				if (!bDone && Ticking == World && Ready())
+				{
+					bDone = true;
+					Press();
+				}
+			});
+		}
+
+		void Remove()
+		{
+			if (Handle.IsValid())
+			{
+				FWorldDelegates::OnWorldPreActorTick.Remove(Handle);
+				Handle.Reset();
+			}
+		}
+	};
 }
 
 namespace LCT = LureCatchTest;

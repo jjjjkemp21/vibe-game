@@ -257,44 +257,8 @@ namespace LureSaleRaceKeyTest
 		}
 	};
 
-	/**
-	 *  Runs Press once, inside World's first tick in which Ready() holds, right after that tick's network receive and before
-	 *  its actors tick: where a real key handler runs (the player's input is processed in the controller's TG_PrePhysics tick).
-	 *  Removes itself when destroyed.
-	 */
-	struct FPressInTick
-	{
-		FDelegateHandle Handle;
-		bool bDone = false;
-
-		FPressInTick() = default;
-		FPressInTick(const FPressInTick&) = delete;
-		FPressInTick& operator=(const FPressInTick&) = delete;
-		~FPressInTick() { Remove(); }
-
-		void Arm(const UWorld* World, TFunction<bool()> Ready, TFunction<void()> Press)
-		{
-			Remove();
-			bDone = false;
-			Handle = FWorldDelegates::OnWorldPreActorTick.AddLambda([this, World, Ready = MoveTemp(Ready), Press = MoveTemp(Press)](UWorld* Ticking, ELevelTick, float)
-			{
-				if (!bDone && Ticking == World && Ready())
-				{
-					bDone = true;
-					Press();
-				}
-			});
-		}
-
-		void Remove()
-		{
-			if (Handle.IsValid())
-			{
-				FWorldDelegates::OnWorldPreActorTick.Remove(Handle);
-				Handle.Reset();
-			}
-		}
-	};
+	/** Presses a key inside a world tick after its network receive (shared: LCT::FPressInTick) */
+	using FPressInTick = LCT::FPressInTick;
 
 	/** The prompt Keys' key showed at the end of the last frame ("" if there is no fresh record) */
 	FString ShownPrompt(const ULureInteractionComponent* Keys, ELureInteractKey Key)

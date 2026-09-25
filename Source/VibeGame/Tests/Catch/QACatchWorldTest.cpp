@@ -68,10 +68,16 @@ namespace LureCatchQAWorld
 		return LCT::InteractionOf(Player)->ResolveInteraction(Key);
 	}
 
-	/** The server path of Player's request: the target and the verb its prompt showed (ServerInteract -> TryInteract) */
+	/**
+	 *  The server path of Player's request: the target and the verb its prompt showed (ServerInteract -> TryInteract), with
+	 *  the verb's state token as a real client sends it (T-030n: a player's token-0 Sell is refused). The token is the
+	 *  target's current one for that verb (the counter's contents token for Sell, 0 for verbs without one).
+	 */
 	bool Send(ALurePlayerCharacter* Player, const FLureResolvedInteraction& Seen, ELureInteractKey Key)
 	{
-		return LCT::InteractionOf(Player)->TryInteract(Seen.Target, Key, Seen.Verb);
+		const ILureInteractable* Interactable = Cast<ILureInteractable>(Seen.Target);
+		const int32 Token = Interactable ? Interactable->GetInteractionStateToken(Player, Seen.Verb) : 0;
+		return LCT::InteractionOf(Player)->TryInteract(Seen.Target, Key, Seen.Verb, Token);
 	}
 
 	/** Resolves Key, checks the prompt's verb, presses it (a local player) */
