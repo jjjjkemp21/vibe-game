@@ -64,12 +64,8 @@ UMaterialInterface* ULureFishingSettings::LoadLineMaterial() const
 			return Loaded;
 		}
 	}
-	static bool bWarned = false;
-	if (!bWarned)
-	{
-		bWarned = true;
-		UE_LOG(LogLureFishing, Warning, TEXT("Line material '%s' is missing or failed to load; using %s."), *LineMaterial.ToString(), FallbackLineMaterialPath);
-	}
+	// Warns on every fallback (no warn-once state): only called when a line is set up, never per tick.
+	UE_LOG(LogLureFishing, Warning, TEXT("Line material '%s' is missing or failed to load; using %s."), *LineMaterial.ToString(), FallbackLineMaterialPath);
 	return LoadObject<UMaterialInterface>(nullptr, FallbackLineMaterialPath);
 }
 

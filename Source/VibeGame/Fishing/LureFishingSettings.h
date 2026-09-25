@@ -76,7 +76,7 @@ public:
 	/** The line material when LineMaterial is unset, missing or fails to load: the engine basic shape material (has "Color"). */
 	static const TCHAR* FallbackLineMaterialPath;
 
-	/** LineMaterial, loaded; if it is unset, missing or fails to load: the fallback material, with one LogLureFishing warning. */
+	/** LineMaterial, loaded; if it is unset, missing or fails to load: the fallback material, with a LogLureFishing warning (each call). */
 	UMaterialInterface* LoadLineMaterial() const;
 
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category="Assets")
