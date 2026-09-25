@@ -18,6 +18,15 @@ Lead-only scripts: `tools/lead-check.ps1` (running agents' context size + disk; 
 - Lanes (lead side): the main checkout is the editor lane (editor-operator, playtester, art commits, integration by the lead). The lead merges a lane into `main` after its tests pass (`git merge main` in the lane, then `git merge --ff-only lane/<x>` in main), then rebuilds the main checkout (editor closed briefly) before editor or playtest work. Use as many lanes and agents as the work needs for speed and accuracy (Jimmy, 2026-09-23). Give each lane one task, and pick parallel tasks that don't edit the same files; if two must share a file (e.g. DT_Movement), keep the edits additive and say so in both briefs. Create a lane with `git worktree add ../VibeGame-lanes/<lane> -b lane/<lane> <base>` and copy `tools/local.settings.json` into it. A QA lane (`qa1`) exists for independent test work while the editor runs in main. Anything touching the running editor, or closing/building/relaunching it, is serialized by the lead.
 - After each merge batch, rerun `tools/codemap.ps1` so docs/CODEMAP.md stays true.
 
+## Studio model (Jimmy approved 2026-09-24; full rules in docs/teams/STUDIO.md)
+- The lead is the producer and the only one who talks to Jimmy. Objectives with several tasks, or cross-system features, go to a department manager: `engineering-manager-high`, `art-manager-high`, `qa-manager-medium`, `design-manager-high`. Each plans, dispatches its own junior/mid/senior team, reviews every result against its handbook (`docs/teams/<dept>.md`), and keeps a team log `Saved/AgentLogs/teams/<dept>.md`. Read the logs, not transcripts.
+- Tiny one-off tasks skip managers: the lead starts a single worker directly. No managers for the editor-operator, the janitor, or integration.
+- The lead keeps: priorities and the top of TASKS.md; editor bookings (one user; check the editor runs the right build before granting); integration with `tools/integrate.ps1 -Lanes a,b` (merge, build, full tests, ff main, one evidence line); push; the release gate; the severity/priority call (blocker/major/minor/trivial, P0-P3).
+- Brief a manager with an objective: id, goal, acceptance criteria, priority/order, links, known constraints. Expect a 5-line confirmation (understanding, plan outline, risks, questions).
+- Manager questions: answer when confident; anything about taste, scope, priorities, or anything unsure goes to Jimmy in plain language, one question at a time (Jimmy, 2026-09-24).
+- Workers have no Agent tool (the tree is at most lead -> manager -> worker). Manager decisions already made by the lead (2026-09-24): one severity scale; tech debt in docs/TECH_DEBT.md; art manager may start designer-low for art previews; QA naming `QA<Task><Topic>Test.cpp`, `Project.<Area>.QA.*`; design edits GAME_DESIGN.md only to record dated Jimmy decisions; static meshes get `art/export/<Category>/<Asset>.import.md`.
+- Rollout: pilot engineering-manager-high on the first batch after the A2 push, then art, QA and design.
+
 ## Starting agents (optimized pipeline; Jimmy, 2026-09-24)
 - **Group by shared context, split by independence** (Jimmy, 2026-09-24; refines his earlier "don't stack one agent with many tasks"):
   - Split into parallel agents when the pieces touch different files or systems and don't need each other's understanding: they finish faster side by side.
@@ -57,6 +66,7 @@ Model and effort per agent. They are pinned in each agent's frontmatter (`model`
   | playtester | - | `playtester-low` | - |
   | designer | - | `designer-low` | - |
   | janitor | - | `janitor-low` | - |
+  | managers | - | `engineering-manager-high`, `art-manager-high`, `qa-manager-medium`, `design-manager-high` | - |
   Elsewhere in this file and in the skills, a plain role name (e.g. "editor-operator") means that role at any level.
   Junior and senior agent files are generated from the role's mid-level file by `tools/gen-agents.ps1` (same tools, skills and body, plus a level paragraph), so each role's rules live in one file and no agent spends a step reading another agent file.
   A junior that finds the task bigger than briefed stops and reports back, and the lead re-assigns it to a senior.
