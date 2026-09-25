@@ -424,6 +424,30 @@ the test writes, so any sequence of ids, moves and endings is cheap). Tables fro
 - Binding the dynamic OnFightFishLanded from a Blueprint (tests can't declare a UFUNCTION listener): reflection-checked only.
 - Escaping fish sink with no floor clamp: fixed in 98cacba (FFightFishVisual::EscapeStep keeps FloorClearance above the seabed; test Placement.EscapeStaysAboveTheSeabed).
 
+### A3 gate QA (QA-A3b, Full tier): T-048, T-048b, T-043, T-058a, T-059a, T-061 (fish side)
+Implementer tests already cover every acceptance criterion: `MouthOnLine.{PureRules, ActorFollowsRuns, BobberOverMouth}` (T-048),
+`SwimFacing.*` (T-048b, 5), `ExhaustedUpright` (T-058a), `PlayRateByStamina.{Rules, AdapterAndActor}` (T-059a), `Fishing.Line.Hang.SideOn.*` (T-043),
+`Fishing.Line.Hang.Wiggle.*` (T-061). Independent boundary tests: `Tests/FishVisual/QAS1FightFishVisualTest.cpp`, `Project.FishVisual.QA.S1.*`, 10 tests.
+
+| Tests (`Project.FishVisual.QA.S1.` + ...) | Item | What they prove |
+|---|---|---|
+| Swing.SpeedEdges | T-048 | Just under MinFacingSpeed: no swing; just over: RunSwingDeg x speed / RunSwingFullSpeed, to the swim's side; full at RunSwingFullSpeed; capped at 10x. |
+| Swing.LimitEdges | T-048 | Validate: RunSwingDeg 0 and 80 ok, 80.5 and -1 rejected; 0 = no swing and ClampToLine pins the yaw; 120 (bad data) still clamps to 80, pitch/roll kept; facing away -> exactly the cone edge. |
+| Mouth.LagCapEdges | T-048 | MouthMaxLagCm 0 valid and pins the mouth on the line end; just inside the cap only smoothed; just outside / dt 0 / far target: never more than the cap behind. |
+| PlayRate.StaminaOutOfRange | T-059a | Every move: stamina -1 plays as 0, 2.5 as 1 (rate and alpha); alpha never above fresh; adapter clamps a negative fight stamina to 0. |
+| PlayRate.UnlistedRoleIsOne | T-059a | A role not in RoleStaminaRates (Flop; or an empty list) = factor 1 at any stamina; the alpha rule still applies. |
+| Data.RoleStaminaRatesSane | T-059a | Every DT_FishVisual row: each role once, 0 < TiredRate <= FreshRate, 0 <= TiredAmplitude <= FreshAmplitude <= 1, every fight role (MoveRoles, Unknown, Thrash) listed. |
+| SwimFacing.MoveSideEdges | T-048b | MoveSwimSide +-3 capped at RunSwingDeg on the move's side; 0.5 against a fast opposite drag = half swing to the move's side; unknown PatternId = the built-in pattern. |
+| SwimFacing.ActorSwingsToMoveSide | T-048b | Proxy actor reeled in and dragged the other way: head to the move's side, RunSwingDeg x share (+-1.5), flips with the side; mouth within MouthMaxLagCm. |
+| Hang.AdoptedFishWiggleMovesTheLine | T-061 | Item hangs with its own still mesh (line rests), then adopts the landed visual (skinned mesh on an attached actor, own mesh hidden): the 3 cm 3 Hz wiggle moves the line's middle >= 0.5 cm at 3 Hz. |
+| Hang.HiddenFishIsNotAWiggle | T-061 | A hidden skinned mesh wiggling leaves the line at rest (<= 0.01 cm); shown again, the line follows it. |
+
+Gaps (A3 gate):
+- T-043 side-on with the real adopted ALureFightFish (ABP_Fish + SK_Bonefish flop): needs the ABP asset and clips ticking in a test world; `Hang.SideOn.RealCatch` uses the item; playtester checks.
+- T-061 wiggle strength with the real landed/hang clips (HangWiggleCoupling is a feel value): playtester/designer, art S3.
+- T-048b pitch following the move (Dive) instead of the drag: not in scope (report recommends a later task); no test.
+- T-059a calm clip look at low stamina (art S3): visual only, playtester.
+
 ## T-032 physics fishing line (lane eng5)
 Spec `docs/specs/fishing-line.md`. Implementer: 17 tests `Project.Fishing.Line.{Rules,Data,Sim,Component,Fishing}.*` (`Tests/Fishing/FishingLineTest.cpp`) + T-006 `Line.AtLeastTwoPixels`.
 QA (independent, black-box from the spec and headers): 25 tests `Project.Fishing.Line.QA.*` in `Tests/Fishing/QAFishingLineTest.cpp` (namespace LureQALineTest).
