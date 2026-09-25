@@ -21,6 +21,7 @@ FFightFishView FFightFishViewAdapter::Make(const FLureFightNetState& Fight, cons
 	View.bExhausted = Fight.bExhausted;
 	View.DepthCm = Fight.Depth;
 	View.Tension01 = Fight.GetTension01();
+	View.Stamina01 = FMath::Clamp(Fight.Stamina, 0.f, 1.f); // T-059a: the clip rate and alpha follow the fish's effort
 	View.PlayerLocation = PlayerLocation;
 	View.WaterZ = static_cast<float>(Line.BobberRest.Z);
 	View.bHasAuthority = bHasAuthority;

@@ -235,31 +235,74 @@ namespace LureFightFishQA
 		return true;
 	}
 
-	/** Play rate and alpha: clamps at the edges, and always finite and in range for garbage inputs (the ABP must never get NaN). */
+	/** Play rate and alpha: the escape swim's speed clamps, the fight's stamina edges (T-059a), and always finite and in range for
+	 *  garbage inputs (the ABP must never get NaN). */
 	IMPLEMENT_SIMPLE_AUTOMATION_TEST(FFishVisualQARates, "Project.FishVisual.QA.Roles.PlayRateAndAlphaEdges", Flags)
 	bool FFishVisualQARates::RunTest(const FString& Parameters)
 	{
 		const FFishVisualRow Row = FFishVisualRow::GetFallbackRow();
-		for (const FFishRoleTailBeat& Beat : Row.RoleTailBeats)
+		// Escape swim: speed sets the rate (roles in RoleTailBeats), clamped to [MinPlayRate, MaxPlayRate].
+		const FFishRoleTailBeat* Beat = Row.RoleTailBeats.FindByPredicate([](const FFishRoleTailBeat& B) { return B.Role == EFishAnimRole::SwimFast; });
+		if (TestNotNull(TEXT("SwimFast (the escape swim) has a tail beat"), Beat))
 		{
-			const FFishMoveAnimRole* Move = Row.MoveRoles.FindByPredicate([&Beat](const FFishMoveAnimRole& M) { return M.Role == Beat.Role; });
+			FFightFishAnimInput In = SettledInput(TEXT("Swim"));
+			In.Phase = EFightFishPhase::Escaping;
+			In.AnimRate = 1.f;
+			const float OneX = Row.StrideBodyLengths * In.BodyLengthCm * Beat->Hz; // speed for rate 1
+			In.SpeedCmS = OneX;
+			TestEqual(TEXT("escape at the stride speed: rate 1"), FFightFishVisual::ComputeAnimState(Row, In).PlayRate, 1.f, 1.e-4f);
+			In.SpeedCmS = OneX * Row.MinPlayRate * 0.99f;
+			TestEqual(TEXT("escape just under MinPlayRate: clamped"), FFightFishVisual::ComputeAnimState(Row, In).PlayRate, Row.MinPlayRate, 1.e-5f);
+			In.SpeedCmS = OneX * Row.MinPlayRate * 1.01f;
+			TestEqual(TEXT("escape just over MinPlayRate: the formula"), FFightFishVisual::ComputeAnimState(Row, In).PlayRate, Row.MinPlayRate * 1.01f, 1.e-4f);
+			In.SpeedCmS = OneX * Row.MaxPlayRate * 1.01f;
+			TestEqual(TEXT("escape just over MaxPlayRate: clamped"), FFightFishVisual::ComputeAnimState(Row, In).PlayRate, Row.MaxPlayRate, 1.e-5f);
+			In.SpeedCmS = OneX * Row.MaxPlayRate * 0.99f;
+			TestEqual(TEXT("escape just under MaxPlayRate: the formula"), FFightFishVisual::ComputeAnimState(Row, In).PlayRate, Row.MaxPlayRate * 0.99f, 1.e-4f);
+		}
+		// Fighting (not tired): stamina sets rate and alpha; speed never does.
+		for (const FFishRoleStaminaRate& Rate : Row.RoleStaminaRates)
+		{
+			const FFishMoveAnimRole* Move = Row.MoveRoles.FindByPredicate([&Rate](const FFishMoveAnimRole& M) { return M.Role == Rate.Role; });
 			if (!Move)
 			{
 				continue;
 			}
+			const FString Name = RoleName(Rate.Role);
 			FFightFishAnimInput In = SettledInput(Move->MoveId);
-			const float OneX = Row.StrideBodyLengths * In.BodyLengthCm * Beat.Hz; // speed for rate 1
-			In.SpeedCmS = OneX;
-			TestEqual(FString::Printf(TEXT("%s at the stride speed: rate 1"), *RoleName(Beat.Role)), FFightFishVisual::ComputeAnimState(Row, In).PlayRate, 1.f, 1.e-4f);
-			In.SpeedCmS = OneX * Row.MinPlayRate * 0.99f;
-			TestEqual(FString::Printf(TEXT("%s just under MinPlayRate: clamped"), *RoleName(Beat.Role)), FFightFishVisual::ComputeAnimState(Row, In).PlayRate, Row.MinPlayRate, 1.e-5f);
-			In.SpeedCmS = OneX * Row.MinPlayRate * 1.01f;
-			TestEqual(FString::Printf(TEXT("%s just over MinPlayRate: the formula"), *RoleName(Beat.Role)), FFightFishVisual::ComputeAnimState(Row, In).PlayRate, Row.MinPlayRate * 1.01f, 1.e-4f);
-			In.SpeedCmS = OneX * Row.MaxPlayRate * 1.01f;
-			TestEqual(FString::Printf(TEXT("%s just over MaxPlayRate: clamped"), *RoleName(Beat.Role)), FFightFishVisual::ComputeAnimState(Row, In).PlayRate, Row.MaxPlayRate, 1.e-5f);
-			In.SpeedCmS = OneX * Row.MaxPlayRate * 0.99f;
-			TestEqual(FString::Printf(TEXT("%s just under MaxPlayRate: the formula"), *RoleName(Beat.Role)), FFightFishVisual::ComputeAnimState(Row, In).PlayRate, Row.MaxPlayRate * 0.99f, 1.e-4f);
+			In.AnimRate = 1.f;
+			In.AnimAmplitude = 1.f;
+			const float Lo = FMath::Min(Rate.FreshRate, Rate.TiredRate);
+			const float Hi = FMath::Max(Rate.FreshRate, Rate.TiredRate);
+			struct FStam { float S; float Rate; float Alpha; const TCHAR* What; };
+			const FStam Cases[] = {
+				{ 1.f, Rate.FreshRate, Row.FreshAmplitudeScale, TEXT("stamina 1") },
+				{ 0.f, Rate.TiredRate, Row.TiredAmplitudeScale, TEXT("stamina 0") },
+				{ 0.5f, FMath::Lerp(Rate.TiredRate, Rate.FreshRate, 0.5f), FMath::Lerp(Row.TiredAmplitudeScale, Row.FreshAmplitudeScale, 0.5f), TEXT("stamina 0.5") },
+			};
+			for (const FStam& C : Cases)
+			{
+				In.Stamina01 = C.S;
+				for (const float Speed : { 0.f, 80.f, 5000.f })
+				{
+					In.SpeedCmS = Speed;
+					const FFishAnimState State = FFightFishVisual::ComputeAnimState(Row, In);
+					TestEqual(FString::Printf(TEXT("%s %s speed %.0f: rate"), *Name, C.What, Speed), State.PlayRate, C.Rate, 1.e-4f);
+					TestEqual(FString::Printf(TEXT("%s %s speed %.0f: alpha"), *Name, C.What, Speed), State.Amplitude, C.Alpha, 1.e-4f);
+				}
+			}
+			// Out-of-range stamina stays inside the data's bounds.
+			for (const float S : { -0.5f, 1.5f, QNaN, QInf })
+			{
+				In.Stamina01 = S;
+				In.SpeedCmS = 80.f;
+				const FFishAnimState State = FFightFishVisual::ComputeAnimState(Row, In);
+				TestTrue(FString::Printf(TEXT("%s stamina %f: rate within [TiredRate, FreshRate]"), *Name, S), FMath::IsFinite(State.PlayRate) && State.PlayRate >= Lo - 1.e-4f && State.PlayRate <= Hi + 1.e-4f);
+				TestTrue(FString::Printf(TEXT("%s stamina %f: alpha within [0.75, 1]"), *Name, S), FMath::IsFinite(State.Amplitude) && State.Amplitude >= Row.TiredAmplitudeScale - 1.e-4f && State.Amplitude <= Row.FreshAmplitudeScale + 1.e-4f);
+			}
 		}
+		TestEqual(TEXT("data: TiredAmplitudeScale 0.75"), Row.TiredAmplitudeScale, 0.75f, 1.e-6f);
+		TestEqual(TEXT("data: FreshAmplitudeScale 1"), Row.FreshAmplitudeScale, 1.f, 1.e-6f);
 		// Species amplitude outside 0..1 is clamped; garbage inputs stay finite.
 		FFightFishAnimInput In = SettledInput(TEXT("Swim"));
 		In.AnimAmplitude = 1.7f;

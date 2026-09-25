@@ -779,7 +779,7 @@ void ALureFishItem::EnsureHangLine()
 	HangLine = NewObject<ULureFishingLineComponent>(this, TEXT("HangLine"), RF_Transient);
 	HangLine->SetupAttachment(ItemRoot);
 	HangLine->RegisterComponent();
-	HangLine->Setup(Mesh, Cast<UMaterialInterface>(LureFishItemPrivate::LoadIfExists(Settings->LineMaterial.ToSoftObjectPath())), Settings->LineColor, 4);
+	HangLine->Setup(Mesh, Settings->LoadLineMaterial(), Settings->LineColor, 4);
 }
 
 void ALureFishItem::GetViewer(FVector& OutLocation, float& OutFovDeg) const

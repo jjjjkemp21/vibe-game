@@ -27,15 +27,31 @@ state (`RodPitch`, `RodYaw`, `ReelStep`, `RunSide`) is not the fish's and is not
   `FallbackMesh` (SK_Bonefish); none = nothing drawn. `AnimAmplitude` / `AnimRate` columns (optional, default 1).
 - **Scale**: `clamp((Weight / ReferenceWeight)^(1/3), MinScale, MaxScale)`.
 - **Placement**: line end = player + (direction to the bobber's rest point turned by `SideDeg`) x `LineOut`. The fish's
-  `Mouth` bone sits at the line end (body toward the player), `SurfaceDepth + min(DepthShare x Depth, MaxShownDepth)` under
-  the surface, at least `FloorClearance` above the bottom. Smoothing: `AuthoritySmoothTime` on the server/standalone,
-  `ProxySmoothTime` elsewhere; jumps over `SnapDistance` snap. Faces its swim when faster than `MinFacingSpeed`, else
-  away from the player; tired fish roll `ExhaustedRollDeg`. **Jimmy, 2026-09-24: a tired fish stays upright with a calm swim, never on its
-  side** (T-058: `ExhaustedRollDeg` 0; a calm swim clip instead of the roll).
+  mouth is its point nearest the rod (T-048, lead 2026-09-24; replaces "body toward the player", which made the bobber
+  look hooked to the tail): the `Mouth` bone sits right under the line end (and the bobber, which is drawn at the same
+  XY), the fish faces the player from there and its body lies away from the player; its center is
+  `SurfaceDepth + min(DepthShare x Depth, MaxShownDepth)` under the surface, at least `FloorClearance` above the bottom.
+  Smoothing moves only that line point (`AuthoritySmoothTime` on the server/standalone, `ProxySmoothTime` elsewhere; jumps
+  over `SnapDistance` snap), and it never trails the line end by more than `MouthMaxLagCm` (5 cm) horizontally; the body
+  pivots around the mouth (`RotationSmoothTime`). While the mouth swims faster than `MinFacingSpeed` the body swings
+  sideways by `RunSwingDeg x min(1, speed / RunSwingFullSpeed)` (35 deg, full at 200 cm/s): the head turns toward the side
+  it swims to (straight out or in: the side it already leans to), so it reads as pulling away; the end that leads the swim
+  follows a climb or dive (pitch up to `MaxPitchDeg`). The yaw is always kept within `RunSwingDeg` (max 80) of mouth ->
+  player, so seen from above no body point is nearer the player than the mouth (tests `Project.FishVisual.MouthOnLine.*`).
+  A tired fish does not swing. An escaping fish (after the fight) faces its swim when faster than `MinFacingSpeed`, else
+  away from the player. Tired fish roll `ExhaustedRollDeg`, which is 0: **Jimmy, 2026-09-24: a tired fish stays upright with a
+  calm swim, never on its side** (T-058a set it to 0, test `Project.FishVisual.ExhaustedUpright`; the column stays for a small
+  roll with a later calm clip, S3).
 - **Clips** (`EFishAnimRole`): first `HookSetThrashTime` s Thrash; then `MoveRoles[MoveId]` (unknown = `UnknownMoveRole`);
   tired = SwimIdle at `ExhaustedPlayRate`, alpha x `ExhaustedAmplitudeScale`; Landed = Flop at alpha 1; escaping = SwimFast.
-  Swim roles (listed in `RoleTailBeats`) play at `AnimRate x Speed / (StrideBodyLengths x BodyLength x Hz)` clamped to
-  `[MinPlayRate, MaxPlayRate]`; others at `AnimRate x (ReferenceWeight / Weight)^OtherRateWeightExponent`. A dart starts at
+  Sulk plays SwimIdle (T-059a: a sulking fish holds). **While fighting (not tired), effort, not speed (T-059a, art S3 gate
+  A)**: every role plays at `AnimRate x (ReferenceWeight / Weight)^OtherRateWeightExponent x lerp(TiredRate, FreshRate,
+  stamina)` (`RoleStaminaRates`: Run/SwimFast/Dive 1.0/0.6, Dart/Thrash 1.0/0.7, SwimIdle 1.0/0.8; a role not listed = 1)
+  with alpha `AnimAmplitude x lerp(TiredAmplitudeScale 0.75, FreshAmplitudeScale 1, stamina)`; the fish's speed (reeling
+  it in) never changes it. Stamina = `FLureFightNetState::Stamina` through `FFightFishView::Stamina01` (the adapter's one
+  line) and `FFightFishAnimInput::Stamina01` (default 1: the held/landed fish keep their rule). Only the escape swim
+  (roles in `RoleTailBeats`) plays at `AnimRate x Speed / (StrideBodyLengths x BodyLength x Hz)` clamped to
+  `[MinPlayRate, MaxPlayRate]`; the flop at the weight rate. Tests `Project.FishVisual.PlayRateByStamina.*`. A dart starts at
   0 (turning to the fish's left) or `DartRightStartTime` (right).
 
 ## Hand-off to T-030 (the landed fish)
