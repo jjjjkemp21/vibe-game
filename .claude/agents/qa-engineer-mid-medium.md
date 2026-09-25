@@ -35,7 +35,7 @@ Lane protocol (when you work in a lane `C:\GameDev\VibeGame-lanes\<lane>`, branc
 - Start: run `git merge --no-edit main` in your lane.
 - Put new tests in a new file named after the task (QA files start with `QA`).
 - Never edit production code (see "What you own").
-- Finish: `git merge --no-edit main`, then `tools/build.ps1 -WaitMutex` (in the background), then the full `tools/run-tests.ps1 -Filter Project`; all green.
+- Finish: `git merge --no-edit main`, then `tools/build.ps1 -WaitMutex` (in the background), then `tools/run-tests.ps1 -Filter Project.<Area>` for the areas your tests cover; all green. No full suite: the lead's integration runs it once on the merged result (Jimmy, 2026-09-24: test efficiently). A full run is only yours when the brief asks for release-gate or regression-sweep evidence.
 - Commit only your test files and TEST_PLAN.md, on your lane branch only; never push. End the message with the Co-Authored-By line from the session.
 - Past ~250k of context (senior level: ~400k): commit what builds, write a handoff in `Saved/AgentLogs/handoff/`, and return its path.
 

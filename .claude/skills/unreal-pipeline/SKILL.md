@@ -49,7 +49,12 @@ description: How to build, launch, stop, test, and script this Unreal Engine 5.8
 
 ## Tests
 - C++ tests in `Source/<Project>/Tests/`, paths `Project.<Area>.<Name>`, flags `EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter` (if that fails to compile, check `Misc/AutomationTest.h` in the engine for the current flag names).
-- Canonical run (before commits and milestones): editor closed, `tools/run-tests.ps1 -Filter Project`. Report JSON: `Saved/AgentLogs/tests/<timestamp>/index.json`.
+- Test tiers (Jimmy, 2026-09-24: test efficiently). A full run is ~2 min, and a build is 0.2-2 min; repeated runs and builds are the real cost.
+  - While coding: only what you touched: `-Filter Project.<Area>[.<Sub>]`, or one test by its full path with `-Substring`.
+  - Lane finish: every area you touched (full suite only after Build.cs/Config/cross-area header changes).
+  - Integration (`tools/integrate.ps1`, lead): the ONE full `-Filter Project` run. It is the evidence for that code tree.
+  - Never rerun tests when nothing changed.
+  Report JSON: `Saved/AgentLogs/tests/<timestamp>/index.json`.
 - Quick iteration: the testing toolset in unreal-mcp, inside the running editor.
 
 ## Screenshots

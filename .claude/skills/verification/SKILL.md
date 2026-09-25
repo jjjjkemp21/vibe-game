@@ -28,7 +28,7 @@ The lead picks the tier when briefing and says it in the brief. Don't gold-plate
 
 ## Release gate (before pushing to GitHub origin/main or handing a build to Jimmy)
 1. `tools/build.ps1` succeeded on the commit being published.
-2. `qa-engineer`: `tools/run-tests.ps1 -Filter Project` all green (report dir recorded).
+2. The full suite `tools/run-tests.ps1 -Filter Project` all green on the same code tree as the commit being published (report dir recorded). The last `tools/integrate.ps1` run counts when `git diff --quiet <integrated commit> HEAD -- Source data Config` holds; otherwise run it again. Plus QA's new tests for Standard/Full tasks.
 3. `playtester`: PASS for every feature changed since the last publish (report folder recorded).
 4. `designer`: APPROVED or APPROVED WITH CHANGES with all "must" items fixed (review file recorded).
 5. The lead records the evidence (commit message or the task's line in docs/TASKS.md), then pushes. Never skip a step to "save time"; if a step can't run, don't publish and tell Jimmy why.

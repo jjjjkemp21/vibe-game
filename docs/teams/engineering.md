@@ -85,7 +85,7 @@ STUDIO.md §5, plus:
 ready to integrate: <objective id>
 lanes (in order): eng3 (T-040a <hash>), eng5 (T-040b <hash>)
 why this order: T-040b builds on T-040a's API
-checks: each lane full suite green (tests/<ts>, tests/<ts>); expected total <N> tests
+checks: each lane's touched areas green (tests/<ts>, tests/<ts>); integration runs the full suite; expected total <N> tests
 editor after merge: reimport DT_X; BP_Y child; none
 playtest focus: <host + client steps>
 ```
