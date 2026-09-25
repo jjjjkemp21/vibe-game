@@ -247,6 +247,20 @@ void ALureCarryableItem::SetFirstPersonRendering(bool bFirstPerson)
 		for (UPrimitiveComponent* Primitive : Primitives)
 		{
 			Primitive->SetFirstPersonPrimitiveType(bFirstPerson ? EFirstPersonPrimitiveType::FirstPerson : EFirstPersonPrimitiveType::None);
+			// T-076: drawn first person the item sits at FirstPersonScale of its distance from the eye, but its distance field
+			// and Lumen card stay at the unscaled place, right behind the drawn copy, where they can shade it. Out of those
+			// scenes while first person (only on this machine); back to the component's own defaults when it leaves the hands.
+			const UPrimitiveComponent* Defaults = Cast<UPrimitiveComponent>(Primitive->GetArchetype());
+			const bool bDistanceField = !bFirstPerson && (!Defaults || Defaults->bAffectDistanceFieldLighting);
+			const bool bIndirect = !bFirstPerson && (!Defaults || Defaults->bAffectDynamicIndirectLighting);
+			if (Primitive->bAffectDistanceFieldLighting != bDistanceField)
+			{
+				Primitive->SetAffectDistanceFieldLighting(bDistanceField);
+			}
+			if (Primitive->bAffectDynamicIndirectLighting != bIndirect)
+			{
+				Primitive->SetAffectDynamicIndirectLighting(bIndirect);
+			}
 			if (bFirstPerson && bNoShadowInFirstPerson && Primitive->CastShadow)
 			{
 				Primitive->SetCastShadow(false);

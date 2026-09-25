@@ -31,6 +31,39 @@
 #include "Net/UnrealNetwork.h"
 #include "UObject/ConstructorHelpers.h"
 
+namespace LurePlayerCharacterPrivate
+{
+	/**
+	 *  T-076: the placeholder body is hidden from its owner (OwnerNoSee) but ray tracing, Lumen and the distance fields
+	 *  ignore that flag. First-person primitives (arms, rod, a held fish, the carried cooler) are drawn at FirstPersonScale
+	 *  of their distance from the eye, i.e. inside this capsule-sized cylinder, so its unseen walls would take their sky and
+	 *  bounce light. Out of those scenes on the owner's machine; everyone else's copy of the body keeps its defaults.
+	 */
+	void ApplyOwnBodyLighting(UStaticMeshComponent* Body, bool bOwnView)
+	{
+		const UStaticMeshComponent* Defaults = Body ? Cast<UStaticMeshComponent>(Body->GetArchetype()) : nullptr;
+		if (!Body || !Defaults)
+		{
+			return;
+		}
+		const bool bRayTracing = !bOwnView && Defaults->bVisibleInRayTracing;
+		const bool bDistanceField = !bOwnView && Defaults->bAffectDistanceFieldLighting;
+		const bool bIndirect = !bOwnView && Defaults->bAffectDynamicIndirectLighting;
+		if (Body->bVisibleInRayTracing != bRayTracing)
+		{
+			Body->SetVisibleInRayTracing(bRayTracing);
+		}
+		if (Body->bAffectDistanceFieldLighting != bDistanceField)
+		{
+			Body->SetAffectDistanceFieldLighting(bDistanceField);
+		}
+		if (Body->bAffectDynamicIndirectLighting != bIndirect)
+		{
+			Body->SetAffectDynamicIndirectLighting(bIndirect);
+		}
+	}
+}
+
 ALurePlayerCharacter::ALurePlayerCharacter(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer.SetDefaultSubobjectClass<ULureCharacterMovementComponent>(ACharacter::CharacterMovementComponentName))
 {
@@ -140,6 +173,7 @@ void ALurePlayerCharacter::BeginPlay()
 	LoadFirstPersonArms();
 	LoadArmsAnimation();
 	SetupPlaceholderBodyMaterial();
+	LurePlayerCharacterPrivate::ApplyOwnBodyLighting(PlaceholderBody, IsLocallyControlled()); // T-076 (possession changes: NotifyControllerChanged)
 	SnapEyeHeightToStance();
 	LastDipStance = GetStance();
 }
@@ -777,6 +811,7 @@ void ALurePlayerCharacter::NotifyControllerChanged()
 		RemoveMappingContextFrom(OldController);
 	}
 	AddMappingContextTo(NewController);
+	LurePlayerCharacterPrivate::ApplyOwnBodyLighting(PlaceholderBody, IsLocallyControlled()); // T-076: the owner's own body leaves the GI scenes
 }
 
 void ALurePlayerCharacter::TeleportSucceeded(bool bIsATest)

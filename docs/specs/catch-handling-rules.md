@@ -25,6 +25,15 @@ by the server; clients only ask ("I pressed E on this cooler, expecting Put in")
   the fixed `CarriedCoolerOffset` on the arms component when the mesh lacks that bone) and drawn as a first-person primitive, so it never clips into walls;
   every other machine attaches it to the holder's body at a third-person offset. Offsets and sockets are settings
   (`ULureCatchSettings`), so the animation-artist's clips are matched without code.
+- **First-person lighting (T-076, only on the holder's machine):** a first-person primitive is drawn at FirstPersonScale
+  of its distance from the eye, but its distance field and Lumen card stay at the unscaled place, right behind the
+  drawn copy. So while first person, the held item's primitives (and the cooler's shown fish) leave the distance-field
+  and dynamic-indirect-lighting scenes (`ALureCarryableItem::SetFirstPersonRendering`, `ALureCoolerActor::RefreshDisplay`)
+  and get the component's own defaults back when they leave the hands. The owner's placeholder body is OwnerNoSee, which
+  ray tracing, Lumen and distance fields ignore; on its owner's machine it leaves those scenes too (BeginPlay and every
+  possession change, `LurePlayerCharacter.cpp`), every other machine keeps it. Headless tests prove the flags
+  (`Project.Catch.HeldCooler.OwnerView.FirstPersonLighting`); the picture is checked in PIE
+  (`Saved/AgentLogs/tasks/T-076/pie_check.md`).
 - **A fish in another player's hand (T-030k):** the owner's first-person pose seen from outside. `ThirdPersonFishOffset`
   / `ThirdPersonFishRotation` are the grip frame (the first-person `hand_r_fish` frame) from the holder's eye point
   (capsule center + `BaseEyeHeight`, the body's yaw; it follows crouch and prone every frame); default = the HoldFish
@@ -143,9 +152,20 @@ by the server; clients only ask ("I pressed E on this cooler, expecting Put in")
   `LidOpenTime`), showing = `CarriedShowRotation/Offset` (the top turned away, blended over DT_Catch `ShowTurnTime`);
   other machines, showing = `ThirdPersonShowRotation/Offset` (the top turned along the carrier's forward; no tilt when
   just open). Settings in `ULureCatchSettings`, PLACEHOLDER. The arms keep the CarryCooler pose: the hands don't sit on
-  the handles while it is turned (an art need: a show pose). On arms without the `cooler` bone (the fixed-offset
+  the handles while it is turned to show (an art need: a show pose). On arms without the `cooler` bone (the fixed-offset
   fallback, the cooler's front away from the eye) the first-person turns point the wrong way; that fallback is for
   missing art only.
+  **The owner's view limit (T-076):** the vertical view is +-29.4 deg at every window shape (MaintainYFOV with the
+  camera's 16:9 aspect, so 1600x900 and a portrait window show the same rows). The first open turn (-35 about the box
+  centre) left the liner floor 45 deg and a single fish 38 deg below the view centre: the owner saw the liner's back wall
+  ("the lid") over the lower third and no fish. Open is now the top tilted 65 deg toward the eye about the rope-handle
+  axis (Handle_L/R, x 0, z 30.6 cm), so the fists stay on the ropes: offset = (H - C) - R (H - C), C = the box centre.
+  At 16:9: 1 fish 69% visible (rows 82-100%), 4 fish top fish 83%, the lid strip at rows 56-67%. Checked with the real
+  arms mesh and pose by `Project.Catch.HeldCooler.OwnerView.OpenShowsFish` (1 and 4 fish, look pitch 0/-25/-45, 16:9
+  and portrait): at least half the top fish seen through the opening, the lid in the upper half, the handles within
+  1 cm of their carry place. The closed carry covers 28.5% of the screen height (`ClosedCarryScreenShare` guards at
+  most 30%); the designer's 15% needs the whole carry 6.5 cm lower, which moves the handles off the fists: that is a
+  new CarryCooler idle pose (art), not a settings offset.
   The lid (T-064c, local and cosmetic, no new replication): on the carrier's own machine (first-person rendering) an
   open lid folds back behind the box to DT_Catch `CarriedOpenLidPitch` (235 deg; at LidOpenPitch 100 it covered 84% of
   the centre view, folded ~22%, art gate A); every other machine and any standing open cooler use `LidOpenPitch`. It
@@ -329,7 +349,7 @@ by the server; clients only ask ("I pressed E on this cooler, expecting Put in")
   every row names a DT_Cooler row and that LieOffsetCm is in [0, 50].
 - Project Settings > Game > Catch Handling (`[/Script/VibeGame.LureCatchSettings]`): table paths, the fish mesh search
   (the species row's `Mesh`, else `/Game/Art/Fish/SK_<Species>`, else `SM_<Species>`), attach sockets and offsets, the
-  carried cooler's open and show turns (T-064: `CarriedOpenRotation/Offset` pitch -35, `CarriedShowRotation/Offset`
+  carried cooler's open and show turns (T-076: `CarriedOpenRotation/Offset` pitch -65 and (-10.06, 0, 6.22) cm = about the handle axis, `CarriedShowRotation/Offset`
   pitch +72 and 8 cm up, `ThirdPersonShowRotation/Offset` pitch -90 and 10 cm up), the starter cooler spawn. Keys: `AltInteractKeys` in Lure Character settings.
 - All numbers are PLACEHOLDER until Jimmy plays it.
 

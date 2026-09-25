@@ -1175,7 +1175,10 @@ void ALureCoolerActor::RefreshDisplay()
 			}
 			if (bFirstPersonRendering)
 			{
+				// As SetFirstPersonRendering does for the parts it finds (T-076: out of the distance-field / Lumen scene too).
 				Shown3D->SetFirstPersonPrimitiveType(EFirstPersonPrimitiveType::FirstPerson);
+				Shown3D->SetAffectDistanceFieldLighting(false);
+				Shown3D->SetAffectDynamicIndirectLighting(false);
 			}
 			DisplayFish.Add(Shown3D);
 		}

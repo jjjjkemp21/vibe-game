@@ -40,10 +40,14 @@ ULureCatchSettings::ULureCatchSettings()
 	CoolerSpawnTag = TEXT("Lure.CoolerSpawn");
 	StarterCoolerOffset = FVector(150.0f, 100.0f, 0.0f);
 
-	// T-064 (PLACEHOLDER): the cooler bone carries the top tilted 18.5 deg away from the eye; open = the top about level
-	// and tilted about 16 deg toward the eye (the lone fish at the back seen over the front rim); show = the top turned to face ahead (18.5 + 72 = about 90 deg from up), a little higher.
-	CarriedOpenRotation = FRotator(-35.0f, 0.0f, 0.0f);
-	CarriedOpenOffset = FVector::ZeroVector;
+	// T-064 (PLACEHOLDER): the cooler bone carries the top tilted 18.5 deg away from the eye; show = the top turned to face ahead (18.5 + 72 = about 90 deg from up), a little higher.
+	// T-076: open = the top tilted 65 deg toward the eye about the rope-handle axis (Handle_L/R at x 0, z 30.6 cm), so the
+	// carry's fists stay on the ropes (offset = (H - C) - R (H - C), C = the starter's BoxCenter (0.15, 0, 19.6)). That is
+	// art's CarryCooler_Open view (the lid strip at 56-67 % of the screen height, the fish in the lower third) without its
+	// arm clip. The old -35 turn left the liner floor 45 deg below the view centre, outside the 29.4 deg half-height view
+	// (Project.Catch.HeldCooler.OwnerView.*). Zero these once the arms play A_FPArms_CarryCooler_Open (T-064b).
+	CarriedOpenRotation = FRotator(-65.0f, 0.0f, 0.0f);
+	CarriedOpenOffset = FVector(-10.06f, 0.0f, 6.22f);
 	CarriedShowRotation = FRotator(72.0f, 0.0f, 0.0f);
 	CarriedShowOffset = FVector(0.0f, 0.0f, 8.0f);
 	ThirdPersonShowRotation = FRotator(-90.0f, 0.0f, 0.0f);
