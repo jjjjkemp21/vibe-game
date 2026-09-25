@@ -2,8 +2,15 @@
 
 #include "Fishing/LureFishingLineComponent.h"
 #include "Camera/PlayerCameraManager.h"
+#include "CollisionQueryParams.h"
+#include "CollisionShape.h"
+#include "Components/InstancedStaticMeshComponent.h"
+#include "Components/PrimitiveComponent.h"
+#include "Components/SkinnedMeshComponent.h"
 #include "Components/SplineMeshComponent.h"
 #include "Engine/CollisionProfile.h"
+#include "Engine/HitResult.h"
+#include "PhysicsEngine/BodySetup.h"
 #include "Engine/DataTable.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
@@ -64,6 +71,7 @@ void ULureFishingLineComponent::Setup(UStaticMesh* InMesh, UMaterialInterface* I
 	Material = InMaterial;
 	Sim.Init(NumSegments);
 	Widths.SetNumZeroed(Sim.GetNumSegments() + 1);
+	ReserveColliders();
 	if (!Mesh || !GetOwner())
 	{
 		return; // simulated, not drawn
@@ -356,6 +364,8 @@ void ULureFishingLineComponent::StartLine(ELureLineMode NewMode)
 	}
 	Mode = NewMode;
 	bNeedsReset = true;
+	ReserveColliders();
+	bCollidersValid = false; // a new line gathers its solids again (T-032b)
 	RecoilElapsed = 0.f;
 	RestLength = 0.f;
 	TargetRestLength = 0.f;
@@ -369,6 +379,8 @@ void ULureFishingLineComponent::StopLine()
 {
 	Mode = ELureLineMode::None;
 	bNeedsReset = true;
+	bCollidersValid = false;
+	Colliders.Reset(); // keeps the memory
 	RecoilElapsed = 0.f;
 	RestLength = 0.f;
 	TargetRestLength = 0.f;
@@ -522,12 +534,143 @@ void ULureFishingLineComponent::Simulate(float DeltaTime)
 	float WaterZ = 0.f;
 	In.bHasWater = ResolveWater(In.End, WaterZ);
 	In.WaterZ = WaterZ;
+	UpdateColliders(In.Start, In.End, DeltaTime); // T-032b: what the line lies on and bends around (none while an actor hangs)
+	In.Colliders = (Mode == ELureLineMode::Hanging || Colliders.IsEmpty()) ? nullptr : &Colliders;
 	if (bNeedsReset)
 	{
 		Sim.Reset(In);
 		bNeedsReset = false;
 	}
 	Sim.Step(DeltaTime, In, Row);
+}
+
+// ---- Collision (T-032b) ----
+
+void ULureFishingLineComponent::ReserveColliders()
+{
+	// About one pier's worth (a deck, a few dozen posts); more only grows on a gather frame, never in the steady state.
+	Colliders.Reserve(512, 64, 32);
+	Overlaps.Reserve(64);
+	PlaneScratch.Reserve(64);
+}
+
+void ULureFishingLineComponent::UpdateColliders(const FVector& Tip, const FVector& End, float DeltaTime)
+{
+	if (Mode == ELureLineMode::Hanging)
+	{
+		// A hanging actor's line does not collide: it can start under a dock, and the reel would trap it there. Gathered afresh
+		// when the line pins again.
+		if (bCollidersValid || !Colliders.IsEmpty())
+		{
+			bCollidersValid = false;
+			Colliders.Reset();
+		}
+		return;
+	}
+	const FLureFishingLineRow& Row = GetTuning();
+	CollisionClock += FMath::Max(0.f, DeltaTime);
+	FBox LineBox(ForceInit);
+	LineBox += Tip;
+	LineBox += End;
+	if (!bNeedsReset && Sim.HasState())
+	{
+		for (const FVector& Point : Sim.GetPoints())
+		{
+			LineBox += Point;
+		}
+	}
+	const double Radius = FMath::Clamp(static_cast<double>(Row.CollisionRadius), 0.0, 50.0);
+	const double Margin = FMath::Max(10.0, static_cast<double>(Row.CollisionQueryMargin));
+	// Gathered again before the line can reach past the box this frame (it moves at most min(Margin / 2, 50 cm) per frame here).
+	const FBox Needed = LineBox.ExpandBy(FMath::Min(0.5 * Margin, 50.0) + Radius);
+	const bool bRefreshDue = bMovableColliders && CollisionClock >= Row.CollisionRefreshTime;
+	if (bCollidersValid && !bRefreshDue && QueryBox.IsInsideOrOn(Needed))
+	{
+		return;
+	}
+	QueryBox = LineBox.ExpandBy(Margin + Radius);
+	CollisionClock = 0.f;
+	bCollidersValid = true;
+	bMovableColliders = false;
+	Colliders.Reset();
+	Overlaps.Reset();
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(LureFishingLineSolids), false, GetOwner());
+	if (const AActor* Hanging = EndActor.Get())
+	{
+		Params.AddIgnoredActor(Hanging);
+	}
+	World->OverlapMultiByChannel(Overlaps, QueryBox.GetCenter(), FQuat::Identity, FLureFishingSpots::CastChannel,
+		FCollisionShape::MakeBox(QueryBox.GetExtent()), Params);
+	for (const FOverlapResult& Overlap : Overlaps)
+	{
+		UPrimitiveComponent* Component = Overlap.GetComponent();
+		if (!Component || !FLureFishingSpots::BlocksCast(FHitResult(Overlap.GetActor(), Component, Component->GetComponentLocation(), FVector::UpVector)))
+		{
+			continue; // the line collides with exactly what stops a cast
+		}
+		AddCollidersOf(*Component, Overlap.GetItemIndex());
+		bMovableColliders |= Component->GetMobility() == EComponentMobility::Movable;
+	}
+}
+
+void ULureFishingLineComponent::AddCollidersOf(UPrimitiveComponent& Component, int32 Item)
+{
+	if (Component.IsA<USkinnedMeshComponent>())
+	{
+		return; // animated bodies are not in one body setup (creatures are pawns: never solid for a cast anyway)
+	}
+	FTransform World = Component.GetComponentTransform();
+	const UInstancedStaticMeshComponent* Instanced = Cast<UInstancedStaticMeshComponent>(&Component);
+	if (Instanced && (Item == INDEX_NONE || !Instanced->GetInstanceTransform(Item, World, /*bWorldSpace*/ true)))
+	{
+		return;
+	}
+	UBodySetup* Body = Component.GetBodySetup();
+	if (!Body)
+	{
+		return; // no body setup at all (a landscape's heightfield): not collided yet (spec: Known limits)
+	}
+	if (Body->GetCollisionTraceFlag() == CTF_UseComplexAsSimple || Body->AggGeom.GetElementCount() == 0)
+	{
+		// No simple shapes (complex collision only): its bounds stand in (see FLureLineColliders::FConvex::bBoundsOnly).
+		const UStaticMesh* InstancedMesh = Instanced ? Instanced->GetStaticMesh() : nullptr;
+		Colliders.AddBoundsBox(InstancedMesh ? InstancedMesh->GetBounds().GetBox().TransformBy(World) : Component.Bounds.GetBox());
+		return;
+	}
+	const FKAggregateGeom& Geometry = Body->AggGeom;
+	for (const FKBoxElem& Box : Geometry.BoxElems)
+	{
+		Colliders.AddBox(FVector(Box.X, Box.Y, Box.Z) * 0.5, Box.GetTransform(), World); // X, Y, Z are full sizes
+	}
+	for (const FKConvexElem& Convex : Geometry.ConvexElems)
+	{
+		PlaneScratch.Reset();
+		Convex.GetPlanes(PlaneScratch);
+		if (!Colliders.AddConvex(PlaneScratch, Convex.ElemBox, Convex.GetTransform(), World) && Convex.ElemBox.IsValid)
+		{
+			// No cooked hull here: its box stands in.
+			Colliders.AddBox(Convex.ElemBox.GetExtent(), FTransform(Convex.ElemBox.GetCenter()) * Convex.GetTransform(), World);
+		}
+	}
+	// Rounded shapes as the physics scales them (a sphere by its smallest axis scale, a capsule's radius by its largest XY scale).
+	const FTransform Placement(World.GetRotation(), World.GetTranslation());
+	for (const FKSphereElem& Sphere : Geometry.SphereElems)
+	{
+		const FKSphereElem Scaled = Sphere.GetFinalScaled(World.GetScale3D(), FTransform::Identity);
+		Colliders.AddSphere(Placement.TransformPosition(Scaled.Center), Scaled.Radius);
+	}
+	for (const FKSphylElem& Capsule : Geometry.SphylElems)
+	{
+		const FKSphylElem Scaled = Capsule.GetFinalScaled(World.GetScale3D(), FTransform::Identity);
+		const FVector Half = Scaled.Rotation.RotateVector(FVector(0.0, 0.0, 0.5 * Scaled.Length));
+		Colliders.AddCapsule(Placement.TransformPosition(Scaled.Center - Half), Placement.TransformPosition(Scaled.Center + Half), Scaled.Radius);
+	}
+	// Tapered capsules (skeletal bodies only) are ignored.
 }
 
 void ULureFishingLineComponent::MoveEndActor() const

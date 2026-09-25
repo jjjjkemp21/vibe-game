@@ -29,6 +29,9 @@ public class VibeGame : ModuleRules
 		// Fish anim (T-030f): UFishAnimInstance::ClassHasRolePin reads ABP_Fish's Blend Poses by enum node
 		PrivateDependencyModuleNames.Add("AnimGraphRuntime");
 
+		// Fishing line collision (T-032b): UBodySetupCore::GetCollisionTraceFlag (PHYSICSCORE_API) in ULureFishingLineComponent
+		PrivateDependencyModuleNames.Add("PhysicsCore");
+
 		// Fish system (T-008): row structs expose gameplay tags; UFishSettings is a UDeveloperSettings
 		PublicDependencyModuleNames.AddRange(new string[] { "GameplayTags", "DeveloperSettings" });
 
