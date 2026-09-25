@@ -1721,7 +1721,9 @@ void ULureFishingComponent::UpdateRod(float DeltaTime)
 		Pitch += FLureFight::RodPitch(RodBendTension01, static_cast<float>(GetLocalTime()), GetFightTuning());
 	}
 	// T-028: the rod follows the player's aim (placeholder turn, until the arms play the rod-aim aim offset and carry it).
-	const FRotator Aim = ArmsPlayRodAim() ? FRotator::ZeroRotator : FLureRodControl::RodLook(RodAimVisual.Y, RodAimVisual.X, GetFightTuning());
+	// T-075b: the owner's placeholder turn is capped like the arms (CameraMaxRodYawDeg).
+	const FVector2D ViewAim = GetViewRodAim(GetFightTuning().RodAimLookYawDeg);
+	const FRotator Aim = ArmsPlayRodAim() ? FRotator::ZeroRotator : FLureRodControl::RodLook(ViewAim.Y, ViewAim.X, GetFightTuning());
 	RodMesh->SetRelativeRotation(FRotator(Pitch + Aim.Pitch, Aim.Yaw, 0.f));
 }
 

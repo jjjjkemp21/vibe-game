@@ -525,6 +525,15 @@ struct FLureFishFightRow : public FTableRowBase
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Camera", meta=(ClampMin="0", ClampMax="1", DataTableImportOptional))
 	float CameraRodPitchShare = 0.35f;
 
+	/**
+	 *  T-075b: the most the owner's rod points away from the center of the view, degrees (cosmetic; the fight uses the full aim).
+	 *  The first-person arms ride the camera, so the camera's turn never moves them on screen: what pushes the rod out is the
+	 *  arms' own side swing (the aim offset's Right pose holds it ~47 deg right, past a 90 deg view's 45). The owner's arms get
+	 *  the aim with its yaw capped so aim x RodAimSideDeg (their side pose's angle) stays within this. 0 = no cap.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Camera", meta=(ClampMin="0", ClampMax="90", DataTableImportOptional))
+	float CameraMaxRodYawDeg = 35.f;
+
 	/** Placeholder rod turn at full aim, degrees (until ABP_FPArms plays the rod-aim aim offset; then the arms turn it). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Look", meta=(ClampMin="0", DataTableImportOptional))
 	float RodAimLookPitchDeg = 20.f;

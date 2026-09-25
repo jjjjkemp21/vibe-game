@@ -234,6 +234,11 @@ the mouse wheel / bumpers set the reel speed in steps, shown in the HUD text.
 - **Camera** (owner): each frame the control rotation eases (`CameraFollowTime`, the short way round) toward the fish from the
   eye, turned by `CameraRodYawShare` / `CameraRodPitchShare` of the rod's aim. When the fish is landed or lost, the mouse turns
   the view again from wherever the camera is (no snap).
+- **Rod on screen** (T-075b, owner, cosmetic): the first-person arms and the rod are children of the camera, so the camera's
+  turn never moves them on screen; their own side swing does (the aim offset's Right pose holds the rod ~47 deg right, past a
+  90 deg view's 45). The owner's arms (and the placeholder rod turn) get the eased aim with the yaw capped so
+  aim x RodAimSideDeg (RodAimLookYawDeg for the placeholder) <= `CameraMaxRodYawDeg` (35; 0 = no cap). The fight, the HUD,
+  the network and other players' copies keep the full aim. The edge lift (T-047) is part of the fight: same camera, same cap.
 - **Arms**: `UFPArmsAnimInstance::RodAimPitch` / `RodAimYaw` (-1..1, eased) drive an aim offset `AO_FPArms_RodAim` (base
   `A_FPArms_HoldRod_Idle`, poses `A_FPArms_RodAim_{Center, Up, Down, Left, Right, UpLeft, UpRight, DownLeft, DownRight}`; yaw +1
   = tip right, pitch +1 = pulled back). Until it is wired the fishing component turns the rod mesh itself (`RodAimLook*Deg`);
