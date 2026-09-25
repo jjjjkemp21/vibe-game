@@ -116,9 +116,9 @@ Paths in the table are under `Source/VibeGame/` unless they start with a top-lev
 - `VibeGameGameMode.h` AVibeGameGameMode
 - `VibeGamePlayerController.h` AVibeGamePlayerController
 
-### Tests (`Source/VibeGame/`): folder, prefix (count): 3rd name segment count. Total 1111
+### Tests (`Source/VibeGame/`): folder, prefix (count): 3rd name segment count. Total 1122
 - `Tests/Catch/` Project.Arms.* (3): HoldFishSize 3
-- `Tests/Catch/` Project.Catch.* (126): QA 57, Cooler 7, Counter 7, Net 7, Display 5, HeldCooler 5, Rules 5, Focus 4, Data 3, Drop 3, Han...
+- `Tests/Catch/` Project.Catch.* (137): QA 57, HeldCooler 16, Cooler 7, Counter 7, Net 7, Display 5, Rules 5, Focus 4, Data 3, Drop 3, Ha...
 - `Tests/Catch/` Project.FishVisual.* (2): HeldPose 2
 - `Tests/Dev/` Project.Dev.* (18): DebugMenu 6, Teleport 4, GiveFish 3, Commands 1, PlaytestDriver 1, QA 1, Screenshot 1, SetStance 1
 - `Tests/Environment/` Project.Environment.* (7): Clock 7
