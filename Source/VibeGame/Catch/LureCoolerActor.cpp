@@ -717,8 +717,17 @@ bool ALureCoolerActor::GetFirstPersonAttachment(const APawn* Holder, USceneCompo
 		return false;
 	}
 	const ULureCatchSettings* Settings = GetDefault<ULureCatchSettings>();
-	USceneComponent* Arms = Lure->GetFirstPersonArms();
-	OutParent = (Arms && Lure->GetFirstPersonArms()->GetSkeletalMeshAsset()) ? Arms : static_cast<USceneComponent*>(Lure->GetFirstPersonCamera());
+	USkeletalMeshComponent* Arms = Lure->GetFirstPersonArms();
+	const bool bHasArmsMesh = Arms && Arms->GetSkeletalMeshAsset();
+	if (bHasArmsMesh && !Settings->CarriedCoolerSocket.IsNone() && Arms->DoesSocketExist(Settings->CarriedCoolerSocket))
+	{
+		// T-063: the CarryCooler clips animate the cooler bone (the cooler's pivot frame), so the cooler follows the idle breath.
+		OutParent = Arms;
+		OutSocket = Settings->CarriedCoolerSocket;
+		OutRelative = FTransform::Identity;
+		return true;
+	}
+	OutParent = bHasArmsMesh ? static_cast<USceneComponent*>(Arms) : static_cast<USceneComponent*>(Lure->GetFirstPersonCamera());
 	OutSocket = NAME_None;
 	OutRelative = FTransform(Settings->CarriedCoolerRotation, Settings->CarriedCoolerOffset);
 	return OutParent != nullptr;
