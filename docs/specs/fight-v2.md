@@ -1,5 +1,5 @@
 # Fight v2: line length, reel in / let out, tension-driven fight length, retrieve, bobber dip (T-052): design spec
-Status: review (design, 2026-09-24). Owner: design. Engineering owns section 7.
+Status: accepted by the lead 2026-09-24 (questions 2-4 decided by the lead as recommended; 1 is with Jimmy). Owner: design. Engineering owns section 7.
 Builds on: `reel-fight-rules.md` (T-007/T-028/T-028b fight; this spec changes only what it names), `fishing-rules.md`
 (cast, bite, hook), `fishing-line.md` (the cosmetic line). Sprint 1 comes first and this spec keeps what it delivers:
 T-049 (an even fight, with no near-snap spike right after the hook), T-050 (a faster reel from data; target: a well-played
@@ -265,6 +265,7 @@ results. Design notes for the engineers:
   the cosmetic bobber pose.
 
 ## 8. Open questions for Jimmy (through the lead)
+Lead, 2026-09-24: 2, 3 and 4 are decided as recommended, so they won't go to Jimmy. Only 1 is still open.
 1. What land time do you want for a well-played beginner Bonefish? Recommendation: 15-20 s (B1). The lead has already
    asked, and the answer replaces FightTargetMin/Max.
 2. Is holding right click (left trigger) to let line out OK? Recommendation: yes. Both inputs are free, and they mirror
