@@ -10,7 +10,7 @@ Counts: todo 1, done 12.
 
 ## A3
 
-Counts: todo 11, ready 2, doing 13, review 2, merge 2, done 19, dropped 1.
+Counts: todo 11, ready 2, doing 13, review 1, merge 2, done 20, dropped 1.
 
 - 47 obj lead - todo P0 - - - A3 Milestone A3: Jimmy's A2 playtest notes, delivered in sprint
 - 49 obj design - todo P1 - - - S2 Sprint 2: fight redesign (limited line + snap, reel in / let
@@ -38,7 +38,6 @@ Counts: todo 11, ready 2, doing 13, review 2, merge 2, done 19, dropped 1.
 - 52 obj design - doing P2 - aade375 - S5 Sprint 5: the world comes alive (day/night cycle; shore wave
 - 86 task eng mid doing P2 eng13 ae9cabe - T-068b Sky rig: apply blended DT_TimeOfDay to sun, moon, sky, fog,
 - 88 task eng senior doing P2 eng2 a377a3d 30% T-069a Wave function (C++ + HLSL, one formula), DT_Water, MPC_Water
-- 85 task eng mid review P2 eng1 a6346e9 - T-068a Day/night clock: server-owned time, phases, DT_DayCycle, bit
 - 90 task art junior review P2 main a19b389 50% T-069d SM_WaterGrid tiles: flat technical grid, 2 m near + coarse f
 - 55 bug eng senior merge P0 eng4 a9531b4 - T-045 Walking while reeling drags bobber + fish along; they must s
 - 57 bug eng senior merge P0 eng4 a9531b4 - T-047 Stepping back on the dock pulls fish + line through the dock
