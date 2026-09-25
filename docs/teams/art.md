@@ -21,10 +21,10 @@ Every new asset or clip goes through these stages. Each gate is Accept, Rework (
 | # | Stage | Who | Output | Gate |
 |---|---|---|---|---|
 | 0 | Brief | manager | `Saved/AgentLogs/tasks/<id>/brief.md` | self-check against the packet list below |
-| 1 | Blockout | artist | recipe with primary forms, final scale, pivot and facing, flat palette colors; blockout sheet (§4) | **Manager review A:** silhouette, proportion, scale, readability. Hero assets and new families: the manager may ask the lead for an early designer look |
+| 1 | Blockout | artist | recipe with primary forms, final scale, pivot and facing, flat palette colors; blockout sheet (§4) | **Manager review A:** silhouette, proportion, scale, readability. Hero assets and new families: the manager may start `designer-low` for an early look (STUDIO.md §3) |
 | 2 | Detail | artist | bevels, secondary forms, materials, topology loops, UVs if textured, sockets, `UCX_` collision | artist self-check against §7 |
 | 3 | Final previews | artist | the full preview set (§4), RESULT_JSON, report | **Manager review B:** the whole §7 checklist, previews opened by the manager |
-| 4 | Designer review | designer, booked through the lead | `Saved/AgentLogs/design/<ts>-<id>.md` | APPROVED, or APPROVED WITH CHANGES with every must-fix done and re-checked |
+| 4 | Designer review | `designer-low`, started by the art manager (STUDIO.md §3) | `Saved/AgentLogs/design/<ts>-<id>.md` | APPROVED, or APPROVED WITH CHANGES with every must-fix done and re-checked |
 | 5 | Import spec | artist | `.import.md` or `.anim.md` next to the export (§9) | manager checks it against the export |
 | 6 | Editor import | editor-operator, booked through the lead | PIE screenshot | manager compares it with the previews (scale, facing, materials, light) |
 
@@ -102,11 +102,11 @@ Open every preview yourself. Cite the view or frame in each change request.
 
 ## 9. Where art works, designer review and import
 - **Art works in main**, not in lanes (lanes are for C++). Each artist commits only its own paths with `git commit -- <paths>`. Parallel artists own disjoint files (recipes, exports, preview names); the packet lists them.
-- **Designer review:** after gate B, tell the lead "design review ready: <ids>, previews <paths>, compare with <assets>, seen from <camera/distance>". The lead starts the designer (Design department). Must-fix items become a numbered rework packet. You decide should-fix items and log the decision. If a must-fix changed the silhouette, palette or motion noticeably, ask for a re-review.
+- **Designer review:** after gate B, start `designer-low` yourself (STUDIO.md §3) with "<ids>, previews <paths>, compare with <assets>, seen from <camera/distance>"; its review standards are the Design department's (design.md §5). Must-fix items become a numbered rework packet. You decide should-fix items and log the decision. If a must-fix changed the silhouette, palette or motion noticeably, ask for a re-review.
 - **Import spec** (stage 5), next to the export:
   - Static meshes: `art/export/<Category>/<Asset>.import.md` with the destination folder, new or reimport, the `pipeline_unreal` function, materials (import or reuse which `M_`), collision, sockets, expected bounds in cm, the facing check, and what references it (Blueprints, data rows).
   - Skeletal assets and clips: `<Name>.anim.md` (blender-pipeline skill: skeleton, clips, loops, notifies, Convert Scene Unit OFF).
-- **Import:** tell the lead "import ready: <assets>, specs <paths>, commit <hash>, ~N min editor time, PIE check: <what to screenshot>". The lead books the editor and picks the editor-operator. Check the returned screenshot against the previews before you close.
+- **Import:** tell the lead "import ready: <assets>, specs <paths>, designer review <paths>, commit <hash>, ~N min editor time, PIE check: <what to screenshot>". The lead books the editor and picks the editor-operator. Check the returned screenshot against the previews before you close.
 - Anything that needs code or data (sockets used by C++, AnimInstance changes, DT rows such as ReferenceWeight) is a cross-department request through the lead, never an edit by the art team.
 
 ## 10. Definition of done (art)

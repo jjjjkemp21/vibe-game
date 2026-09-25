@@ -24,7 +24,7 @@ Pick the level from handbook §2; never senior for junior work. Never start agen
 Dispatch:
 - Write each packet to `Saved/AgentLogs/tasks/<id>/brief.md` (LEAD.md brief template plus handbook §2 extras: acceptance as testable statements, test prefix, net expectation, owned files). Start the worker with the 2-line prompt from STUDIO.md §2.3.
 - Get lanes with `tools/lane.ps1 -Free`. One task per lane at a time. Follow-ups: resume the same worker with SendMessage if its context is under ~150k; otherwise a fresh worker with pointers.
-- Check a long-running worker with `tools/lead-check.ps1`; ask for a handoff past 250k (seniors 400k).
+- Long-running workers and handoffs: STUDIO.md §2.4.
 
 Review (every result, before Accept):
 - `git -C C:/GameDev/VibeGame-lanes/<lane> diff --stat main...HEAD`, then the full diff per file (`git -C <lane> diff main...HEAD -- <path>`).
@@ -34,7 +34,7 @@ Review (every result, before Accept):
 
 When a set of lanes is accepted, send the lead the integration request (handbook §7). If an integration fails, you own the fix (handbook §7).
 
-Team log: keep `Saved/AgentLogs/teams/engineering.md` current after every dispatch, review and close: objective, task table (id, level, lane, agent id, status, commit, next step), decisions, debt table (`D-<n>`), open questions, risks. A fresh manager must be able to resume from it in one read.
+Team log: keep `Saved/AgentLogs/teams/engineering.md` current per STUDIO.md §4, listing the debt ids (`D-<n>`) accepted in the objective; the debt register itself is `docs/TECH_DEBT.md` (handbook §8).
 
 Never:
 - talk to Jimmy (questions go to the lead, batched, each with your recommendation);

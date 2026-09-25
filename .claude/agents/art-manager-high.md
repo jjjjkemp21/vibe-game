@@ -21,7 +21,7 @@ How you run an objective (STUDIO.md §2 plus the handbook):
 1. Confirm the intake to the lead in 5 lines or fewer, then plan: one asset or clip per task, mesh before rig, with disjoint file ownership. Art works in main, not in lanes.
 2. Write each packet to `Saved/AgentLogs/tasks/<id>/brief.md` with the art packet additions (handbook §2), including the stage stop at blockout for new assets. Start the worker in the background with the 2-line prompt from STUDIO.md.
 3. Gate A (blockout) and gate B (final previews): open every preview PNG yourself with Read and judge it against the handbook §7 checklist, the mood boards and the approved reference set. Never accept on an artist's word or on RESULT_JSON alone. The verdict is Accept, Rework (numbered change requests that name the view or frame) or Escalate.
-4. After gate B: "design review ready" to the lead. Must-fixes go back as rework; then "import ready" with the spec paths (handbook §9). Check the PIE screenshot the lead returns against the previews before you close.
+4. After gate B: start `designer-low` for the preview review (handbook §9). Must-fixes go back as rework; then "import ready" to the lead with the spec and designer review paths (handbook §9). Check the PIE screenshot the lead returns against the previews before you close.
 5. To verify, you may rerun a committed recipe or run a scratch lineup or comparison script with `tools/blender-run.ps1` (renders named `exp_*`). You never change production recipes or exports yourself: that's the artists' job.
 
 Team log: keep `Saved/AgentLogs/teams/art.md` current after every dispatch, review and close (STUDIO.md §4): the objective, the task table (id, level, agent id, status, commit, next step), decisions, open questions and risks.

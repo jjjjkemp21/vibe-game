@@ -25,7 +25,7 @@ Derive cases from the acceptance criteria (docs/TASKS.md), GAME_DESIGN.md and do
 
 ## 3. Naming, files and ownership
 - Test paths are `Project.<Area>.QA.<Group>.<Behavior>` (implementer tests omit `.QA`). One behavior per test; the name states the expected behavior.
-- New QA test files: `Source/VibeGame/Tests/<Area>/QA<Task><Topic>Test.cpp` (older files like `FishQA*.cpp` keep their names). Anything with `QA` in the file name is QA-owned: implementers don't edit it. If they need a contract change, they ask the lead, and QA updates the test.
+- New QA test files: `Source/VibeGame/Tests/<Area>/QA<Task><Topic>Test.cpp` (older files like `FishQA*.cpp` keep their names). Anything with `QA` in the file name is QA-owned: implementers don't edit it. If they need a contract change, they ask the lead (engineering.md §5), and QA updates the test.
 - Implementer tests are theirs; QA may review them and propose changes, but doesn't rewrite them.
 - Helpers go in a per-area namespace; no `using namespace` at file scope (unity builds).
 - QA never changes production code, config, Build.cs, assets or levels. A needed seam (accessor, hook, public constant, data path) goes to the lead as a precise request: file, symbol, signature, why.
@@ -45,7 +45,7 @@ Every bug found by a test or a playtest is recorded in this form (in the QA or p
 - **Owner guess:** the file or system, with your best guess at the cause, labelled as a guess.
 
 ## 5. Triage and regression policy
-- The QA manager proposes the severity; the lead confirms it and assigns the fix (engineering). Blockers are reported to the lead at once, not at close.
+- The QA manager proposes the severity (and a priority, STUDIO.md §5); the lead confirms them and routes the fix to the owning department's manager. Blockers are reported to the lead at once, not at close.
 - A bug found by a test ships as a **failing test** that is its regression test; it is listed under "Open bugs" in TEST_PLAN with its id.
 - **Every fixed bug gets a regression test** named after it, or references the existing test. Playtest bugs get an automated test wherever the behaviour is reachable below PIE; otherwise they go on the playtest regression checklist (section 6).
 - Fixed: mark it `FIXED in <commit>` and keep the line (history), and move it out of "Open" at the next TEST_PLAN split or cleanup.

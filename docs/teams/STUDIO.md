@@ -16,7 +16,7 @@ Lead / producer: priorities, task board, editor booking, integration to main, pu
 | Owner | Owns | Never does |
 |---|---|---|
 | Lead | Talking to Jimmy. Priorities and the top of docs/TASKS.md. Objectives for each manager. The editor (one user at a time). Merging into main (`tools/integrate.ps1`). Pushing. The release gate verdict. Tiny one-off tasks. | Deep domain work a manager owns |
-| Manager | Its discipline's plan, work breakdown, dispatch, reviews, quality bar, team log and handbook. Its lanes while they are in use. | Talking to Jimmy. Merging into main. Using the editor without a booking. Doing the workers' job. Starting agents outside its team. |
+| Manager | Its discipline's plan, work breakdown, dispatch, reviews, quality bar, team log and handbook. Its lanes while they are in use. | Talking to Jimmy. Merging into main. Using the editor without a booking. Doing the workers' job. Starting agents outside its team (one exception: §3, designer-low for art previews). |
 | Worker | One task packet, done to the handbook's standard, with evidence | Starting agents (workers have no Agent tool). Working outside the packet. |
 
 ## 2. How an objective flows

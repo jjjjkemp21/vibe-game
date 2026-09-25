@@ -58,7 +58,7 @@ Read with `git -C <lane> diff --stat main...HEAD`, then the full diff per file. 
 7. **Performance:** nothing per-tick that can be event-driven; no `GetAllActorsOfClass`, `FindComponentByClass` or DataTable lookups on tick (cache them); no allocations in sim inner loops; replicated arrays sized sensibly; `SetComponentTickEnabled(false)` when idle.
 8. **Safety:** null/`IsValid` checks on weak and soft pointers; no raw UObject pointers outside UPROPERTY; timers and delegates cleared in `EndPlay`.
 9. **Unity-build hygiene:** no file-scope `using namespace`; helpers in a unique namespace; no `QA*` file touched.
-10. **Docs:** spec updated when a rule changed; CODEMAP row for new files; `docs/TEST_PLAN.md` note handed to QA when relevant.
+10. **Docs:** the spec's Contract section (§7) updated; a changed rule in a design-owned section goes to Design through the lead (design.md §2); CODEMAP row for new files; `docs/TEST_PLAN.md` note handed to QA when relevant.
 Verdict per STUDIO.md §2.5: Accept / Rework (numbered requests citing file:line and checklist item) / Escalate.
 
 ## 4. Definition of done (engineering)
@@ -72,7 +72,7 @@ STUDIO.md §5, plus:
 ## 5. Testing split with QA
 - **Engineer:** tests that prove the change works: rules from the spec, the pure sim, data validation for new columns, the bug's repro turned into a regression test, and one host/client test for networked behaviour. File: `Source/VibeGame/Tests/<System>/<Task>Test.cpp`.
 - **QA (qa-engineer, via the QA manager):** independent black-box and adversarial tests in `QA*.cpp`, `docs/TEST_PLAN.md`, the release-gate suite, and the playtester in PIE.
-- An engineer never edits a `QA*` file. If a QA test fails because the intended behaviour changed, stop and escalate to the lead with the test name and the spec line; the QA manager changes it. If a QA test needs an engineering hook (e.g. an API exposing a shown fish's bounds), QA asks through the lead and it becomes a small engineering task.
+- An engineer never edits a `QA*` file. If a QA test fails because the intended behaviour changed, stop and escalate to the lead with the test name and the spec line; once the spec or criterion is updated, the lead routes it to the QA manager, who changes the test (qa.md §5). If a QA test needs an engineering hook (e.g. an API exposing a shown fish's bounds), QA asks through the lead and it becomes a small engineering task.
 
 ## 6. Lanes and branches
 - Get lanes with `tools/lane.ps1 -Free` (a clean lane at main). One task per lane at a time; a dependent follow-up may reuse the lane after its predecessor is accepted.
@@ -108,4 +108,4 @@ playtest focus: <host + client steps>
 ## 9. Architecture decisions
 - Decide yourself (and record in the team log): anything inside one system that keeps its public API, its data columns and its net model.
 - Escalate to the lead first, with 2-3 options, a recommendation and the cost of undoing it: new systems, changes to a public API used by another system, the replication or save model, a new DataTable, a new module or plugin, anything touching another department's files. Foundational calls (net sync model, creature AI/senses, noise/mic pipeline) may qualify for ultracode (LEAD.md): say which criterion applies.
-- An accepted decision becomes a spec change in `docs/specs/` in the same objective.
+- An accepted decision is recorded in the spec's Contract section in `docs/specs/` in the same objective; if it changes a design-owned rule, Design updates that section (through the lead).
