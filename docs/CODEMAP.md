@@ -12,14 +12,15 @@ Paths in the table are under `Source/VibeGame/` unless they start with a top-lev
 | Input | `Character/LureInputSubsystem.h` ULureInputSubsystem (runtime Enhanced Input actions + mapping context; mouse look scale x the saved sensitivity), `Game/LureUserSettings.h` ULureUserSettings (per-machine mouse sensitivity, GameUserSettings.ini) | - | ULureCharacterSettings (keys, MouseSensitivity limits) | Project.Movement.Input, Project.Fishing.Input | - |
 | First-person arms / rod poses | `Character/FPArmsAnimInstance.h`, `Character/FPArmsPose.h` EFPArmsPose, `Character/LureArmsBob.h` | art/export/Characters/SK_FPArms.anim.md | DT_Movement (Bob*, RodPose* columns) | Project.Fishing.ArmsPose | - |
 | Fishing: cast, bobber, bite, hook, spots/water | `Fishing/LureFishingComponent.h` ULureFishingComponent, `Fishing/FishingTypes.h`, `Fishing/FishingSpots.h`, `Fishing/LureFishingSettings.h`; water areas + hot spots (T-027): `Fishing/FishingWater.h` (FLureWaterRules, FLureWaterQuery), `Fishing/FishingWaterTypes.h`, `Fishing/LureWaterArea.h`, `Fishing/LureHotSpot.h`, `Fishing/LureHotSpotSpawner.h`, `Fishing/LureHotSpotVisualComponent.h`, `Fishing/LureWaterSettings.h`, `Dev/LureWaterDevCommands.h` | docs/specs/fishing-rules.md, docs/specs/fishing-water-rules.md | DT_Fishing, DT_HotSpot | Project.Fishing.*, Project.Fishing.Water.* | Lure.Water.Probe, Lure.Water.Show, Lure.HotSpot.Spawn, Lure.HotSpot.Clear |
-| Fishing: reel fight, rod steering, gear | `Fishing/FishFight.h` (pure sim), `Fishing/FishFightTypes.h`, `Fishing/LureRodControl.h`, fight state in ULureFishingComponent | docs/specs/reel-fight-rules.md | DT_FishFight, DT_FightPattern, DT_Gear | Project.Fishing.Fight | - |
+| Fishing: reel fight, rod steering, gear | `Fishing/FishFight.h` (pure sim), `Fishing/FishFightTypes.h`, `Fishing/LureRodControl.h`, `Fishing/FightEdge.h` (dock-edge query, T-047), fight state in ULureFishingComponent | docs/specs/reel-fight-rules.md | DT_FishFight, DT_FightPattern, DT_Gear | Project.Fishing.Fight | - |
 | Fishing: the line | `Fishing/LureFishingLineComponent.h`, `Fishing/FishingLineSim.h` (pure rope sim), `Fishing/FishingLineTypes.h` | docs/specs/fishing-line.md | DT_FishingLine | Project.Fishing.Line | - |
 | Fish: species, FFishInstance roll pipeline | `Fish/FishRoll.h` UFishLibrary + FFishTables, `Fish/FishInstance.h` FFishInstance, `Fish/FishTypes.h`, `Fish/FishSettings.h`, `Fish/FishDataValidator.h` | docs/specs/fish-system-rules.md | DT_FishSpecies, DT_FishRarity, DT_FishModifier, DT_FishStat | Project.Fish.* | Lure.GiveFish |
 | Fish: fight-fish visual | `Fish/LureFightFish.h`, `Fish/LureFightFishSubsystem.h`, `Fish/FightFishVisual.h`, `Fish/FishAnimInstance.h`, `Fishing/FightFishViewAdapter.h` | docs/specs/fight-fish-visual.md, art/export/Fish/SK_Fish.anim.md | DT_FishVisual | Project.FishVisual.* | - |
 | Progression: XP, money, selling, cooler, save | `Progression/LureProgressionComponent.h` (GetSaveData/ApplySaveData), `Progression/LureCoolerComponent.h`, `Progression/LureSellPoint.h`, `Progression/LureProgressionLibrary.h`, `Progression/LureProgressionTypes.h` FLureProgressSaveData, `Game/LurePlayerState.h` | docs/specs/progression-rules.md | DT_PlayerLevel, DT_Cooler, DT_FishMarket | Project.Progression.* | - |
 | Interaction | `Interaction/LureInteractable.h` (interface), `Interaction/LureInteractionComponent.h`, `Interaction/LureInteractionSubsystem.h` | docs/specs/progression-rules.md | - | Project.Progression.Interact | - |
-| Game frame + HUD | `Game/LureGameMode.h`, `Game/LureHUD.h` (placeholder text HUD; draws the debug menu top-right) | - | - | - | - |
-| Dev / playtest tools | `Dev/LureDevCommands.h`, `Dev/LureDebugMenu.h` ULureDebugMenu (F6: every key bind + mouse sensitivity, T-051), `Playtest/PlaytestFeedbackSubsystem.h` (F8 note key), `Content/Python/playtest_driver.py` (PIE driver) | .claude/skills/playtest-feedback | - | Project.Dev.*, Project.Playtest.* | Lure.Teleport, Lure.SetStance, Lure.GiveFish, Lure.Screenshot, Lure.Water.*, Lure.HotSpot.* |
+| Game frame + HUD | `Game/LureGameMode.h`, `Game/LureGameState.h` ALureGameState (holds the day clock), `Game/LureHUD.h` (placeholder text HUD; draws the debug menu top-right, the clock top-centre) | - | - | - | - |
+| Day/night clock | `Environment/LureDayClock.h` FLureDayClock (pure), ELureDayPhase, FLureDayCycleRow, FLureDayClockState; `Environment/LureDayClockComponent.h` ULureDayClockComponent (on ALureGameState; Get/GetHour/GetPhase/GetPhaseAlpha, OnPhaseChanged); `Environment/LureDayNightSettings.h`; `Dev/LureTimeDevCommands.h` | docs/specs/day-night-water.md | DT_DayCycle | Project.Environment.Clock.* | Lure.Time.Set, Lure.Time.Scale, Lure.Time.Phase |
+| Dev / playtest tools | `Dev/LureDevCommands.h`, `Dev/LureDebugMenu.h` ULureDebugMenu (F6: every key bind + mouse sensitivity, T-051), `Playtest/PlaytestFeedbackSubsystem.h` (F8 note key), `Content/Python/playtest_driver.py` (PIE driver) | .claude/skills/playtest-feedback | - | Project.Dev.*, Project.Playtest.* | Lure.Teleport, Lure.SetStance, Lure.GiveFish, Lure.Screenshot, Lure.Water.*, Lure.HotSpot.*, Lure.Time.* |
 | Levels | `Content/Python/levels/build_level.py` (builder), `levels/layout.py` (shared expansion), layouts `data/levels/*.json` | docs/levels/*.md | - | - | - |
 | Editor Python | `Content/Python/pipeline_unreal.py` (reusable editor ops), `vibegame_tools.py` (MCP toolset, run_python), `pipeline_cli.py`, `init_unreal.py` | .claude/skills/unreal-pipeline | - | - | - |
 | Art | `art/recipes/*.py` (one per asset), `art/lib/` (pipeline_blender, style palette, meshkit, fishkit, fishrig, fp_preview), `art/export/**` FBX + `*.anim.md` specs | docs/ART_STYLE.md, .claude/skills/blender-pipeline | - | - | - |
@@ -61,7 +62,11 @@ Paths in the table are under `Source/VibeGame/` unless they start with a top-lev
 - `Character/LureWaterVolume.h` ALureWaterVolume | water volume (T-026). The level builder places these over the water; spec docs/specs/s...
 - `Dev/LureDebugMenu.h` ULureDebugMenu | the debug menu (T-051): every key bind plus the mouse sensitivity, as plain text drawn by ALureHUD.
 - `Dev/LureDevCommands.h` | dev-only console commands for scripted playtests (T-025). Everything below the log category is compiled out
+- `Dev/LureTimeDevCommands.h` | dev-only console commands for the day/night clock (T-068a). Compiled out of Shipping builds.
 - `Dev/LureWaterDevCommands.h` | dev-only console commands for the water model and hot spots (T-027). Compiled out of Shipping builds.
+- `Environment/LureDayClock.h` ELureDayPhase, FLureDayCycleRow, FLureDayClockState | the day/night clock math (T-068a). Pure and world-fr...
+- `Environment/LureDayClockComponent.h` ULureDayClockComponent | the server-owned day/night clock (T-068a), a component on ALureGameState.
+- `Environment/LureDayNightSettings.h` ULureDayNightSettings | day/night settings (T-068a). Project Settings > Game > Lure Day/Night; sto...
 - `Fish/FightFishVisual.h` FFishMoveAnimRole, FFishRoleTailBeat, FFishRoleStaminaRate, FFishVisualRow | the fish you see fighting on the...
 - `Fish/FishAnimInstance.h` EFishAnimRole, FFishAnimState, UFishAnimInstance | fish anim instance (T-029). Parent class of ABP_Fish (grap...
 - `Fish/FishDataValidator.h`
@@ -72,6 +77,7 @@ Paths in the table are under `Source/VibeGame/` unless they start with a top-lev
 - `Fish/FishVisualSettings.h` ULureFishVisualSettings | fish visual settings (T-029). Project Settings > Game > Lure Fish Visuals ([/Scri...
 - `Fish/LureFightFish.h` ALureFightFish | the fish you see fighting on the line (T-029). A local, non-replicated actor that every machine...
 - `Fish/LureFightFishSubsystem.h` FLureFightFishTickFunction, ULureFightFishSubsystem | spawns and removes the fighting fish (T-029) on e...
+- `Fishing/FightEdge.h` | Lure T-047: the server's look for a dock edge between a hooked fish and its angler (docs/specs/reel-fight-rules.md
 - `Fishing/FightFishViewAdapter.h` | the fish visual's adapter to the fight (T-029). The ONLY place the fish visual reads the fight's rep...
 - `Fishing/FishFight.h` | the reel fight simulation (T-007). Pure: no world, no UObject creation, no global RNG, so the server runs it and
 - `Fishing/FishFightTypes.h` ELureGearSlot, ELureFightRunSide, ELureFightOutcome, FLureGearRow, FLureGearLoadout, FLureGearStats, FLureFi...
@@ -91,6 +97,7 @@ Paths in the table are under `Source/VibeGame/` unless they start with a top-lev
 - `Fishing/LureWaterArea.h` ALureWaterArea | a painted water area (T-027). The level builder places these from the layouts' "water_area"...
 - `Fishing/LureWaterSettings.h` ULureWaterSettings | water and hot spot settings (T-027). Project Settings > Game > Lure Water; stored in...
 - `Game/LureGameMode.h` ALureGameMode | game mode (T-004).
+- `Game/LureGameState.h` ALureGameState | game state (T-068a). Holds world-wide replicated state: the day/night clock.
 - `Game/LureHUD.h` ALureHUD | placeholder HUD (T-006). Plain text only until Jimmy directs the UI (CLAUDE.md, 2026-09-22).
 - `Game/LurePlayerState.h` ALurePlayerState | player state (T-010).
 - `Game/LureUserSettings.h` ULureUserSettings | the player's own preferences on this machine (T-051: mouse sensitivity). Local only, neve...
@@ -110,14 +117,15 @@ Paths in the table are under `Source/VibeGame/` unless they start with a top-lev
 - `VibeGameGameMode.h` AVibeGameGameMode
 - `VibeGamePlayerController.h` AVibeGamePlayerController
 
-### Tests (`Source/VibeGame/`): folder, prefix (count): 3rd name segment count. Total 1133
+### Tests (`Source/VibeGame/`): folder, prefix (count): 3rd name segment count. Total 1161
 - `Tests/Catch/` Project.Arms.* (3): HoldFishSize 3
-- `Tests/Catch/` Project.Catch.* (137): QA 57, HeldCooler 16, Cooler 7, Counter 7, Net 7, Display 5, Rules 5, Focus 4, Data 3, Drop 3, Ha...
+- `Tests/Catch/` Project.Catch.* (141): QA 57, HeldCooler 20, Cooler 7, Counter 7, Net 7, Display 5, Rules 5, Focus 4, Data 3, Drop 3, Ha...
 - `Tests/Catch/` Project.FishVisual.* (2): HeldPose 2
 - `Tests/Dev/` Project.Dev.* (18): DebugMenu 6, Teleport 4, GiveFish 3, Commands 1, PlaytestDriver 1, QA 1, Screenshot 1, SetStance 1
-- `Tests/FishFight/` Project.Fishing.* (114): Fight 114
+- `Tests/Environment/` Project.Environment.* (7): Clock 7
+- `Tests/FishFight/` Project.Fishing.* (126): Fight 126
 - `Tests/FishVisual/` Project.FishVisual.* (50): QA 29, Lifecycle 3, MouthOnLine 3, Adapter 2, Anim 2, Data 2, HeldPose 2, Placement 2, P...
-- `Tests/Fishing/` Project.Fishing.* (269): QA 96, Line 85, Water 78, Cast 4, CastTrace 4, Fight 2
+- `Tests/Fishing/` Project.Fishing.* (274): QA 96, Line 85, Water 78, Fight 7, Cast 4, CastTrace 4
 - `Tests/Level/` Project.Level.* (3): PalmKey 3
 - `Tests/Movement/` Project.Fishing.* (3): Climb 1, Rules 1, Swim 1
 - `Tests/Movement/` Project.Movement.* (211): QA 171, Swim 33, Camera 3, Climb 3, Stance 1
@@ -132,6 +140,7 @@ Paths in the table are under `Source/VibeGame/` unless they start with a top-lev
 - `data/tables/DT_Catch.csv` FLureCatchRow (Catch/LureCatchTypes.h)
 - `data/tables/DT_Cooler.csv` FCoolerRow (Progression/LureProgressionTypes.h)
 - `data/tables/DT_CoolerDisplay.json` FLureCoolerDisplayRow (Catch/LureCatchTypes.h)
+- `data/tables/DT_DayCycle.json` FLureDayCycleRow (Environment/LureDayClock.h)
 - `data/tables/DT_FightPattern.json` FLureFightPatternRow (Fishing/FishFightTypes.h)
 - `data/tables/DT_FishFight.csv` FLureFishFightRow (Fishing/FishFightTypes.h)
 - `data/tables/DT_FishMarket.csv` FFishMarketRow (Progression/LureProgressionTypes.h)

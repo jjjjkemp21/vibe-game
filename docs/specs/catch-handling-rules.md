@@ -146,6 +146,11 @@ by the server; clients only ask ("I pressed E on this cooler, expecting Put in")
   the handles while it is turned (an art need: a show pose). On arms without the `cooler` bone (the fixed-offset
   fallback, the cooler's front away from the eye) the first-person turns point the wrong way; that fallback is for
   missing art only.
+  The lid (T-064c, local and cosmetic, no new replication): on the carrier's own machine (first-person rendering) an
+  open lid folds back behind the box to DT_Catch `CarriedOpenLidPitch` (235 deg; at LidOpenPitch 100 it covered 84% of
+  the centre view, folded ~22%, art gate A); every other machine and any standing open cooler use `LidOpenPitch`. It
+  swings at the same angular speed (`LidOpenPitch / LidOpenTime`), so the longer swing takes longer; put down open it
+  returns to `LidOpenPitch`. The clack pulse is unchanged.
 - Automatic put-down (server): going **prone** puts it down in front of you (hide first, come back for it); falling into
   the **water** puts it down at your last dry ground spot. Both turn its front toward you
   (`ALureCoolerActor::GetYawFacing`). It is never lost. Lying prone you can't pick a cooler up (F shows "Stand up to
@@ -315,7 +320,8 @@ by the server; clients only ask ("I pressed E on this cooler, expecting Put in")
   250 cm, FocusAngleDeg 20, DropForward 60 cm, DropArcTime 0.35 s, PutDownDistance 80 cm,
   PutDownMaxFall 300 cm, LidOpenPitch 100 deg, LidOpenTime 0.25 s, LidPulsePitch 30 deg, ShowTurnTime 0.4 s (T-064,
   optional column: older CSVs import with the default; the data test validates it in [0, 10] s), DumpSpacing 25 cm
-  (T-065, optional column, default 25, validated in [0, 200] cm; 0 = one pile).
+  (T-065, optional column, default 25, validated in [0, 200] cm; 0 = one pile), CarriedOpenLidPitch 235 deg (T-064c,
+  optional column, default 235, validated in [0, 270] deg).
 - `data/tables/DT_CoolerDisplay.json` (FLureCoolerDisplayRow, rows Starter and Large): the 4-slot table of
   SK_Fish.anim.md (`anim_fish_cooler.py`, 2026-09-23), FishPose `/Game/Art/Fish/A_Fish_Curled`, PoseTime 0,
   MaxFishScale 1.0, LieOffsetCm 4.25 (Bonefish 4.24, CoralSnapper 4.26: one value until the species table has look

@@ -339,7 +339,7 @@ bool FLureFishFightRow::Validate(FString& OutProblem) const
 		OutProblem = FString::Printf(TEXT("SimRate %d must be in [10, 240]"), SimRate);
 		return false;
 	}
-	return ValidateRodSteering(OutProblem);
+	return ValidateRodSteering(OutProblem) && ValidateEdge(OutProblem);
 }
 
 bool FLureFishFightRow::ValidateRodSteering(FString& OutProblem) const
@@ -387,6 +387,38 @@ bool FLureFishFightRow::ValidateRodSteering(FString& OutProblem) const
 				ReelDefaultStep, ReelSteps, DefaultSpeed);
 			return false;
 		}
+	}
+	return true;
+}
+
+bool FLureFishFightRow::ValidateEdge(FString& OutProblem) const
+{
+	// T-047 columns (reel-fight-rules.md "Dock edges").
+	if (!LureFightTypesPrivate::AllFiniteNonNegative({ EdgeClearance, EdgeProbeDepth, EdgeProbeHeight, EdgeQueryInterval, EdgeLiftClearance, EdgeTopInset,
+		EdgeMaxLift, EdgeLandHold }))
+	{
+		OutProblem = TEXT("every dock-edge value must be a finite number >= 0");
+		return false;
+	}
+	if (EdgeClearance > 200.f)
+	{
+		OutProblem = FString::Printf(TEXT("EdgeClearance %.1f cm must be in [0, 200] (0 = no edge checks)"), EdgeClearance);
+		return false;
+	}
+	if (EdgeClearance > 0.f && EdgeProbeDepth + EdgeProbeHeight <= 0.f)
+	{
+		OutProblem = TEXT("EdgeProbeDepth + EdgeProbeHeight must be > 0 while EdgeClearance is on (the probe needs a height)");
+		return false;
+	}
+	if (EdgeQueryInterval > 1.f)
+	{
+		OutProblem = FString::Printf(TEXT("EdgeQueryInterval %.2f s must be <= 1 (a fish reeled in fast would pass an edge between looks)"), EdgeQueryInterval);
+		return false;
+	}
+	if (EdgeMaxLift < EdgeLiftClearance)
+	{
+		OutProblem = TEXT("EdgeMaxLift must be >= EdgeLiftClearance");
+		return false;
 	}
 	return true;
 }

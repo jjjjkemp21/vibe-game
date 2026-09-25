@@ -27,7 +27,8 @@ last-run bolt (T-057), the retrieve after a cast (T-055) and the bobber dip (T-0
   A pattern is a list of moves (pull, speed, away/side/down share, duration range, pick weight, aggression weight, rest).
   Shipped: `Run` (Bonefish), `Dive` (Coral Snapper), `Dart` (no species yet; its charge toward you slackens the line).
   A new pattern or a new move is a data row; a missing/invalid pattern uses a built-in generic pattern plus one warning.
-- **Four outcomes** (first that applies each step): Landed (fish within `LandDistance`), Spooled (fish took more line than
+- **Four outcomes** (first that applies each step): Landed (fish within `LandDistance`; with a dock edge in the way, only
+  once lifted over it: "Dock edges (T-047)"), Spooled (fish took more line than
   `SpoolLength`: line breaks), Snapped (tension above `LineStrength` longer than `SnapGraceTime`), ThrewHook (tension below
   `SlackShare` x base pull longer than `SlackGraceTime` x `HookSecurity`). Timers reset when the condition stops.
   "Longer than" is counted in whole fixed steps: over for exactly the grace holds, one step more ends it (T007-B1).
@@ -76,7 +77,9 @@ last-run bolt (T-057), the retrieve after a cast (T-055) and the bobber dip (T-0
   DragHold 0.5, TensionRiseTime 0.12, TensionFallTime 0.25, SnapGraceTime 0.6, SlackShare 0.35, SlackGraceTime 2.5,
   LandDistance 150, SimRate 60, MaxDepth 300, DepthRecovery 80, MaxSideDeg 50, DiveBobberShare 0.1,
   RodTensionPitchDeg 25, RodShakeDeg 2.5, TautTension 0.3, DragLineCap 0.9 (optional, in (0, 1]).
-  The four stat columns must be tags under `Fish.Stat.*`.
+  The four stat columns must be tags under `Fish.Stat.*`. Dock edges (T-047, optional, "Dock edges" below):
+  EdgeClearance 25, EdgeProbeDepth 10, EdgeProbeHeight 100, EdgeQueryInterval 0.1, EdgeLiftClearance 80, EdgeTopInset 10,
+  EdgeMaxLift 300, EdgeLandHold 0.5.
 - **DT_Gear** (`data/tables/DT_Gear.csv`, struct `LureGearRow`): Rod_Starter (power 8, reel 180 (T-050; was 120), drag 5),
   Rod_Reef (16, 225 (was 150), 12, cast x1.15, 250 coins), Line_Mono (strength 10, spool 40 m), Line_Braid (22, 60 m, 180 coins),
   Hook_Shrimp (security 1.0, shrimp), Hook_Squid (1.6, squid, luck 0.5, 60 coins).
@@ -305,6 +308,89 @@ within about 10 % of before.
 | C++ snapper: posture | - | 87 lost, 40.0 s (x2.17) |
 | Model bonefish 200 rolled: advice / posture | 0 lost 9.4 s / 1 lost 8.3 s | 0 lost 9.4 s / 3 lost 13.7 s |
 | Model snapper 200 rolled: advice / posture | 12 lost 16.4 s / 145 lost 12.5 s | 9 lost 16.3 s / 165 lost 31.0 s |
+
+## The fish stays put (T-045, 2026-09-24)
+Jimmy (A2 playtest): "WHEN a player walks around while reeling in a fish, THEN the bobber + fish follow the players movements.
+... If the player moves away, the bobber and fish should remain in the same place and only be reeled towards the player's
+direction". Before, the fish was drawn at `player + direction x LineOut`, so it moved with the player.
+- **The server holds the fish's world position** (water plane XY; its depth stays the cosmetic `Depth`). `FLureFightState`
+  keeps `LineOut` and `SideDeg` measured from `Anchor` (the player's XY the fight last saw) and `BaseDir` (the line's
+  direction at the hook); `FLureFight::FishLocation` = `Anchor + (BaseDir turned by SideDeg) x LineOut`. The fight starts
+  with the fish at the bobber (`PlaceFish`).
+- **Only the fish's own swimming and the reel move it.** The step is unchanged: a run or the reel changes `LineOut` (along
+  the line), the swing changes `SideDeg` (across it), both about the player's current position. So **reeling pulls the
+  fish toward where the player is now**. "The player" is the pawn's location (`GetActorLocation`), not the rod tip: the
+  start distance and `LandDistance` were always measured from the pawn, and the server has no rod mesh.
+- **Walking** (`FLureFight::MovePlayer`, each server update before the steps): when the pawn moved, `LineOut` and `SideDeg`
+  are measured again from the new place, so the fish stays where it is. `LineOut` is always the real horizontal distance:
+  walking away pays out line with no extra tension; walking toward the fish shortens the line (the simplest consistent
+  rule: no slack is stored or drawn). The tension, stamina and moves never depend on where the player is. Consequences:
+  walking to within `LandDistance` of the fish lands it (Sprint 2's T-057 makes landing need a tired fish), and walking
+  away past `SpoolLength` spools the line (fight-v2.md rule 11: walked-out line is off the spool).
+- **The swing limit** (`MaxSideDeg`) holds the fish's own swing only. A player who walks round the fish can leave it past
+  the limit: it stays where it is (never pulled back), and only its swing back toward the middle is free. A still player's
+  fish is always inside the limit, so for a still player the fight is the pre-T-045 fight **bit for bit** (every T-007 and
+  T-028 number above holds).
+- **Replication**: `FLureFightNetState::FishLocation` (`FVector_NetQuantize10`, Z = the water surface = `BobberRest.Z`).
+  The server publishes it already rounded the way the wire rounds it (0.1 cm steps), so its `FightNet` equals every
+  client's copy bit for bit and the host draws exactly what clients draw.
+  Every machine draws the bobber (`ComputeBobberPose`), the fish visual (`FFightFishViewAdapter`: `LineEnd`) and the line's
+  end there, and the owner's camera follows it; a client's own pawn position no longer matters. A late joiner gets it
+  with the rest of `FightNet`. `LineOut` and `SideDeg` still replicate (HUD, rod hint). The owner leaving mid-fight ends
+  the fight as before (T-028b O5).
+- QA tests that pinned the old "fish at player + direction x LineOut" contract and need updating (qa-engineer):
+  `Fishing.Fight.QA.Replication.ProxyFollowsServerFight` ("bobber on the fish, LineOut from their player": copies now
+  draw it at `FishLocation`, whoever stands where), `Fishing.Fight.QA.Component.FightSuspendsBobberDistanceRule` (walks
+  ~50 m away: now past `SpoolLength`, so Spooled; walk to between MaxLineLength 2600 and SpoolLength 4000 cm instead),
+  `FishVisual.QA.Adapter.EveryStateAndEnding` (hand-built state without `FishLocation`).
+- Tests: `Project.Fishing.Fight.Anchor.*` (`Tests/FishFight/FightAnchorTest.cpp`): a still player is the old fight bit for
+  bit; walking 5 m to the side and 5 m back leaves a still fish exactly put and a swimming fish moving only by its own
+  swim (compared with the same seed and a still player); the reel pulls toward the moved player; the world repro (bobber,
+  replicated location and fish visual stay put while the angler walks, then it is reeled in and lands); host and clients
+  (the owner's copy and another player's copy standing elsewhere, a late joiner, the owner leaving).
+
+## Dock edges (T-047, 2026-09-24)
+Jimmy (A2 playtest): "WHEN player reels in a fish while standing on a dock, AND the player moves backwards, THEN the fish
+will magically phase thru the dock along with the fishing line. Instead, have proper physics where the fish instead is
+lifted out of the water at the EDGE of the dock, where the fishing line can not phase thru".
+- **The server looks for an edge** (`FLureFightEdgeQuery::Find`, `Fishing/FightEdge.h`; the fight's only world query):
+  a capsule of radius `EdgeClearance` spanning the water line (`EdgeProbeDepth` under the surface to `EdgeProbeHeight` over
+  it, surface = `BobberRest.Z`) is swept from the fish toward the pawn on the cast channel. What stops a cast stops the fish
+  (`FLureFishingSpots::BlocksCast`: zones, triggers, pawns, overlap-only shapes never do): a dock face, pilings, a boat,
+  the shore where the ground comes within `EdgeProbeDepth` of the surface, a deck lower than `EdgeProbeHeight` over the
+  water (higher decks: the fish swims in under them). The edge is a wall in world XY (`FLureFightEdge`: the point where the
+  fish touches it, `EdgeClearance` out from the face, and the face's horizontal normal; a nearly flat hit such as the
+  shore's slope is taken square to the path). Its top: a trace straight down `EdgeTopInset` past the face;
+  `LandLift = top - surface + EdgeLiftClearance`, at most `EdgeMaxLift` (no top found under `EdgeMaxLift`: `EdgeMaxLift`).
+- **When**: every `EdgeQueryInterval` s (never more often than the fight's steps) while the fish is in the water; a lifted
+  fish keeps the edge it was lifted over (a look from over the deck would start inside it). `EdgeClearance 0` = no looks.
+- **The pure fight** (`FLureFight::SetEdge / EdgeBlocks / EdgeLineOut / MoveOnTheLine`, `FLureFightState::Edge / Lift /
+  LiftHeld`): while the edge stands between the fish and the player, the line change of step 3 runs along one path: on the
+  water out to the edge, up the edge (`Lift` 0 to `LandLift`), then in over the dock at that height. So reeling brings the
+  fish in to the edge (never behind it), lifts it **straight up** there, then carries it in over the top; a run takes it the
+  same way back (down the edge first). A lifted fish is never slack (its weight keeps the line taut), doesn't swing or dive;
+  a swing that would take a fish on the water behind the edge doesn't happen. With no edge (or none on the fish's bearing)
+  the fight is the T-045 fight bit for bit.
+- **Landing at an edge**: over the top (`Lift >= LandLift`) and within `LandDistance`, for longer than `EdgeLandHold`
+  (every machine's smoothed fish has risen by then). `LandDistance` on the water doesn't apply: the fish can't come in under
+  the dock. Why carried in over the top instead of landed at the edge: the T-030 hang starts where the fish is, and a hang
+  started at the edge with the angler far back swings down through the deck (the hanging line doesn't collide; a 2D model of
+  the hang reel put the fish 13-120 cm under the deck for anglers 6-8 m back, above it up to about 4 m). Why
+  `EdgeLiftClearance` 80: a landed fish flips head up on the line (T-030) and a Common bonefish's mesh then reaches ~57 cm
+  below its mouth; with 40 its tail went ~36 cm into the deck for the first 0.1 s of the hang (the hang reel lifts it
+  quickly). Measured in `DockEdge.World.WalkBackWhileReeling` (info line "hang: ... mesh bounds").
+- **Every machine**: `FLureFightNetState::Lift` replicates. The bobber (`ComputeBobberPose`) and the fish visual
+  (`FFightFishViewAdapter`: `WaterZ` and `LineEnd` raised by `Lift`, kept after the fight so a landed fish is handed on
+  where it was lifted to) rise with it. The line collides with the dock while the fish is on (T-032b), so it bends over the
+  edge instead of cutting through it.
+- **Edge cases**: a player who walks round the edge's line while the fish is over the deck leaves it up (it drops back
+  only over water); a fish found behind a new edge is put back in front of it (a jump outward, rare); a fish that snaps the
+  line while lifted swims away from where it was (the escape swim sinks it; open: drop it into the water first).
+- Tests: `Project.Fishing.Fight.DockEdge.*` (`Tests/FishFight/FightDockEdgeTest.cpp`): Sim (stops, goes straight up, comes
+  in over the top, lands; the path step by step; the swing stops at the edge), Data (columns, defaults, validation, optional),
+  Query (dock face, angle, touching, open water, trigger zone, piling, deck on posts and under a high deck, beach, off),
+  World (Jimmy's repro: reel and walk 2.5 m back on the QA dock; the real bonefish from the dock's end with a client's copy;
+  no line point inside the dock during the fight, the lift and the hang).
 
 ## Open questions (for Jimmy after playtest A)
 1. Snap speed: holding reel on a snapper with starter gear snaps the line in under a second. Too punishing, or the right

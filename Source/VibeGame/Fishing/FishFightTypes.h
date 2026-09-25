@@ -9,6 +9,7 @@
 
 #include "CoreMinimal.h"
 #include "Engine/DataTable.h"
+#include "Engine/NetSerialization.h"
 #include "GameplayTagContainer.h"
 #include "FishFightTypes.generated.h"
 
@@ -535,11 +536,54 @@ struct FLureFishFightRow : public FTableRowBase
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Look", meta=(ClampMin="0", DataTableImportOptional))
 	float RodAimBlendTime = 0.1f;
 
-	/** Finite, in range, SimRate 10-240, the four stat tags set, the rod-steering columns in range. */
+	// ---- Dock edges (T-047; docs/specs/reel-fight-rules.md "Dock edges"). Optional columns: a missing one uses the default. ----
+	// The server looks at the water line between the fish and the player for anything solid (a dock, pilings, a boat, the
+	// shore). The fish stops EdgeClearance short of it; reeling on lifts it straight up there, and it lands once it has hung
+	// EdgeLandHold s at EdgeLiftClearance above the edge's top. With the way open the fight is the T-045 fight.
+
+	/** How far the fish keeps from anything solid at the water line, cm (the probe's radius). 0 = no edge checks at all. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Dock edge", meta=(ClampMin="0", ClampMax="200", DataTableImportOptional))
+	float EdgeClearance = 25.f;
+
+	/** The probe reaches this far under the water surface, cm: ground shallower than this stops the fish (the shore). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Dock edge", meta=(ClampMin="0", DataTableImportOptional))
+	float EdgeProbeDepth = 10.f;
+
+	/** ... and this far above it, cm: a deck lower than this over the water stops the fish (it can't swim in under it). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Dock edge", meta=(ClampMin="0", DataTableImportOptional))
+	float EdgeProbeHeight = 100.f;
+
+	/** Seconds between the server's looks for an edge (never more often than the fight's steps). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Dock edge", meta=(ClampMin="0", ClampMax="1", DataTableImportOptional))
+	float EdgeQueryInterval = 0.1f;
+
+	/**
+	 *  The fish is lifted this far above the edge's top and carried in over the deck at that height, cm. When it lands it hangs
+	 *  head up from its mouth on the line (T-030), about 60 cm of a Common bonefish below the mouth: this keeps it off the deck.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Dock edge", meta=(ClampMin="0", DataTableImportOptional))
+	float EdgeLiftClearance = 80.f;
+
+	/** The edge's top is measured this far in past its face, cm. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Dock edge", meta=(ClampMin="0", DataTableImportOptional))
+	float EdgeTopInset = 10.f;
+
+	/** The highest lift, cm: at a taller edge (a cliff) the fish lands at this height. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Dock edge", meta=(ClampMin="0", DataTableImportOptional))
+	float EdgeMaxLift = 300.f;
+
+	/** Seconds the fish hangs at the top before it lands (every machine's smoothed fish has risen by then). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Dock edge", meta=(ClampMin="0", DataTableImportOptional))
+	float EdgeLandHold = 0.5f;
+
+	/** Finite, in range, SimRate 10-240, the four stat tags set, the rod-steering and dock-edge columns in range. */
 	bool Validate(FString& OutProblem) const;
 
 	/** The T-028 rod-steering columns only (part of Validate). */
 	bool ValidateRodSteering(FString& OutProblem) const;
+
+	/** The T-047 dock-edge columns only (part of Validate). */
+	bool ValidateEdge(FString& OutProblem) const;
 
 	/** The built-in tuning (= the shipped DT_FishFight Default row; a test checks). */
 	static FLureFishFightRow GetFallbackRow();
@@ -597,10 +641,26 @@ struct FLureFightNetState
 	UPROPERTY(BlueprintReadOnly, Category="Fight")
 	float LineOut = 0.f;
 
+	/**
+	 *  T-045: where the hooked fish is in the world: its XY, at the water surface (Z = the bobber's rest height). The server's
+	 *  fight moves it only by the fish's own swimming and the reel, never with the player, and every machine draws the fish,
+	 *  the bobber and the line end here (a late joiner gets it with the rest of this struct). Depth is below this point.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category="Fight")
+	FVector_NetQuantize10 FishLocation = FVector::ZeroVector;
+
+	/**
+	 *  T-047: how far the fish is lifted out of the water at a dock edge (or pilings, a boat, the shore), cm; 0 = in the water.
+	 *  Every machine draws the fish, the bobber and the line end this much above FishLocation.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category="Fight")
+	float Lift = 0.f;
+
 	UPROPERTY(BlueprintReadOnly, Category="Fight")
 	float SpoolLength = 0.f;
 
-	/** Cosmetic: how deep the fish is, cm, and how far it swung around the player, degrees. */
+	/** Cosmetic: how deep the fish is, cm, and how far it swung around the player, degrees (T-045: its bearing from the player
+	 *  measured from the line's direction when the fight began; FishLocation is where it is). */
 	UPROPERTY(BlueprintReadOnly, Category="Fight")
 	float Depth = 0.f;
 

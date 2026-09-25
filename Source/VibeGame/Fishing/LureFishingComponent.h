@@ -426,6 +426,9 @@ private:
 	FLureFightState Fight;
 	bool bServerReeling = false;
 	double FightLastTime = 0.0;
+	/** T-047: when the server next looks for a dock edge between the fish and the player (FLureFightEdgeQuery). */
+	double NextEdgeQueryTime = 0.0;
+	void UpdateFightEdge(double Now);
 	UPROPERTY(Transient)
 	TObjectPtr<UDataTable> GearTableRef;
 	UPROPERTY(Transient)

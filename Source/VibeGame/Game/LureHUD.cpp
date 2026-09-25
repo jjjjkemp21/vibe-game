@@ -6,6 +6,7 @@
 #include "Engine/Font.h"
 #include "Character/LurePlayerCharacter.h"
 #include "Dev/LureDebugMenu.h"
+#include "Environment/LureDayClockComponent.h"
 #include "Fishing/LureFishingComponent.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
@@ -43,6 +44,12 @@ TArray<FString> ALureHUD::GetNoticeLines(const APlayerController* PlayerControll
 	return Progression ? Progression->GetNoticeLines() : TArray<FString>();
 }
 
+FString ALureHUD::GetClockText(const UObject* WorldContext)
+{
+	const ULureDayClockComponent* Clock = ULureDayClockComponent::Get(WorldContext);
+	return Clock ? Clock->GetClockText() : FString();
+}
+
 void ALureHUD::DrawHUD()
 {
 	Super::DrawHUD();
@@ -54,6 +61,16 @@ void ALureHUD::DrawHUD()
 	UFont* Font = GEngine->GetMediumFont();
 
 	DrawDebugMenu(); // T-051, top-right
+
+	// T-068a: the clock, one plain line top-centre (placeholder UI).
+	const FString ClockText = GetClockText(this);
+	if (!ClockText.IsEmpty())
+	{
+		float Width = 0.f;
+		float Height = 0.f;
+		GetTextSize(ClockText, Width, Height, Font);
+		DrawText(ClockText, FLinearColor::White, FMath::RoundToFloat((Canvas->ClipX - Width) * 0.5f), Margin, Font);
+	}
 
 	// Progression (T-010): money, level, XP, cooler and the interact prompt, top-left; the notices right under them.
 	float TopY = Margin;

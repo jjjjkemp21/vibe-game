@@ -17,6 +17,9 @@ namespace LureFishFightPrivate
 		return FMath::IsFinite(Value) ? FMath::Clamp(Value, -1.f, 1.f) : 0.f;
 	}
 
+	/** T-047: how far a fish may be behind a dock edge (cm) or short of its top and still count as at it (float rounding). */
+	constexpr float EdgeTolerance = 0.01f;
+
 	/**
 	 *  "Longer than Grace": the timers grow by whole fixed steps, so count those steps (float sums drift: 36 x 1/60 is
 	 *  0.600000083 > 0.6) and compare with the grace in steps (a tiny tolerance absorbs the grace's own float rounding).
@@ -349,16 +352,18 @@ ELureFightOutcome FLureFight::Step(FLureFightState& State, const FLureFightInput
 	State.Pull = Pull;
 	State.Speed = Speed;
 
-	// 3. Line.
+	// 3. Line (T-047: in to a dock edge in the way, then up it).
 	const float Gain = LineGainSpeed(Pull, Rod.bReeling, Gear, Factors);
 	const float Taken = LineTakenSpeed(Pull, AwaySpeed, Rod.bReeling, Gear, Tuning, Factors);
-	State.LineOut = FMath::Max(0.f, State.LineOut + (Taken - Gain) * Dt);
+	MoveOnTheLine(State, (Taken - Gain) * Dt);
 
 	// 4. Tension.
 	State.Tension = FMath::Max(0.f, EaseTension(State.Tension, TargetTension(Pull, Rod.bReeling, Gear, Tuning, Factors), Dt, Tuning));
 
-	// 5. Stamina (a fish being turned tires faster). One slack rule (IsSlack) for the recovery and the hook timer (T-028b).
-	const bool bSlack = IsSlack(State.Tension, Rod.bReeling, State.Fish, Tuning);
+	// 5. Stamina (a fish being turned tires faster). One slack rule (IsSlack) for the recovery and the hook timer (T-028b);
+	// a fish lifted at a dock edge hangs on the line, so the line is never slack (T-047).
+	const bool bLifted = State.Lift > 0.f;
+	const bool bSlack = !bLifted && IsSlack(State.Tension, Rod.bReeling, State.Fish, Tuning);
 	const float Pool = FMath::Max(0.01f, State.Fish.StaminaPool);
 	float Energy = State.Stamina * Pool - State.Tension * Dt * Factors.Drain;
 	if (bSlack)
@@ -372,8 +377,10 @@ ELureFightOutcome FLureFight::Step(FLureFightState& State, const FLureFightInput
 		State.MoveIndex = INDEX_NONE;
 	}
 
-	// Cosmetic: depth and swing (a fish turned by side pressure swings back toward the middle).
-	if (Move)
+	// Cosmetic: depth and swing (a fish turned by side pressure swings back toward the middle). A fish lifted out of the water
+	// at a dock edge neither swings nor dives (T-047).
+	const float SideBefore = State.SideDeg;
+	if (Move && !bLifted)
 	{
 		State.Depth += Speed * FMath::Clamp(Move->Down, -1.f, 1.f) * Dt;
 		const float Radius = FMath::Max(100.f, State.LineOut);
@@ -383,14 +390,40 @@ ELureFightOutcome FLureFight::Step(FLureFightState& State, const FLureFightInput
 	{
 		State.Depth -= FMath::Max(0.f, Tuning.DepthRecovery) * Dt;
 	}
-	State.Depth = FMath::Clamp(State.Depth, 0.f, FMath::Max(0.f, Tuning.MaxDepth));
-	State.SideDeg = FMath::Clamp(State.SideDeg, -Tuning.MaxSideDeg, Tuning.MaxSideDeg);
-
-	// 6. Outcome.
-	if (State.LineOut <= Tuning.LandDistance)
+	State.Depth = bLifted ? 0.f : FMath::Clamp(State.Depth, 0.f, FMath::Max(0.f, Tuning.MaxDepth));
+	// The swing limit holds the fish's own swing (T-045): a player who walked round the fish may leave it past the limit, and
+	// then it stays where it is (never pulled back in) and only its swing back toward the middle is free. A still player's
+	// fish is always within the limit, so this is the old clamp.
+	State.SideDeg = FMath::Clamp(State.SideDeg, FMath::Min(-Tuning.MaxSideDeg, SideBefore), FMath::Max(Tuning.MaxSideDeg, SideBefore));
+	// T-047: a swing that would take the fish behind a dock edge in the way doesn't happen (it stops against the edge).
+	if (State.SideDeg != SideBefore && EdgeBlocks(State)
+		&& FVector2D::DotProduct(FishLocation(State) - State.Edge.Point, State.Edge.Normal) < -LureFishFightPrivate::EdgeTolerance)
 	{
-		State.Outcome = ELureFightOutcome::Landed;
-		return State.Outcome;
+		State.SideDeg = SideBefore;
+	}
+
+	// 6. Outcome. T-047: with a dock edge in the way the fish lands only once lifted over it (it can't come in under the dock):
+	// over the top (at the edge's top, or carried in over the dock) and within LandDistance, for longer than EdgeLandHold.
+	const float Wall = EdgeLineOut(State);
+	if (Wall > 0.f)
+	{
+		const bool bOverTheTop = State.LineOut <= Wall + LureFishFightPrivate::EdgeTolerance && State.Lift >= State.Edge.LandLift - LureFishFightPrivate::EdgeTolerance;
+		const bool bLanding = bOverTheTop && State.LineOut <= Tuning.LandDistance;
+		State.LiftHeld = bLanding ? State.LiftHeld + Dt : 0.f;
+		if (bLanding && LureFishFightPrivate::IsLongerThanGrace(State.LiftHeld, Tuning.EdgeLandHold, Tuning))
+		{
+			State.Outcome = ELureFightOutcome::Landed;
+			return State.Outcome;
+		}
+	}
+	else
+	{
+		State.LiftHeld = 0.f;
+		if (State.LineOut <= Tuning.LandDistance)
+		{
+			State.Outcome = ELureFightOutcome::Landed;
+			return State.Outcome;
+		}
 	}
 	if (Gear.SpoolLength > 0.f && State.LineOut > Gear.SpoolLength)
 	{
@@ -450,6 +483,134 @@ ELureFightOutcome FLureFight::Advance(FLureFightState& State, const FLureFightIn
 	}
 	return State.Outcome;
 }
+
+// ---- The fish in the world (T-045) ----
+
+void FLureFight::PlaceFish(FLureFightState& State, const FVector2D& PlayerXY, const FVector2D& FishXY, const FVector2D& FallbackDir)
+{
+	auto Finite2 = [](const FVector2D& V) { return FMath::IsFinite(V.X) && FMath::IsFinite(V.Y); };
+	State.Anchor = Finite2(PlayerXY) ? PlayerXY : FVector2D::ZeroVector;
+	const FVector2D Fish = Finite2(FishXY) ? FishXY : State.Anchor;
+	const FVector2D Offset = Fish - State.Anchor;
+	const double Distance = Offset.Size();
+	FVector2D Direction = Distance > UE_KINDA_SMALL_NUMBER ? Offset / Distance : (Finite2(FallbackDir) ? FallbackDir.GetSafeNormal() : FVector2D::ZeroVector);
+	State.BaseDir = Direction.IsNearlyZero() ? FVector2D(1.0, 0.0) : Direction;
+	State.LineOut = static_cast<float>(Distance);
+	State.SideDeg = 0.f;
+}
+
+FVector2D FLureFight::FishLocation(const FLureFightState& State)
+{
+	return State.Anchor + State.BaseDir.GetRotated(static_cast<double>(State.SideDeg)) * static_cast<double>(FMath::Max(0.f, State.LineOut));
+}
+
+void FLureFight::MovePlayer(FLureFightState& State, const FVector2D& PlayerXY)
+{
+	if (PlayerXY == State.Anchor || !FMath::IsFinite(PlayerXY.X) || !FMath::IsFinite(PlayerXY.Y))
+	{
+		return; // a still player: nothing changes (bit for bit)
+	}
+	const FVector2D Fish = FishLocation(State);
+	State.Anchor = PlayerXY;
+	const FVector2D Offset = Fish - PlayerXY;
+	const double Distance = Offset.Size();
+	State.LineOut = static_cast<float>(Distance);
+	if (Distance > UE_KINDA_SMALL_NUMBER)
+	{
+		// The fish's bearing from the player now, from BaseDir (+ = turned the way FVector2D::GetRotated turns: toward the right).
+		const FVector2D Direction = Offset / Distance;
+		State.SideDeg = static_cast<float>(FMath::RadiansToDegrees(FMath::Atan2(FVector2D::CrossProduct(State.BaseDir, Direction), FVector2D::DotProduct(State.BaseDir, Direction))));
+	}
+}
+
+// ---- Dock edges (T-047) ----
+
+void FLureFight::SetEdge(FLureFightState& State, const FLureFightEdge& Edge)
+{
+	FLureFightEdge Clean = Edge;
+	const bool bFinite = FMath::IsFinite(Clean.Point.X) && FMath::IsFinite(Clean.Point.Y) && FMath::IsFinite(Clean.Normal.X) && FMath::IsFinite(Clean.Normal.Y)
+		&& FMath::IsFinite(Clean.LandLift);
+	Clean.Normal = bFinite ? Clean.Normal.GetSafeNormal() : FVector2D::ZeroVector;
+	Clean.bValid = Clean.bValid && bFinite && !Clean.Normal.IsNearlyZero();
+	Clean.LandLift = Clean.bValid ? FMath::Max(0.f, Clean.LandLift) : 0.f;
+	State.Edge = Clean;
+}
+
+bool FLureFight::EdgeBlocks(const FLureFightState& State)
+{
+	return State.Edge.bValid && FVector2D::DotProduct(State.Anchor - State.Edge.Point, State.Edge.Normal) < 0.0;
+}
+
+float FLureFight::EdgeLineOut(const FLureFightState& State)
+{
+	if (!EdgeBlocks(State))
+	{
+		return 0.f;
+	}
+	const FVector2D Direction = State.BaseDir.GetRotated(static_cast<double>(State.SideDeg));
+	const double Toward = FVector2D::DotProduct(Direction, State.Edge.Normal);
+	if (Toward <= 1.0e-3)
+	{
+		return 0.f; // the bearing runs along or away from the edge: no point on it is in front (the next query sorts it out)
+	}
+	return static_cast<float>(FVector2D::DotProduct(State.Edge.Point - State.Anchor, State.Edge.Normal) / Toward);
+}
+
+void FLureFight::MoveOnTheLine(FLureFightState& State, float Change)
+{
+	using LureFishFightPrivate::EdgeTolerance;
+	const float Wall = EdgeLineOut(State);
+	if (Wall <= 0.f)
+	{
+		State.LineOut = FMath::Max(0.f, State.LineOut + Change);
+		// No edge along the bearing: a lifted fish drops back into the water only where there is water under it (in front of
+		// the edge it was lifted over). Over the dock it stays up (the player walked round the edge's line).
+		if (State.Lift > 0.f
+			&& !(State.Edge.bValid && FVector2D::DotProduct(FishLocation(State) - State.Edge.Point, State.Edge.Normal) < -EdgeTolerance))
+		{
+			State.Lift = 0.f;
+		}
+		return;
+	}
+	// The line's path past the edge as one length S from the player: in over the dock up to the edge (S <= Wall: carried at the
+	// top, Lift = Top), up the edge (Wall .. Wall + Top: Lift from Top down to 0), then out on the water (LineOut = S - Top).
+	// Reeling shortens S, line the fish takes lengthens it: it comes in to the edge, up it and over, and a run takes it back
+	// down the edge and out.
+	const float Top = FMath::Max(0.f, State.Edge.LandLift);
+	float Path;
+	if (State.LineOut < Wall - EdgeTolerance)
+	{
+		// Inside the edge's line: carried over the dock if it is over the top; otherwise it is in the water behind the edge
+		// (the player walked, or a new edge was found further out): back out in front of it.
+		Path = State.Lift >= Top - EdgeTolerance ? State.LineOut : Wall + Top;
+	}
+	else if (State.Lift > 0.f && State.LineOut <= Wall + EdgeTolerance)
+	{
+		Path = Wall + FMath::Max(0.f, Top - State.Lift); // on the edge, part way up
+	}
+	else
+	{
+		Path = FMath::Max(State.LineOut, Wall) + Top; // on the water in front of the edge (only a fish at the edge is ever lifted)
+	}
+	Path = FMath::Max(0.f, Path + Change);
+	if (Path >= Wall + Top)
+	{
+		State.LineOut = Path - Top;
+		State.Lift = 0.f;
+	}
+	else if (Path >= Wall)
+	{
+		State.LineOut = Wall;
+		State.Lift = Top - (Path - Wall);
+	}
+	else
+	{
+		State.LineOut = Path;
+		State.Lift = Top;
+	}
+}
+
+// ---- Cosmetic helpers (every machine) ----
 
 float FLureFight::RodPitch(float Tension01, float TimeSeconds, const FLureFishFightRow& Tuning)
 {

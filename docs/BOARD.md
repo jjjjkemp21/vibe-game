@@ -10,10 +10,10 @@ Counts: todo 1, done 12.
 
 ## A3
 
-Counts: todo 11, ready 2, doing 13, review 3, merge 2, done 18, dropped 1.
+Counts: todo 11, ready 2, doing 8, review 5, merge 1, done 22, dropped 1.
 
 - 47 obj lead - todo P0 - - - A3 Milestone A3: Jimmy's A2 playtest notes, delivered in sprint
-- 49 obj design - todo P1 - - - S2 Sprint 2: fight redesign (limited line + snap, reel in / let
+- 49 obj design - todo P1 - ac3d4af - S2 Sprint 2: fight redesign (limited line + snap, reel in / let
 - 63 task eng mid todo P1 - - - T-053 Limited line length: a running fish uses line; out of line -
 - 64 task eng mid todo P1 - - - T-054 Player can reel in or let line out
 - 65 task eng mid todo P1 - - - T-055 After a cast there is no instant reel-in: the bobber comes b
@@ -26,29 +26,24 @@ Counts: todo 11, ready 2, doing 13, review 3, merge 2, done 18, dropped 1.
 - 78 task eng senior ready P2 - - - T-068 Day/night cycle (T-013)
 - 79 task eng senior ready P2 - - - T-069 Water: shore waves, ocean motion, reactive ripples
 - 48 obj eng - doing P0 - - - S1 Sprint 1: line + fight fixes, even fight, faster reel, simpl
-- 59 task eng mid doing P0 eng5 ac8bb14 - T-049 Even fight: no near-snap spike right after the hook, no easy
-- 60 task eng mid doing P0 eng5 ac8bb14 - T-050 Reel-in speed much faster now (data); fully tension-driven f
 - 50 obj art - doing P1 - - - S3 Sprint 3: fish that look alive (upright calm when tired, fas
 - 51 obj eng - doing P1 - - - S4 Sprint 4: cooler handling (bob with arms, open while held +
-- 68 task art senior doing P1 main ab02639 70% T-058 Exhausted fish (stamina 0) stays upright with a calm swim, n
-- 69 task art senior doing P1 main ab02639 70% T-059 Fish with stamina: fast, fighting 'run' swim
-- 70 bug art senior doing P1 main ab02639 70% T-060 Dangling fish: head stays fixed at the hook, only the body w
 - 72 task art senior doing P1 main a18cd09 55% T-062 Cast charge shown in the arms, not only the rod
-- 96 task art mid doing P1 main a94e38c - T-064a FP arm poses: carried cooler open (tilted to eye) + show (tu
+- 96 task art mid doing P1 main a35597c 45% T-064a FP arm poses: carried cooler open (tilted to eye) + show (tu
 - 52 obj design - doing P2 - aade375 - S5 Sprint 5: the world comes alive (day/night cycle; shore wave
 - 86 task eng mid doing P2 eng13 ae9cabe - T-068b Sky rig: apply blended DT_TimeOfDay to sun, moon, sky, fog,
-- 88 task eng senior doing P2 eng2 a31eb5b - T-069a Wave function (C++ + HLSL, one formula), DT_Water, MPC_Water
-- 55 bug eng senior review P0 eng4 a9531b4 - T-045 Walking while reeling drags bobber + fish along; they must s
-- 57 bug eng senior review P0 eng4 a9531b4 - T-047 Stepping back on the dock pulls fish + line through the dock
+- 88 task eng senior doing P2 eng2 a377a3d 30% T-069a Wave function (C++ + HLSL, one formula), DT_Water, MPC_Water
+- 60 task eng mid review P0 eng5 a98eecc - T-050 Reel-in speed much faster now (data); fully tension-driven f
+- 68 task art senior review P1 main ab02639 95% T-058 Exhausted fish (stamina 0) stays upright with a calm swim, n
+- 69 task art senior review P1 main ab02639 95% T-059 Fish with stamina: fast, fighting 'run' swim
+- 70 bug art senior review P1 main ab02639 95% T-060 Dangling fish: head stays fixed at the hook, only the body w
 - 90 task art junior review P2 main a19b389 50% T-069d SM_WaterGrid tiles: flat technical grid, 2 m near + coarse f
-- 99 task eng junior merge P1 eng3 a25df67 - T-064c Carried open cooler: owner-only first-person lid pitch (DT_C
-- 85 task eng mid merge P2 eng1 a6346e9 - T-068a Day/night clock: server-owned time, phases, DT_DayCycle, bit
+- 59 task eng mid merge P0 eng5 a98eecc - T-049 Even fight: no near-snap spike right after the hook, no easy
 
 ## (no milestone)
 
-Counts: todo 19, ready 3, done 15, dropped 1.
+Counts: todo 18, ready 3, done 16, dropped 1.
 
-- 100 task qa junior todo P0 - - - T-045q Update 3 QA tests to T-045's server FishLocation (ProxyFollo
 - 2 obj lead - todo P1 - - - P-004 Agent work board (board.py) live in the studio
 - 22 q lead - todo P2 - - - Q-03 Should losing a fish cost the bait?
 - 23 q lead - todo P2 - - - Q-04 Freshness loss rates OK?

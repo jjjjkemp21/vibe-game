@@ -18,8 +18,10 @@
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
 #include "EnhancedInputComponent.h"
+#include "Environment/LureDayClockComponent.h"
 #include "Fish/FishRoll.h"
 #include "Fish/FishSettings.h"
+#include "Fishing/FightEdge.h"
 #include "Fishing/FishingSpots.h"
 #include "Fishing/FishingWater.h"
 #include "Fishing/LureFishingLineComponent.h"
@@ -142,6 +144,32 @@ namespace LureFishingPrivate
 		case ELureFightOutcome::ThrewHook: return TEXT("the fish threw the hook");
 		default: return TEXT("");
 		}
+	}
+
+	/**
+	 *  T-045: a location exactly as an FVector_NetQuantize10 arrives on a client (the engine's
+	 *  UE::Net::WriteQuantizedVector / ReadQuantizedVector with scale 10: round half away from zero, then x (1/10)).
+	 *  The server publishes the fish's location already quantized, so its FightNet equals every client's copy bit for bit
+	 *  (Project.Fishing.Fight.QA.Replication.ProxyFollowsServerFight compares the whole struct).
+	 */
+	FVector QuantizeLikeNet10(const FVector& Value)
+	{
+		if (Value.ContainsNaN())
+		{
+			return FVector::ZeroVector;
+		}
+		constexpr double Scale = 10.0;
+		const FVector Scaled = Value * Scale;
+		auto Round = [](double F) { return static_cast<double>(static_cast<int64>(F + FMath::Sign(F) * 0.5)); };
+		if (Scaled.GetAbsMax() >= static_cast<double>(1LL << 62))
+		{
+			return Value; // sent at full precision (never in a real world)
+		}
+		if (Value.GetAbsMin() >= static_cast<double>(1LL << 52))
+		{
+			return FVector(Round(Value.X), Round(Value.Y), Round(Value.Z)); // sent unscaled (never in a real world)
+		}
+		return FVector(Round(Scaled.X), Round(Scaled.Y), Round(Scaled.Z)) / Scale;
 	}
 }
 
@@ -755,7 +783,7 @@ FLureFishingEnvironment ULureFishingComponent::MakeEnvironment() const
 {
 	const ULureFishingSettings* Settings = GetDefault<ULureFishingSettings>();
 	FLureFishingEnvironment Environment;
-	Environment.TimeOfDayHours = TimeOfDayOverride >= 0.f ? TimeOfDayOverride : Settings->DefaultTimeOfDayHours;
+	Environment.TimeOfDayHours = TimeOfDayOverride >= 0.f ? TimeOfDayOverride : ULureDayClockComponent::GetHourOr(this, Settings->DefaultTimeOfDayHours); // T-068a: the clock
 	const FLureGearStats Gear = GetGearStats();
 	Environment.BaitTag = BaitTag.IsValid() ? BaitTag
 		: (Gear.BaitTag.IsValid() ? Gear.BaitTag : FGameplayTag::RequestGameplayTag(Settings->DefaultBait, /*ErrorIfNotFound*/ false));
@@ -1183,7 +1211,13 @@ void ULureFishingComponent::BeginFight(double Now)
 	const FLureGearStats Gear = GetGearStats();
 	const float Start = GetOwner() ? static_cast<float>(FVector::Dist2D(GetOwner()->GetActorLocation(), NetState.BobberRest)) : 0.f;
 	FLureFight::Begin(Fight, FishStats, Pattern, PatternId, Gear, FightTuning, FLureFight::FightSeed(HookedFish.Seed), Start);
+	// T-045: the fish starts where the bobber is and stays in the world from now on (the player's walking never moves it).
+	if (const AActor* Owner = GetOwner())
+	{
+		FLureFight::PlaceFish(Fight, FVector2D(Owner->GetActorLocation()), FVector2D(NetState.BobberRest.X, NetState.BobberRest.Y), FVector2D(Owner->GetActorForwardVector()));
+	}
 	FightLastTime = Now;
+	NextEdgeQueryTime = 0.0; // T-047: look for a dock edge at the first update
 	// T-028: a new fight starts with the rod level and centered (the owner resets its aim too); the reel step carries over.
 	ServerRodPitch = 0.f;
 	ServerRodYaw = 0.f;
@@ -1211,12 +1245,40 @@ void ULureFishingComponent::UpdateFight(double Now)
 	FightLastTime = Now;
 	ApplyPendingReelStep(Now); // T-028b: a reel-step change held back by the server's rate limit
 	const FLureFightInput Input = GetServerFightInput(); // the reel button + the rod aim and reel step (T-028)
+	if (const AActor* Owner = GetOwner())
+	{
+		// T-045: the fish stays where it is while the player walks; the line out follows the real distance (walking away pays
+		// out line, walking toward the fish shortens it), and the reel pulls the fish toward where the player is now.
+		FLureFight::MovePlayer(Fight, FVector2D(Owner->GetActorLocation()));
+	}
+	UpdateFightEdge(Now); // T-047: a dock edge in the way stops the fish and lifts it
 	const ELureFightOutcome Outcome = FLureFight::Advance(Fight, Input, Delta);
 	PublishFight();
 	if (Outcome != ELureFightOutcome::None)
 	{
 		EndFight(Outcome, Now);
 	}
+}
+
+void ULureFishingComponent::UpdateFightEdge(double Now)
+{
+	const FLureFishFightRow& Tuning = Fight.Tuning;
+	const AActor* Owner = GetOwner();
+	if (!Owner || !GetWorld() || !(Tuning.EdgeClearance > 0.f))
+	{
+		FLureFight::SetEdge(Fight, FLureFightEdge());
+		return;
+	}
+	if (Now < NextEdgeQueryTime || Fight.Lift > 0.f)
+	{
+		// The cached edge holds until the next look. A lifted fish keeps the edge it was lifted over (a look from over the dock
+		// would start inside it) until it is back on the water.
+		return;
+	}
+	// Every EdgeQueryInterval, and never more often than the fight's steps (the world query is the server's only per-fight cost).
+	NextEdgeQueryTime = Now + FMath::Max(static_cast<double>(Tuning.EdgeQueryInterval), static_cast<double>(FLureFight::StepSeconds(Tuning)));
+	FLureFight::SetEdge(Fight, FLureFightEdgeQuery::Find(GetWorld(), FLureFight::FishLocation(Fight), FVector2D(Owner->GetActorLocation()),
+		static_cast<float>(NetState.BobberRest.Z), Tuning, Owner));
 }
 
 void ULureFishingComponent::PublishFight()
@@ -1232,6 +1294,10 @@ void ULureFishingComponent::PublishFight()
 	FightNet.SlackTension = FLureFight::SlackTension(Fight.Fish, Tuning);
 	FightNet.Stamina = Fight.Stamina;
 	FightNet.LineOut = Fight.LineOut;
+	const FVector2D Fish = FLureFight::FishLocation(Fight);
+	// T-045: the fish's place in the world, quantized here as clients receive it (the server draws the same point).
+	FightNet.FishLocation = LureFishingPrivate::QuantizeLikeNet10(FVector(Fish.X, Fish.Y, NetState.BobberRest.Z));
+	FightNet.Lift = Fight.Lift; // T-047: lifted at a dock edge
 	FightNet.SpoolLength = Fight.Gear.SpoolLength;
 	FightNet.Depth = Fight.Depth;
 	FightNet.SideDeg = Fight.SideDeg;
@@ -1775,18 +1841,18 @@ void ULureFishingComponent::ComputeBobberPose(double Now, FVector& OutLocation, 
 		OutLocation.Z = NetState.BobberRest.Z - Row.BiteDipDepth;
 		if (FightNet.bActive && GetOwner())
 		{
-			// The bobber rides on the fish: LineOut from the player, swung by SideDeg, pulled under with the tension and dives.
-			const FVector Player = GetOwner()->GetActorLocation();
-			FVector Direction = (FVector(NetState.BobberRest) - Player).GetSafeNormal2D();
+			// The bobber rides on the fish where the server's fight has it in the world (T-045: never moved by the player's
+			// walking), pulled under with the tension and dives. It faces along the line from the player.
+			const FVector Fish = FightNet.FishLocation;
+			FVector Direction = (Fish - GetOwner()->GetActorLocation()).GetSafeNormal2D();
 			if (Direction.IsNearlyZero())
 			{
 				Direction = GetOwner()->GetActorForwardVector().GetSafeNormal2D();
 			}
-			Direction = Direction.RotateAngleAxis(FightNet.SideDeg, FVector::UpVector);
 			const FLureFishFightRow& Tuning = GetFightTuning();
-			OutLocation = Player + Direction * FightNet.LineOut;
+			OutLocation = FVector(Fish.X, Fish.Y, NetState.BobberRest.Z);
 			OutLocation.Z = NetState.BobberRest.Z - Row.BiteDipDepth * (0.5f + 0.5f * FMath::Clamp(FightNet.GetTension01(), 0.f, 1.f))
-				- Tuning.DiveBobberShare * FightNet.Depth;
+				- Tuning.DiveBobberShare * FightNet.Depth + FMath::Max(0.f, FightNet.Lift); // T-047: lifted with the fish at a dock edge
 			OutRotation = FRotator(FMath::Clamp(40.f * FightNet.GetTension01(), 0.f, 60.f), Direction.Rotation().Yaw, 0.f);
 		}
 		break;

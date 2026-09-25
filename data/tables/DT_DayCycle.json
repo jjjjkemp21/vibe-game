@@ -1,0 +1,17 @@
+[
+	{
+		"Name": "Default",
+		"DayLengthMinutes": 20,
+		"StartHour": 8,
+		"StartTimeScale": 0,
+		"DawnStart": 5,
+		"DayStart": 7,
+		"DuskStart": 17,
+		"NightStart": 19,
+		"DawnMinutes": 2,
+		"DayMinutes": 9,
+		"DuskMinutes": 2,
+		"NightMinutes": 7,
+		"DevComment": "T-068a, spec docs/specs/day-night-water.md §4. The tropics: even day and night. The phase minutes are weights scaled to sum to DayLengthMinutes (here they already sum to 20). Starts ascending in [0, 24), minutes > 0. The struct defaults in FLureDayCycleRow must equal this row (the built-in fallback)."
+	}
+]

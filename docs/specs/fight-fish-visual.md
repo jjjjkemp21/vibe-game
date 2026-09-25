@@ -26,11 +26,14 @@ state (`RodPitch`, `RodYaw`, `ReelStep`, `RunSide`) is not the fish's and is not
 - **Mesh**: DT_FishSpecies `SkeletalMesh` (new optional column), else `Mesh` if it is a skeletal mesh, else the settings'
   `FallbackMesh` (SK_Bonefish); none = nothing drawn. `AnimAmplitude` / `AnimRate` columns (optional, default 1).
 - **Scale**: `clamp((Weight / ReferenceWeight)^(1/3), MinScale, MaxScale)`.
-- **Placement**: line end = player + (direction to the bobber's rest point turned by `SideDeg`) x `LineOut`. The fish's
-  mouth is its point nearest the rod (T-048, lead 2026-09-24; replaces "body toward the player", which made the bobber
-  look hooked to the tail): the `Mouth` bone sits right under the line end (and the bobber, which is drawn at the same
-  XY), the fish faces the player from there and its body lies away from the player; its center is
-  `SurfaceDepth + min(DepthShare x Depth, MaxShownDepth)` under the surface, at least `FloorClearance` above the bottom.
+- **Placement**: line end = the fight's fish location (`FLureFightNetState::FishLocation`, T-045: the server's world XY
+  of the fish, which the player's walking never moves), at the water surface, raised by `FLureFightNetState::Lift`
+  (T-047: lifted up a dock edge and carried in over the deck; the adapter raises `WaterZ` and `LineEnd` by it, and keeps it
+  after the fight so a landed fish is handed on where it was lifted to). The fish's mouth is its point nearest the rod
+  (T-048, lead 2026-09-24; replaces "body toward the player", which made the bobber look hooked to the tail): the `Mouth`
+  bone sits right under the line end (and the bobber, which is drawn at the same XY), the fish faces the player from there
+  and its body lies away from the player; its center is `SurfaceDepth + min(DepthShare x Depth, MaxShownDepth)` under the
+  (lifted) surface, at least `FloorClearance` above the bottom.
   Smoothing moves only that line point (`AuthoritySmoothTime` on the server/standalone, `ProxySmoothTime` elsewhere; jumps
   over `SnapDistance` snap), and it never trails the line end by more than `MouthMaxLagCm` (5 cm) horizontally; the body
   pivots around the mouth (`RotationSmoothTime`). While the mouth swims faster than `MinFacingSpeed` the body swings
