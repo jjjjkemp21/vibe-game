@@ -15,7 +15,8 @@ param(
     [int]$TimeoutMinutes = 45,
     [switch]$AllowWhileEditorOpen,
     [string]$ParseReportDir = '',
-    [int]$ParseExitCode = [int]::MinValue
+    [int]$ParseExitCode = [int]::MinValue,
+    [switch]$NoTableSync
 )
 . (Join-Path $PSScriptRoot '_common.ps1')
 $name = 'run-tests'
@@ -23,6 +24,44 @@ $parseOnly = [bool]$ParseReportDir
 function Set-RunStatus([string]$State, [string]$Message, [string]$LogPath = '', $Details = $null) {
     if ($parseOnly) { Write-Host ('[' + $name + ' dry-run] ' + $State + ': ' + $Message) }
     else { Write-Status -Name $name -State $State -Message $Message -LogPath $LogPath -Details $Details }
+}
+
+# A lane changes only the CSV/JSON source of a DataTable; integrate.ps1 re-imports the binary /Game/Data/DT_* at merge time.
+# Without this, functional tests in the lane would read the OLD binary table and pass or fail on stale values. So for this
+# run only, re-import (headless) every table whose source differs from main and whose binary doesn't, then restore the
+# committed binary afterwards (lanes never commit .uasset). Main and the integration batch lane (binary already committed)
+# skip it. -NoTableSync turns it off.
+function Sync-LaneTables([string]$Root) {
+    $none = [pscustomobject]@{ Assets = @(); Error = $null }
+    $branch = git -C $Root rev-parse --abbrev-ref HEAD 2>$null
+    if ($branch -notlike 'lane/*') { return $none }
+    $base = git -C $Root merge-base HEAD main 2>$null
+    if (-not $base) { return $none }
+    $assets = @()
+    foreach ($f in @(git -C $Root diff --name-only $base -- 'data/tables' 2>$null | Where-Object { $_ -match '^data/tables/DT_[^/]+\.(csv|json)$' })) {
+        $tbl = [IO.Path]::GetFileNameWithoutExtension($f)
+        $asset = 'Content/Data/' + $tbl + '.uasset'
+        if (-not (Test-Path -LiteralPath (Join-Path $Root $asset))) { continue }
+        git -C $Root diff --quiet $base -- $asset 2>$null
+        if ($LASTEXITCODE -ne 0) { continue }
+        Write-Host ('  table ' + $tbl + ': source changed in this lane; re-importing it for this test run only')
+        $argsJson = '{"dest_path":"/Game/Data/' + $tbl + '","src_path":"' + (Join-Path $Root $f).Replace('\', '/') + '"}'
+        # Windows PowerShell 5.1 strips embedded double quotes from native-command arguments: escape them there.
+        $passJson = if ($PSVersionTable.PSVersion.Major -lt 7) { $argsJson -replace '"', '\"' } else { $argsJson }
+        $since = Get-Date
+        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'unreal-python.ps1') -Function reimport_table -ArgsJson $passJson | Out-Host
+        $st = $null; $statusPath = Join-Path $Root 'Saved/AgentLogs/status/unreal-python.json'
+        if (Test-Path $statusPath) { try { $st = Get-Content -Path $statusPath -Raw -Encoding UTF8 | ConvertFrom-Json } catch { $st = $null } }
+        $fresh = $false
+        if ($st -and $st.updatedAt) { try { $fresh = ([datetime]$st.updatedAt) -ge $since.AddSeconds(-2) } catch { $fresh = $false } }
+        if (($LASTEXITCODE -ne 0) -or (-not $fresh) -or ($st.state -ne 'succeeded')) {
+            if ($assets.Count -gt 0) { git -C $Root checkout -- $assets 2>&1 | Out-Null }
+            git -C $Root checkout -- $asset 2>&1 | Out-Null
+            return [pscustomobject]@{ Assets = @(); Error = ('re-import of ' + $tbl + ' for the test run failed (build the lane first?): ' + $(if ($st) { [string]$st.message } else { 'no status' })) }
+        }
+        $assets += $asset
+    }
+    return [pscustomobject]@{ Assets = $assets; Error = $null }
 }
 
 if ($parseOnly) {
@@ -43,7 +82,14 @@ if ($parseOnly) {
     $runArg = if ($Substring -or $Filter.Contains(':')) { $Filter } else { 'StartsWith:' + $Filter }
     $argList = '"' + $uproject + '" -ExecCmds="Automation RunTests ' + $runArg + ';Quit" -TestExit="Automation Test Queue Empty" -ReportExportPath="' + $reportDir + '" -unattended -nopause -nosplash -nullrhi -NoSound -stdout -FullStdOutLogOutput'
     Write-Status -Name $name -State 'running' -Message ('Running tests matching ' + $Filter) -LogPath ($logBase + '.out.log')
-    $r = Invoke-Logged -FilePath $cmdExe -ArgumentList $argList -LogBase $logBase -TimeoutMinutes $TimeoutMinutes
+    $synced = @()
+    if (-not $NoTableSync) {
+        $sync = Sync-LaneTables (Split-Path -Parent $uproject)
+        if ($sync.Error) { Write-Status -Name $name -State 'failed' -Message $sync.Error; exit 1 }
+        $synced = $sync.Assets
+    }
+    try { $r = Invoke-Logged -FilePath $cmdExe -ArgumentList $argList -LogBase $logBase -TimeoutMinutes $TimeoutMinutes }
+    finally { if ($synced.Count -gt 0) { git -C (Split-Path -Parent $uproject) checkout -- $synced 2>&1 | Out-Null; Write-Host ('  restored the committed ' + ($synced -join ', ')) } }
 }
 
 $passed = New-Object System.Collections.ArrayList

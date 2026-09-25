@@ -10,7 +10,7 @@ Counts: todo 1, done 12.
 
 ## A3
 
-Counts: todo 19, doing 18, review 2, merge 1, done 5.
+Counts: todo 19, ready 1, doing 13, review 1, merge 7, done 6.
 
 - 47 obj lead - todo P0 - - - A3 Milestone A3: Jimmy's A2 playtest notes, delivered in sprint
 - 49 obj design - todo P1 - - - S2 Sprint 2: fight redesign (limited line + snap, reel in / let
@@ -31,31 +31,32 @@ Counts: todo 19, doing 18, review 2, merge 1, done 5.
 - 89 task eng senior todo P2 - - - T-069b Ripple sim: camera-centred render-target wave equation, DT_W
 - 90 task art junior todo P2 - - - T-069d SM_WaterGrid tiles: flat technical grid, 2 m near + coarse f
 - 91 task design senior todo P2 - - - T-069c Water graph v5 in build_level.py (waves, facets, shore foam,
+- 94 task qa junior ready P0 eng6 - - T-059q Update Project.FishVisual.QA.Roles.PlayRateAndAlphaEdges: fi
 - 48 obj eng - doing P0 - - - S1 Sprint 1: line + fight fixes, even fight, faster reel, simpl
-- 54 bug eng junior doing P0 eng9 ad992d6 - T-044 Dangling fish: the line gets thicker the longer it hangs, un
 - 55 bug eng senior doing P0 eng4 a9531b4 - T-045 Walking while reeling drags bobber + fish along; they must s
-- 56 bug eng junior doing P0 eng9 ad992d6 - T-046 After a cast the line has zero tension and lies on the water
 - 57 bug eng senior doing P0 eng4 a9531b4 - T-047 Stepping back on the dock pulls fish + line through the dock
 - 59 task eng mid doing P0 eng5 ac8bb14 - T-049 Even fight: no near-snap spike right after the hook, no easy
 - 60 task eng mid doing P0 eng5 ac8bb14 - T-050 Reel-in speed much faster now (data); fully tension-driven f
-- 44 task eng mid doing P1 eng7 a1fcfff - T-043 A fish hanging on the line turns its side toward the viewer
+- 93 task lead junior doing P0 - editor- - R-S1a Editor: reimport DT_FishVisual (from eng6 JSON) + DT_Fishing
 - 50 obj art - doing P1 - - - S3 Sprint 3: fish that look alive (upright calm when tired, fas
 - 51 obj eng - doing P1 - - - S4 Sprint 4: cooler handling (bob with arms, open while held +
 - 68 task art senior doing P1 main acae828 45% T-058 Exhausted fish (stamina 0) stays upright with a calm swim, n
 - 69 task art senior doing P1 main acae828 45% T-059 Fish with stamina: fast, fighting 'run' swim
 - 70 bug art senior doing P1 main acae828 45% T-060 Dangling fish: head stays fixed at the hook, only the body w
-- 71 task eng mid doing P1 eng7 a1fcfff - T-061 A dangling fish's wiggle moves the line (like turning the ca
 - 72 task art senior doing P1 main a07a490 - T-062 Cast charge shown in the arms, not only the rod
 - 74 task eng mid doing P1 eng3 a5c1cea - T-064 Open the cooler while holding it (lid opens, fish visible) a
-- 80 task eng junior doing P1 eng9 ad992d6 - T-041e Fishing line material: enable Responsive AA so TSR stops gho
-- 92 task eng mid doing P1 eng6 a8d9dda - T-059a Fight clip play rate from stamina, not actor speed (fresh fa
-- 58 bug eng mid review P0 eng6 a8d9dda - T-048 Hooked fish in the water looks hooked by the tail; the line
-- 83 task eng mid review P0 eng6 a8d9dda - T-058a Quick win: exhausted fish lies on its side because DT_FishVi
-- 61 task eng mid merge P0 eng8 a51f13c - T-051 Simple debug menu: list of all key binds + mouse sensitivity
+- 80 task eng junior review P1 eng9 ad992d6 - T-041e Fishing line material: enable Responsive AA so TSR stops gho
+- 54 bug eng junior merge P0 eng9 ad992d6 - T-044 Dangling fish: the line gets thicker the longer it hangs, un
+- 56 bug eng junior merge P0 eng9 ad992d6 - T-046 After a cast the line has zero tension and lies on the water
+- 58 bug eng mid merge P0 eng6 a8d9dda - T-048 Hooked fish in the water looks hooked by the tail; the line
+- 83 task eng mid merge P0 eng6 a8d9dda - T-058a Quick win: exhausted fish lies on its side because DT_FishVi
+- 44 task eng mid merge P1 eng7 a1fcfff - T-043 A fish hanging on the line turns its side toward the viewer
+- 71 task eng mid merge P1 eng7 a1fcfff - T-061 A dangling fish's wiggle moves the line (like turning the ca
+- 92 task eng mid merge P1 eng6 a8d9dda - T-059a Fight clip play rate from stamina, not actor speed (fresh fa
 
 ## (no milestone)
 
-Counts: todo 17, ready 3, done 13, dropped 1.
+Counts: todo 17, ready 4, done 13, dropped 1.
 
 - 2 obj lead - todo P1 - - - P-004 Agent work board (board.py) live in the studio
 - 22 q lead - todo P2 - - - Q-03 Should losing a fish cost the bait?
@@ -75,5 +76,6 @@ Counts: todo 17, ready 3, done 13, dropped 1.
 - 39 task art mid todo P3 - - - T-042 Visual polish from gate d: held fish near-black when backlit
 - 53 obj lead - todo P3 - - - MP Backlog: multiplayer experience (Jimmy 2026-09-24: test it,
 - 36 bug art mid ready P2 - - - T-040 Cooler: in-game shop view shows 1/4 eyes with 4 Bonefish (Bl
+- 95 task eng mid ready P2 - - - T-072 Pipeline: data table changes in lanes need an editor reimpor
 - 18 task qa mid ready P3 - - - T-035 Split docs/TEST_PLAN.md into docs/test-plan/<system>.md
 - 81 bug eng junior ready P3 - - - T-070 Playtest driver: a pd.console query can end the PIE session

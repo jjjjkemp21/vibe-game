@@ -4,6 +4,7 @@
 #include "Character/LureCharacterSettings.h"
 #include "Character/LureMovementTypes.h"
 #include "Fishing/LureFishingSettings.h"
+#include "Game/LureUserSettings.h"
 #include "Engine/Engine.h"
 #include "EnhancedActionKeyMapping.h"
 #include "EnhancedInputLibrary.h"
@@ -23,19 +24,28 @@ const FName FLureInputActionNames::Cast(TEXT("Cast"));
 const FName FLureInputActionNames::Hook(TEXT("Hook"));
 const FName FLureInputActionNames::ReelFaster(TEXT("ReelFaster"));
 const FName FLureInputActionNames::ReelSlower(TEXT("ReelSlower"));
+const FName FLureInputActionNames::DebugMenu(TEXT("DebugMenu"));
+const FName FLureInputActionNames::MouseSensitivityDown(TEXT("MouseSensitivityDown"));
+const FName FLureInputActionNames::MouseSensitivityUp(TEXT("MouseSensitivityUp"));
 
 TArray<FName> FLureInputActionNames::All()
 {
 	return { Move, Look, Jump, Sprint, Crouch, Prone, Interact, AltInteract, Cast, Hook, ReelFaster, ReelSlower };
 }
 
+TArray<FName> FLureInputActionNames::Menu()
+{
+	return { DebugMenu, MouseSensitivityDown, MouseSensitivityUp };
+}
+
 void ULureInputSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
+	Collection.InitializeDependency<ULureUserSettings>(); // T-051: the saved mouse sensitivity is loaded before the first mappings
 
 	CreateActions();
 	MappingContext = NewObject<UInputMappingContext>(this, TEXT("IMC_Lure_Default"), RF_Transient);
-	BuildMappings(*MappingContext, Actions, *GetDefault<ULureCharacterSettings>());
+	BuildMappings(*MappingContext, Actions, *GetDefault<ULureCharacterSettings>(), GetCurrentMouseSensitivity());
 }
 
 void ULureInputSubsystem::Deinitialize()
@@ -67,6 +77,29 @@ TArray<FName> ULureInputSubsystem::GetInputActionNames()
 	return FLureInputActionNames::All();
 }
 
+FName ULureInputSubsystem::GetInputActionName(const UInputAction* Action)
+{
+	const ULureInputSubsystem* Subsystem = Get();
+	if (!Subsystem || !Action)
+	{
+		return NAME_None;
+	}
+	for (const TPair<FName, TObjectPtr<UInputAction>>& Pair : Subsystem->Actions)
+	{
+		if (Pair.Value == Action)
+		{
+			return Pair.Key;
+		}
+	}
+	return NAME_None;
+}
+
+float ULureInputSubsystem::GetCurrentMouseSensitivity()
+{
+	const ULureUserSettings* UserSettings = ULureUserSettings::Get();
+	return UserSettings ? UserSettings->GetMouseSensitivity() : 1.f;
+}
+
 void ULureInputSubsystem::CreateActions()
 {
 	struct FActionSpec
@@ -87,6 +120,9 @@ void ULureInputSubsystem::CreateActions()
 		{ FLureInputActionNames::Hook, EInputActionValueType::Boolean },
 		{ FLureInputActionNames::ReelFaster, EInputActionValueType::Boolean },
 		{ FLureInputActionNames::ReelSlower, EInputActionValueType::Boolean },
+		{ FLureInputActionNames::DebugMenu, EInputActionValueType::Boolean }, // T-051
+		{ FLureInputActionNames::MouseSensitivityDown, EInputActionValueType::Boolean },
+		{ FLureInputActionNames::MouseSensitivityUp, EInputActionValueType::Boolean },
 	};
 
 	Actions.Reset();
@@ -105,11 +141,11 @@ void ULureInputSubsystem::RebuildMappings()
 		return;
 	}
 	MappingContext->UnmapAll();
-	BuildMappings(*MappingContext, Actions, *GetDefault<ULureCharacterSettings>());
+	BuildMappings(*MappingContext, Actions, *GetDefault<ULureCharacterSettings>(), GetCurrentMouseSensitivity());
 	UEnhancedInputLibrary::RequestRebuildControlMappingsUsingContext(MappingContext);
 }
 
-void ULureInputSubsystem::BuildMappings(UInputMappingContext& Context, const TMap<FName, TObjectPtr<UInputAction>>& InActions, const ULureCharacterSettings& Settings)
+void ULureInputSubsystem::BuildMappings(UInputMappingContext& Context, const TMap<FName, TObjectPtr<UInputAction>>& InActions, const ULureCharacterSettings& Settings, float MouseSensitivity)
 {
 	auto MakeSwizzle = [&Context]()
 	{
@@ -158,7 +194,9 @@ void ULureInputSubsystem::BuildMappings(UInputMappingContext& Context, const TMa
 	};
 
 	const float PitchSign = Settings.bInvertLookY ? -1.f : 1.f;
-	const float MouseScale = Settings.MouseDegreesPerCount;
+	// T-051: the player's mouse sensitivity multiplies the mouse look scale (both axes); a bad value falls back to 1.
+	const float Sensitivity = FMath::IsFinite(MouseSensitivity) && MouseSensitivity > 0.f ? MouseSensitivity : 1.f;
+	const float MouseScale = Settings.MouseDegreesPerCount * Sensitivity;
 
 	// Move: 1D keys become a 2D vector (X = right, Y = forward).
 	Map(FLureInputActionNames::Move, Settings.MoveForwardKeys, [&]() { return TArray<UInputModifier*>{ MakeSwizzle() }; });
@@ -193,4 +231,9 @@ void ULureInputSubsystem::BuildMappings(UInputMappingContext& Context, const TMa
 	// Reel speed steps while a fish is on (T-028); the look input steers the rod then (ALurePlayerCharacter::DoLook).
 	Map(FLureInputActionNames::ReelFaster, Fishing->ReelFasterKeys, NoModifiers);
 	Map(FLureInputActionNames::ReelSlower, Fishing->ReelSlowerKeys, NoModifiers);
+
+	// Debug menu (T-051): open / close, and the sensitivity keys it uses while open.
+	Map(FLureInputActionNames::DebugMenu, Settings.DebugMenuKeys, NoModifiers);
+	Map(FLureInputActionNames::MouseSensitivityDown, Settings.MouseSensitivityDownKeys, NoModifiers);
+	Map(FLureInputActionNames::MouseSensitivityUp, Settings.MouseSensitivityUpKeys, NoModifiers);
 }
