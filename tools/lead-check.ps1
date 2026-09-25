@@ -4,6 +4,9 @@
 #     flags HANDOFF when context > -ContextLimitK (250k; senior agents -SeniorContextLimitK 400k) (the lead then asks it to write a handoff and starts a fresh agent)
 #   - Saved/ size per checkout (main + worktree lanes) and hours since the last janitor run;
 #     flags JANITOR when any Saved/ > -SavedLimitMB or the last run is older than -JanitorHours
+#   - board (only if Saved/Studio/board.db exists; BOARD_DB overrides): each agent line ends with its open board
+#     item(s) "#<id> <key>" (item agent starts with the agent id, or is its short form); then the orphans from
+#     board.py resume (items in doing whose agent is not running), flagged ORPHAN
 # Read-only. Writes Saved/AgentLogs/status/lead-check.json.
 param(
     [int]$ActiveMinutes = 20,
@@ -12,10 +15,21 @@ param(
     [int]$SavedLimitMB = 500,
     [double]$JanitorHours = 3
 )
+. (Join-Path $PSScriptRoot '_common.ps1')
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
 $flags = @()
 $lines = @()
+
+# --- Board: open items (for the agent lines); @() without a board DB
+$boardItems = @(Get-BoardJson @('ls', '-n', '0'))
+function Get-AgentBoardTag([string]$Id) {
+    $hits = @($boardItems | Where-Object {
+        $a = [string]$_.agent
+        $a -and ($a.StartsWith($Id, [StringComparison]::OrdinalIgnoreCase) -or (($a.Length -ge 7) -and $Id.StartsWith($a, [StringComparison]::OrdinalIgnoreCase)))
+    } | ForEach-Object { '#' + $_.id + $(if ($_.key) { ' ' + $_.key } else { '' }) })
+    return ($hits -join ', ')
+}
 
 # --- Agents: newest session's subagents folder under ~/.claude/projects/<repo path with :\ -> ->
 $projName = ($repo -replace '[:\\/]', '-')
@@ -50,17 +64,26 @@ if (Test-Path $projDir) {
                 # Finished (or waiting on its own background work): the last stop_reason is end_turn. Never flagged.
                 $stops = [regex]::Matches($text, '"stop_reason":"(\w+)"')
                 $done = $stops.Count -gt 0 -and $stops[$stops.Count - 1].Groups[1].Value -eq 'end_turn'
+                $item = Get-AgentBoardTag $id
                 $a = [ordered]@{ id = $id; type = $meta.agentType; description = $meta.description; contextK = $ctx
-                                 lastWrite = $_.LastWriteTime.ToString('HH:mm'); done = $done }
+                                 lastWrite = $_.LastWriteTime.ToString('HH:mm'); done = $done; boardItem = $item }
                 $agents += $a
                 $limit = if ($meta.agentType -like '*-senior-*') { $SeniorContextLimitK } else { $ContextLimitK }
                 $mark = if ($done) { 'done' } elseif ($ctx -gt $limit) { 'HANDOFF' } else { 'ok' }
                 if ($mark -eq 'HANDOFF') { $flags += "HANDOFF $id ($($meta.agentType): $($meta.description)) ~${ctx}k" }
-                $lines += ('{0,-8} {1,-18} ~{2,4}k  {3}  {4} [{5}]' -f $mark, $id, $ctx, $a.lastWrite, $meta.description, $meta.agentType)
+                $lines += ('{0,-8} {1,-18} ~{2,4}k  {3}  {4} [{5}]{6}' -f $mark, $id, $ctx, $a.lastWrite, $meta.description, $meta.agentType, $(if ($item) { '  ' + $item } else { '' }))
             }
     }
 }
 if (-not $agents) { $lines += "no subagents active in the last $ActiveMinutes min" }
+
+# --- Board orphans (board.py resume: doing items whose agent has no running transcript)
+$orphans = @()
+$res = Invoke-Board @('resume')
+if ($res -and ($res.ExitCode -eq 0)) {
+    $orphans = @($res.Out | Where-Object { $_ -like 'orphan *' })
+    foreach ($o in $orphans) { $lines += $o; $flags += ('ORPHAN ' + $o.Substring(7)) }
+} elseif ($res) { $lines += ('board    resume failed: ' + $res.Err) }
 
 # --- Disk: Saved/ per checkout, last janitor run
 $checkouts = @(git -C $repo worktree list --porcelain | Where-Object { $_ -like 'worktree *' } | ForEach-Object { $_.Substring(9) })
@@ -90,5 +113,5 @@ if ($flags) { Write-Output '--- action needed:'; $flags | ForEach-Object { Write
 $statusDir = Join-Path $repo 'Saved/AgentLogs/status'
 New-Item -ItemType Directory -Force $statusDir | Out-Null
 [ordered]@{ script = 'lead-check'; state = 'succeeded'; message = ($(if ($flags) { $flags -join '; ' } else { 'nothing to do' }))
-            updatedAt = (Get-Date).ToString('s'); agents = $agents; disk = $disk; janitorHoursAgo = $hours } |
+            updatedAt = (Get-Date).ToString('s'); agents = $agents; disk = $disk; janitorHoursAgo = $hours; boardOrphans = $orphans } |
     ConvertTo-Json -Depth 4 | Set-Content (Join-Path $statusDir 'lead-check.json') -Encoding utf8

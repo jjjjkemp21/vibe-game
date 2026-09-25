@@ -144,11 +144,11 @@ struct FLureFishingLineRow : public FTableRowBase
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Safety", meta=(ClampMin="1"))
 	float TeleportDistance = 1500.f;
 
-	// ---- Collision (T-032b): the line lies on docks, rocks and the ground and bends over their edges ----
+	// ---- Collision (T-032b): the line lies on docks, posts and rocks and bends over their edges ----
 
 	/**
-	 *  The line keeps this far from solid surfaces, cm (what blocks a cast: docks, posts, rocks, the ground; see
-	 *  docs/specs/fishing-line.md "Collision"). 0 = on the surface.
+	 *  The line keeps this far from solid surfaces, cm (the simple collision of what blocks a cast: docks, posts, rocks; not
+	 *  landscapes yet; see docs/specs/fishing-line.md "Collision"). 0 = on the surface.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Collision", meta=(ClampMin="0", ClampMax="50"))
 	float CollisionRadius = 1.f;

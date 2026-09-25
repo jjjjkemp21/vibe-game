@@ -16,7 +16,7 @@ Only tool for deleting: `powershell -NoProfile -ExecutionPolicy Bypass -File too
 - **Never delete any other way:** no rm, del or Remove-Item. Never touch Content/, Source/, art/, data/, docs/, Config/, .git, Intermediate/ or DerivedDataCache.
 
 Steps:
-1. **Check what's busy.** Read the "In progress" lines in docs/TASKS.md. Folders of running tasks must stay; the one-hour rule covers most of them.
+1. **Check what's busy.** Run `python C:/GameDev/VibeGame/tools/board.py ls --status doing` (the items in flight, with their lanes). Folders of running tasks must stay; the one-hour rule covers most of them.
 2. **Dry run.** Run `tools/cleanup.ps1` without -Apply and read the list it writes to Saved/AgentLogs/janitor/.
 3. **Choose extra deletions with judgment**, then pass them with -Paths:
    - **Progress/ (Jimmy's photos):** keep the newest photo of each subject. A photo is superseded when a newer one shows the same thing better or in-engine: a later version of the same asset, a Blender preview once the same thing has an in-Unreal shot, v1 of a UI box once the final exists.

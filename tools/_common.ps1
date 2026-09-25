@@ -122,6 +122,46 @@ function Write-Status {
     Write-Host ('[' + $Name + '] ' + $State + ': ' + $Message)
 }
 
+# --- board.py hooks (docs/tools/board.md "Integrations") ---
+# The DB is main's Saved/Studio/board.db (BOARD_DB overrides it, e.g. in tests). Every hook is a silent no-op while the
+# DB file is missing: board.py creates the DB on ANY command (even ls), so never call it without Test-BoardDb.
+function Get-BoardDbPath {
+    if ($env:BOARD_DB) { return $env:BOARD_DB }
+    return (Join-Path $script:RepoRoot 'Saved\Studio\board.db')
+}
+
+function Test-BoardDb { return (Test-Path -LiteralPath (Get-BoardDbPath) -PathType Leaf) }
+
+# Runs python tools/board.py <args>. Returns $null when the DB is missing, else ExitCode / Out (stdout lines) / Err.
+function Invoke-Board([string[]]$BoardArgs) {
+    if (-not (Test-BoardDb)) { return $null }
+    $ErrorActionPreference = 'Continue'   # local: stderr of a native command must not throw under a caller's 'Stop'
+    $boardPy = Join-Path $script:RepoRoot 'tools\board.py'
+    # PS 5.1 drops embedded double quotes when it builds a native command line.
+    $safe = @($BoardArgs | ForEach-Object { ([string]$_).Replace('"', "'") })
+    $enc = $null
+    try { $enc = [Console]::OutputEncoding; [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false) } catch { $enc = $null }
+    try {
+        $all = @(& python $boardPy @safe 2>&1)
+        $code = $LASTEXITCODE
+    } catch {
+        $all = @($_.ToString()); $code = -1
+    } finally {
+        if ($enc) { try { [Console]::OutputEncoding = $enc } catch { } }
+    }
+    $out = @($all | Where-Object { $_ -isnot [System.Management.Automation.ErrorRecord] } | ForEach-Object { [string]$_ })
+    $err = @($all | Where-Object { $_ -is [System.Management.Automation.ErrorRecord] } | ForEach-Object { $_.ToString() })
+    return [pscustomobject]@{ ExitCode = $code; Out = $out; Err = (($err -join ' ').Trim()) }
+}
+
+# board.py <args> --json parsed into a flat array of objects; @() when the DB is missing or the call failed.
+function Get-BoardJson([string[]]$BoardArgs) {
+    $r = Invoke-Board (@($BoardArgs) + @('--json'))
+    if (($null -eq $r) -or ($r.ExitCode -ne 0) -or ($r.Out.Count -eq 0)) { return @() }
+    try { $v = ($r.Out -join "`n") | ConvertFrom-Json } catch { return @() }
+    return @($v | ForEach-Object { $_ })   # PS 5.1 emits a JSON array as one object: enumerate it
+}
+
 # Runs a native program with stdout/stderr redirected to files. Returns ExitCode/TimedOut/OutLog/ErrLog.
 function Invoke-Logged {
     param(

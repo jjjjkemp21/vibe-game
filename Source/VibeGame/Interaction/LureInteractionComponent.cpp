@@ -15,13 +15,66 @@
 
 ULureInteractionComponent::ULureInteractionComponent()
 {
-	PrimaryComponentTick.bCanEverTick = false;
+	// T-030n: the tick records what the prompts show at the end of the frame, in the last tick group: after the network
+	// receive, the input, movement, the camera update and the line (TG_PostUpdateWork). The HUD draws this same state after
+	// the world tick. Only the locally controlled pawn records (see TickComponent).
+	PrimaryComponentTick.bCanEverTick = true;
+	PrimaryComponentTick.bStartWithTickEnabled = true;
+	PrimaryComponentTick.TickGroup = TG_LastDemotable;
 	SetIsReplicatedByDefault(true); // server RPCs
 }
 
 APawn* ULureInteractionComponent::GetPawn() const
 {
 	return Cast<APawn>(GetOwner());
+}
+
+void ULureInteractionComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
+{
+	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+	const APawn* Pawn = GetPawn();
+	if (Pawn && Pawn->IsLocallyControlled())
+	{
+		RecordShownPrompts();
+	}
+}
+
+void ULureInteractionComponent::RecordShownPrompts()
+{
+	for (const ELureInteractKey Key : { ELureInteractKey::Primary, ELureInteractKey::Secondary })
+	{
+		const FLureResolvedInteraction Resolved = ResolveInteraction(Key);
+		FShownKey& Record = Shown[static_cast<int32>(Key)];
+		Record.Target = Resolved.Target.Get();
+		Record.Verb = Resolved.HasVerb() ? Resolved.Verb : ELureInteractVerb::None;
+		Record.Prompt = Resolved.Prompt;
+		Record.StateToken = StateTokenOf(Resolved);
+	}
+	ShownFrame = GFrameCounter;
+	bHasShown = true;
+}
+
+int32 ULureInteractionComponent::StateTokenOf(const FLureResolvedInteraction& Resolved) const
+{
+	const ILureInteractable* Interactable = Resolved.HasVerb() ? Cast<ILureInteractable>(Resolved.Target) : nullptr;
+	return Interactable ? Interactable->GetInteractionStateToken(GetPawn(), Resolved.Verb) : 0;
+}
+
+bool ULureInteractionComponent::GetShownInteraction(ELureInteractKey Key, FLureResolvedInteraction& OutShown, int32& OutStateToken) const
+{
+	OutShown = FLureResolvedInteraction();
+	OutStateToken = 0;
+	// GFrameCounter only grows; a record older than the last frame is not what is on screen now (no local tick: paused, unpossessed).
+	if (!bHasShown || GFrameCounter < ShownFrame || GFrameCounter - ShownFrame > MaxShownPromptAgeFrames)
+	{
+		return false;
+	}
+	const FShownKey& Record = Shown[static_cast<int32>(Key)];
+	OutShown.Target = Record.Target.Get();
+	OutShown.Verb = OutShown.Target ? Record.Verb : ELureInteractVerb::None; // its target is gone: nothing to act on
+	OutShown.Prompt = Record.Prompt;
+	OutStateToken = Record.StateToken;
+	return true;
 }
 
 void ULureInteractionComponent::BindInput(UEnhancedInputComponent& Input)
@@ -186,20 +239,42 @@ bool ULureInteractionComponent::PressKey(ELureInteractKey Key)
 	{
 		return false;
 	}
-	// T-030h: what the prompt acts on, as this machine sees it now (the prompt drawn this frame), e.g. the fish on the counter.
-	const ILureInteractable* Interactable = Cast<ILureInteractable>(Resolved.Target);
-	const int32 SeenState = Interactable ? Interactable->GetInteractionStateToken(GetPawn(), Resolved.Verb) : 0;
-	return RequestInteract(Resolved.Target, Key, Resolved.Verb, SeenState);
+	// T-030h: what the prompt acts on, as this machine sees it now, e.g. the fish on the counter.
+	return RequestInteract(Resolved.Target, Key, Resolved.Verb, StateTokenOf(Resolved));
+}
+
+bool ULureInteractionComponent::PressKeyAsShown(ELureInteractKey Key)
+{
+	FLureResolvedInteraction Seen;
+	int32 SeenState = 0;
+	if (!GetShownInteraction(Key, Seen, SeenState))
+	{
+		return PressKey(Key); // no fresh record (no local tick yet): what it shows now
+	}
+	// T-030n: the frame's network update ran before this key; if it changed what the key does, say so in the log (the server
+	// then refuses the shown request with a notice, or does exactly what was shown).
+	const FLureResolvedInteraction Now = ResolveInteraction(Key);
+	if (Now.Target != Seen.Target || Now.Verb != Seen.Verb || StateTokenOf(Now) != SeenState)
+	{
+		UE_LOG(LogLureProgression, Log, TEXT("%s: %s acts on the prompt shown last frame ('%s' on %s), not on this frame's ('%s' on %s)."),
+			*GetNameSafe(GetOwner()), *ILureInteractable::GetKeyLabel(Key), *Seen.Prompt.ToString(), *GetNameSafe(Seen.Target),
+			*Now.Prompt.ToString(), *GetNameSafe(Now.Target));
+	}
+	if (!Seen.HasVerb())
+	{
+		return false; // the prompt showed nothing for this key (or its target is gone)
+	}
+	return RequestInteract(Seen.Target, Key, Seen.Verb, SeenState);
 }
 
 void ULureInteractionComponent::HandleInteractPressed()
 {
-	PressKey(ELureInteractKey::Primary);
+	PressKeyAsShown(ELureInteractKey::Primary);
 }
 
 void ULureInteractionComponent::HandleAltInteractPressed()
 {
-	PressKey(ELureInteractKey::Secondary);
+	PressKeyAsShown(ELureInteractKey::Secondary);
 }
 
 bool ULureInteractionComponent::RequestInteract(AActor* Target, ELureInteractKey Key, ELureInteractVerb Verb, int32 ExpectedState)
@@ -211,7 +286,7 @@ bool ULureInteractionComponent::RequestInteract(AActor* Target, ELureInteractKey
 	}
 	if (Owner->HasAuthority())
 	{
-		return TryInteract(Target, Key, Verb, ExpectedState);
+		return AuthorityInteract(Target, Key, Verb, ExpectedState, /*bPlayerRequest*/ true);
 	}
 	ServerInteract(Target, Key, Verb, ExpectedState);
 	return true;
@@ -219,10 +294,15 @@ bool ULureInteractionComponent::RequestInteract(AActor* Target, ELureInteractKey
 
 void ULureInteractionComponent::ServerInteract_Implementation(AActor* Target, ELureInteractKey Key, ELureInteractVerb Verb, int32 ExpectedState)
 {
-	TryInteract(Target, Key, Verb, ExpectedState);
+	AuthorityInteract(Target, Key, Verb, ExpectedState, /*bPlayerRequest*/ true);
 }
 
 bool ULureInteractionComponent::TryInteract(AActor* Target, ELureInteractKey Key, ELureInteractVerb Verb, int32 ExpectedState)
+{
+	return AuthorityInteract(Target, Key, Verb, ExpectedState, /*bPlayerRequest*/ false);
+}
+
+bool ULureInteractionComponent::AuthorityInteract(AActor* Target, ELureInteractKey Key, ELureInteractVerb Verb, int32 ExpectedState, bool bPlayerRequest)
 {
 	const AActor* Owner = GetOwner();
 	if (!Owner || !Owner->HasAuthority())
@@ -259,20 +339,25 @@ bool ULureInteractionComponent::TryInteract(AActor* Target, ELureInteractKey Key
 	}
 	// T-030h: the same verb on changed contents (a fish taken back from the counter between the prompt and the key) would do
 	// more or less than the prompt showed: refused. The player's prompt refreshes from replication; the notice says why.
-	if (ExpectedState != 0)
+	// T-030n: a player's request for a verb with a state token must carry it (every key path sends it), so 0 is refused
+	// there; only server code calling TryInteract directly may pass 0 to skip the check.
+	const int32 NowState = Interactable->GetInteractionStateToken(Pawn, Verb);
+	if (NowState != ExpectedState && (ExpectedState != 0 || bPlayerRequest))
 	{
-		const int32 NowState = Interactable->GetInteractionStateToken(Pawn, Verb);
-		if (NowState != ExpectedState)
+		if (ExpectedState == 0)
 		{
-			UE_LOG(LogLureProgression, Log, TEXT("%s: %s changed since the prompt (verb %d, state %d, seen %d); refused."), *GetNameSafe(Pawn), *GetNameSafe(Target),
-				static_cast<int32>(Verb), NowState, ExpectedState);
-			if (ULureHandsComponent* Hands = ULureHandsComponent::Get(Pawn))
-			{
-				Hands->ClientNotice(Now.Prompt.IsEmpty() ? FString(TEXT("That just changed: nothing done"))
-					: FString::Printf(TEXT("That just changed: nothing done. Now: %s"), *Now.Prompt.ToString()));
-			}
+			UE_LOG(LogLureProgression, Warning, TEXT("%s: asked %s (verb %d) without the prompt's state token; refused (the keys send it: PressKeyAsShown, PressKey)."),
+				*GetNameSafe(Pawn), *GetNameSafe(Target), static_cast<int32>(Verb));
 			return false;
 		}
+		UE_LOG(LogLureProgression, Log, TEXT("%s: %s changed since the prompt (verb %d, state %d, seen %d); refused."), *GetNameSafe(Pawn), *GetNameSafe(Target),
+			static_cast<int32>(Verb), NowState, ExpectedState);
+		if (ULureHandsComponent* Hands = ULureHandsComponent::Get(Pawn))
+		{
+			Hands->ClientNotice(Now.Prompt.IsEmpty() ? FString(TEXT("That just changed: nothing done"))
+				: FString::Printf(TEXT("That just changed: nothing done. Now: %s"), *Now.Prompt.ToString()));
+		}
+		return false;
 	}
 	return Interactable->PerformInteraction(Pawn, Verb);
 }

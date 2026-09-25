@@ -137,7 +137,11 @@ by the server; clients only ask ("I pressed E on this cooler, expecting Put in")
   it from a standing player farther than about 1 m, so a lone fish at the front was invisible from 2 m (A2 playtest).
   At the back every shown fish, from the smallest possible weight (scale ~0.68) to any capped one (1.0), clears the
   sight line over the front rim from the put-down distance out to 1.5 m (`Project.Catch.Display.EveryFishVisible`);
-  farther than that a lone fish on the floor can still hide behind the wall. No row = the built-in layout (= the
+  farther than that a lone fish on the floor can still hide behind the wall. Every shown fish also lies inside the liner
+  and under the closed lid, for any slot layout: its posed vertices (`ALureCoolerActor::GetDisplayedFishBounds`), in
+  Contents-socket space, stay within X +-17.5, Y +-25.5, Z 0..28 cm (the liner floor footprint up to the lid's underside)
+  with a 1.0 cm tolerance; an axis-aligned check, so the liner's rounded corners are not checked
+  (`Project.Catch.Display.FishInsideLiner`). No row = the built-in layout (= the
   shipped Starter row); a missing pose = straight fish.
 - **The lid's look follows `bLidOpen`** on every machine: open = `LidOpenPitch`, closed = 0, animated over
   `LidOpenTime`, set without animation when the cooler first appears (a fresh cooler, a late-joining client). A fish
@@ -176,6 +180,9 @@ by the server; clients only ask ("I pressed E on this cooler, expecting Put in")
   If the fish on the counter changed before the server ran it (another player took one back or put one on), the sale is
   refused, the seller gets the notice "That just changed: nothing done. Now: Sell N fish (X coins)" and their prompt
   refreshes; pressing E again sells what it shows now. The price can still move by spoiling between prompt and sale.
+  T-030n: "what the prompt showed" is the prompt at the end of the last frame (see "Focus and input", the key rule), so
+  a take-back whose news reaches the seller's machine in the same frame as the E (always so for a listen host's F in PIE)
+  still refuses the sale instead of selling the rest.
 - The counter replicates (dormant after its first send) and its four settings replicate once, so a counter spawned at
   runtime works like one placed in the level. Old maps: a CoreRedirect in `Config/DefaultEngine.ini` maps
   `LureSellPoint` to `LureSellCounter`.
@@ -199,7 +206,15 @@ by the server; clients only ask ("I pressed E on this cooler, expecting Put in")
   else, e.g. two players taking the last fish: the second is refused), then performs it. The view angle is not
   re-checked on the server. T-030h: a verb whose prompt shows contents that can change under it has a state token
   (`ILureInteractable::GetInteractionStateToken`; today only the counter's Sell): `ServerInteract(Target, Key, Verb,
-  ExpectedState)` sends the one the client saw and the server refuses a mismatch (with a notice). 0 = not checked.
+  ExpectedState)` sends the one the client saw and the server refuses a mismatch (with a notice). T-030n: a player's
+  request (`ServerInteract`, or the host's `RequestInteract`) for such a verb must carry the token: 0 is refused (a
+  Warning in the log). Only server code calling `TryInteract` directly may pass 0 to skip the check.
+- **The key acts on the prompt you saw (T-030n):** a frame runs network receive -> your input (the E / F handlers) ->
+  gameplay -> the HUD. So another player's change can arrive in the same frame as your key, before the key handler runs.
+  The E / F handlers therefore send what each key's prompt showed at the end of the last frame (target, verb, state
+  token), recorded by `ULureInteractionComponent`'s tick (TG_LastDemotable, locally controlled pawn only):
+  `PressKeyAsShown`. If that prompt had no verb for the key, the key does nothing. With no record from the last frame
+  (paused, just possessed) the key acts on what it resolves to now (`PressKey`, also what tests and tools use).
 
 ## Network (what replicates, what each machine does)
 - Server-authoritative: every change goes through `Authority*` functions that refuse on clients (with a Warning).
