@@ -15,8 +15,8 @@ and the line **pulls straight under tension** (fight tension mapping, carried re
 
 | Fishing state | Tension shown (DT_FishingLine) | Look |
 |---|---|---|
-| Casting | CastTension 0.35 | a little slack behind the flying bobber |
-| Waiting | WaitTension 0 | droops from the rod tip and lies on the water up to the bobber |
+| Casting | CastTension 0.55 | a little slack behind the flying bobber |
+| Waiting | WaitTension 0.55 (T-046; was 0) | a gentle, mostly lifted curve from the rod tip to the bobber (rod tip 150 cm up: 27 / 36 / 45 % of the line on the water at 10 / 12.5 / 15 m; 0 was 82-91 %) |
 | Biting | BiteTension 0.6 | pulls nearly straight as the bobber dips |
 | Hooked, reel fight | `FLureFight::LineTension` = clamp(`Tension01` / DT_FishFight `TautTension` 0.3, 0, 1) | sags and floats when slack, **straight once the fish pulls with 30 % of the line's strength** or more |
 | Hooked, no fight (AutoLandDelay debug) | HookedTension 0.8 | nearly straight |
@@ -256,7 +256,7 @@ One row per kind of line; "Default" today. Units, ranges and exact meaning: the 
 | | TautExponent 3 | tautness = 1 - (1 - Tension01)^TautExponent |
 | | LengthResponse 6 | per second, how fast the length shrinks toward a tighter target |
 | | StraightenTime 0.4 | s for a line with the full SlackShare to go straight at tension 1 |
-| | CastTension 0.35, WaitTension 0, BiteTension 0.6, HookedTension 0.8 | tension shown per fishing state |
+| | CastTension 0.55, WaitTension 0.55, BiteTension 0.6, HookedTension 0.8 | tension shown per fishing state (WaitTension <= CastTension, < BiteTension) |
 | Water | FloatStrength 0.5 | 0..1 per sub-step: how fast line under water rises (x (1 - tautness)) |
 | | FloatHeight 0.4 | cm above the water the floating line rests |
 | | WaterRefreshDistance 500 | cm the end moves before the water height is looked up again (no owner height) |
@@ -323,6 +323,10 @@ first second's (measured 0.371 -> 0.316 cm). With the T-034 hunk reverted it fai
 
 `FishingLineMaterialTest.cpp` (T-041e), `Project.Fishing.Line.Material`: LineMaterial = M_FishingLine, it loads with
 bEnableResponsiveAA and bUsedWithSplineMeshes on, and a cast line's segments use a dynamic instance of it with Color = LineColor.
+
+`FishingLineWaitTensionTest.cpp` (T-046), `Project.Fishing.Line.WaitTension.*`: a waiting line (tip 150 cm up, bobber 10 /
+12.5 / 15 m out, 5 s at dt 1/60, built-in row) has <= 50 % of its inner points on the water and sags <= 6 % of the distance;
+its end stays where the bobber landed. `OldZeroTensionFails`: WaitTension 0 fails that check.
 
 QA's own suite: Project.Fishing.Line.QA.* (`QAFishingLineTest.cpp`).
 
