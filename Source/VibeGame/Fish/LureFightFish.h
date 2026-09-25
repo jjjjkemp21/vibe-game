@@ -33,8 +33,9 @@ struct FLureFightFishSetup
 };
 
 /**
- *  One hooked fish in the water. Set up once (Setup), then moved every frame from the fight's view (ApplyView): its nose at
- *  the line's end, just under the surface, deeper on dives, smoothed (more on machines without authority), facing its swim.
+ *  One hooked fish in the water. Set up once (Setup), then moved every frame from the fight's view (ApplyView): its mouth at
+ *  the line's end (never more than MouthMaxLagCm behind it), just under the surface, deeper on dives, smoothed (more on
+ *  machines without authority), facing the rod with its body away from the player, swung sideways while it swims (T-048).
  *  Its clip state (GetAnimState) is what ABP_Fish plays (UFishAnimInstance pulls it). After the fight: Landed plays the flop
  *  and waits for the hand-off (ULureFightFishSubsystem::OnFightFishLanded); Escaped swims away and is removed.
  */
@@ -106,6 +107,8 @@ private:
 	float EndSeconds = 0.f;
 	FVector Velocity = FVector::ZeroVector;
 	FVector LastTarget = FVector::ZeroVector;
+	/** T-048: the smoothed line point while fighting (XY = the mouth, Z = the center height; FFightFishVisual::MouthTarget). */
+	FVector MouthPoint = FVector::ZeroVector;
 	FVector EscapeDirection = FVector::ForwardVector;
 	/** The water surface of the last fight view (the escape's floor trace starts under it). */
 	float LastWaterZ = 0.f;

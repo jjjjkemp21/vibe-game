@@ -40,6 +40,9 @@ bool FFishVisualRow::Validate(FString& OutProblem) const
 		{ TEXT("RotationSmoothTime"), RotationSmoothTime, 0.f, 10.f },
 		{ TEXT("MinFacingSpeed"), MinFacingSpeed, 0.f, 100000.f },
 		{ TEXT("MaxPitchDeg"), MaxPitchDeg, 0.f, 89.f },
+		{ TEXT("RunSwingDeg"), RunSwingDeg, 0.f, 80.f },
+		{ TEXT("RunSwingFullSpeed"), RunSwingFullSpeed, 1.f, 100000.f },
+		{ TEXT("MouthMaxLagCm"), MouthMaxLagCm, 0.f, 1000.f },
 		{ TEXT("EscapeTime"), EscapeTime, 0.f, 60.f },
 		{ TEXT("EscapeSpeed"), EscapeSpeed, 0.f, 100000.f },
 		{ TEXT("EscapeSinkSpeed"), EscapeSinkSpeed, 0.f, 100000.f },
@@ -245,15 +248,97 @@ float FFightFishVisual::ShownDepth(const FFishVisualRow& Row, float FightDepthCm
 
 FVector FFightFishVisual::TargetLocation(const FFishVisualRow& Row, const FFightFishView& View, const FVector& Forward, float MouthOffsetCm, float FloorZ)
 {
-	const FVector Flat = Forward.GetSafeNormal2D();
-	FVector Target = FVector(View.LineEnd.X, View.LineEnd.Y, 0.f) - Flat * (FMath::IsFinite(MouthOffsetCm) ? MouthOffsetCm : 0.f);
-	Target.Z = View.WaterZ - ShownDepth(Row, View.DepthCm);
+	return CenterForMouth(MouthTarget(Row, View, FloorZ), Forward, MouthOffsetCm);
+}
+
+FVector FFightFishVisual::MouthTarget(const FFishVisualRow& Row, const FFightFishView& View, float FloorZ)
+{
+	FVector Target(View.LineEnd.X, View.LineEnd.Y, View.WaterZ - ShownDepth(Row, View.DepthCm));
 	if (Row.FloorClearance >= 0.f && FloorZ > -UE_BIG_NUMBER * 0.5f)
 	{
 		// Shallow water: stay above the bottom, but never above the surface.
 		Target.Z = FMath::Min(FMath::Max(Target.Z, FloorZ + Row.FloorClearance), View.WaterZ);
 	}
 	return Target;
+}
+
+FVector FFightFishVisual::CenterForMouth(const FVector& MouthPoint, const FVector& Forward, float MouthOffsetCm)
+{
+	// The horizontal part of the 3D facing: a pitched fish's nose stays right over the line end.
+	const FVector Unit = Forward.GetSafeNormal();
+	const double Offset = FMath::IsFinite(MouthOffsetCm) ? MouthOffsetCm : 0.f;
+	return FVector(MouthPoint.X - Unit.X * Offset, MouthPoint.Y - Unit.Y * Offset, MouthPoint.Z);
+}
+
+FVector FFightFishVisual::StepMouth(const FFishVisualRow& Row, const FVector& MouthPoint, const FVector& Target, float DeltaTime, float SmoothTime)
+{
+	FVector Next = FMath::Lerp(MouthPoint, Target, static_cast<double>(SmoothAlpha(DeltaTime, SmoothTime)));
+	const double MaxLag = FMath::IsFinite(Row.MouthMaxLagCm) ? FMath::Max(0.f, Row.MouthMaxLagCm) : 0.0;
+	const FVector2D Lag(Next.X - Target.X, Next.Y - Target.Y);
+	const double LagSize = Lag.Size();
+	if (LagSize > MaxLag)
+	{
+		const FVector2D Kept = Lag * (MaxLag / LagSize);
+		Next.X = Target.X + Kept.X;
+		Next.Y = Target.Y + Kept.Y;
+	}
+	return Next;
+}
+
+namespace FightFishVisualPrivate
+{
+	/** Yaw of the direction mouth -> player, degrees; Fallback when they are on top of each other. */
+	static float YawToPlayer(const FVector& MouthLocation, const FVector& PlayerLocation, float Fallback)
+	{
+		const FVector ToPlayer = (PlayerLocation - MouthLocation).GetSafeNormal2D();
+		return ToPlayer.IsNearlyZero() ? Fallback : static_cast<float>(FMath::RadiansToDegrees(FMath::Atan2(ToPlayer.Y, ToPlayer.X)));
+	}
+
+	static float MaxSwing(const FFishVisualRow& Row)
+	{
+		return FMath::IsFinite(Row.RunSwingDeg) ? FMath::Clamp(Row.RunSwingDeg, 0.f, 80.f) : 0.f;
+	}
+}
+
+FRotator FFightFishVisual::FightFacing(const FFishVisualRow& Row, const FVector& MouthVelocity, const FVector& MouthLocation, const FVector& PlayerLocation,
+	const FRotator& Current, bool bExhausted)
+{
+	const float BaseYaw = FightFishVisualPrivate::YawToPlayer(MouthLocation, PlayerLocation, static_cast<float>(Current.Yaw));
+	FRotator Out(0.f, BaseYaw, 0.f);
+	const FVector Horizontal(MouthVelocity.X, MouthVelocity.Y, 0.f);
+	const float Speed = static_cast<float>(Horizontal.Size());
+	if (FMath::IsFinite(Speed) && FMath::IsFinite(MouthVelocity.Z) && Speed > Row.MinFacingSpeed)
+	{
+		if (!bExhausted)
+		{
+			// Sideways component of the swim (+ = toward larger yaw, i.e. from X toward Y).
+			const FVector ToPlayer = FRotator(0.f, BaseYaw, 0.f).Vector();
+			const FVector Side(-ToPlayer.Y, ToPlayer.X, 0.f);
+			const float Lateral = static_cast<float>(FVector::DotProduct(Horizontal, Side));
+			float Sign = FMath::FindDeltaAngleDegrees(BaseYaw, static_cast<float>(Current.Yaw)) < 0.f ? -1.f : 1.f;
+			if (FMath::Abs(Lateral) > 0.25f * Speed)
+			{
+				Sign = Lateral < 0.f ? -1.f : 1.f; // the head turns toward the side it swims to
+			}
+			const float Share = FMath::Clamp(Speed / FMath::Max(1.f, Row.RunSwingFullSpeed), 0.f, 1.f);
+			Out.Yaw = BaseYaw + Sign * FightFishVisualPrivate::MaxSwing(Row) * Share;
+		}
+		// The end that leads the swim follows the climb: head first (reeled in) = nose along the climb, tail first = against it.
+		const float Climb = static_cast<float>(FMath::RadiansToDegrees(FMath::Atan2(MouthVelocity.Z, static_cast<double>(Speed))));
+		const float Lead = FVector::DotProduct(Horizontal, Out.Vector()) >= 0.0 ? 1.f : -1.f;
+		Out.Pitch = FMath::Clamp(Lead * Climb, -Row.MaxPitchDeg, Row.MaxPitchDeg);
+	}
+	Out.Roll = bExhausted ? Row.ExhaustedRollDeg : 0.f;
+	return Out;
+}
+
+FRotator FFightFishVisual::ClampToLine(const FFishVisualRow& Row, const FRotator& Rotation, const FVector& MouthLocation, const FVector& PlayerLocation)
+{
+	const float BaseYaw = FightFishVisualPrivate::YawToPlayer(MouthLocation, PlayerLocation, static_cast<float>(Rotation.Yaw));
+	const float Max = FightFishVisualPrivate::MaxSwing(Row);
+	FRotator Out = Rotation;
+	Out.Yaw = BaseYaw + FMath::Clamp(FMath::FindDeltaAngleDegrees(BaseYaw, static_cast<float>(Rotation.Yaw)), -Max, Max);
+	return Out;
 }
 
 FVector FFightFishVisual::EscapeStep(const FFishVisualRow& Row, const FVector& Location, const FVector& Direction, float DeltaTime, float WaterZ, float FloorZ)
