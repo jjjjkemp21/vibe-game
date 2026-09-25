@@ -26,7 +26,7 @@ Counts: todo 7, ready 2, doing 6, review 6, merge 3, done 29, dropped 1.
 - 51 obj eng - doing P1 - - - S4 Sprint 4: cooler handling (bob with arms, open while held +
 - 52 obj design - doing P2 - aade375 - S5 Sprint 5: the world comes alive (day/night cycle; shore wave
 - 89 task eng senior doing P2 eng14 ae128bc - T-069b Ripple sim: camera-centred render-target wave equation, DT_W
-- 91 task design senior doing P2 des2 a5911f6 - T-069c Water graph v5 in build_level.py (waves, facets, shore foam,
+- 91 task design senior doing P2 des2 a5911f6 35% T-069c Water graph v5 in build_level.py (waves, facets, shore foam,
 - 68 task art senior review P1 main ab02639 95% T-058 Exhausted fish (stamina 0) stays upright with a calm swim, n
 - 69 task art senior review P1 main ab02639 95% T-059 Fish with stamina: fast, fighting 'run' swim
 - 70 bug art senior review P1 main ab02639 95% T-060 Dangling fish: head stays fixed at the hook, only the body w
@@ -39,7 +39,7 @@ Counts: todo 7, ready 2, doing 6, review 6, merge 3, done 29, dropped 1.
 
 ## (no milestone)
 
-Counts: todo 26, ready 3, doing 2, review 2, merge 8, done 23, dropped 1.
+Counts: todo 26, ready 3, doing 2, review 2, merge 8, done 25, dropped 1.
 
 - 2 obj lead - todo P1 - - - P-004 Agent work board (board.py) live in the studio
 - 22 q lead - todo P2 - - - Q-03 Should losing a fish cost the bait?
@@ -70,8 +70,8 @@ Counts: todo 26, ready 3, doing 2, review 2, merge 8, done 23, dropped 1.
 - 36 bug art mid ready P2 - - - T-040 Cooler: in-game shop view shows 1/4 eyes with 4 Bonefish (Bl
 - 18 task qa mid ready P3 - - - T-035 Split docs/TEST_PLAN.md into docs/test-plan/<system>.md
 - 81 bug eng junior ready P3 - - - T-070 Playtest driver: a pd.console query can end the PIE session
-- 119 bug eng senior doing P0 eng9 a20f479 - T-075 PT-S1 major: hooked fish never visible in the water during t
 - 129 task design mid doing P2 des2 a5911f6 - T-069e Water: blend the hard shallow-teal/deep edge with a gradient
+- 133 task art mid doing P2 main a5b4142 40% T-076a Closed carry lower: A_FPArms_CarryCooler_Idle re-pose to <=1
 - 116 task eng mid review P1 eng10 a32f6f2 - T-062a Cast arms (owner cosmetics): CastCharge01/bCastPose/strain,
 - 117 task eng mid review P1 eng10 a32f6f2 - T-062b Server delays the bobber launch to the montage's whip frame
 - 102 task eng mid merge P1 eng6 aa06c50 - T-058b Exhausted fish plays the new Tired role (A_Fish_Swim_Tired),
