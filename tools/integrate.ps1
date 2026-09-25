@@ -194,13 +194,14 @@ function Sync-DataTables([string]$Path, [string]$BaseRef) {
     foreach ($f in $changed) {
         $tbl = [IO.Path]::GetFileNameWithoutExtension($f)
         $asset = 'Content/Data/' + $tbl + '.uasset'
-        if (-not (Test-Path -LiteralPath ($Path + '/' + $asset))) { Write-Host ('  table ' + $tbl + ': no asset yet (new table) - left for the editor-operator'); continue }
+        $isNew = -not (Test-Path -LiteralPath ($Path + '/' + $asset))
+        $fn = if ($isNew) { 'import_new_table' } else { 'reimport_table' }
         $argsJson = '{"dest_path":"/Game/Data/' + $tbl + '","src_path":"' + ($Path + '/' + $f) + '"}'
-        Write-Host ('  re-importing ' + $tbl + ' from ' + $f + ' (headless, batch lane build)')
+        Write-Host ('  ' + $(if ($isNew) { 'importing NEW table ' } else { 're-importing ' }) + $tbl + ' from ' + $f + ' (headless, batch lane build)')
         $since = Get-Date
         # Windows PowerShell 5.1 strips embedded double quotes from native-command arguments: escape them there.
         $passJson = if ($PSVersionTable.PSVersion.Major -lt 7) { $argsJson -replace '"', '\"' } else { $argsJson }
-        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File ($Path + '/tools/unreal-python.ps1') -Function reimport_table -ArgsJson $passJson | Out-Host
+        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File ($Path + '/tools/unreal-python.ps1') -Function $fn -ArgsJson $passJson | Out-Host
         $st = $null; $statusPath = $Path + '/Saved/AgentLogs/status/unreal-python.json'
         if (Test-Path $statusPath) { try { $st = Get-Content -Path $statusPath -Raw -Encoding UTF8 | ConvertFrom-Json } catch { $st = $null } }
         $fresh = $false
