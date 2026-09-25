@@ -40,6 +40,7 @@ The `blender-pipeline` skill is the rulebook; the key points:
 - Unreal names: `SM_`, `SK_`, `SKEL_`, `A_<Subject>_<Action>`, materials `M_<Asset>_<Surface>`; shared surfaces keep their shared name (e.g. `M_Fish_Eye`). Object name = mesh data name = asset name. Collision `UCX_<Asset>_NN`, sockets `SOCKET_<name>`.
 - 1 Blender unit = 1 m, Z up. Directional assets face Blender +X (ART_STYLE "Orientation rule"). Props: pivot at bottom center. Fish, creatures and rigs: pivot and root as written in their `.anim.md`.
 - Exports go to `art/export/<Category>/` (Props, Fish, Characters, Environment), matching `/Game/Art/<Category>`. Skeletal FBX only through `pb.export_skeletal_fbx()` (centimeters, every bone at scale 1.0). 30 fps, one action per clip.
+- Anim curves (e.g. an IK alpha): key them as a custom property on a pose bone in the clip's action and, right after `pb.export_skeletal_fbx()`, write them into the file with `art/lib/fbx_curves.add_action_curves()` (Blender's exporter drops them; Unreal imports them as float curves); check with `read_float_curves()`. Notifies can't travel in an FBX: list name, clip, frame and time in the `.anim.md` for the editor-operator (montage-only classes such as `AnimNotify_PlayMontageNotify` go on the montage). Example: T-062, `SK_FPArms.anim.md` "Cast".
 
 ## 4. Preview standard
 Previews go to `Saved/AgentLogs/previews/<Asset>*.png`, 768 px per cell, built with `pb.finish(views=...)` / `pb.contact_sheet` / `art/lib/fp_preview.py`. Throwaways are `exp_*`.
@@ -68,7 +69,7 @@ Aim at 50-70% of a cap: the low-poly look comes from chunky shapes, not from den
 \* Department defaults (P-003c) until ART_STYLE.md sets them. Textures are power of two; prefer the shared gradient, wood strip and fish masks over new per-asset textures. Check triangles with `style.check_budget(tris, kind)` in RESULT_JSON.
 
 ## 6. Kits and consistency
-- **Reuse first.** Shared code lives in `art/lib/`: `style.py`, `pipeline_blender.py`, `meshkit.py`, `fishkit.py`, `fishrig.py`, `fp_preview.py`. Look there before writing a helper; a builder used by two assets moves into `art/lib/`.
+- **Reuse first.** Shared code lives in `art/lib/`: `style.py`, `pipeline_blender.py`, `meshkit.py`, `fishkit.py`, `fishrig.py`, `fp_preview.py`, `fbx_curves.py` (anim curves in clip FBX). Look there before writing a helper; a builder used by two assets moves into `art/lib/`.
 - **One builder per family.** New fish are `fishkit` parameter sets, each with one strong identifying feature (fin, jaw, stripe, glow). Dock, island and shop pieces share one kit recipe each. A new family member is parameters, not new code.
 - **One rig per body type.** Fish share `SKEL_Fish`; motion is parameterized (amplitude, frequency, speed) and driven from data. Per-species clips only when a species truly moves differently.
 - **Same surface, same material.** Wood, rope, metal fittings, fish eyes and skin reuse the existing material names and presets across assets.

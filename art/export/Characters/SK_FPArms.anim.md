@@ -1,4 +1,4 @@
-# SK_FPArms: rig + animation spec (T-004; T-028 rod aim, T-030 hold fish / carry cooler)
+# SK_FPArms: rig + animation spec (T-004; T-028 rod aim, T-030 hold fish / carry cooler, T-062 cast)
 
 Source of truth: `art/recipes/anim_fp_arms.py` (rig + actions, built on the model-artist's `art/recipes/sk_fp_arms.py`
 mesh; SM_Rod_Basic from `art/recipes/sm_rod_basic.py` is staged only for checks and previews). Rerun:
@@ -21,6 +21,14 @@ size blend), `SK_FPArms_holdfish_large_fp.png` (HoldFish_Large_Idle, a 1.6x trop
 `SK_FPArms_carrycooler.png` (CarryCooler_Idle with SM_Cooler_Starter from its FBX on bone `cooler`).
 `SK_FPArms_cm_reimport.png` (2026-09-23 unit check: the old meter files, left, and the new cm files, right,
 re-imported and posed by HoldRod_Idle / Prone_TuckRod frame 0, eye and side views; identical, max 0.0004 mm).
+T-062 cast (2026-09-24): `SK_FPArms_cast_fp.png` / `_cast_fp_dusk.png` (Cast_Charge at charge 0 / 0.25 / 0.5 / 0.75 /
+1.0 and Cast_Release f1 f2 f3 f4 f6 f9 f12 f15 f18 f24 from the FP camera, the centre 40 % box drawn),
+`SK_FPArms_cast_side.png` (the same frames from the player's right with the rod-tip paths; red = the line-release
+point, f3), `SK_FPArms_cast_lefthand.png` (crops: the left hand letting go, charge f0-7, and re-gripping, release
+f12-19), `SK_FPArms_cast_blendin.png` (partial-charge releases as Unreal blends them, rows charge 0 / 0.25 / 0.5 /
+0.75 / 1.0 with the start-frame rule plus charge 0.25 started at f0 for comparison), `SK_FPArms_cast_seams.png` (first /
+last frames of the baked clips vs HoldRod_Idle f0), `SK_FPArms_cast_strain.png` (Cast_Strain on the full wind-up: the
+still, the mean of the 1 s loop, and the moving pixels x4).
 
 ## Files (art/export/Characters/)
 
@@ -36,8 +44,12 @@ re-imported and posed by HoldRod_Idle / Prone_TuckRod frame 0, eye and side view
 | `A_FPArms_HoldFish_Large_Idle.fbx` | armature only, one take (T-030, trophy-size fish) | Animation on `SKEL_FPArms` |
 | `A_FPArms_CarryCooler_Idle.fbx` | armature only, one take (T-030) | Animation on `SKEL_FPArms` |
 | `A_FPArms_RodAim_Center.fbx`, `_Up`, `_Down`, `_Left`, `_Right`, `_UpLeft`, `_UpRight`, `_DownLeft`, `_DownRight` | armature only, one take each, a single pose (T-028) | Animation on `SKEL_FPArms`, set **additive, Mesh Space** (below) |
+| `A_FPArms_Cast_Charge.fbx` | armature only, one take (T-062) + anim curve `HandL_Free` | Animation on `SKEL_FPArms` (evaluated, not played) |
+| `A_FPArms_Cast_Release.fbx` | armature only, one take (T-062) + anim curve `HandL_Free` | Animation on `SKEL_FPArms`, source of montage **`AM_FPArms_Cast`** (+ notify, below) |
+| `A_FPArms_Cast_Strain.fbx` | armature only, one take (T-062) | Animation on `SKEL_FPArms`, set **additive, Local Space**, looping |
 
 One clip per file, so the asset name = file name = take name.
+CarryCooler Open / Show loops (T-064a, `art/recipes/anim_fp_arms_cooler.py`): see `A_FPArms_CarryCooler_OpenShow.anim.md`.
 
 **2026-09-23: all six files re-exported in CENTIMETERS** (fix for the 100x `root` bone scale found at import). Same
 meshes, bones, rest pose, rolls, `hand_r_rod`/`hand_l_crank` frames, clips, names and timings; only the unit changed.
@@ -117,12 +129,15 @@ don't read bone "forward" as X.
 | `A_FPArms_HoldFish_Large_Idle` | 0-90 | 3.0 s | loop | the same hold for a 1.6x trophy: fish turned tail-away and head-up, hands on the big fish's throat and belly; blended with HoldFish_Idle by size |
 | `A_FPArms_CarryCooler_Idle` | 0-90 | 3.0 s | loop | T-030, **no rod, two-handed low carry**: both fists on the cooler's rim rope handles (visible at the lower corners), the cooler low in front, latch side and lid edge towards the eye (bottom fifth); box and hands breathe together (+-0.7 cm, +-0.6 deg), so no grip sliding |
 | `A_FPArms_RodAim_*` (9) | 0-1 | 1 pose | aim-offset pose, **additive Mesh Space** | T-028: `Center` = HoldRod_Idle frame 0 exactly; `Up` pulled back and high, `Down` dipped towards the water, `Left` / `Right` tip swung to that side, plus the 4 corners. Two identical keys; Unreal samples frame 0 |
+| `A_FPArms_Cast_Charge` | 0-36 | 1.2 s (= DT_Fishing `ChargeTime`) | **evaluated at `CastCharge01` x length** (Sequence Evaluator), never played | T-062: the one-handed wind-up. f0 = HoldRod_Idle f0; the left hand lets go at f1 and drops out of view; the right fist carries the rod up and back over the right shoulder (f36: rod 14 deg past vertical). Curve `HandL_Free` |
+| `A_FPArms_Cast_Release` | 0-24 | 0.8 s | one-shot, montage `AM_FPArms_Cast` (DefaultSlot) | T-062: f0 = Charge f36; f1 drive, f2 whip, **f3 line release (notify `CastRelease`, 0.100 s)**, f6 stop (rod at the water), hold to f9, settle; left fist back on the knob at f18; f24 = HoldRod_Idle f0. Curve `HandL_Free` |
+| `A_FPArms_Cast_Strain` | 0-30 | 1.0 s | loop, **additive Local Space** | T-062: the loaded tremble at full charge, only `arms` moves (peak 0.27 deg / 1.4 mm); faded in over charge 0.85..1 |
 
-Notifies: none needed. All seven loops are 3.0 s: put their players in one sync group `FPArmsBreath` so crossfades
+Notifies: only the cast montage has one (`CastRelease`, see "Cast"); no other clip needs any. All seven loops are 3.0 s: put their players in one sync group `FPArmsBreath` so crossfades
 stay in phase. Motion check (RESULT_JSON `motion_check`): loops have max per-frame step <= 0.8 mm (rod tip <= 2.7 mm)
 and first/last delta 0.0 mm (no pop at the seam); StanceDip starts and ends exactly at rest. The Blender re-import
 check reproduces every clip's baked pose (all 17 clip files, `hand_r_fish` and `cooler` included) with 0.0 mm / 0.0 deg
-error.
+error; T-062: the 3 cast clips too, on every frame.
 
 ### HoldRod_Idle recomposed (designer B-S1)
 - `hand_r_rod` at frame 0, arms component space: **(42.9, 21.0, -23.0) cm, rotation P 35.1 / Y -4.8 / R 0.0**
@@ -288,6 +303,52 @@ Screen numbers for 1920x1080 at 90 deg; tip = SM_Rod_Basic's line tip.
   right/down corners). Apply the aim offset only on the `HoldRod` branch (below); a prone fight keeps ProneHold still
   (prone aim poses would be a follow-up).
 
+### Cast (T-062; Jimmy A2: the charge must show in the arms)
+Numbers from RESULT_JSON `cast`, measured on the skinned mesh + SM_Rod_Basic at 1920x1080, 90 deg, every frame.
+- **Charge** (`A_FPArms_Cast_Charge`, sampled at charge x length): a one-handed overhead wind-up. The right fist rises
+  from 81.2 % to 22.1 % of the screen height (59 % of the screen) and ends whole in frame at x 78.8-97.9 %, the right
+  forearm 33 % visible from the lower-right corner; the rod goes from 35 deg up to 104 deg (laid back over the right
+  shoulder). The centre 40 % box: the arms never enter it; the rod leaves it from charge 0.17 (f6). The left hand lets
+  go at f1 (charge 0.03), drops straight down, is out of view from f8 (charge 0.22) and never touches the right arm.
+  Right forearm twist <= 22 deg; right wrist bend 44 deg at full charge (the hold: 79).
+- **Release** (`A_FPArms_Cast_Release`, montage `AM_FPArms_Cast`): rod elevation per frame 104 / 107 / 74 / **38** /
+  18 / 4 / -3 deg (f0-f6): f1 the rod lags back as the arm drives, f2 whip, **f3 line release**: the tip moves 24.5 m/s,
+  on screen at (53 %, 10 %). f6-9 the rod points at the water, then it eases up to the hold; the left hand comes into
+  view at f14, lands on the knob at f18 (0.0 mm) and closes; f24 = HoldRod_Idle f0. The arms never enter the centre box
+  (the rod line crosses it from f2, as a held rod does in HoldRod_Idle). Right fist up to 153 mm per frame at f1-2 (the
+  snap), smooth otherwise.
+- **Curve `HandL_Free`** (float, on bone `root` of both clips; 1 = the left hand is off the crank knob): Charge f0 = 0,
+  f1-36 = 1; Release f0-18 = 1, f19-24 = 0 (linear keys on every frame). It only changes while the left fist sits
+  exactly on the knob, so the one-frame lag of `GetCurveValue` can't show. A clip without the curve reads 0 = IK on
+  (the 17 older clips). Written into the FBX by `art/lib/fbx_curves.py` (Blender's exporter drops animated custom
+  properties); read back from both files: 37 / 25 keys, max error 0.0, on the take's layer.
+- **Notify `CastRelease`**: `AnimNotify_PlayMontageNotify`, Notify Name `CastRelease`, on **`AM_FPArms_Cast` at
+  0.100 s** (= Cast_Release f3). The class can only be placed on a montage (`CanBePlaced`), and an FBX can't carry
+  notifies, so the editor-operator adds it (below).
+- **Partial charge** (RESULT_JSON `cast.partial_release`, `SK_FPArms_cast_blendin.png`): the montage blends in over
+  0.1 s from the HELD charge pose. Started at f0 it would first pull a part-charged rod back up to the full wind-up (a
+  tap: 25.6 deg back, the tip 51 cm towards the player) before the whip. So it starts at **frame (1 - charge) x 2**
+  (`InTimeToStartMontageAt = (1 - charge) x 2 / 30` s):
+
+  | charge | start frame | notify after the button release | rod swings back before the whip | same, started at f0 |
+  |---|---|---|---|---|
+  | 0 (tap) | 2.0 | 0.033 s | 0.8 deg, tip 0 cm | 25.6 deg, tip 51 cm |
+  | 0.25 | 1.5 | 0.050 s | 0 | 13.5 deg, 35.7 cm |
+  | 0.5 | 1.0 | 0.067 s | 0 | 6.3 deg, 16.3 cm |
+  | 0.75 | 0.5 | 0.083 s | 0 | - |
+  | 1.0 | 0 | 0.100 s | 0.8 deg, 0.8 cm (the authored f1 lag) | same |
+
+  Fist speed stays 53-88 mm per frame in every case (a snap, no pop).
+- **Blend-out**: auto blend-out 0.2 s starts at 0.6 s = f18, when the left fist is already on the knob; blended into
+  HoldRod_Idle at any breath phase the fist stays within 0.18 mm of the knob.
+- **Strain** (`A_FPArms_Cast_Strain`): only `arms` moves; rotation peak 0.27 deg, offset peak 1.4 mm; a 5-11 Hz tremor
+  plus a slower 2-4 Hz effort sway (about 40 % of the amplitude) so a long hold at full charge doesn't read as a buzz
+  on a frozen pose. On screen the right wrist moves up to 8.1 px (rms 3.8) at 1080p, the rod top 8 mm. Every
+  component is a whole number of cycles per second, so frame 30 = frame 0 exactly. The game fades it in over charge
+  0.85..1.
+- **Seams** (recipe and baked clips): Charge f0 = HoldRod_Idle f0, Charge f36 = Release f0, Release f24 = HoldRod_Idle
+  f0, Strain f30 = f0: 0.000 mm / 0.000 deg. Blender re-import: 0.0 mm / 0.0 deg on every frame of all three.
+
 ## Unreal import (editor-operator)
 
 Import settings for these files (and every skeletal FBX from `pb.export_skeletal_fbx`): **Convert Scene ON** (axis
@@ -367,6 +428,64 @@ rotation/translation offset, normals imported, no physics asset. In `Content/Pyt
    R 18.0; UpRight (31.4, 14.5, -17.0); DownRight (40.9, 19.0, -22.0). Old values (22.0 / 17.5 / 22.5 in Y) mean the
    old file is still in. Playtester (nice): in-game shot at hard right with the real FOV; the right knuckles should
    end about 11 % from the right edge (compare `SK_FPArms_rodaim_fp.png`, right column).
+
+**T-062 import (cast, 2026-09-24)**, `/Game/Art/Characters/FPArms/`, settings above (Convert Scene Unit OFF). Nothing
+else changed: SK_FPArms, the skeleton and the 17 older clips are not re-exported.
+1. Import the three clips and create the montage (legacy importer through `pipeline_unreal.import_animation`; its
+   defaults keep **Import Custom Attribute ON**, which turns the FBX property `HandL_Free` into a float curve):
+   ```python
+   import unreal, pipeline_unreal as pu
+   D, SRC = "/Game/Art/Characters/FPArms", "C:/GameDev/VibeGame/art/export/Characters/"
+   SKEL, lib = D + "/SKEL_FPArms", unreal.AnimationLibrary
+   pu.import_animation(SRC + "A_FPArms_Cast_Charge.fbx", D, "A_FPArms_Cast_Charge", SKEL, loop=False)
+   pu.import_animation(SRC + "A_FPArms_Cast_Release.fbx", D, "A_FPArms_Cast_Release", SKEL, loop=False)
+   pu.import_animation(SRC + "A_FPArms_Cast_Strain.fbx", D, "A_FPArms_Cast_Strain", SKEL, loop=True,
+                       additive_local_space=True)
+   CURVE = {"A_FPArms_Cast_Charge": [(0, 0.0), (1, 1.0), (36, 1.0)],          # frame, value (linear between)
+            "A_FPArms_Cast_Release": [(0, 1.0), (18, 1.0), (19, 0.0), (24, 0.0)]}
+   for name, keys in CURVE.items():            # fallback only: the curve should already be there from the FBX
+       a = unreal.load_asset(D + "/" + name)
+       if not lib.does_curve_exist(a, "HandL_Free", unreal.RawCurveTrackTypes.RCT_FLOAT):
+           lib.add_curve(a, "HandL_Free", unreal.RawCurveTrackTypes.RCT_FLOAT, False)
+           lib.add_float_curve_keys(a, "HandL_Free", [f / 30.0 for f, _v in keys], [v for _f, v in keys])
+           unreal.EditorAssetLibrary.save_loaded_asset(a)
+           print("HandL_Free ADDED BY HAND on", name, "(report it: the FBX curve did not import)")
+   rel = unreal.load_asset(D + "/A_FPArms_Cast_Release")
+   fac = unreal.AnimMontageFactory()
+   fac.set_editor_property("source_animation", rel)
+   fac.set_editor_property("target_skeleton", rel.get_editor_property("skeleton"))
+   m = unreal.AssetToolsHelpers.get_asset_tools().create_asset("AM_FPArms_Cast", D, unreal.AnimMontage, fac)
+   for prop, t in (("blend_in", 0.1), ("blend_out", 0.2)):
+       ab = m.get_editor_property(prop)
+       ab.set_editor_property("blend_time", t)
+       ab.set_editor_property("blend_option", unreal.AlphaBlendOption.LINEAR)
+       m.set_editor_property(prop, ab)
+   m.set_editor_property("enable_auto_blend_out", True)
+   m.set_editor_property("blend_out_trigger_time", -1.0)      # = the blend-out time: starts at 0.6 s (f18)
+   lib.add_animation_notify_track(m, "Cast")
+   n = lib.add_animation_notify_event(m, "Cast", 0.1, unreal.AnimNotify_PlayMontageNotify)
+   n.set_editor_property("notify_name", "CastRelease")
+   unreal.EditorAssetLibrary.save_loaded_asset(m)
+   ```
+2. Verify (stop and report if any fails):
+   - `pu.anim_report(...)`: Cast_Charge 1.2 s / 36 frames, not additive; Cast_Release 0.8 s / 24 frames; Cast_Strain
+     1.0 s / 30 frames, `AAT_LOCAL_SPACE_BASE` + `ABPT_REF_POSE`, loop on; root motion off on all three.
+   - `lib.get_float_keys(<clip>, "HandL_Free")`: Charge 0.0 at 0 s and 1.0 from 0.033 s to 1.2 s; Release 1.0 up to
+     0.6 s and 0.0 from 0.633 s; no other curve on the three clips (the curve is also added to `SKEL_FPArms`'s curve
+     list; that's expected).
+   - `AM_FPArms_Cast`: length 0.8 s, one segment (A_FPArms_Cast_Release, 0-0.8 s, rate 1), slot `DefaultSlot`
+     (`m.get_editor_property("slot_anim_tracks")[0].get_editor_property("slot_name")`), blend in 0.1 / out 0.2
+     linear; notify: `[(lib.get_anim_notify_event_trigger_time(e), e.get_editor_property("notify")
+     .get_editor_property("notify_name")) for e in lib.get_animation_notify_events(m)]` == `[(0.1, "CastRelease")]`.
+   - Component space (cm), with the rod on `hand_r_rod`: Cast_Charge f36 `hand_r_rod` at about (38.8, 26.5, 2.7),
+     P 67.8 / Y 126.9 / R 136.8; Cast_Release f3 about (48.5, 22.2, -21.8), P 38.1 / Y -4.8 / R 0.1.
+   - Re-import check (gate B): re-import `A_FPArms_Cast_Release` once
+     (`pu.reimport_interchange(D + "/A_FPArms_Cast_Release", convert_scene_unit=False)`) and repeat the curve and
+     montage checks: the curve comes back from the file, and the notify lives on the montage, so both must still be
+     there.
+3. Screenshot checks: `AM_FPArms_Cast` in the montage editor from the camera point at 0.0 / 0.067 / 0.1 / 0.2 / 0.6 s
+   and Cast_Charge at its last frame, compared with `SK_FPArms_cast_fp.png`; in PIE after the engineers' wiring (eng
+   follow-ups below): a tap, a half and a full cast.
 
 First-time import (a fresh project or a new copy), for reference:
 1. `SK_FPArms.fbx` -> `/Game/Art/Characters/FPArms/`, Skeletal Mesh, create a new skeleton and rename it
@@ -462,6 +581,45 @@ First-time import (a fresh project or a new copy), for reference:
   clip.
 - **Prone without a rod**: `Idle` is used, and it is not wall-safe (fingertips 68 cm ahead). If an empty-handed prone
   state ever exists, ask for a prone idle.
+- **T-062 cast**: see "Eng follow-ups (S3, T-062)" below.
+
+## Eng follow-ups (S3, T-062)
+For the unreal-engineer (C++; ABP_FPArms stays a thin child: nodes and bindings only). Owner-only and cosmetic: nobody
+else sees these arms. New tuning values are DT_Fishing columns (defaults in brackets).
+1. **Anim instance inputs**: `UFPArmsAnimInstance` gets `float CastCharge01` (the owner's charge 0..1 while the cast
+   button is held, else 0; see 5 for the release), `bool bCastPose` (= `CastCharge01 > 0`) and `float CastStrainAlpha
+   = smoothstep(CastStrainStart, 1, CastCharge01)` [`CastStrainStart` 0.85].
+2. **HoldRod branch** (before the aim offset and the Two Bone IK): `Blend Poses by bool` (`bCastPose`, blend
+   time 0.1 s, linear) between the `A_FPArms_HoldRod_Idle` player (false) and a **Sequence Evaluator
+   `A_FPArms_Cast_Charge`** (true; Explicit Time = `CastCharge01` x 1.2 s, no loop, no teleport) -> **Apply Additive**
+   (Additive = a looping `A_FPArms_Cast_Strain` player, Alpha = `CastStrainAlpha`) -> AimOffset -> Two Bone IK -> the
+   `HoldRod` pin. Cast_Charge f0 = HoldRod_Idle f0, so the 0.1 s blend at the press only removes the breath phase.
+3. **Left-hand IK**: the Two Bone IK on `hand_l` (T-028) gets Alpha Input Type **Curve Value**, curve **`HandL_Free`**,
+   Map Range **in 0..1 -> out 1..0** (so a clip without the curve keeps the IK on). Equivalent in C++: an
+   `IKAlphaHandL = 1 - GetCurveValue("HandL_Free")` property bound to the Alpha pin.
+4. **Montage**: set `ULureFishingSettings::CastMontage` = `/Game/Art/Characters/FPArms/AM_FPArms_Cast` (config).
+   `ReleaseCast()` already plays it on the FP arms; change the call to `Montage_Play(Montage, 1.f,
+   EMontagePlayReturnType::MontageLength, (1.f - Charge) * CastPartialSkipFrames / 30.f)` with the charge at the
+   release (before `Charge = 0.f`) [`CastPartialSkipFrames` 2]. The ABP's existing `Slot DefaultSlot` (after the pose
+   blend) plays it; blend in 0.1 s, auto blend-out 0.2 s, both linear (set on the montage).
+5. **Hold the charge pose through the blend-in**: keep `CastCharge01` at the released charge for the montage's blend-in
+   (`Montage->BlendIn.GetBlendTime()`, 0.1 s), then set it to 0 (the montage is at full weight, so the switch can't
+   show). Zeroing it at the release (today's `Charge = 0.f`) would snap the wind-up to the hold under a 0-weight montage.
+6. **Placeholder swing off**: skip the procedural rod swing (`SwingFromPitch` / `CastSwingBackDeg`) when `CastMontage`
+   is set, or the rod swings twice.
+7. **Launch timing (server)**: the line leaves the tip at montage frame 3, i.e. `(CastReleaseFrame - (1 - c) x
+   CastPartialSkipFrames) / 30` s = (1 + 2c) / 30 s after the button release (0.033 s tap ... 0.100 s full)
+   [`CastReleaseFrame` 3]. Delay the server's bobber launch by that; don't wait for the notify (it only fires on the
+   owner).
+8. **`CastRelease` notify** (owner, cosmetic): bind `OnPlayMontageNotifyBegin`; on `CastRelease` start the owner-side
+   feedback that must match the whip (line whoosh, the local line/bobber visual leaving the tip). Gameplay must not
+   depend on it.
+9. **Stances**: crouch uses the same HoldRod branch (the standing clips). Prone: no wind-up and no montage
+   (`CastCharge01` stays 0 in ProneHold/ProneTuck; the overhead wind-up is not clearance-checked for a 60 cm crawl gap);
+   a prone cast clip is a later follow-up.
+10. **Cancel**: if a charge is cancelled (cast blocked, rod stowed), ease `CastCharge01` back to 0 over about 0.15 s
+    (e.g. FInterpTo) instead of a snap; the evaluator then plays the wind-up backwards.
+11. **Rod bend** is still game-driven (a future skeletal rod), not in these clips.
 
 ## Procedural walk bob and sway (C++, tuning in data)
 
@@ -514,3 +672,17 @@ sways the two fists with each crawl step. The tuck keeps 5.5 cm to a 50 cm wall,
 - **Polygon order** of `SK_FPArms.fbx` can differ between reruns of the recipe (bmesh extrude ordering in the
   mesh recipe's thumb, `meshkit.extrude_branch`): the same polygons, winding, normals and weights, only listed in a
   different order. No visual or gameplay effect.
+- **Cast (T-062)**, all measured every frame, none visible from the camera:
+  - The rod's rear grip / butt dips into the right forearm or upper arm off-screen: charge f0-3 (HoldRod_Idle's own
+    contact), release f4-5 (<= 11.5 mm), f12-14 (<= 3.9 mm) and f19-24 (<= 17.4 mm, the hold's contact returning).
+    Measured as the deepest arm vertex inside the grip's bounding cylinder, which gives the hold itself 16 mm (the
+    9.5 mm above is a surface-to-surface figure). 0 contacts on screen.
+  - The left fist overlaps the reel while it is around the knob (charge f0-4, release f15-24): the closed mitten, as
+    in the hold.
+  - The rod line crosses the centre box through the release from f2 (as a held rod does in HoldRod_Idle); the arms
+    never do.
+  - Right wrist bend up to 102 deg in the release (f5-9, rod at the water). From the camera the forearm runs straight
+    into the fist (`SK_FPArms_cast_fp.png` f6/f9); the bend is under the fist.
+  - The strain moves the upper body (`arms`) as one piece: no separate forearm or finger tremor. A few pixels at the
+    fist; enough to read as effort.
+  - The left hand is out of view from charge f8 to release f13 (the accepted one-handed wind-up).

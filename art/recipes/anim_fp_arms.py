@@ -14,9 +14,15 @@ Exports (art/export/Characters/):
   A_FPArms_RodAim_<Center|Up|Down|Left|Right|UpLeft|UpRight|DownLeft|DownRight>.fbx
                                   armature only, one take  (single pose, frames 0-1; T-028 aim offset, mesh-space
                                   additive against RodAim_Center = HoldRod_Idle frame 0)
+  A_FPArms_Cast_Charge.fbx        armature only, one take  (frames 0-36; T-062, evaluated at CastCharge01, never played;
+                                  anim curve HandL_Free)
+  A_FPArms_Cast_Release.fbx       armature only, one take  (one-shot montage, frames 0-24; T-062, anim curve HandL_Free;
+                                  notify CastRelease at frame 3 is added in Unreal, see the spec)
+  A_FPArms_Cast_Strain.fbx        armature only, one take  (loop, frames 0-30; T-062, additive on `arms` only)
 All files are CENTIMETERS (FBX UnitScaleFactor 1.0, bone/mesh/key values in cm, no scale on any node) through
 pb.export_skeletal_fbx (art/lib/pipeline_blender.py); the rig itself is authored in meters. RESULT_JSON "fbx_units"
-has each file's unit/scale check, "reimport_check" the Blender re-import.
+has each file's unit/scale check, "reimport_check" the Blender re-import. Anim curves (HandL_Free) are keyed as custom
+properties on a pose bone and written into the exported clip by art/lib/fbx_curves.py (the FBX exporter drops them).
 Spec for Unreal: art/export/Characters/SK_FPArms.anim.md
 Previews (Saved/AgentLogs/previews/): SK_FPArms_anim.png (contact sheet) and full-size 1920x1080 first-person frames
 over the palette backdrops of art/lib/fp_preview.py (tropical day / dusk, lit like the mood boards):
@@ -33,6 +39,14 @@ over the palette backdrops of art/lib/fp_preview.py (tropical day / dusk, lit li
   SK_FPArms_holdfish_fp.png / SK_FPArms_holdfish.png        HoldFish_Idle with the Bonefish (sm_fish_bonefish) staged
   SK_FPArms_holdfish_large_fp.png                HoldFish_Large_Idle with a 1.6x Bonefish
   SK_FPArms_carrycooler_fp.png / SK_FPArms_carrycooler.png  CarryCooler_Idle with SM_Cooler_Starter (its FBX) staged
+  SK_FPArms_cast_fp.png / _cast_fp_dusk.png      T-062: charge 0 / .25 / .5 / .75 / 1 and 10 release frames, FP, the
+                                                 centre 40% box drawn
+  SK_FPArms_cast_side.png                        the same frames from the right, rod-tip paths, line release in red
+  SK_FPArms_cast_lefthand.png                    crops: the left hand letting go (charge f0-7) and re-gripping
+                                                 (release f12-19)
+  SK_FPArms_cast_blendin.png                     partial-charge releases as Unreal blends them (the start-frame rule)
+  SK_FPArms_cast_seams.png                       first / last frames of the baked clips vs HoldRod_Idle f0
+  SK_FPArms_cast_strain.png                      Cast_Strain on the full wind-up: still / loop mean / moving pixels
 
 T-028 ROD AIM (aim offset): each extreme moves the grip (AIM_POSES) and turns the rod so its tip lands on a chosen
 point of the first-person frame (solve_rod_aim), so the rod stays in view by construction; the upper body ('arms' bone)
@@ -87,8 +101,13 @@ A_FPArms_Cast_Release (24-frame one-shot montage, notify CastRelease at CAST_REL
 frame 0). Each frame is a set of channels on HoldRod_Idle frame 0 (rod swing / lean / roll about the grip, grip offset,
 chest pitch / yaw, shoulder reach) plus elbow poles; the right fist is solved from the rod. v2 (gate A2) is a
 one-handed wind-up: the left hand lets go of the crank as the charge starts, drops out of view and re-grips the knob
-in the release settle; anim curve HandL_Free (cast_hand_l_free_curve) tells Unreal's left-hand Two Bone IK when to
-let go. Not exported yet: gate A2 of T-062 (the v2 key poses) is under review.
+in the release settle; anim curve HandL_Free (cast_hand_l_free_curve; 1 = off the knob) tells Unreal's left-hand Two
+Bone IK when to let go. A_FPArms_Cast_Strain (Poser.strain_basis, strain_arms_matrix) is a 1 s additive tremble on
+`arms` only (sums of whole-Hz sines, so frame 30 = frame 0), faded in by the game over charge 0.85..1.
+Partial charge (cast_partial_release, cast_checks "partial_release"): Unreal starts the montage at frame
+(1 - charge) * CAST_PARTIAL_SKIP_FRAMES so a weak cast never swings back before the whip; SK_FPArms_cast_blendin.png
+shows it. cast_checks() measures everything on the skinned mesh + SM_Rod_Basic (screen boxes, contacts, seams, notify
+frame, strain amplitude); the numbers are in RESULT_JSON "cast" and in the spec.
 """
 import importlib.util
 import math
@@ -101,6 +120,7 @@ import bpy  # noqa: E402
 from mathutils import Matrix, Quaternion, Vector  # noqa: E402
 from mathutils.bvhtree import BVHTree  # noqa: E402
 
+import fbx_curves  # noqa: E402
 import fp_preview  # noqa: E402
 import pipeline_blender as pb  # noqa: E402
 import style  # noqa: E402
@@ -157,6 +177,9 @@ ACTIONS = [("A_FPArms_Idle", 0, LOOP_FRAMES), ("A_FPArms_HoldRod_Idle", 0, LOOP_
            ("A_FPArms_CarryCooler_Idle", 0, LOOP_FRAMES)]
 ACTIONS += [(AIM_ACTIONS[k], 0, AIM_FRAMES) for k in ((0, 0), (0, 1), (0, -1), (-1, 0), (1, 0),
                                                         (-1, 1), (1, 1), (-1, -1), (1, -1))]
+# T-062 cast clips (appended; frame counts = CAST_CHARGE_FRAMES / CAST_RELEASE_FRAMES / CAST_STRAIN_FRAMES below)
+CAST_ACTIONS = [("A_FPArms_Cast_Charge", 0, 36), ("A_FPArms_Cast_Release", 0, 24), ("A_FPArms_Cast_Strain", 0, 30)]
+ACTIONS += CAST_ACTIONS
 
 # HoldRod_Idle (standing / crouched): the rod (= hand_r_rod) in camera space: grip point, tip raised ROD_PITCH,
 # turned ROD_YAW left. Designer B-S1: frame 0 puts hand_r_rod at (43, 21, -23) cm in Unreal.
@@ -1134,6 +1157,40 @@ CAST_L_OPEN_CHARGE = 0.10
 CAST_L_REGRIP = (9, 18)
 CAST_L_CLOSE_AT = 0.35
 
+# Gate B (T-062): what Unreal needs besides the poses.
+# Anim curve HandL_Free (1 = the left hand is off the crank knob): keyed as a custom property on the root pose bone of
+# Cast_Charge and Cast_Release and written into their FBX by fbx_curves (Unreal imports it as a float curve). The ABP
+# maps it to the left-hand Two Bone IK alpha (1 - HandL_Free); a clip without the curve reads 0 = IK on.
+CAST_CURVE = "HandL_Free"
+CAST_CURVE_BONE = "root"
+# Notify (added in Unreal; an FBX can't carry it): CastRelease at CAST_RELEASE_FRAME of Cast_Release.
+CAST_NOTIFY = "CastRelease"
+# Partial-charge release rule (simulated in cast_partial_release): the montage starts at (1 - charge) *
+# CAST_PARTIAL_SKIP_FRAMES frames and blends in over CAST_BLEND_IN_S from the held charge pose; it blends out over
+# CAST_BLEND_OUT_S into HoldRod_Idle. Starting every release at frame 0 would first pull a part-charged rod back up to
+# the full wind-up (a tap: 25 deg back, the tip 51 cm towards the player) before the whip.
+CAST_PARTIAL_SKIP_FRAMES = 2.0
+CAST_BLEND_IN_S = 0.1
+CAST_BLEND_OUT_S = 0.2
+CAST_PARTIAL_CHARGES = (0.0, 0.25, 0.5, 0.75, 1.0)
+# A_FPArms_Cast_Strain: the loaded tremble at full charge, an ADDITIVE loop (Local Space on the skeleton reference
+# pose) that moves only the 'arms' (chest) bone, faded in by the game over charge 0.85..1 (CastStrainAlpha). One
+# second, and every component makes a whole number of cycles per second, so frame 30 = frame 0 exactly. A small 2-4 Hz
+# effort sway under the 5-11 Hz tremor keeps a long hold at full charge from reading as a buzz on a frozen pose.
+# Peaks about 0.3 deg / 1.5 mm (gate A plan): the fist shakes a few pixels, the rod top about 1 cm (out of view).
+CAST_STRAIN_FRAMES = 30
+CAST_STRAIN_ROT_DEG = {        # axis: [(amplitude deg, cycles per second, phase rad)]; pitch + = lean back
+    "pitch": [(0.09, 2, 0.4), (0.10, 5, 1.3), (0.06, 7, 4.1), (0.035, 11, 2.2)],
+    "yaw": [(0.07, 3, 2.0), (0.07, 6, 5.2), (0.035, 9, 0.9)],
+    "roll": [(0.05, 4, 3.3), (0.04, 8, 1.7)],
+}
+CAST_STRAIN_LOC_MM = {         # chest-frame offsets: x forward, y left, z up
+    "x": [(0.35, 3, 1.1), (0.25, 7, 3.9)],
+    "y": [(0.35, 5, 0.2)],
+    "z": [(0.60, 2, 2.6), (0.45, 6, 5.5), (0.30, 10, 1.4)],
+}
+assert [a[2] for a in CAST_ACTIONS] == [CAST_CHARGE_FRAMES, CAST_RELEASE_FRAMES, CAST_STRAIN_FRAMES]
+
 
 def ease_out(x, k):
     x = max(0.0, min(1.0, x))
@@ -1304,6 +1361,53 @@ def cast_targets(B, sides, knob_grip, ch, r_pole, lf=0.0, s_open=0.0, let_go=Non
     return D @ B["arms"], tg
 
 
+def _wave(spec, t):
+    return sum(a * math.sin(2.0 * math.pi * hz * t + ph) for a, hz, ph in spec)
+
+
+def strain_arms_matrix(f):
+    """'arms' bone pose (camera space) of A_FPArms_Cast_Strain frame f: the tremble about the chest pivot. As an
+    additive (Local Space on the reference pose) this is a rotation about the 'arms' bone's own origin plus an offset,
+    so on any base pose it moves the whole rig rigidly (Poser methods take it as arms_M)."""
+    t = f / float(FPS)
+    R = (rot3((0.0, 0.0, 1.0), _wave(CAST_STRAIN_ROT_DEG["yaw"], t))
+         @ rot3((0.0, 1.0, 0.0), -_wave(CAST_STRAIN_ROT_DEG["pitch"], t))
+         @ rot3((1.0, 0.0, 0.0), _wave(CAST_STRAIN_ROT_DEG["roll"], t)))
+    off = Vector(tuple(_wave(CAST_STRAIN_LOC_MM[k], t) * 0.001 for k in ("x", "y", "z")))
+    return mat4(R, ARMS_PIVOT + off)
+
+
+def cast_curves(action):
+    """{(bone, curve name): frame -> value} of the anim curves keyed into a cast action (see CAST_CURVE)."""
+    kind = {"A_FPArms_Cast_Charge": "charge", "A_FPArms_Cast_Release": "release"}.get(action)
+    if kind is None:
+        return {}
+    return {(CAST_CURVE_BONE, CAST_CURVE): (lambda f, k=kind: cast_hand_l_free_curve(k, f))}
+
+
+def basis_to_pose(B, basis):
+    """Pose matrices (armature space) from a pose basis: the inverse of pose_to_basis."""
+    P = {}
+    for n in topo_bones(B):
+        par = PARENT[n]
+        rel = B[n] if par is None else B[par].inverted() @ B[n]
+        P[n] = (Matrix.Identity(4) if par is None else P[par]) @ rel @ basis[n]
+    return P
+
+
+def cast_partial_release(poser, c, t, skip=True):
+    """What Unreal shows t seconds after a release at charge c (Cast_Charge held at c while the Cast_Release montage
+    blends in linearly over CAST_BLEND_IN_S from its start frame (1 - c) * CAST_PARTIAL_SKIP_FRAMES; skip=False starts
+    it at frame 0): the local-space blend of the two poses (blend_basis). Returns (pose matrices, montage frame, w)."""
+    B = poser.B
+    f0 = (1.0 - c) * CAST_PARTIAL_SKIP_FRAMES if skip else 0.0
+    fm = f0 + t * FPS
+    w = min(1.0, t / CAST_BLEND_IN_S) if CAST_BLEND_IN_S > 0.0 else 1.0
+    src = pose_to_basis(B, poser.cast_charge(c * CAST_CHARGE_FRAMES)[0])
+    mon = pose_to_basis(B, poser.cast_release(fm)[0])
+    return basis_to_pose(B, blend_basis(src, mon, w)), fm, w
+
+
 class Poser:
     """Pose sources for the actions and the previews. Each returns (P, metrics); arms_M applies the additive
     StanceDip on top (moves everything rigidly about the chest pivot), for previews and clearance checks."""
@@ -1387,11 +1491,18 @@ class Poser:
         basis["arms"] = self.B["arms"].inverted() @ dip_arms_matrix(f)
         return basis
 
+    def strain_basis(self, f):
+        """A_FPArms_Cast_Strain frame f (additive: only 'arms' moves, every other bone at its reference pose)."""
+        basis = {n: Matrix.Identity(4) for n in self.B}
+        basis["arms"] = self.B["arms"].inverted() @ strain_arms_matrix(f)
+        return basis
+
     def source(self, action):
         src = {"A_FPArms_Idle": self.idle, "A_FPArms_HoldRod_Idle": self.hold,
                "A_FPArms_Prone_HoldRod_Idle": self.prone_hold, "A_FPArms_Prone_TuckRod": self.tuck,
                "A_FPArms_HoldFish_Idle": self.hold_fish, "A_FPArms_HoldFish_Large_Idle": self.hold_fish_large,
-               "A_FPArms_CarryCooler_Idle": self.carry}
+               "A_FPArms_CarryCooler_Idle": self.carry,
+               "A_FPArms_Cast_Charge": self.cast_charge, "A_FPArms_Cast_Release": self.cast_release}
         src.update({a: self.aim(AIM_GRID[k]) for k, a in AIM_ACTIONS.items()})
         return src.get(action)
 
@@ -1399,17 +1510,27 @@ class Poser:
 # ---------------------------------------------------------------------------------------------------------------
 # Actions + NLA
 # ---------------------------------------------------------------------------------------------------------------
-def key_action(arm_obj, name, frames, basis_for_frame):
+def key_action(arm_obj, name, frames, basis_for_frame, curves=None):
+    """One action per clip, every bone keyed on every frame (linear), pushed to its own NLA track. curves:
+    {(bone, curve name): frame -> value}, keyed as custom properties on those pose bones (anim curves for Unreal,
+    written into the FBX by fbx_curves.add_action_curves)."""
     act = bpy.data.actions.new(name)
     act.use_fake_user = True
     ad = arm_obj.animation_data or arm_obj.animation_data_create()
     ad.action = act
     prev_q = {}
+    curves = curves or {}
+    for (bone, cname) in curves:
+        arm_obj.pose.bones[bone][cname] = 0.0
     for f in frames:
         apply_basis(arm_obj, basis_for_frame(f), prev_q)
         for pbone in arm_obj.pose.bones:
             pbone.keyframe_insert("location", frame=f, group=pbone.name)
             pbone.keyframe_insert("rotation_quaternion", frame=f, group=pbone.name)
+        for (bone, cname), fn in curves.items():
+            pbone = arm_obj.pose.bones[bone]
+            pbone[cname] = float(fn(f))
+            pbone.keyframe_insert('["%s"]' % cname, frame=f, group=bone)
     slot = ad.action_slot
     for layer in act.layers:
         for strip in layer.strips:
@@ -1429,7 +1550,9 @@ def build_actions(arm_obj, poser):
     makers = {name: (lambda f, fn=poser.source(name): pose_to_basis(B, fn(f)[0]))
               for name, _f0, _f1 in ACTIONS if poser.source(name)}
     makers["A_FPArms_StanceDip"] = poser.dip_basis
-    return {name: key_action(arm_obj, name, list(range(f0, f1 + 1)), makers[name]) for name, f0, f1 in ACTIONS}
+    makers["A_FPArms_Cast_Strain"] = poser.strain_basis
+    return {name: key_action(arm_obj, name, list(range(f0, f1 + 1)), makers[name], cast_curves(name))
+            for name, f0, f1 in ACTIONS}
 
 
 def play(arm_obj, action_name, frame):
@@ -1471,11 +1594,18 @@ def export_all(arm_obj, mesh_obj):
     path = EXPORT_DIR / "SK_FPArms.fbx"
     units = {"SK_FPArms": pb.export_skeletal_fbx(path, arm_obj, [mesh_obj], bake_anim=False)}
     out = {"SK_FPArms": str(path)}
-    for name, _f0, _f1 in ACTIONS:
+    for name, f0, f1 in ACTIONS:
         for tr in ad.nla_tracks:
             tr.mute = tr.name != name
         path = EXPORT_DIR / (name + ".fbx")
         units[name] = pb.export_skeletal_fbx(path, arm_obj, [], bake_anim=True)
+        act = next(tr for tr in ad.nla_tracks if tr.name == name).strips[0].action
+        added = fbx_curves.add_action_curves(path, act, f0, f1, FPS)      # anim curves (T-062: HandL_Free)
+        if added:
+            units[name] = pb.fbx_scale_report(path)
+            if not units[name]["ok"]:
+                raise RuntimeError("%s is not clean cm / scale 1 after adding its curves" % path.name)
+            units[name]["anim_curves"] = added
         out[name] = str(path)
     for tr in ad.nla_tracks:
         tr.mute = True
@@ -1531,6 +1661,12 @@ def scale_dev(M):
     return max(abs(c - 1.0) for c in M.to_scale())
 
 
+def quat_angle_deg(qa, qb):
+    """Angle between two rotations (deg, 0..180): q and -q are the same rotation (rotation_difference gives 360)."""
+    a = qa.rotation_difference(qb).angle
+    return math.degrees(min(a, 2.0 * math.pi - a))
+
+
 def reimport_check(exports, B, mesh_bounds, poser):
     """Re-import every FBX (Blender's importer, scene in meters): bone positions/axes, mesh bounds and baked poses must
     match the source. The files are cm (UnitScaleFactor 1.0), so the importer puts its cm -> m factor (0.01) on the
@@ -1573,25 +1709,43 @@ def reimport_check(exports, B, mesh_bounds, poser):
             sdev = max([sdev] + [scale_dev(pbone.matrix) for pbone in arm.pose.bones])
         entry["posed_bone_scale_dev"] = sdev
         fn = poser.source(name)
+        want_curves = cast_curves(name)
+        got_curves = fbx_curves.read_float_curves(exports[name], FPS)
+        if want_curves or got_curves:                      # T-062: the anim curves written by fbx_curves
+            cur = {}
+            for (bone, cname), cfn in want_curves.items():
+                got = got_curves.get(bone, {}).get(cname)
+                cur[cname] = None if got is None else {
+                    "bone": bone, "keys": len(got["keys"]), "flags": got["flags"], "on_layer": got["on_layer"],
+                    "max_error": round(max(abs(v - cfn(f)) for f, v in got["keys"]), 6),
+                    "frames_match": [k[0] for k in got["keys"]] == [float(f) for f in range(0, f1 + 1)]}
+            cur["unexpected"] = sorted(c for b in got_curves.values() for c in b
+                                       if c not in {n for _b, n in want_curves})
+            entry["anim_curves"] = cur
         if fn is not None:
             err, rot = 0.0, 0.0
-            for f in (0, 30, 45, 60, 90):
+            for f in (range(0, f1 + 1) if name in {a[0] for a in CAST_ACTIONS} else (0, 30, 45, 60, 90)):
                 scene.frame_set(f)
                 P, _m2 = fn(f)
                 for n in ("hand_r", "hand_l", "hand_r_rod", "fingers_r", "thumb_l", "hand_l_crank", "hand_r_fish",
                           "cooler"):
                     M = arm.matrix_world @ arm.pose.bones[n].matrix
                     err = max(err, (M.translation - P[n].translation).length)
-                    rot = max(rot, math.degrees(M.to_quaternion().rotation_difference(P[n].to_quaternion()).angle))
+                    rot = max(rot, quat_angle_deg(M.to_quaternion(), P[n].to_quaternion()))
             entry["max_pose_error_mm"] = round(err * 1000, 3)
             entry["max_pose_error_deg"] = round(rot, 3)
         else:
-            errs = []
+            arms_fn = strain_arms_matrix if name == "A_FPArms_Cast_Strain" else dip_arms_matrix
+            errs, rots = [], []
             for f in range(0, f1 + 1):
                 scene.frame_set(f)
-                want = dip_arms_matrix(f).translation
-                errs.append((arm.matrix_world @ arm.pose.bones["arms"].head - want).length)
+                want = arms_fn(f)
+                M = arm.matrix_world @ arm.pose.bones["arms"].matrix
+                errs.append((arm.matrix_world @ arm.pose.bones["arms"].head - want.translation).length)
+                rots.append(quat_angle_deg(M.to_quaternion(), want.to_quaternion()))
             entry["max_pose_error_mm"] = round(max(errs) * 1000, 3)
+            if name == "A_FPArms_Cast_Strain":
+                entry["max_pose_error_deg"] = round(max(rots), 4)
         res[name] = entry
         cleanup_since(snap)
     scene.render.fps = fps
@@ -2618,6 +2772,475 @@ def render_t030_t028_previews(arm_obj, rod_obj, poser, geo, fish_obj, grip, cool
 
 
 # ---------------------------------------------------------------------------------------------------------------
+# T-062 cast: checks (RESULT_JSON "cast") and previews (SK_FPArms_cast_*)
+# ---------------------------------------------------------------------------------------------------------------
+CENTRE_BOX = (0.30, 0.70, 0.30, 0.70)   # ART_STYLE: the centre 40 % of the first-person frame (x0, x1, y0, y1)
+
+
+def in_centre_box(q):
+    return q is not None and CENTRE_BOX[0] <= q[0] <= CENTRE_BOX[1] and CENTRE_BOX[2] <= q[1] <= CENTRE_BOX[3]
+
+
+def vgroup_mask(mesh_obj, names):
+    idx = {mesh_obj.vertex_groups[n].index for n in names}
+    return [sum(g.weight for g in v.groups if g.group in idx) >= 0.5 for v in mesh_obj.data.vertices]
+
+
+def part_bvh(pts, polys, mask):
+    keep = [p for p in polys if all(mask[i] for i in p)]
+    used = sorted({i for p in keep for i in p})
+    remap = {i: k for k, i in enumerate(used)}
+    return BVHTree.FromPolygons([pts[i] for i in used], [tuple(remap[i] for i in p) for p in keep])
+
+
+def rod_mesh(geo, rod_obj):
+    """(world points, polygons) of SM_Rod_Basic on hand_r_rod in the current pose."""
+    dg = bpy.context.evaluated_depsgraph_get()
+    ev = rod_obj.evaluated_get(dg)
+    me = ev.to_mesh()
+    M = geo.rod_frame()
+    local = [v.co.copy() for v in me.vertices]
+    polys = [tuple(p.vertices) for p in me.polygons]
+    ev.to_mesh_clear()
+    return [M @ p for p in local], polys, local
+
+
+def rod_rear_contact(geo, rod_obj, arms, arms_bvh, x_max=-0.06):
+    """The rod's rear grip + butt (rod-local x < x_max) against the arms mesh: triangle pairs that intersect, how
+    many of them are on screen, and the deepest arm vertex inside the rear-grip cylinder (mm)."""
+    pts, polys, local = rod_mesh(geo, rod_obj)
+    rp = [p for p in polys if all(local[i].x < x_max for i in p)]
+    used = sorted({i for p in rp for i in p})
+    remap = {i: k for k, i in enumerate(used)}
+    bvh = BVHTree.FromPolygons([pts[i] for i in used], [tuple(remap[i] for i in p) for p in rp])
+    pairs = bvh.overlap(arms_bvh)
+    rad = max((Vector((0.0, local[i].y, local[i].z)).length for i in used), default=0.0)
+    xs = [local[i].x for i in used]
+    Mi = geo.rod_frame().inverted()
+    depth = 0.0
+    for p in arms:
+        q = Mi @ p
+        if xs and min(xs) <= q.x <= max(xs):
+            r = Vector((0.0, q.y, q.z)).length
+            if r < rad:
+                depth = max(depth, rad - r)
+    ons = sum(1 for ir, _ia in pairs
+              if on_screen(screen(sum((pts[i] for i in rp[ir]), Vector()) / len(rp[ir]))))
+    return {"pairs": len(pairs), "on_screen_pairs": ons, "arm_in_grip_mm": round(depth * 1000, 1)}
+
+
+def rod_elevation(P):
+    """Rod axis angle above the horizon towards the view (deg): 36 at the hold, 90 = vertical, > 90 = tip behind."""
+    X = P["hand_r_rod"].to_3x3().col[0].normalized()
+    return math.degrees(math.atan2(X.z, X.x))
+
+
+def wrist_bend(B, sides, P, s):
+    """Total wrist bend (deg): the angle between the forearm (elbow -> wrist) and the hand's forward axis."""
+    axis = (P["hand_" + s].translation - P["lowerarm_" + s].translation).normalized()
+    th = P["hand_" + s].to_3x3() @ B["hand_" + s].to_3x3().transposed() @ sides[s].th
+    return round(math.degrees(axis.angle(th)), 1)
+
+
+class CastMeasure:
+    """Per-frame screen and clearance numbers of a cast pose (skinned arms + SM_Rod_Basic)."""
+
+    def __init__(self, geo, rod_obj, poser):
+        m = geo.mesh
+        self.geo, self.rod, self.poser = geo, rod_obj, poser
+        self.m = {"hand_r": vgroup_mask(m, ("hand_r", "fingers_r", "thumb_r")),
+                  "hand_l": vgroup_mask(m, ("hand_l", "fingers_l", "thumb_l")),
+                  "fore_r": vgroup_mask(m, ("lowerarm_r", "lowerarm_twist_r")),
+                  "arm_l": [any(m.vertex_groups[g.group].name.endswith("_l") and g.weight >= 0.5 for g in v.groups)
+                            for v in m.data.vertices],
+                  "arm_r": [any(m.vertex_groups[g.group].name.endswith("_r") and g.weight >= 0.5 for g in v.groups)
+                            for v in m.data.vertices]}
+
+    def __call__(self, P, metrics=None):
+        B, sides = self.poser.B, self.poser.sides
+        set_static_pose(self.geo.arm, B, P)
+        arms, polys = self.geo.arms_points()
+        rod, rpolys, _local = rod_mesh(self.geo, self.rod)
+        arms_bvh = BVHTree.FromPolygons(arms, polys)
+        rod_bvh = BVHTree.FromPolygons(rod, rpolys)
+        out = {}
+        for key in ("hand_r", "hand_l", "fore_r"):
+            out[key] = screen_box([p for p, k in zip(arms, self.m[key]) if k])
+        qs = [screen(p) for p in arms]
+        out["box_arms"] = sum(1 for q in qs if in_centre_box(q))
+        out["box_rod"] = sum(1 for p in rod if in_centre_box(screen(p)))
+        tip = screen(P["hand_r_rod"] @ Vector((ROD_TIP_M, 0.0, 0.0)))
+        out["tip_pct"] = None if tip is None else [round(tip[0] * 100, 1), round(tip[1] * 100, 1)]
+        out["rear"] = rod_rear_contact(self.geo, self.rod, arms, arms_bvh)
+        bl = part_bvh(arms, polys, self.m["arm_l"])
+        out["l_vs_rod"] = len(bl.overlap(rod_bvh))
+        out["l_vs_r"] = len(bl.overlap(part_bvh(arms, polys, self.m["arm_r"])))
+        out["wrist_bend"] = [wrist_bend(B, sides, P, "r"), wrist_bend(B, sides, P, "l")]
+        if metrics:
+            out["twist"] = [metrics["r"]["twist_deg"], metrics["l"]["twist_deg"]]
+        out["hand_l_to_knob_mm"] = round((P["hand_l"].translation - P["hand_l_crank"].translation).length * 1000, 2)
+        out["rod_elev_deg"] = round(rod_elevation(P), 1)
+        return out
+
+
+def pose_diff(Pa, Pb):
+    """Largest bone difference between two poses: [mm, deg]."""
+    t = max((Pa[n].translation - Pb[n].translation).length for n in Pa) * 1000.0
+    r = max(quat_angle_deg(Pa[n].to_quaternion(), Pb[n].to_quaternion()) for n in Pa)
+    return [round(t, 4), round(r, 4)]
+
+
+def baked_pose(arm_obj, action, f):
+    play(arm_obj, action, f)
+    return {pbone.name: (arm_obj.matrix_world @ pbone.matrix).copy() for pbone in arm_obj.pose.bones}
+
+
+def cast_checks(geo, rod_obj, poser):
+    """RESULT_JSON 'cast': seams (recipe poses and the baked actions), per-frame framing / clearance, the
+    partial-charge release simulation, the strain loop, the curve and the notify, Unreal numbers."""
+    B, arm = poser.B, geo.arm
+    meas = CastMeasure(geo, rod_obj, poser)
+    res = {}
+    H0 = poser.hold(0)[0]
+    seams = {"charge_f0_vs_holdrod_f0": pose_diff(poser.cast_charge(0)[0], H0),
+             "charge_end_vs_release_f0": pose_diff(poser.cast_charge(CAST_CHARGE_FRAMES)[0], poser.cast_release(0)[0]),
+             "release_end_vs_holdrod_f0": pose_diff(poser.cast_release(CAST_RELEASE_FRAMES)[0], H0)}
+    bh = baked_pose(arm, "A_FPArms_HoldRod_Idle", 0)
+    seams["baked"] = {
+        "charge_f0_vs_holdrod_f0": pose_diff(baked_pose(arm, "A_FPArms_Cast_Charge", 0), bh),
+        "charge_end_vs_release_f0": pose_diff(baked_pose(arm, "A_FPArms_Cast_Charge", CAST_CHARGE_FRAMES),
+                                              baked_pose(arm, "A_FPArms_Cast_Release", 0)),
+        "release_end_vs_holdrod_f0": pose_diff(baked_pose(arm, "A_FPArms_Cast_Release", CAST_RELEASE_FRAMES), bh),
+        "strain_f30_vs_f0": pose_diff(baked_pose(arm, "A_FPArms_Cast_Strain", CAST_STRAIN_FRAMES),
+                                      baked_pose(arm, "A_FPArms_Cast_Strain", 0))}
+    res["seams_mm_deg"] = seams
+    # --- per frame
+    frames = {}
+    for kind, fn, n in (("charge", poser.cast_charge, CAST_CHARGE_FRAMES), ("release", poser.cast_release,
+                                                                            CAST_RELEASE_FRAMES)):
+        rows = []
+        for f in range(0, n + 1):
+            P, m = fn(f)
+            rows.append(meas(P, m))
+        frames[kind] = rows
+    ch, rl = frames["charge"], frames["release"]
+    clear_from = next((f for f in range(len(ch)) if all(r["box_arms"] == 0 and r["box_rod"] == 0 for r in ch[f:])),
+                      None)
+    top0, top1 = ch[0]["hand_r"].get("top_y_pct"), ch[-1]["hand_r"].get("top_y_pct")
+    res["charge"] = {
+        "box_arms_verts_max": max(r["box_arms"] for r in ch),
+        "box_rod_verts_by_frame": [r["box_rod"] for r in ch],
+        "box_clear_from_frame": clear_from,
+        "box_clear_from_charge": None if clear_from is None else round(clear_from / float(CAST_CHARGE_FRAMES), 3),
+        "hand_r_full_charge": ch[-1]["hand_r"], "fore_r_visible_full_charge_pct": ch[-1]["fore_r"]["on_screen_pct"],
+        "hand_r_top_y_pct_f0_f36": [top0, top1],
+        "fist_rise_pct_of_height": None if top0 is None or top1 is None else round(top0 - top1, 1),
+        "hand_l_visible_pct_by_frame": [r["hand_l"]["on_screen_pct"] for r in ch],
+        "hand_l_out_of_view_from_frame": next((f for f in range(len(ch)) if all(
+            r["hand_l"]["on_screen_pct"] == 0.0 for r in ch[f:])), None),
+        "l_vs_rod_pairs_by_frame": [r["l_vs_rod"] for r in ch], "l_vs_r_pairs_max": max(r["l_vs_r"] for r in ch),
+        "rear_grip_on_screen_pairs_max": max(r["rear"]["on_screen_pairs"] for r in ch),
+        "rear_grip_pairs_max": max(r["rear"]["pairs"] for r in ch),
+        "rear_grip_arm_in_grip_mm_by_frame": [r["rear"]["arm_in_grip_mm"] for r in ch],
+        "wrist_bend_r_full_charge": ch[-1]["wrist_bend"][0], "wrist_bend_r_hold": ch[0]["wrist_bend"][0],
+        "twist_r_max": max(abs(r["twist"][0]) for r in ch),
+        "rod_elev_deg_by_frame": [r["rod_elev_deg"] for r in ch]}
+    res["release"] = {
+        "box_rod_frames": [f for f, r in enumerate(rl) if r["box_rod"] > 0],
+        "box_arms_frames": [f for f, r in enumerate(rl) if r["box_arms"] > 0],
+        "hand_l_visible_pct_by_frame": [r["hand_l"]["on_screen_pct"] for r in rl],
+        "hand_l_to_knob_mm_by_frame": [r["hand_l_to_knob_mm"] for r in rl],
+        "l_vs_rod_pairs_by_frame": [r["l_vs_rod"] for r in rl], "l_vs_r_pairs_max": max(r["l_vs_r"] for r in rl),
+        "rear_grip_pairs_by_frame": [r["rear"]["pairs"] for r in rl],
+        "rear_grip_on_screen_pairs_max": max(r["rear"]["on_screen_pairs"] for r in rl),
+        "rear_grip_arm_in_grip_mm_by_frame": [r["rear"]["arm_in_grip_mm"] for r in rl],
+        "wrist_bend_r_by_frame": [r["wrist_bend"][0] for r in rl],
+        "rod_elev_deg_by_frame": [r["rod_elev_deg"] for r in rl]}
+    # --- the line-release event
+    tips = [poser.cast_release(f)[0]["hand_r_rod"] @ Vector((ROD_TIP_M, 0.0, 0.0)) for f in range(0, 6)]
+    fr = CAST_RELEASE_FRAME
+    res["notify"] = {"name": CAST_NOTIFY, "clip": "A_FPArms_Cast_Release", "frame": fr,
+                     "time_s": round(fr / float(FPS), 4), "rod_elev_deg": rl[fr]["rod_elev_deg"],
+                     "tip_speed_m_s": round((tips[fr + 1] - tips[fr - 1]).length * FPS / 2.0, 1),
+                     "tip_pct": rl[fr]["tip_pct"]}
+    # --- partial-charge release (the montage start rule), simulated as Unreal blends it
+    part = []
+    for skip, cs in ((True, CAST_PARTIAL_CHARGES), (False, (0.0, 0.25, 0.5))):
+        for c in cs:
+            elev, tipx, fist = [], [], []
+            for k in range(0, 10):
+                P, _fm, _w = cast_partial_release(poser, c, k / float(FPS), skip)
+                elev.append(rod_elevation(P))
+                tipx.append((P["hand_r_rod"] @ Vector((ROD_TIP_M, 0.0, 0.0))).x)
+                fist.append(P["hand_r"].translation.copy())
+            low = min(range(len(elev)), key=lambda i: elev[i])
+            f0 = (1.0 - c) * CAST_PARTIAL_SKIP_FRAMES if skip else 0.0
+            part.append({"rule": "skip" if skip else "from_f0", "charge": c, "montage_start_frame": round(f0, 3),
+                         "notify_after_release_s": round(max(0.0, CAST_RELEASE_FRAME - f0) / FPS, 4),
+                         "rod_elev_deg_by_frame": [round(e, 1) for e in elev],
+                         "rod_lift_before_whip_deg": round(max(elev[:low + 1]) - elev[0], 2),
+                         "tip_back_before_whip_cm": round((tipx[0] - min(tipx[:low + 1])) * 100, 1),
+                         "fist_max_step_mm": round(max((fist[i] - fist[i - 1]).length for i in range(1, 10)) * 1000,
+                                                   1)})
+    res["partial_release"] = {"start_frame_rule": "(1 - charge) * %g" % CAST_PARTIAL_SKIP_FRAMES,
+                              "blend_in_s": CAST_BLEND_IN_S, "cases": part}
+    # --- the montage's auto blend-out (last CAST_BLEND_OUT_S) into HoldRod_Idle at any breath phase: the left fist is
+    # on the knob in both poses, but a local-space blend of two poses can pull it off the blended knob (the IK sits on
+    # the HoldRod branch, under the slot, so nothing corrects it there)
+    n_out = int(round(CAST_BLEND_OUT_S * FPS))
+    off = 0.0
+    for ph in (0, 22, 45, 67):
+        for k in range(0, n_out + 1):
+            w = 1.0 - k / float(n_out)
+            Pb = basis_to_pose(B, blend_basis(pose_to_basis(B, poser.hold(ph + k)[0]),
+                                              pose_to_basis(B, poser.cast_release(CAST_RELEASE_FRAMES - n_out + k)[0]),
+                                              w))
+            off = max(off, (Pb["hand_l"].translation - Pb["hand_l_crank"].translation).length)
+    res["blend_out"] = {"from_frame": CAST_RELEASE_FRAMES - n_out, "blend_out_s": CAST_BLEND_OUT_S,
+                        "left_fist_off_knob_max_mm": round(off * 1000, 2)}
+    # --- strain loop on the full wind-up
+    Pw = poser.cast_charge(CAST_CHARGE_FRAMES)[0]
+    k0 = Pw["hand_r"].translation
+    q0 = screen(k0)
+    px, mm_tip, rot, off = [], [], [], []
+    for f in range(0, CAST_STRAIN_FRAMES):
+        Ps = poser.cast_charge(CAST_CHARGE_FRAMES, arms_M=strain_arms_matrix(f))[0]
+        q = screen(Ps["hand_r"].translation)
+        px.append(math.hypot((q[0] - q0[0]) * FP_W, (q[1] - q0[1]) * FP_H))
+        mm_tip.append((Ps["hand_r_rod"] @ Vector((ROD_TIP_M, 0, 0)) - Pw["hand_r_rod"] @ Vector((ROD_TIP_M, 0, 0)))
+                      .length * 1000)
+        S = strain_arms_matrix(f)
+        rot.append(math.degrees(S.to_quaternion().angle))
+        off.append((S.translation - ARMS_PIVOT).length * 1000)
+    res["strain"] = {"frames": CAST_STRAIN_FRAMES, "rot_peak_deg": round(max(rot), 3),
+                     "offset_peak_mm": round(max(off), 2),
+                     "wrist_on_screen_px_1080p": {"max": round(max(px), 1),
+                                                  "rms": round(math.sqrt(sum(p * p for p in px) / len(px)), 1)},
+                     "rod_tip_mm": {"max": round(max(mm_tip), 1)},
+                     "loop_f30_vs_f0": pose_diff({"arms": strain_arms_matrix(CAST_STRAIN_FRAMES)},
+                                                 {"arms": strain_arms_matrix(0)})}
+    res["curve"] = {"name": CAST_CURVE, "bone": CAST_CURVE_BONE,
+                    "charge": {f: cast_hand_l_free_curve("charge", f) for f in (0, 1, CAST_CHARGE_FRAMES)},
+                    "release": {f: cast_hand_l_free_curve("release", f) for f in (0, CAST_L_REGRIP[1],
+                                                                                 CAST_L_REGRIP[1] + 1,
+                                                                                 CAST_RELEASE_FRAMES)}}
+    res["unreal"] = {"hand_r_rod_full_charge": ue_transform(Pw["hand_r_rod"]),
+                     "hand_r_rod_release_frame": ue_transform(poser.cast_release(CAST_RELEASE_FRAME)[0]["hand_r_rod"])}
+    return res, frames
+
+
+def draw_centre_box(path, rgb=(0.953, 0.914, 0.824), alpha=0.85):
+    """Outline the centre 40 % box on a rendered first-person PNG, in place (the framing rule's clear zone)."""
+    import numpy as np
+    img = bpy.data.images.load(str(path), check_existing=False)
+    w, h = img.size
+    px = np.empty(w * h * 4, dtype=np.float32)
+    img.pixels.foreach_get(px)
+    px = px.reshape(h, w, 4)
+    x0, x1 = int(CENTRE_BOX[0] * w), int(CENTRE_BOX[1] * w)
+    y0, y1 = int((1.0 - CENTRE_BOX[3]) * h), int((1.0 - CENTRE_BOX[2]) * h)      # rows count from the bottom
+    col = np.array(rgb, dtype=np.float32)
+    thick = max(2, h // 360)
+    for t in range(thick):
+        for sl in ((slice(y0 + t, y0 + t + 1), slice(x0, x1)), (slice(y1 - t - 1, y1 - t), slice(x0, x1)),
+                   (slice(y0, y1), slice(x0 + t, x0 + t + 1)), (slice(y0, y1), slice(x1 - t - 1, x1 - t))):
+            seg = px[sl]
+            seg[..., :3] = seg[..., :3] * (1.0 - alpha) + col * alpha
+    img.pixels.foreach_set(px.ravel())
+    img.filepath_raw = str(path)
+    img.file_format = "PNG"
+    img.save()
+    bpy.data.images.remove(img)
+    return str(path)
+
+
+def png_to_array(path):
+    """A PNG's pixels as a numpy array (rows from the bottom, RGBA 0..1 as stored)."""
+    import numpy as np
+    img = bpy.data.images.load(str(path), check_existing=False)
+    w, h = img.size
+    a = np.empty(w * h * 4, dtype=np.float32)
+    img.pixels.foreach_get(a)
+    bpy.data.images.remove(img)
+    return a.reshape(h, w, 4)
+
+
+def array_to_png(arr, path):
+    h, w = arr.shape[:2]
+    img = bpy.data.images.new("PV_array", w, h, alpha=True)
+    img.pixels.foreach_set(arr.astype("float32").ravel())
+    img.filepath_raw = str(path)
+    img.file_format = "PNG"
+    img.save()
+    bpy.data.images.remove(img)
+    return str(path)
+
+
+def fp_cast_frame(path, kind, label, res, samples=24, box=True, rel_size=0.045, region=None):
+    """First-person frame for the cast previews (fp_preview backdrop, corner label unless label is None), the centre
+    box drawn; region = (x0, x1, y0, y1) renders only that part of the view (a crop, what the player sees)."""
+    half_w = 0.05 * math.tan(math.radians(fp_preview.FP_HFOV_DEG) / 2.0)
+    if region is None:
+        origin = (0, 0, 0)
+    else:
+        half_h = half_w * res[1] / res[0]
+        u = (region[0] - 0.5) * 2.0 * half_w + half_w * 0.01
+        v = (0.5 - region[2]) * 2.0 * half_h - half_h * 0.01
+        origin = Vector((0.0, -1.0, 0.0)) * (u + half_w * 0.97) + Vector((0.0, 0.0, 1.0)) * (v - half_h * 0.95)
+    cleanup = (stage_label(label, origin, (0, -1, 0), (0, 0, 1), (1, 0, 0), half_w, res, rel_size=rel_size)
+               if label else (lambda: None))
+    r = bpy.context.scene.render
+    old = (r.use_border, r.use_crop_to_border, r.border_min_x, r.border_max_x, r.border_min_y, r.border_max_y)
+    try:
+        if region is not None:
+            r.use_border, r.use_crop_to_border = True, True
+            r.border_min_x, r.border_max_x = region[0], region[1]
+            r.border_min_y, r.border_max_y = 1.0 - region[3], 1.0 - region[2]
+        fp_preview.render_fp(path, kind, resolution=res, samples=samples)
+    finally:
+        (r.use_border, r.use_crop_to_border, r.border_min_x, r.border_max_x, r.border_min_y, r.border_max_y) = old
+        cleanup()
+    if box and region is None:
+        draw_centre_box(path)
+    return str(path)
+
+
+def side_cast_frame(path, label, res, trail=(), event=None, center=(0.55, 0.72), ortho=4.6):
+    """Orthographic side view (from the player's right) with the eye marker, a rod-tip path (ink cubes) and an
+    optional event marker (the line-release point, red)."""
+    y = -0.8
+    objs = [box("PV_eye", (0.0, y, 0.0), (0.03, 0.03, 0.03), style.TROPICAL.ACCENT),
+            box("PV_eyeaxis", (0.25, y, 0.0), (0.5, 0.006, 0.006), style.TROPICAL.ACCENT)]
+    objs += [box("PV_trail%d" % i, (p.x, y, p.z), (0.035, 0.02, 0.035), style.UI.INK) for i, p in enumerate(trail)]
+    if event is not None:
+        objs.append(box("PV_event", (event.x, y - 0.01, event.z), (0.08, 0.02, 0.08), style.UI.DANGER))
+    try:
+        return shot(path, (center[0], -4.0, center[1]), (center[0], 0.0, center[1]), ortho=ortho, res=res,
+                    label=label)
+    finally:
+        for o in objs:
+            me = o.data
+            bpy.data.objects.remove(o, do_unlink=True)
+            bpy.data.meshes.remove(me)
+
+
+def render_cast_previews(arm_obj, rod_obj, poser, cast):
+    """SK_FPArms_cast_fp.png / _fp_dusk.png (charge 0..1 in 5 steps + 10 release frames, FP, centre box drawn),
+    SK_FPArms_cast_side.png (side strip with the rod-tip paths, the release point in red), SK_FPArms_cast_lefthand.png
+    (2x crops: the left hand letting go and re-gripping), SK_FPArms_cast_blendin.png (partial-charge releases as
+    Unreal blends them), SK_FPArms_cast_seams.png (first/last frames vs HoldRod_Idle f0), SK_FPArms_cast_strain.png
+    (the strain loop on the full wind-up, 1:1 crops of the fist: still / mean of the loop / moving pixels)."""
+    B = poser.B
+    tmp = PREVIEW_DIR / "SK_FPArms_cast_parts"
+    tmp.mkdir(parents=True, exist_ok=True)
+    CELLC = (768, 432)
+    full = {}
+    rod_obj.hide_render = False
+    charge_steps = [(0.0, 0), (0.25, 9), (0.5, 18), (0.75, 27), (1.0, 36)]
+    rel_frames = [(1, "drive"), (2, "whip"), (3, "LINE RELEASE: notify %s (%.3f s)" % (CAST_NOTIFY, 3 / 30.0)),
+                  (4, "follow-through"), (6, "stop"), (9, "hold ends"), (12, "settle, left hand coming"),
+                  (15, "left hand in view"), (CAST_L_REGRIP[1], "left fist on the knob"),
+                  (CAST_RELEASE_FRAMES, "= HoldRod_Idle f0")]
+
+    def pose(P):
+        set_static_pose(arm_obj, B, P)
+
+    for kind in ("day", "dusk"):
+        cells = []
+        for c, f in charge_steps:
+            pose(poser.cast_charge(f)[0])
+            lab = "Cast_Charge f%d  charge %.2f%s" % (f, c, "  (= HoldRod_Idle f0)" if f == 0 else "")
+            cells.append(fp_cast_frame(tmp / ("fp_%s_c%02d.png" % (kind, f)), kind, lab, CELLC))
+        for f, what in rel_frames:
+            pose(poser.cast_release(f)[0])
+            lab = "Cast_Release f%d (%.3f s)  %s" % (f, f / 30.0, what)
+            cells.append(fp_cast_frame(tmp / ("fp_%s_r%02d.png" % (kind, f)), kind, lab, CELLC))
+        name = "SK_FPArms_cast_fp.png" if kind == "day" else "SK_FPArms_cast_fp_dusk.png"
+        full["fp_" + kind] = pb.contact_sheet(cells, PREVIEW_DIR / name, cols=5, cell=CELLC)
+    # --- side strip with the rod-tip paths
+    charge_trail = [poser.cast_charge(f)[0]["hand_r_rod"] @ Vector((ROD_TIP_M, 0, 0)) for f in range(0, 37, 3)]
+    rel_trail = [poser.cast_release(f)[0]["hand_r_rod"] @ Vector((ROD_TIP_M, 0, 0))
+                 for f in range(0, CAST_RELEASE_FRAMES + 1)]
+    event = rel_trail[CAST_RELEASE_FRAME]
+    cells = []
+    for c, f in charge_steps:
+        pose(poser.cast_charge(f)[0])
+        cells.append(side_cast_frame(tmp / ("side_c%02d.png" % f), "Cast_Charge f%d (charge %.2f) side; ink = tip "
+                                     "path, charge 0..1" % (f, c), CELLC, charge_trail))
+    for f, what in rel_frames:
+        pose(poser.cast_release(f)[0])
+        cells.append(side_cast_frame(tmp / ("side_r%02d.png" % f), "Cast_Release f%d side; ink = tip path, red = "
+                                     "line release f%d" % (f, CAST_RELEASE_FRAME), CELLC, rel_trail, event))
+    full["side"] = pb.contact_sheet(cells, PREVIEW_DIR / "SK_FPArms_cast_side.png", cols=5, cell=CELLC)
+    # --- the left hand: 2x crops of the lower middle of the view
+    region = (0.35, 0.85, 0.55, 1.0)
+    cells = []
+    for kind, f in [("c", f) for f in range(0, 8)] + [("r", f) for f in range(12, 20)]:
+        P = (poser.cast_charge if kind == "c" else poser.cast_release)(f)[0]
+        pose(P)
+        lab = ("Cast_Charge f%d (charge %.2f)" % (f, f / float(CAST_CHARGE_FRAMES)) if kind == "c"
+               else "Cast_Release f%d" % f)
+        cells.append(fp_cast_frame(tmp / ("lh_%s%02d.png" % (kind, f)), "day", lab + "  2x crop", (1920, 1080),
+                                   samples=16, rel_size=0.022, region=region))
+    full["lefthand"] = pb.contact_sheet(cells, PREVIEW_DIR / "SK_FPArms_cast_lefthand.png", cols=4, cell=(960, 486))
+    # --- partial-charge releases (the montage start rule), as Unreal blends them
+    cells = []
+    rows = [(c, True) for c in CAST_PARTIAL_CHARGES] + [(0.25, False)]
+    for c, skip in rows:
+        for k in (0, 1, 2, 3, 4, 6):
+            P, fm, w = cast_partial_release(poser, c, k / float(FPS), skip)
+            pose(P)
+            rule = "" if skip else "  NOT USED: from f0"
+            lab = "charge %.2f +%df: montage f%.1f w%.2f%s" % (c, k, fm, w, rule)
+            cells.append(fp_cast_frame(tmp / ("blend_%s_c%03d_k%d.png" % ("s" if skip else "z", int(c * 100), k)),
+                                       "day", lab, (640, 360), samples=12, rel_size=0.055))
+    full["blendin"] = pb.contact_sheet(cells, PREVIEW_DIR / "SK_FPArms_cast_blendin.png", cols=6, cell=(640, 360))
+    # --- first / last frames vs HoldRod_Idle f0
+    s = cast["seams_mm_deg"]["baked"]
+    cells = []
+    for act, f, lab in (("A_FPArms_HoldRod_Idle", 0, "HoldRod_Idle f0 (reference)"),
+                        ("A_FPArms_Cast_Charge", 0, "Cast_Charge f0: vs HoldRod f0 %.3f mm / %.3f deg"
+                         % tuple(s["charge_f0_vs_holdrod_f0"])),
+                        ("A_FPArms_Cast_Charge", CAST_CHARGE_FRAMES, "Cast_Charge f36 (full charge)"),
+                        ("A_FPArms_Cast_Release", 0, "Cast_Release f0: vs Charge f36 %.3f mm / %.3f deg"
+                         % tuple(s["charge_end_vs_release_f0"])),
+                        ("A_FPArms_Cast_Release", CAST_RELEASE_FRAMES, "Cast_Release f24: vs HoldRod f0 %.3f mm / "
+                         "%.3f deg" % tuple(s["release_end_vs_holdrod_f0"]))):
+        play(arm_obj, act, f)
+        cells.append(fp_cast_frame(tmp / ("seam_%s_%02d.png" % (act[9:], f)), "day", lab + " (baked clip)", CELLC))
+    full["seams"] = pb.contact_sheet(cells, PREVIEW_DIR / "SK_FPArms_cast_seams.png", cols=5, cell=CELLC)
+    # --- the strain loop on the full wind-up. A tremble can't show in one still, so the fist region (1:1 of a 1080p
+    # frame) three ways: 1 without the strain, 2 the mean of the 1 s loop (the tremble as motion blur), 3 the pixels
+    # that move (largest change over the loop, x4, red over the darkened still)
+    import numpy as np
+    Pw = poser.cast_charge(CAST_CHARGE_FRAMES)[0]
+    region = (0.70, 1.0, 0.02, 0.70)
+    st = cast["strain"]["wrist_on_screen_px_1080p"]
+    pose(Pw)
+    rest_p = fp_cast_frame(tmp / "strain_rest.png", "day", None, (1920, 1080), samples=16, region=region)
+    rest = png_to_array(rest_p)
+    frames = []
+    for f in range(0, CAST_STRAIN_FRAMES, 2):
+        pose(poser.cast_charge(CAST_CHARGE_FRAMES, arms_M=strain_arms_matrix(f))[0])
+        frames.append(png_to_array(fp_cast_frame(tmp / ("strain_%02d.png" % f), "day", None, (1920, 1080),
+                                                 samples=16, region=region)))
+    mean = sum(frames) / float(len(frames))
+    moved = np.clip(4.0 * np.max([np.max(np.abs(a[..., :3] - rest[..., :3]), axis=2) for a in frames], axis=0), 0, 1)
+    over = rest.copy()
+    over[..., :3] = rest[..., :3] * 0.35 * (1.0 - moved[..., None]) + np.array([1.0, 0.15, 0.1]) * moved[..., None]
+    pose(Pw)
+    lab = ("Cast_Strain on the full wind-up, 1:1 crop of 1080p\n1 no strain | 2 mean of the 1 s loop | 3 moving "
+           "pixels x4\nwrist max %.1f px, rms %.1f px" % (st["max"], st["rms"]))
+    cells = [fp_cast_frame(tmp / "strain_1_rest.png", "day", lab, (1920, 1080), samples=16, rel_size=0.016,
+                           region=region),
+             array_to_png(mean, tmp / "strain_2_mean.png"), array_to_png(over, tmp / "strain_3_moved.png")]
+    h, w = rest.shape[:2]
+    full["strain"] = pb.contact_sheet(cells, PREVIEW_DIR / "SK_FPArms_cast_strain.png", cols=3, cell=(w, h))
+    rest_pose(arm_obj)
+    return full
+
+
+# ---------------------------------------------------------------------------------------------------------------
 # main
 # ---------------------------------------------------------------------------------------------------------------
 def setup():
@@ -2691,6 +3314,13 @@ def main():
     carry = carry_checks(geo, poser, cooler)
     full.update(render_t030_t028_previews(arm_obj, rod_obj, poser, geo, fish_obj, fish_grip, cooler, P_aim))
 
+    # T-062 cast: checks and previews (the rod staged, fish and cooler hidden)
+    fish_obj.hide_render = True
+    cooler.hide(True)
+    cast, _cast_frames = cast_checks(geo, rod_obj, poser)
+    full.update({"cast_" + k: v for k, v in render_cast_previews(arm_obj, rod_obj, poser, cast).items()})
+    rod_obj.hide_render = True
+
     P_tuck0, _ = poser.tuck(0)
     extra = {
         "exports": exports,
@@ -2716,6 +3346,7 @@ def main():
         "rest_hand_r_rod_local_ue": ue_transform(B["hand_r"].inverted() @ B["hand_r_rod"]),
         "screen_holdrod_f0": hold_screen, "screen_prone_hold_f0": prone_hold_screen, "screen_tuck_f0": tuck_screen,
         "prone": prone,
+        "cast": cast,
         "motion_check": motion,
         "reimport_check": check,
         "preview_sheet": sheet,
