@@ -307,6 +307,10 @@ T-032b (namespaces `LureLineCollisionTests`, `LureLineHangTests`, `LureLineTautT
 land a fish with no line out (GiveFish's path); every point's width = the width rule for the eye now (10 %), and each drawn
 segment is that thick.
 
+`FishingLineHangNoStubTest.cpp` (T-041b), `Project.Fishing.Line.Hang.NoStubPastMouth`: a fish hung on the rod's line
+(cast, reel in, land), 6 s of reel-up, swing and view sweeps; no line point and no sampled point of a drawn segment lies past
+the mouth into the fish by more than 1 cm (measured: 0.000 cm).
+
 QA's own suite: Project.Fishing.Line.QA.* (`QAFishingLineTest.cpp`).
 
 ## Known limits and follow-ups
@@ -322,6 +326,10 @@ QA's own suite: Project.Fishing.Line.QA.* (`QAFishingLineTest.cpp`).
   - At most 64 hulls/boxes and 64 spheres/capsules near the line per Step (the first ones in the colliders' order).
   - Rotated box elements under non-uniform scale are exact here, while the physics approximates them, so the line and a
     cast can disagree slightly on such a box.
+- T-041b ("a line stub below a landed fish's tail", 09_after_land.png): not the line. The line ends exactly at the mouth
+  (Hang.NoStubPastMouth: 0.000 cm past it); the stub is the bonefish's tail fin seen edge-on. A fish on the physics line keeps
+  its facing (it does not turn its side to the viewer as the old pendulum did), so from the player's eye it often shows its
+  back and its tail fin reads as a thin dark spike. Turning the side toward the viewer is a presentation choice (open).
 - One water height per line (a line spanning two water levels floats at the end's).
 - A player who turns away from the bobber sees the line run back from the tip over the rod (no wrapping around the tip).
 - Other players' lines start from an estimated rod tip (no third-person rod yet; unchanged from T-006).
