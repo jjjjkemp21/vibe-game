@@ -101,7 +101,7 @@ playtest focus: <host + client steps>
 
 ## 8. Tech debt
 - Debt = a known shortcut accepted on purpose (a missing edge case, a hardcoded fallback, a slow path, a missing net test). Unknown bugs are not debt; they are tasks.
-- Log it in the team log's "Debt" table (id `D-<n>`, file:line, what, why accepted, risk, fix size) the moment it is accepted in review. A `// TODO(D-<n>)` or `// TODO(T-<id>)` in code must match a debt or task entry; bare TODOs fail review.
+- Log it in `docs/TECH_DEBT.md` (tracked in git, owned by the engineering manager; lead decision 2026-09-24) in its "Debt" table (id `D-<n>`, file:line, what, why accepted, risk, fix size) the moment it is accepted in review. A `// TODO(D-<n>)` or `// TODO(T-<id>)` in code must match a debt or task entry; bare TODOs fail review.
 - Debt that affects players or other departments goes to the lead as a follow-up line for `docs/TASKS.md`.
 - Each objective's plan reserves time for the top debt item that touches the same files. Debt older than two objectives is raised with the lead.
 
