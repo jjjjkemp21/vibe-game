@@ -66,7 +66,7 @@ Every script writes `Saved/AgentLogs/status/<script>.json` (state, message, log 
 - `janitor`: disk housekeeping, deletes only through `tools/cleanup.ps1`. Throwaway experiment renders are named `exp_*` under `Saved/AgentLogs/previews/` (cleaned automatically).
 - Levels: `<role>-<junior|mid|senior>-<effort>`. Junior/senior files are generated from the role's mid file by `tools/gen-agents.ps1` (edit the mid file). A junior that finds the task bigger than briefed stops and reports back.
 - Lanes (parallel C++): worktrees `C:\GameDev\VibeGame-lanes\<lane>` on branch `lane/<lane>`, each with its own build and headless tests. Lanes change only text (C++, CSV/JSON data sources, tests, docs they own), never `.uasset`/`.umap`. Builds queue safely (`-WaitMutex`). The main checkout `C:\GameDev\VibeGame` is the editor lane.
-- Work log: before starting, grep `docs/TASKS.md` for "In progress" to see what others are doing, and stay off their files.
+- Work log: task status lives on the board (`python C:/GameDev/VibeGame/tools/board.py ls`; spec docs/tools/board.md). Before starting, `board.py conflicts` / `ls --status doing` show what others are doing: stay off their files.
 
 ## Working efficiently (every agent; Jimmy asked to keep token use down)
 - CLAUDE.md is already in your context: don't Read it again. Start from your brief's pointers and `docs/CODEMAP.md` (which system lives where); don't explore broadly.
