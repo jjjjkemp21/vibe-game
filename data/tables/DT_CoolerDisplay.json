@@ -2,24 +2,24 @@
 	{
 		"Name": "Starter",
 		"Slots": [
-			{ "Location": { "X": -7.5, "Y": 2.5, "Z": 0.0 }, "Rotation": { "Pitch": 0.0, "Yaw": -85.0, "Roll": 90.0 } },
-			{ "Location": { "X": -5.5, "Y": 2.0, "Z": 6.28 }, "Rotation": { "Pitch": 0.0, "Yaw": 55.0, "Roll": -90.0 } },
-			{ "Location": { "X": -6.5, "Y": -1.0, "Z": 12.35 }, "Rotation": { "Pitch": 0.0, "Yaw": -40.0, "Roll": 90.0 } },
-			{ "Location": { "X": -10.0, "Y": -2.5, "Z": 18.72 }, "Rotation": { "Pitch": 0.0, "Yaw": 80.0, "Roll": -90.0 } }
+			{ "Location": { "X": -8.5, "Y": 2.5, "Z": 0.0 }, "Rotation": { "Pitch": 0.0, "Yaw": -85.0, "Roll": 90.0 } },
+			{ "Location": { "X": -7.0, "Y": 1.5, "Z": 6.4 }, "Rotation": { "Pitch": 0.0, "Yaw": 60.0, "Roll": -90.0 } },
+			{ "Location": { "X": -6.0, "Y": -1.0, "Z": 12.44 }, "Rotation": { "Pitch": 0.0, "Yaw": -40.0, "Roll": 90.0 } },
+			{ "Location": { "X": -9.5, "Y": -2.5, "Z": 18.75 }, "Rotation": { "Pitch": 0.0, "Yaw": 85.0, "Roll": -90.0 } }
 		],
 		"FishPose": "/Game/Art/Fish/A_Fish_Curled.A_Fish_Curled",
 		"PoseTime": 0.0,
 		"MaxFishScale": 1.0,
 		"LieOffsetCm": 4.25,
-		"DevComment": "T-030: the fish shown inside the OPEN starter cooler, curled (A_Fish_Curled) and stacked, bottom of the pile first. Slot table from art/export/Fish/SK_Fish.anim.md 'Cooler display' (art/recipes/anim_fish_cooler.py slots_ue, 2026-09-23): X, Y, bed Z relative to the Contents socket, rotation (0, Yaw, Roll); T-030g turned the whole pile 180 deg about the socket's Z (X, Y negated, Yaw + 180: the liner is symmetric, so every fit check still holds) so the fish lie along the BACK wall, the part of the floor a standing player still sees over the front wall from up to about 1.5 m (at the front a lone fish hid from about 1 m); a fish goes to Z + LieOffsetCm x its shown scale (4.24 Bonefish / 4.26 CoralSnapper). Made for the cooler on the floor, front (+X, latch) toward a standing player 0.6 m away; scale capped at 1.0 so 4 fish fit under the lid."
+		"DevComment": "T-030: the fish shown inside the OPEN starter cooler, curled (A_Fish_Curled) and stacked, bottom of the pile first. Slot table from art/export/Fish/SK_Fish.anim.md 'Cooler display' (art/recipes/anim_fish_cooler.py slots_ue, 2026-09-23): X, Y, bed Z relative to the Contents socket, rotation (0, Yaw, Roll); the pile lies along the BACK wall (T-030g, re-solved 2026-09-24: the searched layout turned 180 deg, then polished on the exact checks so every eye and tail shows in the shop view in 64/64 fills), the part of the floor a standing player still sees over the front wall from up to about 1.5 m (at the front a lone fish hid from about 1 m); a fish goes to Z + LieOffsetCm x its shown scale (4.24 Bonefish / 4.26 CoralSnapper). Made for the cooler on the floor, front (+X, latch) toward a standing player 0.6 m away; scale capped at 1.0 so 4 fish fit under the lid."
 	},
 	{
 		"Name": "Large",
 		"Slots": [
-			{ "Location": { "X": -7.5, "Y": 2.5, "Z": 0.0 }, "Rotation": { "Pitch": 0.0, "Yaw": -85.0, "Roll": 90.0 } },
-			{ "Location": { "X": -5.5, "Y": 2.0, "Z": 6.28 }, "Rotation": { "Pitch": 0.0, "Yaw": 55.0, "Roll": -90.0 } },
-			{ "Location": { "X": -6.5, "Y": -1.0, "Z": 12.35 }, "Rotation": { "Pitch": 0.0, "Yaw": -40.0, "Roll": 90.0 } },
-			{ "Location": { "X": -10.0, "Y": -2.5, "Z": 18.72 }, "Rotation": { "Pitch": 0.0, "Yaw": 80.0, "Roll": -90.0 } }
+			{ "Location": { "X": -8.5, "Y": 2.5, "Z": 0.0 }, "Rotation": { "Pitch": 0.0, "Yaw": -85.0, "Roll": 90.0 } },
+			{ "Location": { "X": -7.0, "Y": 1.5, "Z": 6.4 }, "Rotation": { "Pitch": 0.0, "Yaw": 60.0, "Roll": -90.0 } },
+			{ "Location": { "X": -6.0, "Y": -1.0, "Z": 12.44 }, "Rotation": { "Pitch": 0.0, "Yaw": -40.0, "Roll": 90.0 } },
+			{ "Location": { "X": -9.5, "Y": -2.5, "Z": 18.75 }, "Rotation": { "Pitch": 0.0, "Yaw": 85.0, "Roll": -90.0 } }
 		],
 		"FishPose": "/Game/Art/Fish/A_Fish_Curled.A_Fish_Curled",
 		"PoseTime": 0.0,

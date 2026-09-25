@@ -31,9 +31,19 @@ HOW THE SLOTS ARE MADE (deterministic)
   cap S_CAP = DISPLAY_CAP = 1.0; at it every fish shows at least VIS_FEASIBLE of its footprint from above, and from
   the shop view every eye and tail tip is visible (view_check, all mixes x 1-4 fish). Slots are designed with every fish at S_CAP; a smaller fish sits in the
   same place on the same bed (it drops onto the bed below it).
+- The pile lies along the BACK wall (T-030g follow-up, 2026-09-24): the front wall hid a lone fish lying at the
+  front from a standing player farther than about 1 m. The search runs in the front frame (as before), its layout is
+  turned 180 deg about the Contents Z axis (PILE_TURN_DEG; the liner is symmetric, so the fit holds) and then
+  polished (polish(): a short seeded annealing of small yaw / X / Y moves scored by the EXACT checks below), because
+  the plain turn showed every eye and tail in only 48 of 64 shop fills. The polish also keeps the game's sight-line
+  rule (CPP_*, the C++ test) and the lone fish at the back (X < 0). Far views from 1.5 / 2.0 m (FAR_CAMS, fills 1-2)
+  are reported and rendered.
+- The result compares slots_ue with the Starter/Large rows of data/tables/DT_CoolerDisplay.json ("matches_dt");
+  FISH_COOLER_WRITE_DT=1 writes them (Slots only) before the compare.
 - Exact checks (BVH triangle overlap, every vertex vs the liner and the lid) for all 16 species mixes at scales
   S_CAP, 1.0 and 0.7, plus 32 seeded random mixes where every fish has its own scale in 0.7 .. S_CAP, all with the
-  game's rule for the height (below).
+  game's rule for the height (below); every vertex at least POLISH_LINER_MM inside the analytic liner and no triangle
+  through the real (28-point, faceted) liner wall mesh.
 
 GAME RULE (for the engineer; also in SK_Fish.anim.md)
   shown scale      s = min((Weight / ReferenceWeight)^(1/3), S_CAP)
@@ -91,7 +101,35 @@ CREST_WEIGHT = 0.0005           # per 5 mm cell where two fish's crests (dorsal 
 # every eye and tail must be visible (designer must-fix 2). "countertop": the cooler lifted onto a 0.9 m counter,
 # 0.55 m ahead: the 28 cm deep liner's front wall hides everything low in the front half from this angle; 4 flat
 # fish can't all show their eyes and tails there (see SK_Fish.anim.md), so it only counts as a tie-breaker.
+# The search (design()) runs in the FRONT frame (the layout it finds is then turned to the back wall, see PILE_TURN_DEG),
+# so these two cameras are the search's; the shop view is checked again, exactly, after the turn.
 CAMS = [("shop", (0.60, 0.0, 1.65), 1.0), ("countertop", (0.55, 0.0, 0.75), 0.2)]
+# "far150" / "far200" (T-030g follow-up, report + renders only): the same standing eye 1.5 m / 2.0 m from the cooler's
+# center, fills 1 and 2. Per fish: eye/tail hidden count and the share of its upper surface in view (view_share).
+FAR_CAMS = [("far150", (1.50, 0.0, 1.65)), ("far200", (2.00, 0.0, 1.65))]
+# The pile lies along the BACK wall (-X): the front wall hid a lone fish lying at the front from a standing player
+# farther than about 1 m. The searched layout is turned 180 deg about the Contents Z axis (X, Y negated, yaw + 180;
+# the liner is symmetric, so the fit holds), then polished (polish(), below) against the exact shop view.
+PILE_TURN_DEG = 180.0
+# The polish: a short deterministic annealing over small moves of the turned slots (yaw +-5..30 deg, X/Y +-1..5 cells),
+# scored with the EXACT checks (real meshes, ray casts): every eye and tail hidden from the shop view (all 16 mixes, 4
+# fish), the exact fit (the same mixes and scales as the final checks) with every vertex at least POLISH_LINER_MM inside
+# the analytic liner (the 28-point liner mesh lies up to ~0.3 mm inside that curve: wall_check below measures the mesh)
+# and POLISH_LID_MM under the closed lid, and the game's sight-line rule (CPP_*); a tiny tie-breaker keeps it close to
+# the turned layout. A plain turn of the front-camera layout showed only 48 of 64 shop fills (slot 0's eye under the
+# snapper in slot 2 or 3); moves that reach 64/64 closer than 4 mm to the wall poke ~1 mm through the liner mesh.
+# Seeds 400 and 600 both reach 64/64 (400, 500, 600 tried; 500 stays at 56/64); 600 moves the turned layout least
+# (10 steps; both restarts agree) and keeps slot 3 at the back wall.
+POLISH_SEED, POLISH_RESTARTS, POLISH_ITERS = 600, 2, 1500
+POLISH_LINER_MM, POLISH_LID_MM = -3.8, 4.0     # the polish's targets (3 per mm short of the liner one)
+# Hard fit limits of the final slots (every checked mix and scale): every vertex at least FIT_LINER_MM inside the
+# analytic liner and WALL_MIN_MM inside the real liner wall mesh (no triangle through it), LID_MARGIN_M under the lid.
+# 64/64 shop fills at the back wall needs slot 0 about 1 mm closer to the back wall than the search's 4 mm margin.
+FIT_LINER_MM, WALL_MIN_MM = -2.5, 2.0
+# The game's own check (Source/VibeGame/Tests/Catch/CoolerLidFocusTest.cpp, Project.Catch.Display.EveryFishVisible),
+# Contents space, cm: the top of the top fish of a pile of slot+1 (origin Z + LieOffsetCm x s) clears the sight line
+# over the front rim (RimX, RimZ) by 1 cm from an eye CPP_EYE_Z up at up to CPP_VIEW_D, for the smallest shown fish.
+CPP_RIM_X, CPP_RIM_Z, CPP_EYE_Z, CPP_VIEW_D, CPP_LIE_CM = 22.0, 30.0, 160.0, 150.0, 4.25
 RAY_TOP_Z = 0.345               # above this nothing in or of the cooler can block a view ray
 VIS_FEASIBLE = 0.12             # a layout where any fish shows less than this from straight above is rejected
 LIMIT_PROBE = (1.1, 1.05, 1.0)   # the fit limit (visibility ignored); 1.15+ is far off (stack 34-36 cm > lid 33)
@@ -99,10 +137,19 @@ DISPLAY_CAP = 1.0               # the slots are designed for fish up to this sca
 YAW_STEP = 5                    # deg
 SEED = 20260923
 RESTARTS, ITERS = 12, 16000     # annealing effort per design
+if os.environ.get("FISH_COOLER_EFFORT"):   # experiments only ("restarts,iters"); the committed slots use the above
+    RESTARTS, ITERS = (int(v) for v in os.environ["FISH_COOLER_EFFORT"].split(","))
 SHOW = [("Bonefish", 1.0), ("CoralSnapper", 1.0), ("CoralSnapper", 1.0), ("Bonefish", 1.3)]
 FILL_ORDERS = [("Bonefish", "CoralSnapper", "Bonefish", "CoralSnapper"),
                ("CoralSnapper", "Bonefish", "CoralSnapper", "Bonefish")]
+DATA = HERE.parent.parent / "data" / "tables"
+DT_COOLER = DATA / "DT_CoolerDisplay.json"
+DT_ROWS = ("Starter", "Large")  # rows that use these slots (Large = placeholder on the starter mesh)
 SLOT_TINT = ["#E8C46A", "#3FA34D", "#3ED1C4", "#C0392B"]
+if os.environ.get("FISH_COOLER_SET"):      # experiments only: override constants, e.g. '{"SEED": 7}'; the committed
+    import ast                             # slots always come from the values above
+    globals().update(ast.literal_eval(os.environ["FISH_COOLER_SET"]))
+    PREVIEW = pb.PREVIEW_ROOT / ("exp_" + os.environ.get("FISH_COOLER_TAG", "cooler") + ".png")
 
 
 def log(msg):
@@ -261,6 +308,24 @@ class Variant:
         self.targets = [(cf.targets[side] @ R.T) * s for cf in curls]          # per species: eye, tail tip a, b
         chord = sum(((cf.nose - cf.tail_mid) @ R.T for cf in curls))           # tail -> nose, both species
         self.chord_deg = math.degrees(math.atan2(chord[1], chord[0]))
+
+
+def cpp_min_scale():
+    """The smallest shown scale the C++ test checks: a quarter of a species' lightest weight, weight-scaled like the
+    fight fish ((W / ReferenceWeight)^(1/3), clamped to DT_FishVisual Default MinScale..MaxScale)."""
+    species = json.loads((DATA / "DT_FishSpecies.json").read_text(encoding="utf-8"))
+    vis = next(r for r in json.loads((DATA / "DT_FishVisual.json").read_text(encoding="utf-8")) if r["Name"] == "Default")
+    return min(max(vis["MinScale"], (0.25 * r["WeightMin"] / r["ReferenceWeight"]) ** (1.0 / 3.0)) for r in species)
+
+
+S_MIN = cpp_min_scale()
+
+
+def cpp_sight_deficit_cm(x_cm, bed_cm):
+    """How far (cm) the smallest fish in a slot at Unreal X x_cm on bed bed_cm lies under the C++ test's line of sight
+    (+ its 1 cm) over the front rim from CPP_VIEW_D; <= 0 = seen. The line is highest at the farthest distance."""
+    line = CPP_RIM_Z - (CPP_RIM_X - x_cm) * (CPP_EYE_Z - CPP_RIM_Z) / (CPP_VIEW_D - CPP_RIM_X)
+    return line + 1.0 - (bed_cm + 2.0 * CPP_LIE_CM * S_MIN)
 
 
 def liner_excess(P):
@@ -431,7 +496,7 @@ def design(layout, bases, curls, s, rng_seed):
     reads = min(r[3] for r in rows) >= VIS_FEASIBLE and (layout.view_weight == 0.0
                                                          or sum(r[4][CAMS[0][0]] for r in rows) == 0)
     angles = [variants[st[0]].chord_deg for st in state]
-    return {"scale": s, "cost": cost, "state": state, "rows": rows, "fits": fits, "reads": reads,
+    return {"scale": s, "cost": cost, "state": state, "rows": rows, "fits": fits, "reads": reads, "variants": variants,
             "stack_top_m": max(r[1] for r in rows), "visible": [round(r[3], 2) for r in rows], "labels": labels,
             "hidden_targets": [r[4] if len(r) > 4 else None for r in rows],
             "chord_deg": [round(a_, 1) for a_ in angles], "crest_overlap_cells": crest}
@@ -451,6 +516,53 @@ def slots_from(des, curls):
                     "visible_from_above": round(vis, 2)})
     for sl, lab in zip(out, des["labels"]):
         sl["label_xy"] = lab
+    return out
+
+
+def _num(v):
+    return ("%.2f" % v).rstrip("0").rstrip(".") if abs(v - round(v)) > 1e-9 else "%.1f" % v
+
+
+def dt_slot_line(t):
+    """One slot of DT_CoolerDisplay.json, in the file's one-line style (Location Z = BedZ)."""
+    return ('{ "Location": { "X": %s, "Y": %s, "Z": %s }, "Rotation": { "Pitch": %s, "Yaw": %s, "Roll": %s } }'
+            % tuple(_num(v) for v in (t["X"], t["Y"], t["BedZ"], t["Pitch"], t["Yaw"], t["Roll"])))
+
+
+def write_dt(table):
+    """Replace the Slots of the DT_ROWS rows in DT_CoolerDisplay.json with slots_ue (text edit: the rest of the file,
+    its formatting and the other fields stay as they are)."""
+    text = DT_COOLER.read_text(encoding="utf-8")
+    body = ",\n".join("\t\t\t" + dt_slot_line(t) for t in table)
+    for name in DT_ROWS:
+        at = text.index('"Name": "%s"' % name)
+        a_ = text.index('"Slots": [', at) + len('"Slots": [')
+        b_ = text.index("\t\t],", a_)
+        text = text[:a_] + "\n" + body + "\n" + text[b_:]
+    json.loads(text)                                                   # still valid JSON
+    DT_COOLER.write_text(text, encoding="utf-8", newline="")
+    log("wrote the slots of %s to %s" % (", ".join(DT_ROWS), DT_COOLER))
+
+
+def compare_dt(table):
+    """slots_ue vs the DT_ROWS rows of DT_CoolerDisplay.json: the largest difference (cm / deg); ok = equal to the
+    rounding slots_ue writes."""
+    rows = json.loads(DT_COOLER.read_text(encoding="utf-8"))
+
+    def ang(a, b):
+        return abs((a - b + 180.0) % 360.0 - 180.0)
+    out = {"ok": True}
+    for name in DT_ROWS:
+        dt = next(r for r in rows if r["Name"] == name)["Slots"]
+        if len(dt) != len(table):
+            out.update({"ok": False, name: "slot count %d vs %d" % (len(dt), len(table))})
+            continue
+        dl = max(max(abs(d["Location"]["X"] - t["X"]), abs(d["Location"]["Y"] - t["Y"]),
+                     abs(d["Location"]["Z"] - t["BedZ"])) for d, t in zip(dt, table))
+        da = max(max(ang(d["Rotation"]["Pitch"], t["Pitch"]), ang(d["Rotation"]["Yaw"], t["Yaw"]),
+                     ang(d["Rotation"]["Roll"], t["Roll"])) for d, t in zip(dt, table))
+        out[name] = {"max_loc_diff_cm": round(dl, 4), "max_rot_diff_deg": round(da, 4)}
+        out["ok"] = out["ok"] and dl <= 0.001 and da <= 0.001
     return out
 
 
@@ -508,6 +620,191 @@ def view_check(slots, curls_by, species, scales, body_tree, cam):
             seen.append(ok)
         out.append(int(not seen[0]) + int(not (seen[1] or seen[2])))
     return out
+
+
+def view_share(slots, curls_by, species, scales, body_tree, cam):
+    """One fill: per fish, the share of its upward-facing vertices (normal z > 0.3) that `cam` sees (ray to the
+    camera clear of the cooler body and every fish, its own body included)."""
+    trees, ups = [], []
+    for slot, sp, s in zip(slots, species, scales):
+        cf = curls_by[sp]
+        M = np.array(fish_matrix(slot, cf, s))
+        P = cf.co @ M[:3, :3].T + M[:3, 3]
+        trees.append(BVHTree.FromPolygons([Vector(p) for p in P], cf.polys))
+        nz = np.array([v.normal[:] for v in cf.mesh.vertices]) @ M[:3, :3].T
+        nz = nz[:, 2] / np.maximum(np.linalg.norm(nz, axis=1), 1e-9)
+        ups.append(P[nz > 0.3])
+    C = Vector(cam)
+    out = []
+    for k, U in enumerate(ups):
+        n = 0
+        for t in U:
+            t = Vector(t)
+            d = t - C
+            dist = d.length
+            d.normalize()
+            ok = True
+            for j, tree in [(-1, body_tree)] + list(enumerate(trees)):
+                loc, _n, _i, _hd = tree.ray_cast(C, d, dist + 0.01)
+                if loc is not None and not (j == k and (loc - t).length < 0.004):
+                    if (loc - C).length < dist - 0.004:
+                        ok = False
+                        break
+            n += int(ok)
+        out.append(n / max(1, len(U)))
+    return out
+
+
+def exact_fit(slots, curls_by, names, s_cap, lid_z):
+    """The exact fit checks: all 16 species mixes at S_CAP, 1.0 and 0.7, and 32 seeded random mixes where every fish
+    has its own scale in 0.7 .. S_CAP. Returns (worst over all, the checks)."""
+    checks = []
+    for m in range(16):
+        mix = [names[(m >> i) & 1] for i in range(4)]
+        for s in sorted({s_cap, 1.0, 0.7}):
+            r = exact_check(slots, curls_by, mix, [s] * 4, lid_z)
+            r.update({"mix": "".join(sp[0] for sp in mix), "scale": s})
+            checks.append(r)
+    rng = random.Random(SEED)                   # mixed sizes: every fish its own scale in 0.7 .. S_CAP
+    for _ in range(32):
+        mix = [rng.choice(names) for _i in range(4)]
+        sc = [round(rng.uniform(0.7, s_cap), 3) for _i in range(4)]
+        r = exact_check(slots, curls_by, mix, sc, lid_z)
+        r.update({"mix": "".join(sp[0] for sp in mix), "scale": sc})
+        checks.append(r)
+    worst = {"tri_overlaps": max(c["tri_overlaps"] for c in checks),
+             "liner_excess_mm": max(c["liner_excess_mm"] for c in checks),
+             "lid_gap_mm_min": min(c["lid_gap_mm"] for c in checks),
+             "below_floor_mm": max(c["below_floor_mm"] for c in checks)}
+    return worst, checks
+
+
+def wall_polys(parts):
+    """The liner WALL faces of the real cooler body mesh (cooler space): steep faces inside the rim, above the floor."""
+    me = parts["body"].data
+    V = np.array([v.co[:] for v in me.vertices])
+    out = []
+    for q in me.polygons:
+        P = V[list(q.vertices)]
+        n = np.array(q.normal[:])
+        c = P.mean(axis=0)
+        hx, hy = pcs._liner_half_np(np.array([c[2]]))
+        if (abs(n[2]) < 0.8 and abs(c[0]) < hx[0] + 0.004 and abs(c[1]) < hy[0] + 0.004
+                and cooler.FLOOR_Z + 0.001 < c[2] < cooler.Z_TOP + 0.001):
+            out.append(tuple(q.vertices))
+    return BVHTree.FromPolygons([Vector(v) for v in V], out)
+
+
+def wall_check(slots, curls_by, names, s, wall_tree):
+    """Against the real (faceted) liner wall mesh, every species mix at scale s: triangle overlaps and the least signed
+    distance (mm) of a fish vertex inside the wall (< 0 = through it)."""
+    least, overlaps = 1e9, 0
+    for m in range(16):
+        mix = [names[(m >> i) & 1] for i in range(4)]
+        for slot, sp in zip(slots, mix):
+            cf = curls_by[sp]
+            M = np.array(fish_matrix(slot, cf, s))
+            P = cf.co @ M[:3, :3].T + M[:3, 3]
+            overlaps += len(BVHTree.FromPolygons([Vector(p) for p in P], cf.polys).overlap(wall_tree))
+            for p in P:
+                loc, n, _i, d = wall_tree.find_nearest(Vector(p), 0.02)
+                if loc is None:
+                    continue
+                n = np.array(n[:])
+                if n @ np.array([-loc.x, -loc.y, 0.0]) < 0.0:          # the normal pointing into the cooler
+                    n = -n
+                least = min(least, float((np.array(p) - np.array(loc[:])) @ n))
+    return {"wall_overlaps": overlaps, "wall_min_mm": round(least * 1000.0, 2)}
+
+
+def turn_state(state):
+    """The searched slots turned PILE_TURN_DEG (180) about the Contents Z axis: cells negated, yaw + 180."""
+    assert PILE_TURN_DEG == 180.0
+    return [((side, (yaw + 180) % 360), -pi, -pj) for (side, yaw), pi, pj in state]
+
+
+def state_slots(layout, variants, state, s, curls):
+    """Slots (as slots_from) for a state [((side, yaw), pi, pj)] at scale s: the height-field drop, top-view share and
+    labels, readability terms off."""
+    saved = (layout.vis_weight, layout.view_weight, layout.rule_weight)
+    layout.vis_weight, layout.view_weight, layout.rule_weight = 0.0, 0.0, 0.0
+    _c, rows, owner = layout.drop(state, variants, want_owner=True)
+    layout.vis_weight, layout.view_weight, layout.rule_weight = saved
+    labels = []
+    for k in range(len(state)):
+        ii, jj = np.nonzero(owner == k)
+        labels.append((float((ii - layout.NI).mean() * CELL), float((jj - layout.NJ).mean() * CELL))
+                      if len(ii) else (0.0, 0.0))
+    return slots_from({"state": state, "rows": rows, "labels": labels, "scale": s}, curls)
+
+
+def rule_report(layout, variants, state):
+    """The rotation rule (designer must-fix 3) for a state: each slot's nose-to-tail chord (deg, cooler space), the
+    least angle between the chord lines of same-side slots (0/2, 1/3; >= ROT_APART_MIN) and the crest overlap cells."""
+    chords = [variants[key].chord_deg for key, _i, _j in state]
+    apart = min(abs((chords[a_] - chords[b_] + 90.0) % 180.0 - 90.0)
+                for a_ in range(len(state)) for b_ in range(a_ + 2, len(state), 2))
+    count = np.zeros((2 * layout.NI + 1, 2 * layout.NJ + 1), dtype=np.int8)
+    for key, pi, pj in state:
+        v = variants[key]
+        count[v.ci + pi + layout.NI, v.cj + pj + layout.NJ] += 1
+    return {"chord_deg": [round(c, 1) for c in chords], "same_side_apart_min_deg": round(apart, 1),
+            "crest_overlap_cells": int((count > 1).sum())}
+
+
+def polish(layout, variants, bases, state0, s, curls, curls_by, lid_z, body_tree):
+    """Anneal the turned slots on the exact checks (see POLISH_*). Deterministic (POLISH_SEED). Returns the best
+    state and a record of its score."""
+    names = [c.species for c in curls]
+    cam = CAMS[0][1]
+
+    def score(state):
+        for key, _i, _j in state:
+            if key not in variants:
+                variants[key] = Variant(bases[key[0]], curls, key[0], key[1], s)
+        sl = state_slots(layout, variants, state, s, curls)
+        hidden = sum(sum(view_check(sl, curls_by, [names[(m >> i) & 1] for i in range(4)], [s] * 4, body_tree, cam))
+                     for m in range(16))                  # 4 fish = every occluder: fewer fish hide nothing more
+        worst, _checks = exact_fit(sl, curls_by, names, s, lid_z)
+        cpp = [cpp_sight_deficit_cm(t["x"] * 100.0, (t["bed_z"] - cooler.FLOOR_Z) * 100.0) for t in sl]
+        dist = sum(abs((a[0][1] - b[0][1] + 180) % 360 - 180) / YAW_STEP + abs(a[1] - b[1]) + abs(a[2] - b[2])
+                   for a, b in zip(state, state0))
+        c = (hidden + 5.0 * worst["tri_overlaps"] + 3.0 * max(0.0, worst["liner_excess_mm"] - POLISH_LINER_MM)
+             + max(0.0, POLISH_LID_MM - worst["lid_gap_mm_min"]) + max(0.0, worst["below_floor_mm"] - 0.5)
+             + sum(max(0.0, d) for d in cpp) + (10.0 if sl[0]["x"] >= 0.0 else 0.0) + 0.002 * dist)
+        return c, {"shop_hidden_4_fish": hidden, "exact_worst": worst, "cpp_sight_deficit_cm": [round(d, 2) for d in cpp],
+                   "moved_steps": dist}
+
+    c0, rec0 = score(state0)
+    best = (c0, list(state0), rec0)
+    log("polish start (the turned layout): cost %.3f %s" % (c0, rec0))
+    for restart in range(POLISH_RESTARTS):
+        rng = random.Random(POLISH_SEED + restart)
+        state, cost = list(state0), c0
+        for it in range(POLISH_ITERS):
+            t = 1.5 * (1.0 - it / POLISH_ITERS) + 1e-3
+            new = list(state)
+            k = rng.randrange(len(new))
+            (side, yaw), pi, pj = new[k]
+            r = rng.random()
+            if r < 0.3:
+                yaw = (yaw + rng.choice((-10, -5, 5, 10))) % 360
+            elif r < 0.4:
+                yaw = (yaw + rng.choice((-30, -20, 20, 30))) % 360
+            elif r < 0.85:
+                pi += rng.randint(-2, 2)
+                pj += rng.randint(-2, 2)
+            else:
+                pi += rng.randint(-5, 5)
+                pj += rng.randint(-5, 5)
+            new[k] = ((side, yaw), pi, pj)
+            c, rec = score(new)
+            if c < cost or rng.random() < math.exp(-(c - cost) / t):
+                state, cost = new, c
+                if c < best[0]:
+                    best = (c, list(new), rec)
+        log("polish restart %d: best cost %.3f %s" % (restart, best[0], best[2]))
+    return best[1], dict(best[2], cost=round(best[0], 4), start=rec0)
 
 
 def ue_rotator(M3):
@@ -597,7 +894,7 @@ def render_all(slots, curls_by, s_cap):
         return M @ Vector((0.0, 0.0, 0.17))
 
     def cam_world(M, name):
-        return tuple(M @ Vector(next(c for n, c, _w in CAMS if n == name)))
+        return tuple(M @ Vector(next(c[1] for c in CAMS + FAR_CAMS if c[0] == name)))
 
     # 1. the shop view: the cooler put down on the floor at the counter, front toward the player, who stands with the
     #    eye 1.65 m up and 0.6 m from its center, looking down into it (the game's FP camera, 90 deg, 1920x1080)
@@ -643,6 +940,22 @@ def render_all(slots, curls_by, s_cap):
         fills.append(row)
     fill_sheet = fpp.zoom_sheet(PREVIEW.with_name(PREVIEW.stem.replace("_cooler", "") + "_cooler_fills.png"), fills,
                                 crop=600, scale=1)
+    # 5. the far views: 1 and 2 fish (both orders) from 1.5 m (top row) and 2.0 m (bottom row), the same standing eye
+    #    and game camera; 360 px crops of game pixels, shown 2x (nearest) so the eyes can be judged
+    far_rows = []
+    for cam_name in ("far150", "far200"):
+        row = []
+        for order in FILL_ORDERS:
+            for n in (1, 2):
+                mix = [(sp, 1.0) for sp in order[:n]]
+                c = stage(M_shop, mix)
+                name = "_%s_%s_%d" % (cam_name, "".join(sp[0] for sp in order[:n]), n)
+                row.append((pcs.render_eevee(PREVIEW.parent / "anim_fish_cooler_cells" / (PREVIEW.stem + name + ".png"),
+                                             cam_world(M_shop, cam_name), tuple(c), hfov_deg=90.0,
+                                             resolution=(1920, 1080)), (960, 540)))
+        far_rows.append(row)
+    far_sheet = fpp.zoom_sheet(PREVIEW.with_name(PREVIEW.stem.replace("_cooler", "") + "_cooler_far.png"), far_rows,
+                               crop=360, scale=2)
     for o in fish:
         bpy.data.objects.remove(o, do_unlink=True)
     # 4. slot diagram (Workbench, cooler at the origin, screen up = Unreal +X = the cooler's front)
@@ -667,7 +980,7 @@ def render_all(slots, curls_by, s_cap):
     for o in tinted + extra:
         bpy.data.objects.remove(o, do_unlink=True)
     pb.contact_sheet(paths, PREVIEW, cols=2, cell=(960, 540))
-    return paths + [fill_sheet]
+    return paths + [fill_sheet, far_sheet]
 
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -696,6 +1009,7 @@ def main():
     lid_z = closed_lid_underside(parts)
     bme = parts["body"].data
     body_tree = BVHTree.FromPolygons([v.co.copy() for v in bme.vertices], [tuple(q.vertices) for q in bme.polygons])
+    wall_tree = wall_polys(parts)
     for o in list(bpy.data.objects):
         if o.name.startswith(("SM_Cooler", "UCX_SM_Cooler")):
             bpy.data.objects.remove(o, do_unlink=True)
@@ -724,34 +1038,26 @@ def main():
             break
     # 2. the slots: designed at the display cap, stack AND readability (eyes, tails, rotation rule, top view)
     chosen = run(DISPLAY_CAP, True)
-    if not (chosen["fits"] and chosen["reads"]):
+    if not (chosen["fits"] and chosen["reads"]) and os.environ.get("FISH_COOLER_EXPLORE") != "1":
         raise RuntimeError("no good layout at the display cap %.2f: %s" % (DISPLAY_CAP, tried[-1]))
     s_cap = DISPLAY_CAP
-    slots = slots_from(chosen, curls)
-    # exact checks: every species mix at S_CAP, 1.0 and 0.7 (plus the shown mix)
-    checks = []
+    searched = slots_from(chosen, curls)            # the front-frame layout the search found (for the record)
+    # 3. turned to the back wall, then polished on the exact checks (PILE_TURN_DEG, POLISH_*)
+    state, polished = polish(layout, chosen["variants"], bases, turn_state(chosen["state"]), s_cap, curls, curls_by,
+                             lid_z, body_tree)
+    slots = state_slots(layout, chosen["variants"], state, s_cap, curls)
+    # exact checks: every species mix at S_CAP, 1.0 and 0.7, 32 random mixed sizes (plus the shown mix)
     names = [c.species for c in curls]
-    for m in range(16):
-        mix = [names[(m >> i) & 1] for i in range(4)]
-        for s in sorted({s_cap, 1.0, 0.7}):
-            r = exact_check(slots, curls_by, mix, [s] * 4, lid_z)
-            r.update({"mix": "".join(sp[0] for sp in mix), "scale": s})
-            checks.append(r)
-    rng = random.Random(SEED)                   # mixed sizes: every fish its own scale in 0.7 .. S_CAP
-    for _ in range(32):
-        mix = [rng.choice(names) for _i in range(4)]
-        sc = [round(rng.uniform(0.7, s_cap), 3) for _i in range(4)]
-        r = exact_check(slots, curls_by, mix, sc, lid_z)
-        r.update({"mix": "".join(sp[0] for sp in mix), "scale": sc})
-        checks.append(r)
+    worst, checks = exact_fit(slots, curls_by, names, s_cap, lid_z)
     shown = exact_check(slots, curls_by, [sp for sp, _ in SHOW], [min(sc, s_cap) for _, sc in SHOW], lid_z)
     big = exact_check(slots, curls_by, [sp for sp, _ in SHOW], [sc for _, sc in SHOW], lid_z)
-    worst = {"tri_overlaps": max(c["tri_overlaps"] for c in checks),
-             "liner_excess_mm": max(c["liner_excess_mm"] for c in checks),
-             "lid_gap_mm_min": min(c["lid_gap_mm"] for c in checks),
-             "below_floor_mm": max(c["below_floor_mm"] for c in checks)}
-    ok = worst["tri_overlaps"] == 0 and worst["liner_excess_mm"] <= 0.0 and worst["lid_gap_mm_min"] >= 0.0 \
-        and worst["below_floor_mm"] <= 0.5
+    # ... and against the real (faceted) liner wall mesh, at the cap and at 0.7
+    walls = [wall_check(slots, curls_by, names, s, wall_tree) for s in (s_cap, 0.7)]
+    wall = {"wall_overlaps": sum(w["wall_overlaps"] for w in walls), "wall_min_mm": min(w["wall_min_mm"] for w in walls)}
+    log("liner wall mesh: %s" % wall)
+    rule = rule_report(layout, chosen["variants"], state)
+    log("rotation rule (polished slots): %s" % rule)
+    ok = worst["tri_overlaps"] == 0 and worst["liner_excess_mm"] <= FIT_LINER_MM         and worst["lid_gap_mm_min"] >= LID_MARGIN_M * 1000.0 and worst["below_floor_mm"] <= 0.5         and wall["wall_overlaps"] == 0 and wall["wall_min_mm"] >= WALL_MIN_MM
     # exact view check (real meshes, ray casts): every mix x every fill count, from each camera
     views = {name: {"hidden_max": 0, "cases": 0, "hidden_cases": []} for name, _c, _w in CAMS}
     for m in range(16):
@@ -768,12 +1074,35 @@ def main():
         v["cases_all_visible"] = v["cases"] - len(v["hidden_cases"])
         log("view %s: %d / %d fills show every eye and tail" % (name, v["cases_all_visible"], v["cases"]))
     ok = ok and not views[CAMS[0][0]]["hidden_cases"]
+    # the far views (report only): fills 1 and 2, every species mix, at the cap and at 0.7: eyes/tails hidden per fish
+    # and the share of each fish's upper surface in view
+    far = {}
+    for name, cam in FAR_CAMS:
+        rec = {"hidden": {}, "share": {}}
+        for mix in (["Bonefish"], ["CoralSnapper"], ["Bonefish", "Bonefish"], ["Bonefish", "CoralSnapper"],
+                    ["CoralSnapper", "Bonefish"], ["CoralSnapper", "CoralSnapper"]):
+            n = len(mix)
+            for s in (s_cap, 0.7):
+                key = "%s@%.1f" % ("".join(sp[0] for sp in mix), s)
+                rec["hidden"][key] = view_check(slots[:n], curls_by, mix, [s] * n, body_tree, cam)
+                rec["share"][key] = [round(x, 3) for x in view_share(slots[:n], curls_by, mix, [s] * n, body_tree, cam)]
+        far[name] = rec
+        log("view %s (fills 1-2): upper surface in view %s; eyes/tails hidden %s" % (name, rec["share"], rec["hidden"]))
+    # the game's own check (C++ Project.Catch.Display.EveryFishVisible): the smallest fish in each slot clears the
+    # line of sight over the front rim from CPP_VIEW_D (deficit <= 0); a lone fish lies at the back (X < 0)
+    cpp_sight = [round(cpp_sight_deficit_cm(sl["x"] * 100.0, (sl["bed_z"] - cooler.FLOOR_Z) * 100.0), 2) for sl in slots]
+    log("C++ sight-line deficit per slot (cm, <= 0 = seen; smallest fish s %.3f): %s" % (S_MIN, cpp_sight))
+    ok = ok and max(cpp_sight) <= 0.0 and slots[0]["x"] < 0.0 and rule["same_side_apart_min_deg"] >= ROT_APART_MIN
     log("exact worst %s ok=%s" % (worst, ok))
     table = slots_ue(slots, s_cap)
     for row in table:
         log("slot %s" % row)
+    if os.environ.get("FISH_COOLER_WRITE_DT") == "1":
+        write_dt(table)
+    matches_dt = compare_dt(table)
+    log("slots_ue vs DT_CoolerDisplay %s: %s" % ("/".join(DT_ROWS), matches_dt))
     fk.preview_setup()
-    paths = render_all(slots, curls_by, s_cap)
+    paths = [] if os.environ.get("FISH_COOLER_NO_RENDER") == "1" else render_all(slots, curls_by, s_cap)
     log("renders done")
     result = {
         "asset": "anim_fish_cooler", "preview": str(PREVIEW), "views": paths,
@@ -781,10 +1110,13 @@ def main():
         "curled_fit": fit, "liner": {"floor_z_m": cooler.FLOOR_Z, "lid_underside_z_m": round(lid_z, 4),
                                      "margin_mm": MARGIN_M * 1000.0, "lid_margin_mm": LID_MARGIN_M * 1000.0},
         "scale_search": tried, "fit_limit_scale": fit_limit, "display_cap_scale": s_cap,
-        "slots_ue": table, "slots_blender": slots,
+        "slots_ue": table, "slots_blender": slots, "matches_dt": matches_dt,
+        "searched_front_slots_ue": slots_ue(searched, s_cap), "pile_turn_deg": PILE_TURN_DEG, "polish": polished,
+        "cpp_sight_deficit_cm": cpp_sight, "cpp_min_scale": round(S_MIN, 4), "far_views": far,
+        "liner_wall_mesh_check": wall,
         "lie_offset_cm": {c.species: round(c.lie[1] * 100.0, 2) for c in curls},
         "exact_checks_worst": worst, "exact_ok": ok, "view_checks": views,
-        "rule_chord_deg": chosen["chord_deg"], "shown_mix_check": shown, "unclamped_1_3_check": big,
+        "rule_chord_deg_searched": chosen["chord_deg"], "rotation_rule": rule, "shown_mix_check": shown, "unclamped_1_3_check": big,
         "exact_checks": checks,
     }
     if not ok:

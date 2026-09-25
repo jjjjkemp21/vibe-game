@@ -251,27 +251,31 @@ CoralSnapper `Mouth` (27.71, 0, 2.52), `Tail` (-9.34, 0, 10.45). The two species
   PoseTime)` from DT_CoolerDisplay (T-030f); a spawned display fish starts as Curled with no blend;
 - fill order slot 0, 1, 2, 3 (each slot rests on the ones below it). After a fish is taken out, re-seat the rest into
   slots 0..n-1, so there is never a gap under a fish. The slots move with the cooler (carry, lid closed: the top fish
-  stays 7.5 mm under the closed lid).
+  stays 7.2 mm under the closed lid).
 
 | Slot | X | Y | BedZ | Pitch | Yaw | Roll | Side down |
 |---|---|---|---|---|---|---|---|
-| 0 | 7.5 | -2.5 | 0.00 | 0 | 95 | 90 | right |
-| 1 | 5.5 | -2.0 | 6.28 | 0 | -125 | -90 | left |
-| 2 | 6.5 | 1.0 | 12.35 | 0 | 140 | 90 | right |
-| 3 | 10.0 | 2.5 | 18.72 | 0 | -100 | -90 | left |
+| 0 | -8.5 | 2.5 | 0.00 | 0 | -85 | 90 | right |
+| 1 | -7.0 | 1.5 | 6.40 | 0 | 60 | -90 | left |
+| 2 | -6.0 | -1.0 | 12.44 | 0 | -40 | 90 | right |
+| 3 | -9.5 | -2.5 | 18.75 | 0 | 85 | -90 | left |
 
-**In game (T-030g, unreal-engineer):** DT_CoolerDisplay uses this table **turned 180 deg about the Contents Z axis**
-(X and Y negated, Yaw + 180; e.g. slot 0 = (-7.5, 2.5, 0), yaw -85, roll 90), so the pile lies along the back wall. The
-liner is symmetric, so every fit check below still holds; the front wall hid a lone fish lying at the front from a
-standing player farther than about 1 m. A rerun of `anim_fish_cooler.py` should apply the same turn to `slots_ue`.
+This is the table in DT_CoolerDisplay (Starter and Large rows; the recipe writes it with `FISH_COOLER_WRITE_DT=1`
+and checks it on every run, RESULT_JSON `matches_dt`). **The pile lies along the back wall** (T-030g follow-up,
+2026-09-24): the front wall hid a lone fish lying at the front from a standing player farther than about 1 m. The
+recipe searches in the front frame as before, turns that layout 180 deg about the Contents Z axis (the liner is
+symmetric), then polishes it against the exact checks (`polish()`): the plain turn (T-030g's table) showed every eye
+and tail in only 48 of 64 shop fills (slot 0's eye under the snapper in slot 2 or 3). The polish moved slot 0 1 cm
+further back, slot 1 by (-1.5, -0.5) cm and 5 deg, slot 2 by 0.5 cm, slot 3 by 0.5 cm and 5 deg.
 
 Units cm and degrees, Unreal axes, relative to the `Contents` socket (the liner floor center, 5 cm above the cooler's
 pivot; +X = the cooler's front, the latch side). X, Y locate the fish's origin (its body center); the origin sits off
 the middle of a back-arched fish's curl, so the slot X values are not centered. Example: a CoralSnapper at s = 1.0 in
-slot 2 goes to (6.5, 1.0, 12.35 + 4.26) = (6.5, 1.0, 16.61).
+slot 2 goes to (-6.0, -1.0, 12.44 + 4.26) = (-6.0, -1.0, 16.70).
 
 Slots alternate sides (right, left, right, left), and same-side slots lie at least 20 deg apart (nose-to-tail chords
--65 / 95 / -110 / 70 deg). Crests (dorsal fins) of neighbouring fish can still lie over each other in places: that is
+115 / -90 / 70 / -115 deg in Blender cooler space, same-side
+slots 25 deg apart at the least). Crests (dorsal fins) of neighbouring fish can still lie over each other in places: that is
 accepted (lead, 2026-09-23), because the straight snapper crest is what keeps the pile from reading as a jumble.
 
 **How the player sees it (T-030, unreal-engineer).** The slots are designed for the "shop" view: the player **puts the
@@ -279,12 +283,19 @@ cooler down on the floor with its front (latch, +X) toward the player**, then op
 so it opens away from the player), and looks in standing (eye 1.65 m) about 0.6 m from the cooler's center. From
 there every fish's eye and tail tip is visible in all 64 checked mixes (ray-cast check `view_checks.shop`), for 1, 2,
 3 or 4 fish. So when the cooler is set down, yaw it so +X faces the player. Seen from a 0.9 m countertop 0.55 m away
-(`view_checks.countertop`), only 12 of 64 mixes show every eye and tail: the 28 cm deep liner's front wall hides
-everything low in the front half, for any layout of 4 flat fish. Don't put an open cooler on a counter for display.
+(`view_checks.countertop`), no mix shows every eye and tail (12 of 64 with the old front pile): the 28 cm deep
+liner's front wall hides everything low. Don't put an open cooler on a counter for display.
+
+**From farther away (`far_views`, report only; `_far` preview).** Standing 1.5 m from the cooler's center, a lone fish
+shows 29-40 % of its upper side over the front rim (the top fish of a pair 40-56 %). From 2.0 m a lone fish shows only
+a sliver of back and fins (6-10 %; the 30 cm front wall hides everything lower than about 7 cm at the back). Eyes and
+tails are not visible from either distance: they lie low on a flat fish. The game's check
+(`Project.Catch.Display.EveryFishVisible`: the smallest shown fish's top clears the sight line over the front rim out
+to 1.5 m) passes in every slot with 3.6 / 8.5 / 13.5 / 23.4 cm to spare.
 
 Suggested data (so a new cooler needs no code): a `DT_CoolerSlot` table, one row per slot, e.g.
 `Name,CoolerId,SlotIndex,Location,Rotation,MaxDisplayScale` with rows like
-`Starter_2,Starter,2,"(X=6.5,Y=1.0,Z=12.35)","(Pitch=0,Yaw=140,Roll=90)",1.0`
+`Starter_2,Starter,2,"(X=-6.0,Y=-1.0,Z=12.44)","(Pitch=0,Yaw=-40,Roll=90)",1.0`
 (Location Z = BedZ). A cooler shows at most as many fish as it has slot rows. A new cooler model gets its rows by
 rerunning `anim_fish_cooler.py` against its liner (the `Large` placeholder row reuses the starter mesh, so it can only
 show 4 of its 8 fish until it has its own model and slots).
@@ -300,8 +311,10 @@ the same bed; where a small fish lies under a slot, the fish above rests up to (
 to, a gap you could only see from the side, which the cooler wall hides.
 
 **Checked (RESULT_JSON `exact_checks`, 64 cases: all 16 species mixes at s = 1.0 and at 0.7, and 32 random mixes
-with each fish at its own scale in 0.7..1.0):** 0 triangle intersections between fish, every vertex at least 4.0 mm
-inside the liner wall, the top fish at least 7.5 mm under the closed lid, nothing below the floor. Pose metrics
+with each fish at its own scale in 0.7..1.0):** 0 triangle intersections between fish, every vertex at least 3.0 mm
+inside the liner wall (2.65 mm from the real, faceted liner wall mesh, no triangle through it; the old front layout
+had 4.0: 64/64 at the back wall needs slot 0 that much closer to the wall), the top fish at least 7.2 mm under the
+closed lid, nothing below the floor. Pose metrics
 (anim_fish RESULT_JSON): cross-section >= 0.928 of rest (limit 0.80), concave-side fold >= 0.466 (CoralSnapper;
 limit 0.30), pectorals 0.0 mm into the flank.
 
@@ -344,7 +357,7 @@ against Swim_Idle in `SK_Fish_strobe.png`, and the reference implementation is `
 | FBX units / scale | UnitScaleFactor 1.0, node and key scale 1.0 (<= 2.4e-7) | cm, 1.0 |
 | re-import (bones, mesh, clip poses) | <= 0.0001 mm / 0.0 deg | 0.05 mm |
 | additive emulation, both species x 8 clips | <= 0.0002 mm | 0.05 mm |
-| A_Fish_Curled in the starter cooler (anim_fish_cooler RESULT_JSON, 64 mixes) | 0 fish-fish intersections, >= 4.0 mm inside the liner, >= 7.5 mm under the closed lid; shop view: every eye and tail visible in 64/64 | 0, > 0, > 0, 64/64 |
+| A_Fish_Curled in the starter cooler (anim_fish_cooler RESULT_JSON, 64 mixes) | 0 fish-fish intersections, >= 3.0 mm inside the liner (2.65 mm from its mesh), >= 7.2 mm under the closed lid; shop view: every eye and tail visible in 64/64 | 0, > 0, > 0, 64/64 |
 
 ## Compromises (known, measured)
 
