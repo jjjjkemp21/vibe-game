@@ -413,8 +413,14 @@ bool FLureDayClockWorldTest::RunTest(const FString& Parameters)
 	Clock->SetDayCycleRow(Row);
 	TestTrue(FString::Printf(TEXT("the session starts at StartHour 08:00 (%s)"), *Clock->GetClockText()), LureDayClockTest::HourDiff(Clock->GetHour(), 8.0) < LureDayClockTest::GameMinute);
 	TestEqual(TEXT("... in the Day phase"), LureDayClockTest::Name(Clock->GetPhase()), TEXT("Day"));
-	// The shipped row runs the day from the start (StartTimeScale 1, turned on with the sky rig in T-068b).
-	TestNearlyEqual(TEXT("... running (shipped StartTimeScale 1)"), Clock->GetTimeScale(), 1.f);
+	// Until T-068c places the sky rig the shipped row starts frozen (StartTimeScale 0): a fresh world stays at 08:00.
+	TestNearlyEqual(TEXT("... frozen (shipped StartTimeScale 0)"), Clock->GetTimeScale(), 0.f);
+	for (int32 Tick = 0; Tick < 20; ++Tick)
+	{
+		Wrapper.TickTestWorld(0.5f);
+	}
+	TestEqual(TEXT("a fresh world is still at 08:00 Day 10 s later"), Clock->GetClockText(), FString(TEXT("08:00 Day")));
+	TestTrue(TEXT("SetTimeScale 1 (run the day)"), Clock->SetTimeScale(1.f));
 	const float HourBefore = Clock->GetHour();
 	const double ServerBefore = Clock->GetServerTime();
 	for (int32 Tick = 0; Tick < 20; ++Tick)

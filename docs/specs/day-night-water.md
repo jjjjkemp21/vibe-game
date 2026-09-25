@@ -253,7 +253,7 @@ S5 #52; levels and dependencies are set there):
 - Replication: the server replicates only `FLureDayClockState` (reference hour, reference server time, time scale), and
   only when it changes (session start at StartHour, SetHour, SetTimeScale, SetPhase). Every machine computes
   `HourAt(State, AGameStateBase::GetServerWorldTimeSeconds())`. The session starts at the row's `StartTimeScale`
-  (real-time multiplier; the shipped Default row has 1, turned on with the sky rig in T-068b, so the sky and a moving
+  (real-time multiplier; the shipped Default row has 0 until T-068c turns it on (1) together with the sky rig placement, so the sky and a moving
   clock ship together; 0 keeps the clock at StartHour until `Lure.Time.Scale`). Changes are server-only (`BlueprintAuthorityOnly`; a
   client call returns false); there is no RPC.
 - Bite: `ULureFishingComponent::MakeEnvironment` uses `TimeOfDayOverride` if >= 0, else the clock's hour
