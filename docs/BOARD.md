@@ -39,9 +39,8 @@ Counts: todo 9, ready 2, doing 5, review 6, merge 2, done 29, dropped 1.
 
 ## (no milestone)
 
-Counts: todo 28, ready 3, doing 3, review 2, merge 7, done 20, dropped 1.
+Counts: todo 27, ready 3, doing 2, review 2, merge 7, done 22, dropped 1.
 
-- 131 task qa junior todo P0 - - - T-075q QAFishingDataTest FishingRowsMeetDesignLimits pins BobberSca
 - 2 obj lead - todo P1 - - - P-004 Agent work board (board.py) live in the studio
 - 22 q lead - todo P2 - - - Q-03 Should losing a fish cost the bait?
 - 23 q lead - todo P2 - - - Q-04 Freshness loss rates OK?
@@ -74,13 +73,12 @@ Counts: todo 28, ready 3, doing 3, review 2, merge 7, done 20, dropped 1.
 - 81 bug eng junior ready P3 - - - T-070 Playtest driver: a pd.console query can end the PIE session
 - 119 bug eng senior doing P0 eng9 a20f479 - T-075 PT-S1 major: hooked fish never visible in the water during t
 - 120 bug eng senior doing P0 eng4 ad0b612 - T-076 PT-S1 major: own view of the open carried cooler hides the f
-- 130 task qa junior doing P1 eng10 acf0557 - T-062q Update QA.State.CastingLastsTheFlightTime to include NetStat
 - 116 task eng mid review P1 eng10 a32f6f2 - T-062a Cast arms (owner cosmetics): CastCharge01/bCastPose/strain,
 - 117 task eng mid review P1 eng10 a32f6f2 - T-062b Server delays the bobber launch to the montage's whip frame
-- 124 task eng mid merge P0 eng5 a3da579 - T-075a Bobber reads at 18 m (scale ~1.75x) and the bite dips >= 15
 - 102 task eng mid merge P1 eng6 aa06c50 - T-058b Exhausted fish plays the new Tired role (A_Fish_Swim_Tired),
 - 103 task eng mid merge P1 eng6 aa06c50 - T-060a Hooked (dangling) fish plays Hang on every machine in Hook m
 - 104 task eng mid merge P1 eng6 aa06c50 - T-059b DT_FishVisual: escape RoleTailBeats to the S3 clips + design
 - 105 task eng mid merge P1 eng7 aff8ba2 - T-061a FishKick notifies kick the line (hang); verify T-061 wiggle
 - 115 task qa junior merge P1 eng6 ab6d5e6 - T-058q Update 4 fish-visual QA tests to the S3 roles (Tired for exh
+- 130 task qa junior merge P1 eng10 acf0557 - T-062q Update QA.State.CastingLastsTheFlightTime to include NetStat
 - 118 task eng junior merge P2 eng3 a0eb2d3 - T-068e Sky rig day-fill lights: tag Lure.DayFill + optional Lure.Ni
