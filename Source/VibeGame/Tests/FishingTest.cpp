@@ -1386,7 +1386,7 @@ bool FLureFishingBobberTells::RunTest(const FString& Parameters)
 	const uint8 NibblesBefore = Fishing->GetNetState().NibbleId;
 	TestTrue(TEXT("a bite"), World.TickUntil([Fishing]() { return Fishing->GetFishingState() == ELureFishingState::Biting; }, 400));
 	TestEqual(TEXT("2 nibbles came before the bite (data)"), static_cast<int32>(Fishing->GetNetState().NibbleId - NibblesBefore), 2);
-	World.Tick(6);
+	// T-075a: the bite frame itself already shows the pull under (BiteDipAttack 0; the tugs after it are Project.Fishing.T075a.*).
 	TestTrue(FString::Printf(TEXT("biting: pulled under at least the red top (%.1f cm, top at %.1f cm)"), RestZ - Fishing->GetBobberLocation().Z, 4.9f * Profile.BobberScale),
 		RestZ - static_cast<float>(Fishing->GetBobberLocation().Z) >= 0.8f * Profile.BiteDipDepth);
 	TestTrue(TEXT("HUD: bite prompt"), Fishing->GetStatusText().Contains(TEXT("BITE")));
@@ -1568,7 +1568,7 @@ bool FLureFishingDataTables::RunTest(const FString& Parameters)
 		FString Problem;
 		TestTrue(Name + TEXT(" validates: ") + Problem, Row.Validate(Problem));
 		TestTrue(Name + TEXT(": line >= 2 px (designer B-S3)"), Row.LinePixelWidth >= 2.f);
-		TestTrue(Name + TEXT(": bobber readability scale 2-5x (ART_STYLE ~3x)"), Row.BobberScale >= 2.f && Row.BobberScale <= 5.f);
+		TestTrue(Name + TEXT(": bobber readability scale 2-10x (T-075a: 7.9x)"), Row.BobberScale >= 2.f && Row.BobberScale <= 10.f);
 		TestTrue(Name + TEXT(": the bite pulls the whole 4.9 cm top under (B-S4)"), Row.BiteDipDepth >= 4.9f * Row.BobberScale);
 		TestTrue(Name + TEXT(": min cast < max cast"), Row.MinCastDistance < Row.MaxCastDistance);
 		TestTrue(Name + TEXT(": the line reaches past the longest cast"), Row.MaxLineLength > Row.MaxCastDistance);

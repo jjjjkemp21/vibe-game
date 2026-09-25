@@ -212,9 +212,10 @@ struct FLureFishingRow : public FTableRowBase
 
 	// ---- Bobber (cosmetic, every machine) ----
 
-	/** Readability scale of SM_Bobber (ART_STYLE: 4.5x; the mesh is real size). */
+	/** Readability scale of SM_Bobber (the mesh is real size). T-075a: 7.9x (was 4.5x) so the red dome is ~12 px tall at 18 m
+	 *  (designer Sprint 1 must-fix 1). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Bobber", meta=(ClampMin="0.1"))
-	float BobberScale = 4.5f;
+	float BobberScale = 7.9f;
 
 	/** Idle bob on the water, cm (up and down). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Bobber", meta=(ClampMin="0"))
@@ -232,13 +233,24 @@ struct FLureFishingRow : public FTableRowBase
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Bobber", meta=(ClampMin="0"))
 	float NibbleTiltDeg = 65.f;
 
-	/** How far the bite pulls the bobber under, cm (>= its scaled height, so the red top disappears; B-S4). */
+	/** How deep each tug of the bite pulls the bobber under, cm (>= its scaled 4.9 cm top, so the red disappears at the bottom
+	 *  of a tug; B-S4). Also the hooked bobber's dip (the fight scales it by tension). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Bobber", meta=(ClampMin="0"))
-	float BiteDipDepth = 30.f;
+	float BiteDipDepth = 40.f;
 
-	/** Tugs per second while the fish bites. */
+	/** Tugs (ducks) per second while the fish bites. 0 = held under. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Bobber", meta=(ClampMin="0"))
 	float BiteDipRate = 3.f;
+
+	/** T-075a: between tugs the bobber bobs back up to this share of BiteDipDepth (0-1), so the red dome shows again every
+	 *  tug: the bite reads as a ducking, bobbing bobber at distance, not as a dot that vanishes (clear water keeps a sunk
+	 *  bobber visible, so a plain "pulled under" barely moves on screen). 1 = held at BiteDipDepth. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Bobber", meta=(ClampMin="0", ClampMax="1"))
+	float BiteDipMinShare = 0.25f;
+
+	/** T-075a: seconds from the bite to the first full pull under. 0 = at once (the frame the bite starts already shows it). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Bobber", meta=(ClampMin="0"))
+	float BiteDipAttack = 0.f;
 
 	// ---- Line (cosmetic) ----
 
@@ -446,6 +458,11 @@ struct FLureFishingRules
 
 	/** Horizontal cast distance, cm: Min + (Max - Min) * clamp(Charge) ^ ChargeExponent (NaN charge = 0). */
 	static float CastDistance(const FLureFishingRow& Row, float Charge01);
+
+	/** T-075a: the share of BiteDipDepth the bite pulls the bobber under, SecondsSinceBite into the bite:
+	 *  MinShare + (1 - MinShare) * (0.5 + 0.5 cos(2 pi BiteDipRate t)), so 1 (fully under) at the bite, back up to
+	 *  BiteDipMinShare half a tug later, BiteDipRate tugs a second. BiteDipRate 0 = held at 1. */
+	static float BiteDipShare(const FLureFishingRow& Row, float SecondsSinceBite);
 
 	/** Flight seconds: clamp(Distance / CastSpeed, CastFlightTimeMin, CastFlightTimeMax). */
 	static float CastFlightTime(const FLureFishingRow& Row, float Distance);
