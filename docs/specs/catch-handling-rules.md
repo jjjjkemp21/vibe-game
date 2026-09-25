@@ -21,7 +21,8 @@ by the server; clients only ask ("I pressed E on this cooler, expecting Put in")
   what its pawn holds (refreshed from the items' OnReps, set directly on the server). A new item type is a subclass that
   answers: hold kind (one or two hands), arms pose, carry speed multiplier, item name, and its interactions.
 - Presentation is local to each machine: on the holder's own machine a held item is attached to the first-person arms
-  (fish: a hand bone; cooler: the arms component) and drawn as a first-person primitive, so it never clips into walls;
+  (fish: a hand bone; cooler: the arms' `cooler` bone, setting `CarriedCoolerSocket`, with a zero relative transform, or
+  the fixed `CarriedCoolerOffset` on the arms component when the mesh lacks that bone) and drawn as a first-person primitive, so it never clips into walls;
   every other machine attaches it to the holder's body at a third-person offset. Offsets and sockets are settings
   (`ULureCatchSettings`), so the animation-artist's clips are matched without code.
 - **A fish in another player's hand (T-030k):** the owner's first-person pose seen from outside. `ThirdPersonFishOffset`
@@ -77,8 +78,9 @@ by the server; clients only ask ("I pressed E on this cooler, expecting Put in")
   While swimming the hands take nothing (`CanHoldItems`): no grab, pick-up or take-out, and coolers offer nothing.
 - **Drop (F)** with a fish in hand: it is tossed `DropForward` in front along the view at hand height (a wall stops it
   just in front), pulled back toward you if it would land inside a standing cooler (coolers ignore the cast channel),
-  then falls straight down: onto the ground, or into the water by the bobber's water rules
-  (`FLureFishingSpots::ResolveLanding` with no flight of its own; a cast-style flight aimed at the water would hit the
+  then falls straight down from the hand's height (a roof above never catches it, T-066): onto the first ground below,
+  or into the water by the bobber's water rule (no ground above the water surface + `LandTolerance`;
+  `LureFishItemPrivate::FallFromHand`, no flight of its own: a cast-style flight aimed at the water would hit the
   dock under your feet). On land (dock, beach, rock, the sell counter) it lies there on its side, still spoiling, and
   anyone can pick it up. **On water it is released**: it swims off (the item is removed) and the owner sees "Released
   the Bonefish". There is no separate throw-back verb: walk to the water and drop it. **Let go (F on the hook)** drops it

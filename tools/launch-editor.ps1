@@ -1,7 +1,9 @@
 # tools/launch-editor.ps1 - starts the Unreal Editor for this project with Epic's Unreal MCP server,
 # then waits until the server port is listening. Idempotent: if the editor is already running it just waits.
 # Exit 0 = ready (MCP reachable). Exit 2 = still starting (run again to keep waiting). Exit 1/4 = failed.
-param([int]$WaitSeconds = 480)
+# -MaxFps: frame cap for agent work (Jimmy, 2026-09-24: 30 fps while agents use the editor). -MaxFps 0 = uncapped (Jimmy plays).
+# To change it in an editor that is already running: unreal-mcp run_python `unreal.SystemLibrary.execute_console_command(None, 't.MaxFPS 0')`.
+param([int]$WaitSeconds = 480, [int]$MaxFps = 30)
 . (Join-Path $PSScriptRoot '_common.ps1')
 $name = 'launch-editor'
 
@@ -24,7 +26,7 @@ if ((Get-EditorProcesses).Count -eq 0) {
         Write-Status -Name $name -State 'failed' -Message ('Port ' + $port + ' is already used by ' + $owner + '. Run tools/doctor.ps1 to choose a free port, restart Claude Code, then retry.')
         exit 4
     }
-    Start-Process -FilePath $editor -ArgumentList ('"' + $uproject + '" -ModelContextProtocolStartServer -ModelContextProtocolPort=' + $port) | Out-Null
+    Start-Process -FilePath $editor -ArgumentList ('"' + $uproject + '" -ModelContextProtocolStartServer -ModelContextProtocolPort=' + $port + $(if ($MaxFps -gt 0) { ' -ExecCmds="t.MaxFPS ' + $MaxFps + '"' } else { '' })) | Out-Null
     $startedNow = $true
     Write-Status -Name $name -State 'starting' -Message ('Editor started; waiting for the MCP server on ' + $url + '. First start after enabling plugins or new shaders can take 10-40 minutes.') -LogPath $editorLog
 }
