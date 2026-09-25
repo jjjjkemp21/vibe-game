@@ -129,6 +129,10 @@ private:
 	UPROPERTY(Transient)
 	TObjectPtr<UDataTable> VisualTable;
 
+	/** T-048b: DT_FightPattern (ULureFishingSettings FightPatternTable; null = the built-in pattern): the move's swim direction for the body swing. */
+	UPROPERTY(Transient)
+	TObjectPtr<UDataTable> PatternTable;
+
 	bool bSpeciesOverride = false;
 	bool bVisualOverride = false;
 	bool bResolved = false;

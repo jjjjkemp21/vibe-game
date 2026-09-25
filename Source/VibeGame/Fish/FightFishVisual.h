@@ -263,6 +263,19 @@ struct FFightFishView
 	/** The fish's stamina 0..1 (T-059a: the clip rate and alpha follow it). */
 	float Stamina01 = 1.f;
 
+	/**
+	 *  T-048b: the current fight move swims (a DT_FightPattern move that is not a Rest, with Speed > 0, and the fish is not
+	 *  tired): its own swim direction sets the body swing, not the mouth's ground velocity. False: Rest, Sulk, tired, an
+	 *  unknown move or no pattern (the ground-velocity rule).
+	 */
+	bool bMoveSwims = false;
+	/**
+	 *  T-048b: the sideways share of the move's swim, -1..1: + = to the player's right seen from the player (the fight's
+	 *  RunSide Right, with the side the server picked for RandomSide moves), size |Side| / length(Away, Side) of the move.
+	 *  0 = straight away or straight in (Charge), or a sideways share under DT_FishFight SideMinShare.
+	 */
+	float MoveSwimSide = 0.f;
+
 	/** The player (fight center), the end of the line in the water (XY; its Z is the water surface) and the surface height. */
 	FVector PlayerLocation = FVector::ZeroVector;
 	FVector LineEnd = FVector::ZeroVector;
@@ -354,13 +367,17 @@ struct FFightFishVisual
 	static FVector StepMouth(const FFishVisualRow& Row, const FVector& MouthPoint, const FVector& Target, float DeltaTime, float SmoothTime);
 
 	/**
-	 *  T-048, the fighting fish's facing: toward the player from its mouth (the body away from the rod), level. While the mouth
-	 *  moves faster than MinFacingSpeed the body swings sideways: RunSwingDeg x min(1, speed / RunSwingFullSpeed), the head
-	 *  toward the side it swims to (straight in or out: the side it already leans to), and the end that leads the swim follows
-	 *  the climb or dive (pitch clamped to MaxPitchDeg). Tired: no swing, roll ExhaustedRollDeg (0 = upright).
+	 *  T-048, the fighting fish's facing: toward the player from its mouth (the body away from the rod), level.
+	 *  T-048b, the body swing: while the move swims (bMoveSwims, not tired) the head swings toward the move's own side by
+	 *  RunSwingDeg x |MoveSwimSide| (FFightFishView::MoveSwimSide: + = the player's right), whatever the mouth's ground
+	 *  velocity (a fish reeled in while it runs still pulls away to its side). Otherwise (Rest, Sulk, unknown move) the T-048
+	 *  rule: while the mouth moves faster than MinFacingSpeed the body swings RunSwingDeg x min(1, speed / RunSwingFullSpeed),
+	 *  the head toward the side it moves to (straight in or out: the side it already leans to).
+	 *  Pitch (both): while the mouth moves faster than MinFacingSpeed, the end that leads the ground motion follows the climb
+	 *  or dive (clamped to MaxPitchDeg). Tired: no swing, roll ExhaustedRollDeg (0 = upright).
 	 */
 	static FRotator FightFacing(const FFishVisualRow& Row, const FVector& MouthVelocity, const FVector& MouthLocation, const FVector& PlayerLocation,
-		const FRotator& Current, bool bExhausted);
+		const FRotator& Current, bool bExhausted, bool bMoveSwims = false, float MoveSwimSide = 0.f);
 
 	/** Rotation with its yaw kept within RunSwingDeg (clamped to [0, 80]) of the direction mouth -> player; pitch and roll kept. */
 	static FRotator ClampToLine(const FFishVisualRow& Row, const FRotator& Rotation, const FVector& MouthLocation, const FVector& PlayerLocation);

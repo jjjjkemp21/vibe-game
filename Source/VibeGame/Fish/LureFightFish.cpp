@@ -120,7 +120,7 @@ void ALureFightFish::ApplyView(const FFightFishView& View, float DeltaTime)
 	bHasWaterZ = FMath::IsFinite(View.WaterZ);
 
 	// T-048: the mouth is the point that follows the line end (the bobber is over it); the body hangs back from it, away
-	// from the rod, swung sideways while the fish swims. Only the line point is smoothed, so the mouth never leaves the line.
+	// from the rod, swung sideways toward the side the fight move swims to (T-048b). Only the line point is smoothed, so the mouth never leaves the line.
 	const float FloorZ = Row.FloorClearance >= 0.f ? TraceFloorZ(View.LineEnd, View.WaterZ) : -UE_BIG_NUMBER;
 	const FVector Target = FFightFishVisual::MouthTarget(Row, View, FloorZ);
 	const FVector Before = MouthPoint;
@@ -129,7 +129,8 @@ void ALureFightFish::ApplyView(const FFightFishView& View, float DeltaTime)
 	MouthPoint = bSnap ? Target : FFightFishVisual::StepMouth(Row, Before, Target, DeltaTime, SmoothTime);
 	Velocity = (bSnap || DeltaTime <= 0.f) ? FVector::ZeroVector : (MouthPoint - Before) / DeltaTime;
 
-	const FRotator Desired = FFightFishVisual::FightFacing(Row, Velocity, MouthPoint, View.PlayerLocation, GetActorRotation(), bExhausted);
+	const FRotator Desired = FFightFishVisual::FightFacing(Row, Velocity, MouthPoint, View.PlayerLocation, GetActorRotation(), bExhausted,
+		View.bMoveSwims, View.MoveSwimSide); // T-048b: the move's own swim sets the swing
 	const FQuat Smoothed = bSnap ? Desired.Quaternion()
 		: FQuat::Slerp(GetActorQuat(), Desired.Quaternion(), FFightFishVisual::SmoothAlpha(DeltaTime, Row.RotationSmoothTime));
 	const FRotator Rotation = FFightFishVisual::ClampToLine(Row, Smoothed.Rotator(), MouthPoint, View.PlayerLocation);

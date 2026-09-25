@@ -364,15 +364,22 @@ namespace FightFishVisualPrivate
 }
 
 FRotator FFightFishVisual::FightFacing(const FFishVisualRow& Row, const FVector& MouthVelocity, const FVector& MouthLocation, const FVector& PlayerLocation,
-	const FRotator& Current, bool bExhausted)
+	const FRotator& Current, bool bExhausted, bool bMoveSwims, float MoveSwimSide)
 {
 	const float BaseYaw = FightFishVisualPrivate::YawToPlayer(MouthLocation, PlayerLocation, static_cast<float>(Current.Yaw));
 	FRotator Out(0.f, BaseYaw, 0.f);
+	const bool bFollowMove = bMoveSwims && !bExhausted;
+	if (bFollowMove && FMath::IsFinite(MoveSwimSide))
+	{
+		// T-048b: the move's own swim sets the swing. + = the player's right = toward smaller yaw from the fish's view of the
+		// player (a fish at +X from the player faces yaw 180; its head turns toward +Y, the player's right, at yaw < 180).
+		Out.Yaw = BaseYaw - FMath::Clamp(MoveSwimSide, -1.f, 1.f) * FightFishVisualPrivate::MaxSwing(Row);
+	}
 	const FVector Horizontal(MouthVelocity.X, MouthVelocity.Y, 0.f);
 	const float Speed = static_cast<float>(Horizontal.Size());
 	if (FMath::IsFinite(Speed) && FMath::IsFinite(MouthVelocity.Z) && Speed > Row.MinFacingSpeed)
 	{
-		if (!bExhausted)
+		if (!bExhausted && !bFollowMove)
 		{
 			// Sideways component of the swim (+ = toward larger yaw, i.e. from X toward Y).
 			const FVector ToPlayer = FRotator(0.f, BaseYaw, 0.f).Vector();

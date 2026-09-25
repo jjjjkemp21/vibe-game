@@ -36,10 +36,16 @@ state (`RodPitch`, `RodYaw`, `ReelStep`, `RunSide`) is not the fish's and is not
   (lifted) surface, at least `FloorClearance` above the bottom.
   Smoothing moves only that line point (`AuthoritySmoothTime` on the server/standalone, `ProxySmoothTime` elsewhere; jumps
   over `SnapDistance` snap), and it never trails the line end by more than `MouthMaxLagCm` (5 cm) horizontally; the body
-  pivots around the mouth (`RotationSmoothTime`). While the mouth swims faster than `MinFacingSpeed` the body swings
-  sideways by `RunSwingDeg x min(1, speed / RunSwingFullSpeed)` (35 deg, full at 200 cm/s): the head turns toward the side
-  it swims to (straight out or in: the side it already leans to), so it reads as pulling away; the end that leads the swim
-  follows a climb or dive (pitch up to `MaxPitchDeg`). The yaw is always kept within `RunSwingDeg` (max 80) of mouth ->
+  pivots around the mouth (`RotationSmoothTime`). T-048b: while the fight move swims (a DT_FightPattern move that is not a
+  `Rest`, `Speed` > 0, fish not tired) the body swings toward the move's own side by `RunSwingDeg x |Side| / length(Away,
+  Side)` of that move (Run 0.29, Swim 0.58, Dart 0.98 of 35 deg; Charge and Dive 0), the side being the replicated
+  `RunSide` (the server's pick for RandomSide moves), whatever the mouth's ground velocity: a fish reeled in during a Run
+  still pulls away to its side. The adapter reads it (`ApplyMove`, `FindPattern`; the subsystem loads DT_FightPattern), so
+  every machine gets the same swing with no new replicated field (tests `Project.FishVisual.SwimFacing.*`). Rest, Sulk
+  and an unknown move keep the ground-velocity rule: while the mouth moves faster than `MinFacingSpeed` the body swings
+  `RunSwingDeg x min(1, speed / RunSwingFullSpeed)` (full at 200 cm/s), the head toward the side it moves to (straight out
+  or in: the side it already leans to). In both, while the mouth moves faster than `MinFacingSpeed`, the end that leads
+  the ground motion follows a climb or dive (pitch up to `MaxPitchDeg`). The yaw is always kept within `RunSwingDeg` (max 80) of mouth ->
   player, so seen from above no body point is nearer the player than the mouth (tests `Project.FishVisual.MouthOnLine.*`).
   A tired fish does not swing. An escaping fish (after the fight) faces its swim when faster than `MinFacingSpeed`, else
   away from the player. Tired fish roll `ExhaustedRollDeg`, which is 0: **Jimmy, 2026-09-24: a tired fish stays upright with a

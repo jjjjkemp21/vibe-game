@@ -14,6 +14,7 @@
 #include "Fish/LureFightFish.h"
 #include "Fishing/FightFishViewAdapter.h"
 #include "Fishing/LureFishingComponent.h"
+#include "Fishing/LureFishingSettings.h"
 #include "GameFramework/Pawn.h"
 #include "Misc/PackageName.h"
 
@@ -130,6 +131,7 @@ void ULureFightFishSubsystem::Resolve()
 	{
 		VisualTable = Cast<UDataTable>(LoadPath(Settings->VisualTable.ToSoftObjectPath()));
 	}
+	PatternTable = Cast<UDataTable>(LoadPath(GetDefault<ULureFishingSettings>()->FightPatternTable.ToSoftObjectPath()));
 
 	Row = FFishVisualRow::GetFallbackRow();
 	const FFishVisualRow* Found = (VisualTable && VisualTable->GetRowStruct() == FFishVisualRow::StaticStruct())
@@ -298,6 +300,7 @@ void ULureFightFishSubsystem::UpdateVisuals(float DeltaTime)
 	{
 		return;
 	}
+	Resolve(); // the tables (T-048b: the fight pattern for the body swing) before the first view
 
 	// Fish swimming away after a lost fight.
 	for (int32 Index = Ending.Num() - 1; Index >= 0; --Index)
@@ -337,7 +340,7 @@ void ULureFightFishSubsystem::UpdateVisuals(float DeltaTime)
 		{
 			continue;
 		}
-		const FFightFishView View = FFightFishViewAdapter::FromComponent(*Fishing);
+		const FFightFishView View = FFightFishViewAdapter::FromComponent(*Fishing, PatternTable);
 		const int32 Index = Active.IndexOfByPredicate([Fishing](const FEntry& Entry) { return Entry.Fishing.Get() == Fishing; });
 		if (Index != INDEX_NONE)
 		{

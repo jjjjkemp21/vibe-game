@@ -5,6 +5,8 @@
 #include "Fishing/FishFightTypes.h"
 #include "Fishing/FishingTypes.h"
 #include "Fishing/LureFishingComponent.h"
+#include "Fishing/LureRodControl.h"
+#include "Engine/DataTable.h"
 #include "GameFramework/Actor.h"
 
 FFightFishView FFightFishViewAdapter::Make(const FLureFightNetState& Fight, const FLureFishingNetState& Line, const FFishInstance& HookedFish,
@@ -34,10 +36,50 @@ FFightFishView FFightFishViewAdapter::Make(const FLureFightNetState& Fight, cons
 	return View;
 }
 
-FFightFishView FFightFishViewAdapter::FromComponent(const ULureFishingComponent& Fishing)
+const FLureFightMove* FFightFishViewAdapter::FindMove(const FLureFightPatternRow& Pattern, FName MoveId)
+{
+	return MoveId.IsNone() ? nullptr : Pattern.Moves.FindByPredicate([MoveId](const FLureFightMove& Move) { return Move.Id == MoveId; });
+}
+
+FLureFightPatternRow FFightFishViewAdapter::FindPattern(const UDataTable* PatternTable, FName PatternId)
+{
+	const FLureFightPatternRow* Row = nullptr;
+	if (PatternTable && !PatternId.IsNone() && PatternTable->GetRowStruct() && PatternTable->GetRowStruct()->IsChildOf(FLureFightPatternRow::StaticStruct()))
+	{
+		Row = reinterpret_cast<const FLureFightPatternRow*>(PatternTable->FindRowUnchecked(PatternId));
+	}
+	FString Problem;
+	return (Row && Row->Validate(Problem)) ? *Row : FLureFightPatternRow::GetFallbackPattern();
+}
+
+void FFightFishViewAdapter::ApplyMove(FFightFishView& View, const FLureFightNetState& Fight, const FLureFightPatternRow& Pattern)
+{
+	View.bMoveSwims = false;
+	View.MoveSwimSide = 0.f;
+	const FLureFightMove* Move = FindMove(Pattern, Fight.MoveId);
+	if (!View.bFighting || Fight.bExhausted || !Move || Move->Rest || !(FMath::IsFinite(Move->Speed) && Move->Speed > 0.f))
+	{
+		return; // Rest, Sulk, tired, unknown: the ground-velocity rule
+	}
+	View.bMoveSwims = true;
+	const float Away = FMath::IsFinite(Move->Away) ? Move->Away : 0.f;
+	const float Side = FMath::IsFinite(Move->Side) ? FMath::Abs(Move->Side) : 0.f;
+	const float Length = FMath::Sqrt(Away * Away + Side * Side);
+	const float Share = Length > UE_KINDA_SMALL_NUMBER ? FMath::Clamp(Side / Length, 0.f, 1.f) : 0.f;
+	// The side from the replicated RunSide: the server's pick for RandomSide moves (0 under DT_FishFight SideMinShare).
+	View.MoveSwimSide = Share * static_cast<float>(FLureRodControl::DirectionFromRunSide(Fight.RunSide));
+}
+
+FFightFishView FFightFishViewAdapter::FromComponent(const ULureFishingComponent& Fishing, const UDataTable* PatternTable)
 {
 	const AActor* Owner = Fishing.GetOwner();
-	return Make(Fishing.GetFightNet(), Fishing.GetNetState(), Fishing.GetHookedFish(),
+	const FLureFightNetState& Fight = Fishing.GetFightNet();
+	FFightFishView View = Make(Fight, Fishing.GetNetState(), Fishing.GetHookedFish(),
 		Owner ? Owner->GetActorLocation() : FVector::ZeroVector, Owner ? Owner->GetActorForwardVector() : FVector::ForwardVector,
 		Owner && Owner->HasAuthority());
+	if (View.bFighting)
+	{
+		ApplyMove(View, Fight, FindPattern(PatternTable, Fight.PatternId));
+	}
+	return View;
 }

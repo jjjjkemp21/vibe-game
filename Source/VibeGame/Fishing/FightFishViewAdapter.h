@@ -7,7 +7,10 @@
 // Test: Project.Fishing.Fight.DockEdge.*.
 // T-028 (rod-steered fight): the rod turns the fish through SideDeg (and its pull/tension through Tension), which this
 // adapter already reads, so the fish follows the rod with no new field. RodPitch/RodYaw/ReelStep/RunSide are the rod's and
-// the HUD's state, not the fish's: not read here. Test: Project.FishVisual.Adapter.FollowsRodSteeredFight.
+// the HUD's state, not the fish's: not read here (RunSide only for T-048b below). Test: Project.FishVisual.Adapter.FollowsRodSteeredFight.
+// T-048b: the body swing follows the current move's own swim (DT_FightPattern row PatternId, move MoveId: Away/Side/Rest)
+// with the side from the replicated RunSide (the side the server picked for RandomSide moves), so every machine gets the
+// same swing from replicated fields and the shipped table, no new replicated field. Test: Project.FishVisual.SwimFacing.*.
 
 #pragma once
 
@@ -15,7 +18,10 @@
 #include "Fish/FightFishVisual.h"
 
 struct FFishInstance;
+struct FLureFightMove;
 struct FLureFightNetState;
+struct FLureFightPatternRow;
+class UDataTable;
 struct FLureFishingNetState;
 class ULureFishingComponent;
 
@@ -33,6 +39,22 @@ struct FFightFishViewAdapter
 	static FFightFishView Make(const FLureFightNetState& Fight, const FLureFishingNetState& Line, const FFishInstance& HookedFish,
 		const FVector& PlayerLocation, const FVector& PlayerForward, bool bHasAuthority);
 
-	/** Make() from a fishing component and its owner (location, forward, authority). */
-	static FFightFishView FromComponent(const ULureFishingComponent& Fishing);
+	/**
+	 *  T-048b: View.bMoveSwims / View.MoveSwimSide from the fight's current move in Pattern (the DT_FightPattern row the
+	 *  fight uses; FindPattern). bMoveSwims = View.bFighting, not exhausted, the move MoveId is in the pattern, is not a Rest
+	 *  and has Speed > 0. MoveSwimSide = RunSide (Right +1, Left -1, None 0) x |Side| / length(Away, Side) of that move.
+	 */
+	static void ApplyMove(FFightFishView& View, const FLureFightNetState& Fight, const FLureFightPatternRow& Pattern);
+
+	/** The move MoveId in Pattern (nullptr: None or not in it). */
+	static const FLureFightMove* FindMove(const FLureFightPatternRow& Pattern, FName MoveId);
+
+	/**
+	 *  The pattern the server fights with: row PatternId of PatternTable when it is a valid FLureFightPatternRow; else the
+	 *  built-in pattern (the server replicates PatternId None when it fell back to it, so every machine agrees).
+	 */
+	static FLureFightPatternRow FindPattern(const UDataTable* PatternTable, FName PatternId);
+
+	/** Make() from a fishing component and its owner (location, forward, authority), then ApplyMove with PatternTable's row. */
+	static FFightFishView FromComponent(const ULureFishingComponent& Fishing, const UDataTable* PatternTable = nullptr);
 };
