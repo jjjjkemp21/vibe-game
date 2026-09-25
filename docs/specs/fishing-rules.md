@@ -20,6 +20,12 @@ The lead may overrule any of these; a change is a data edit unless marked (code)
   CastArcHeightRatio * distance.
 - Landing: in front of anything solid on the way; on the water surface if the ground there is not above it (LandTolerance
   2 cm), otherwise on land (a dock, a beach, a rock): the bobber lies there, nothing bites, a press reels in.
+- Landing height (T-071): the downward ground search at the landing point starts `LandingSearchHeight` (DT_Fishing,
+  default 500 cm) above the cast origin (or the water, if higher), but never above the first solid surface straight above
+  the cast origin (a roof over the caster): the flight starts under that roof, so under a roof the bobber lands on the
+  ground/deck/water under it (or past it), never on the roof top. From open ground (nothing overhead) a cast onto a roof
+  still lands on the roof. A zero-distance call (landing straight below the origin) follows the same rule. (The fish
+  drop has its own under-roof rule since T-066, catch-handling-rules.md.) Tests: `Project.Fishing.Cast.UnderRoof.*`.
 - "Solid" (fishing-loop playtest fix, 2026-09-23): the cast traces use the `LureCast` trace channel
   (`ECC_GameTraceChannel1`, Config/DefaultEngine.ini, default Block; the Trigger/OverlapAll/Pawn profiles ignore it) and
   `FLureFishingSpots::TraceCast`, which passes through anything that isn't solid level geometry: every volume and
@@ -65,6 +71,8 @@ The lead may overrule any of these; a change is a data edit unless marked (code)
   after RebiteWait; True = the line comes in.
 - Early press (before a bite, nibbles included): `EarlyHook` = ReelIn (default: press to reel in and recast), Ignore, or
   Spook (the bite is pushed back SpookDelay). On land or with nothing biting, a press always reels in.
+  **Changed by fight-v2.md 3.4 (T-055, Jimmy 2026-09-24): no instant reel-in.** Holding Cast retrieves the bobber across
+  the water at RetrieveSpeed; the cast ends when it reaches the rod or the water's edge. Forced reel-ins stay instant.
 - Hooked: the reel fight (T-007) runs until landed, snapped or the hook is thrown: see docs/specs/reel-fight-rules.md.
   Debug only: AutoLandDelay > 0 skips the fight and lands the fish after that many seconds (shipped: 0).
 

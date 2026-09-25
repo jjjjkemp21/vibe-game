@@ -145,6 +145,13 @@ struct FLureFishingRow : public FTableRowBase
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Cast", meta=(ClampMin="0"))
 	float MaxLineLength = 2600.f;
 
+	/**
+	 *  T-071: the landing search looks for ground at most this far above the cast origin (or the water), cm; and never above
+	 *  the first solid surface straight above the origin (a roof over the player), so a cast under a roof lands under it.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Cast", meta=(ClampMin="0"))
+	float LandingSearchHeight = 500.f;
+
 	// ---- Bite ----
 
 	/** Seconds from landing to the bite: random in [BiteWaitMin, BiteWaitMax]. */

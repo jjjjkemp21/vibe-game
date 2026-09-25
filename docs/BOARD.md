@@ -8,12 +8,56 @@ Counts: todo 1, done 12.
 
 - 1 obj lead - todo P0 - - - A2 Milestone A2 release: a build Jimmy can play
 
+## A3
+
+Counts: todo 19, doing 18, review 2, merge 1, done 5.
+
+- 47 obj lead - todo P0 - - - A3 Milestone A3: Jimmy's A2 playtest notes, delivered in sprint
+- 49 obj design - todo P1 - - - S2 Sprint 2: fight redesign (limited line + snap, reel in / let
+- 63 task eng mid todo P1 - - - T-053 Limited line length: a running fish uses line; out of line -
+- 64 task eng mid todo P1 - - - T-054 Player can reel in or let line out
+- 65 task eng mid todo P1 - - - T-055 After a cast there is no instant reel-in: the bobber comes b
+- 66 task eng junior todo P1 - - - T-056 Bobber can dip under water during a fight
+- 67 task eng senior todo P1 - - - T-057 Fight length follows tension management (letting a fish run
+- 75 task eng mid todo P1 eng3 - - T-065 Dump the fish out of a held cooler
+- 84 task qa junior todo P1 - - - T-064q Update QA tests for the new carry verbs (E=Open, F=Put down
+- 52 obj design - todo P2 - - - S5 Sprint 5: the world comes alive (day/night cycle; shore wave
+- 78 task eng senior todo P2 - - - T-068 Day/night cycle (T-013)
+- 79 task eng senior todo P2 - - - T-069 Water: shore waves, ocean motion, reactive ripples
+- 85 task eng mid todo P2 - - - T-068a Day/night clock: server-owned time, phases, DT_DayCycle, bit
+- 86 task eng mid todo P2 - - - T-068b Sky rig: apply blended DT_TimeOfDay to sun, moon, sky, fog,
+- 87 task design mid todo P2 - - - T-068c Presets to DT_TimeOfDay.json, builder places sky rig + night
+- 88 task eng senior todo P2 - - - T-069a Wave function (C++ + HLSL, one formula), DT_Water, MPC_Water
+- 89 task eng senior todo P2 - - - T-069b Ripple sim: camera-centred render-target wave equation, DT_W
+- 90 task art junior todo P2 - - - T-069d SM_WaterGrid tiles: flat technical grid, 2 m near + coarse f
+- 91 task design senior todo P2 - - - T-069c Water graph v5 in build_level.py (waves, facets, shore foam,
+- 48 obj eng - doing P0 - - - S1 Sprint 1: line + fight fixes, even fight, faster reel, simpl
+- 54 bug eng junior doing P0 eng9 ad992d6 - T-044 Dangling fish: the line gets thicker the longer it hangs, un
+- 55 bug eng senior doing P0 eng4 a9531b4 - T-045 Walking while reeling drags bobber + fish along; they must s
+- 56 bug eng junior doing P0 eng9 ad992d6 - T-046 After a cast the line has zero tension and lies on the water
+- 57 bug eng senior doing P0 eng4 a9531b4 - T-047 Stepping back on the dock pulls fish + line through the dock
+- 59 task eng mid doing P0 eng5 ac8bb14 - T-049 Even fight: no near-snap spike right after the hook, no easy
+- 60 task eng mid doing P0 eng5 ac8bb14 - T-050 Reel-in speed much faster now (data); fully tension-driven f
+- 44 task eng mid doing P1 eng7 a1fcfff - T-043 A fish hanging on the line turns its side toward the viewer
+- 50 obj art - doing P1 - - - S3 Sprint 3: fish that look alive (upright calm when tired, fas
+- 51 obj eng - doing P1 - - - S4 Sprint 4: cooler handling (bob with arms, open while held +
+- 68 task art senior doing P1 main acae828 45% T-058 Exhausted fish (stamina 0) stays upright with a calm swim, n
+- 69 task art senior doing P1 main acae828 45% T-059 Fish with stamina: fast, fighting 'run' swim
+- 70 bug art senior doing P1 main acae828 45% T-060 Dangling fish: head stays fixed at the hook, only the body w
+- 71 task eng mid doing P1 eng7 a1fcfff - T-061 A dangling fish's wiggle moves the line (like turning the ca
+- 72 task art senior doing P1 main a07a490 - T-062 Cast charge shown in the arms, not only the rod
+- 74 task eng mid doing P1 eng3 a5c1cea - T-064 Open the cooler while holding it (lid opens, fish visible) a
+- 80 task eng junior doing P1 eng9 ad992d6 - T-041e Fishing line material: enable Responsive AA so TSR stops gho
+- 92 task eng mid doing P1 eng6 a8d9dda - T-059a Fight clip play rate from stamina, not actor speed (fresh fa
+- 58 bug eng mid review P0 eng6 a8d9dda - T-048 Hooked fish in the water looks hooked by the tail; the line
+- 83 task eng mid review P0 eng6 a8d9dda - T-058a Quick win: exhausted fish lies on its side because DT_FishVi
+- 61 task eng mid merge P0 eng8 a51f13c - T-051 Simple debug menu: list of all key binds + mouse sensitivity
+
 ## (no milestone)
 
-Counts: todo 20, ready 2, review 1, done 9, dropped 1.
+Counts: todo 17, ready 3, done 13, dropped 1.
 
 - 2 obj lead - todo P1 - - - P-004 Agent work board (board.py) live in the studio
-- 21 q lead - todo P2 - - - Q-02 Fight feel and length OK?
 - 22 q lead - todo P2 - - - Q-03 Should losing a fish cost the bait?
 - 23 q lead - todo P2 - - - Q-04 Freshness loss rates OK?
 - 24 q lead - todo P2 - - - Q-05 Hot spot feel OK?
@@ -24,14 +68,12 @@ Counts: todo 20, ready 2, review 1, done 9, dropped 1.
 - 29 q lead - todo P2 - - - Q-10 Landed fish hang swing settles in 8-10 s: too long?
 - 30 q lead - todo P2 - - - Q-11 Fish lost the instant you sprint mid-fight: too harsh?
 - 31 q lead - todo P2 - - - Q-12 Left arm stretches at a full right steer: noticeable?
-- 38 q lead - todo P2 - - - Q-13 Holding reel right after the hook can snap a feisty fish at
 - 3 obj lead - todo P3 - - - BL Backlog: small follow-ups (first Engineering manager pilot b
 - 19 task design junior todo P3 - - - T-036 Optional Lure.CoolerSpawn marker in L_PalmKey (+X toward the
 - 20 q lead - todo P3 - - - Q-01 Stray janitor_exception entry in .claude/settings.json: remo
 - 34 task art junior todo P3 - - - T-038 Cooler 4-fish fills: vary the top fish yaw so orange fish do
 - 39 task art mid todo P3 - - - T-042 Visual polish from gate d: held fish near-black when backlit
-- 44 task eng junior todo P3 - - - T-043 A fish hanging on the line turns its side toward the viewer
-- 45 task lead junior todo P3 - - - T-041d Editor check (after Jimmy plays): ghost line loop on fast tu
+- 53 obj lead - todo P3 - - - MP Backlog: multiplayer experience (Jimmy 2026-09-24: test it,
 - 36 bug art mid ready P2 - - - T-040 Cooler: in-game shop view shows 1/4 eyes with 4 Bonefish (Bl
 - 18 task qa mid ready P3 - - - T-035 Split docs/TEST_PLAN.md into docs/test-plan/<system>.md
-- 46 task eng junior review P2 main ac8c7f8 - P-004d Pilot fixes: board allows todo|ready->done with commit+note
+- 81 bug eng junior ready P3 - - - T-070 Playtest driver: a pd.console query can end the PIE session

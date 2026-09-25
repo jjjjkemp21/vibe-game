@@ -10,7 +10,7 @@ const TCHAR* FLureFishingRules::FallbackWarningMarker = TEXT("using the built-in
 bool FLureFishingRow::Validate(FString& OutProblem) const
 {
 	const float Values[] = { ChargeTime, ChargeExponent, MinCastDistance, MaxCastDistance, CastSpeed, CastFlightTimeMin, CastFlightTimeMax,
-		CastArcHeightRatio, MaxLineLength, BiteWaitMin, BiteWaitMax, NibbleInterval, NibbleDuration, HookWindow, HookLatencyGrace,
+		CastArcHeightRatio, MaxLineLength, LandingSearchHeight, BiteWaitMin, BiteWaitMax, NibbleInterval, NibbleDuration, HookWindow, HookLatencyGrace,
 		RebiteWaitMin, RebiteWaitMax, SpookDelay, AutoLandDelay, NoBiteHintDelay, BobberScale, BobberBobAmplitude, BobberBobFrequency,
 		BobberTiltDeg, NibbleTiltDeg, BiteDipDepth, BiteDipRate, LinePixelWidth, LineMinWidth, LineSag, BiteRumbleIntensity,
 		BiteRumbleDuration, CastSwingBackDeg, CastSwingForwardDeg, CastSwingTime };

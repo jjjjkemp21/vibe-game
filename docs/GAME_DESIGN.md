@@ -12,6 +12,7 @@ A first-person, open-world fishing sandbox for 1-4 friends: sail between sunny, 
 - Keyboard + mouse and gamepad.
 - Fight controls (Jimmy, 2026-09-23): once a fish is hooked, the mouse steers the rod instead of the view, and the camera gently follows the rod and fish until the fish is landed or lost. Hold click (or trigger) to reel; the mouse wheel (or bumpers) sets the reel speed.
 - Co-op: online 2-4 players, sharing the world and the boat. The first playable level is solo, and all code is multiplayer-ready (server-authoritative) from day one. Co-op is the first milestone after the vertical slice.
+- Multiplayer testing (Jimmy, 2026-09-24): multiplayer is tested, but it is never a blocker. The multiplayer experience itself is in the backlog while the core gameplay, art and map are refined. Code stays server-authoritative.
 
 ## Core loop
 - Every 30 seconds the player: picks a spot on any water (bubbling or rippling water marks better fish), casts, waits and reads the bobber, hooks the bite, and fights the fish with the reel while managing line tension. Or moves (runs, climbs, crawls) to reach a better spot, staying quiet near danger.
@@ -24,7 +25,8 @@ A first-person, open-world fishing sandbox for 1-4 friends: sail between sunny, 
   - Anywhere (Jimmy, 2026-09-23): every body of water can be fished; there are no invisible fishing zones. Which species bite depends on the water area (shore shallows, reef, lagoon, deep drop, open sea), its depth, and the time. Every water area has at least one species that can bite at any time, once the fish batch fills in (T-009).
   - Hot spots: bubbling or rippling water marks a spot with better odds (rarer, bigger or more valuable fish). They appear inside valid water, last a few minutes and move, so players read the water and explore. Rates, sizes and bonuses are data.
   - Fighting (Jimmy, 2026-09-23): the mouse steers the rod. Pulling the rod back or up raises line tension; dipping it lowers tension. When the fish runs left, angle the rod up and to the right (the opposite side) to turn it; matching the fish's direction loses ground. Hold to reel, and the mouse wheel sets the reel speed: fast gains line but builds tension. Ease off when tension spikes, and let the fish run.
-  - You see the fish while you reel it in: it swims and fights in the water near the line's end. Shallow water is clear enough to see it.
+  - Tension-driven fight and limited line (Jimmy, 2026-09-24): the player can reel in or let line out. The line on the spool is limited: a fish you let run uses it up, and when it runs out the tension goes past 100% and the line snaps. The fight lasts as long as your tension management makes it: letting a fish run to save the line makes the fight longer, and tougher fish make for longer, more intense fights. After a cast the bobber is reeled back across the water (no instant reel-in), and during a fight the bobber can be pulled under the water. Rules: docs/specs/fight-v2.md.
+  - You see the fish while you reel it in: it swims and fights in the water near the line's end. Shallow water is clear enough to see it. A tired fish (no stamina left) stays upright and swims calmly; it never lies on its side (Jimmy, 2026-09-24). A fish with stamina swims fast, as if it is running and fighting.
   - Landing: the caught fish hangs on the hook at the end of the line, swinging with simple physics. You grab it into your hand. There is an arms animation for holding a fish without the rod.
 - Gear matters (mix of arcade and realistic):
   - Rod: power (how hard you can pull) and cast distance.
@@ -90,6 +92,7 @@ What one short, polished, playable level must contain to prove the game is fun (
 
 ## UI (first version)
 Placeholder only (Jimmy's direction, 2026-09-22): plain text and simple boxes showing the needed information (tension, noise, cooler, money, level, clock, journal list, shop list, prompts). Jimmy will direct the real UI after playing the gameplay.
+- Debug menu (Jimmy, 2026-09-24): until he directs the UI, a rough, simple debug menu lists all key binds and lets the player set the mouse sensitivity. No styling; it is replaced by the real UI later.
 
 ## Out of scope for now
 - Online co-op (first milestone after the slice; code is built ready for it).

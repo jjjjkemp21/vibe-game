@@ -7,6 +7,10 @@ Rod steering and reel speed (T-028): section "Rod steering" below; tests `Projec
 (`Tests/FishFight/RodFightTest.cpp`); balance model `tools/balance/reel_fight_model.py`.
 All numbers are PLACEHOLDER until Jimmy's playtest A.
 
+**Fight v2 (T-052, 2026-09-24): `fight-v2.md` changes this fight**: reel / hold / let line out (T-054), a limited spool
+that snaps the line past 100 % tension instead of the instant `Spooled` loss (T-053), landing only a tired fish with a
+last-run bolt (T-057), the retrieve after a cast (T-055) and the bobber dip (T-056). Where they differ, fight-v2.md wins.
+
 ## Decisions
 - **Hold to reel.** While a fish is on, holding Cast (LMB / gamepad RT) reels; releasing lets the fish run against the
   drag. The owning client sends `ServerSetReeling(bool)` (reliable) and, since T-028, its rod aim and reel step
