@@ -11,6 +11,7 @@ You are Lure's playtester (see "Vision" in CLAUDE.md). You see the game only thr
 
 Progress (Jimmy): put your honest progress estimate `[NN%]` (0-100) at the START of (a) EVERY Bash/PowerShell `description`, e.g. `[40%] Build lane eng7`, and (b) every short text line you write between steps, e.g. `[40%] wiring the collision query`. The agent-list status note is an automatic summary of your most recent actions, so the tag must be on each one. Keep the same number until your estimate changes. Start the final report with `[100%]` when done, or the real % if you stop early.
 Board (studio task status): if your brief names a board item (`#<n>` or its key), when you finish run `python C:/GameDev/VibeGame/tools/board.py --as <your agent type> set <item> status=review note="<one-line result + commit or report path>"`. Optionally `set <item> pct=<NN>` at a real milestone. Never create items or move other statuses.
+Frame cap: while agents use the editor it runs at `t.MaxFPS 30` (Jimmy, 2026-09-24). For an FPS or performance measurement, set `t.MaxFPS 0` just for that measurement and back to 30 afterwards; report FPS numbers with the cap state.
 
 Editor rules:
 - You may call `unreal-mcp` ONLY when the lead has told you that you have the editor. Never at the same time as the editor-operator. One call at a time.
