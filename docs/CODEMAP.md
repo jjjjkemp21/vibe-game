@@ -67,7 +67,7 @@ Paths in the table are under `Source/VibeGame/` unless they start with a top-lev
 - `Environment/LureDayClock.h` ELureDayPhase, FLureDayCycleRow, FLureDayClockState | the day/night clock math (T-068a). Pure and world-fr...
 - `Environment/LureDayClockComponent.h` ULureDayClockComponent | the server-owned day/night clock (T-068a), a component on ALureGameState.
 - `Environment/LureDayNightSettings.h` ULureDayNightSettings | day/night settings (T-068a). Project Settings > Game > Lure Day/Night; sto...
-- `Fish/FightFishVisual.h` FFishMoveAnimRole, FFishRoleTailBeat, FFishVisualRow | the fish you see fighting on the line (T-029). Data row...
+- `Fish/FightFishVisual.h` FFishMoveAnimRole, FFishRoleTailBeat, FFishRoleStaminaRate, FFishVisualRow | the fish you see fighting on the...
 - `Fish/FishAnimInstance.h` EFishAnimRole, FFishAnimState, UFishAnimInstance | fish anim instance (T-029). Parent class of ABP_Fish (grap...
 - `Fish/FishDataValidator.h`
 - `Fish/FishInstance.h` FFishInstance, FFishRollContext
@@ -116,15 +116,15 @@ Paths in the table are under `Source/VibeGame/` unless they start with a top-lev
 - `VibeGameGameMode.h` AVibeGameGameMode
 - `VibeGamePlayerController.h` AVibeGamePlayerController
 
-### Tests (`Source/VibeGame/`): folder, prefix (count): 3rd name segment count. Total 1122
+### Tests (`Source/VibeGame/`): folder, prefix (count): 3rd name segment count. Total 1144
 - `Tests/Catch/` Project.Arms.* (3): HoldFishSize 3
-- `Tests/Catch/` Project.Catch.* (137): QA 57, HeldCooler 16, Cooler 7, Counter 7, Net 7, Display 5, Rules 5, Focus 4, Data 3, Drop 3, Ha...
+- `Tests/Catch/` Project.Catch.* (141): QA 57, HeldCooler 20, Cooler 7, Counter 7, Net 7, Display 5, Rules 5, Focus 4, Data 3, Drop 3, Ha...
 - `Tests/Catch/` Project.FishVisual.* (2): HeldPose 2
 - `Tests/Dev/` Project.Dev.* (18): DebugMenu 6, Teleport 4, GiveFish 3, Commands 1, PlaytestDriver 1, QA 1, Screenshot 1, SetStance 1
 - `Tests/Environment/` Project.Environment.* (7): Clock 7
 - `Tests/FishFight/` Project.Fishing.* (114): Fight 114
-- `Tests/FishVisual/` Project.FishVisual.* (44): QA 29, Lifecycle 3, Adapter 2, Anim 2, Data 2, HeldPose 2, Placement 2, AnimGraph 1, Size 1
-- `Tests/Fishing/` Project.Fishing.* (257): QA 96, Water 78, Line 73, Cast 4, CastTrace 4, Fight 2
+- `Tests/FishVisual/` Project.FishVisual.* (50): QA 29, Lifecycle 3, MouthOnLine 3, Adapter 2, Anim 2, Data 2, HeldPose 2, Placement 2, P...
+- `Tests/Fishing/` Project.Fishing.* (269): QA 96, Line 85, Water 78, Cast 4, CastTrace 4, Fight 2
 - `Tests/Level/` Project.Level.* (3): PalmKey 3
 - `Tests/Movement/` Project.Fishing.* (3): Climb 1, Rules 1, Swim 1
 - `Tests/Movement/` Project.Movement.* (211): QA 171, Swim 33, Camera 3, Climb 3, Stance 1

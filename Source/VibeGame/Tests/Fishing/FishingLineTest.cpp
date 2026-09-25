@@ -331,7 +331,7 @@ namespace LureFishingLineTest
 		}
 
 		// Data-driven: a new kind of line is a new row, no code (e.g. a floating braid).
-		const FString WithBraid = Csv.TrimEnd() + TEXT("\nBraid,120,8,6,1.0,1.5,8.0,0.08,2.0,5.0,0.3,0.35,0.0,0.6,0.8,0.8,0.6,500,3000,0.6,0.25,25,0.4,1500,1.0,8.0,300,0.2,500,70\n");
+		const FString WithBraid = Csv.TrimEnd() + TEXT("\nBraid,120,8,6,1.0,1.5,8.0,0.08,2.0,5.0,0.3,0.35,0.0,0.6,0.8,0.8,0.6,500,3000,0.6,0.25,25,0.4,1500,1.0,8.0,300,0.2,500,70,0.25,1.0\n");
 		TStrongObjectPtr<UDataTable> Extended(NewObject<UDataTable>(GetTransientPackage(), NAME_None, RF_Transient));
 		Extended->RowStruct = FLureFishingLineRow::StaticStruct();
 		TestEqual(TEXT("a new row imports"), Extended->CreateTableFromCSVString(WithBraid).Num(), 0);

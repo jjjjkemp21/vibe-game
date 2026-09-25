@@ -10,7 +10,7 @@ Counts: todo 1, done 12.
 
 ## A3
 
-Counts: todo 12, ready 2, doing 14, review 2, merge 2, done 16, dropped 1.
+Counts: todo 11, ready 2, doing 13, review 2, merge 2, done 19, dropped 1.
 
 - 47 obj lead - todo P0 - - - A3 Milestone A3: Jimmy's A2 playtest notes, delivered in sprint
 - 49 obj design - todo P1 - - - S2 Sprint 2: fight redesign (limited line + snap, reel in / let
@@ -20,34 +20,32 @@ Counts: todo 12, ready 2, doing 14, review 2, merge 2, done 16, dropped 1.
 - 66 task eng junior todo P1 - - - T-056 Bobber can dip under water during a fight
 - 67 task eng senior todo P1 - - - T-057 Fight length follows tension management (letting a fish run
 - 98 task eng junior todo P1 - - - T-064b Carried cooler open/show arm poses: EFPArmsPose CarryCoolerO
-- 86 task eng mid todo P2 - - - T-068b Sky rig: apply blended DT_TimeOfDay to sun, moon, sky, fog,
 - 87 task design mid todo P2 - - - T-068c Presets to DT_TimeOfDay.json, builder places sky rig + night
 - 89 task eng senior todo P2 - - - T-069b Ripple sim: camera-centred render-target wave equation, DT_W
 - 91 task design senior todo P2 - - - T-069c Water graph v5 in build_level.py (waves, facets, shore foam,
 - 78 task eng senior ready P2 - - - T-068 Day/night cycle (T-013)
 - 79 task eng senior ready P2 - - - T-069 Water: shore waves, ocean motion, reactive ripples
 - 48 obj eng - doing P0 - - - S1 Sprint 1: line + fight fixes, even fight, faster reel, simpl
-- 57 bug eng senior doing P0 eng4 a9531b4 - T-047 Stepping back on the dock pulls fish + line through the dock
-- 59 task eng mid doing P0 eng5 ac8bb14 - T-049 Even fight: no near-snap spike right after the hook, no easy
-- 60 task eng mid doing P0 eng5 ac8bb14 - T-050 Reel-in speed much faster now (data); fully tension-driven f
+- 59 task eng mid doing P0 eng5 a98eecc - T-049 Even fight: no near-snap spike right after the hook, no easy
+- 60 task eng mid doing P0 eng5 a98eecc - T-050 Reel-in speed much faster now (data); fully tension-driven f
 - 50 obj art - doing P1 - - - S3 Sprint 3: fish that look alive (upright calm when tired, fas
 - 51 obj eng - doing P1 - - - S4 Sprint 4: cooler handling (bob with arms, open while held +
 - 68 task art senior doing P1 main ab02639 70% T-058 Exhausted fish (stamina 0) stays upright with a calm swim, n
 - 69 task art senior doing P1 main ab02639 70% T-059 Fish with stamina: fast, fighting 'run' swim
 - 70 bug art senior doing P1 main ab02639 70% T-060 Dangling fish: head stays fixed at the hook, only the body w
 - 72 task art senior doing P1 main a18cd09 55% T-062 Cast charge shown in the arms, not only the rod
-- 96 task art mid doing P1 main a751dd1 - T-064a FP arm poses: carried cooler open (tilted to eye) + show (tu
+- 96 task art mid doing P1 main a94e38c - T-064a FP arm poses: carried cooler open (tilted to eye) + show (tu
 - 52 obj design - doing P2 - aade375 - S5 Sprint 5: the world comes alive (day/night cycle; shore wave
-- 85 task eng mid doing P2 eng1 a6b2bec - T-068a Day/night clock: server-owned time, phases, DT_DayCycle, bit
-- 88 task eng senior doing P2 eng2 a31eb5b - T-069a Wave function (C++ + HLSL, one formula), DT_Water, MPC_Water
-- 55 bug eng senior review P0 eng4 a9531b4 - T-045 Walking while reeling drags bobber + fish along; they must s
+- 86 task eng mid doing P2 eng13 ae9cabe - T-068b Sky rig: apply blended DT_TimeOfDay to sun, moon, sky, fog,
+- 88 task eng senior doing P2 eng2 a377a3d 30% T-069a Wave function (C++ + HLSL, one formula), DT_Water, MPC_Water
+- 85 task eng mid review P2 eng1 a6346e9 - T-068a Day/night clock: server-owned time, phases, DT_DayCycle, bit
 - 90 task art junior review P2 main a19b389 50% T-069d SM_WaterGrid tiles: flat technical grid, 2 m near + coarse f
-- 44 task eng mid merge P1 eng7 a1fcfff - T-043 A fish hanging on the line turns its side toward the viewer
-- 71 task eng mid merge P1 eng7 a1fcfff - T-061 A dangling fish's wiggle moves the line (like turning the ca
+- 55 bug eng senior merge P0 eng4 a9531b4 - T-045 Walking while reeling drags bobber + fish along; they must s
+- 57 bug eng senior merge P0 eng4 a9531b4 - T-047 Stepping back on the dock pulls fish + line through the dock
 
 ## (no milestone)
 
-Counts: todo 17, ready 3, done 15, dropped 1.
+Counts: todo 18, ready 3, doing 1, done 15, dropped 1.
 
 - 2 obj lead - todo P1 - - - P-004 Agent work board (board.py) live in the studio
 - 22 q lead - todo P2 - - - Q-03 Should losing a fish cost the bait?
@@ -60,6 +58,7 @@ Counts: todo 17, ready 3, done 15, dropped 1.
 - 29 q lead - todo P2 - - - Q-10 Landed fish hang swing settles in 8-10 s: too long?
 - 30 q lead - todo P2 - - - Q-11 Fish lost the instant you sprint mid-fight: too harsh?
 - 31 q lead - todo P2 - - - Q-12 Left arm stretches at a full right steer: noticeable?
+- 101 bug eng junior todo P2 - - - T-074 A fish that snaps the line while being lifted at the dock ed
 - 3 obj lead - todo P3 - - - BL Backlog: small follow-ups (first Engineering manager pilot b
 - 19 task design junior todo P3 - - - T-036 Optional Lure.CoolerSpawn marker in L_PalmKey (+X toward the
 - 20 q lead - todo P3 - - - Q-01 Stray janitor_exception entry in .claude/settings.json: remo
@@ -69,3 +68,4 @@ Counts: todo 17, ready 3, done 15, dropped 1.
 - 36 bug art mid ready P2 - - - T-040 Cooler: in-game shop view shows 1/4 eyes with 4 Bonefish (Bl
 - 18 task qa mid ready P3 - - - T-035 Split docs/TEST_PLAN.md into docs/test-plan/<system>.md
 - 81 bug eng junior ready P3 - - - T-070 Playtest driver: a pd.console query can end the PIE session
+- 100 task qa junior doing P0 eng4 ad9accc - T-045q Update 3 QA tests to T-045's server FishLocation (ProxyFollo

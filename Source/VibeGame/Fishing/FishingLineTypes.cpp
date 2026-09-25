@@ -58,8 +58,8 @@ bool FLureFishingLineRow::Validate(FString& OutProblem) const
 {
 	const float Values[] = { SubstepRate, GravityScale, AirDrag, WaterDrag, SlackShare, TautExponent, LengthResponse, StraightenTime, CastTension,
 		WaitTension, BiteTension, HookedTension, FloatStrength, FloatHeight, WaterRefreshDistance, RecoilSpeed, RecoilTime,
-		RecoilLengthShare, HangEndMass, HangDrag, HangReelSpeed, HangMaxSwingDeg, TeleportDistance, CollisionRadius, GroundFriction,
-		CollisionQueryMargin, CollisionRefreshTime };
+		RecoilLengthShare, HangEndMass, HangDrag, HangReelSpeed, HangMaxSwingDeg, HangFaceTime, HangWiggleCoupling, TeleportDistance, CollisionRadius,
+		GroundFriction, CollisionQueryMargin, CollisionRefreshTime };
 	for (const float Value : Values)
 	{
 		if (!FMath::IsFinite(Value) || Value < 0.f)
@@ -108,6 +108,14 @@ bool FLureFishingLineRow::Validate(FString& OutProblem) const
 	if (HangMaxSwingDeg < 10.f || HangMaxSwingDeg > 90.f)
 	{
 		return Fail(FString::Printf(TEXT("HangMaxSwingDeg %.2f must be in [10, 90] degrees"), HangMaxSwingDeg));
+	}
+	if (HangFaceTime > 5.f)
+	{
+		return Fail(FString::Printf(TEXT("HangFaceTime %.3f must be in [0, 5] s"), HangFaceTime));
+	}
+	if (HangWiggleCoupling > 10.f)
+	{
+		return Fail(FString::Printf(TEXT("HangWiggleCoupling %.3f must be in [0, 10]"), HangWiggleCoupling));
 	}
 	if (CollisionRadius > 50.f)
 	{
@@ -230,6 +238,37 @@ float FLureFishingLineRules::StateTension(ELureFishingState State, bool bFightAc
 	case ELureFishingState::Idle:
 	default: return 0.f;
 	}
+}
+
+FQuat FLureFishingLineRules::SideOnHangRotation(const FQuat& Current, const FVector& Up, const FVector& HangPoint, const FVector& ViewLocation,
+	float DeltaTime, float FaceTime)
+{
+	FVector Axis = Up;
+	if (Axis.ContainsNaN() || !Axis.Normalize())
+	{
+		Axis = FVector::UpVector;
+	}
+	// The side it shows now, square to the line (it never spins about another axis).
+	FVector Side = Current.ContainsNaN() ? FVector::RightVector : Current.GetAxisY();
+	Side -= Axis * FVector::DotProduct(Side, Axis);
+	if (!Side.Normalize())
+	{
+		FVector Other;
+		Axis.FindBestAxisVectors(Side, Other);
+	}
+	// Its right side (+Y) toward whoever looks at it: the viewer's direction square to the line.
+	FVector ToViewer = ViewLocation - HangPoint;
+	if (!ToViewer.ContainsNaN())
+	{
+		ToViewer -= Axis * FVector::DotProduct(ToViewer, Axis);
+		if (ToViewer.Normalize() && FMath::IsFinite(DeltaTime) && DeltaTime > 0.f)
+		{
+			const double Angle = FMath::Atan2(FVector::DotProduct(FVector::CrossProduct(Side, ToViewer), Axis), FVector::DotProduct(Side, ToViewer));
+			const double Share = (FMath::IsFinite(FaceTime) && FaceTime > 0.f) ? 1.0 - FMath::Exp(-static_cast<double>(DeltaTime) / FaceTime) : 1.0;
+			Side = FQuat(Axis, Angle * Share).RotateVector(Side);
+		}
+	}
+	return FRotationMatrix::MakeFromXY(Axis, Side).ToQuat();
 }
 
 float FLureFishingLineRules::FloatAmount(float Tension01, const FLureFishingLineRow& Row)

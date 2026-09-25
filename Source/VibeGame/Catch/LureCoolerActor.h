@@ -161,6 +161,9 @@ public:
 	/** The lid's current angle on this machine, degrees (0 = closed) */
 	float GetLidPitch() const { return LidPitch; }
 
+	/** The pitch the lid heads for on this machine: 0 closed; open = LidOpenPitch, or CarriedOpenLidPitch in the carrier's own first-person view (T-064c) */
+	float GetLidTargetPitch(const FLureCatchRow& Tuning) const;
+
 	/** T-064, this machine: how far the carried cooler has turned to its open tilt and to its show turn (0..1 each) */
 	float GetOpenPoseAlpha() const { return OpenPoseAlpha; }
 	float GetShowPoseAlpha() const { return ShowPoseAlpha; }
