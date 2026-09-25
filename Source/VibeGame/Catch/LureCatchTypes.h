@@ -201,6 +201,14 @@ struct FLureCatchRow : public FTableRowBase
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Cooler", meta=(ClampMin="0", Units="cm", DataTableImportOptional))
 	float DumpSpacing = 25.0f;
 
+	/**
+	 *  T-064c: the lid pitch, degrees, of a cooler you carry open, in your own first-person view only: folded back behind the
+	 *  box so it no longer blocks your view (0..270). Other players and a standing open cooler use LidOpenPitch. Cosmetic
+	 *  and local (no replication); the lid swings at LidOpenPitch / LidOpenTime deg/s, so the longer swing takes longer.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Cooler", meta=(ClampMin="0", ClampMax="270", DataTableImportOptional))
+	float CarriedOpenLidPitch = 235.0f;
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Catch", meta=(MultiLine=true, DataTableImportOptional))
 	FString DevComment;
 
