@@ -64,7 +64,10 @@ The lead may overrule any of these; a change is a data edit unless marked (code)
 ## Bite, hook, miss
 - Wait: random in [BiteWaitMin, BiteWaitMax] after landing. Before the bite, [NibblesMin, NibblesMax] nibbles about
   NibbleInterval apart: the bobber tips (NibbleTiltDeg) so its white half shows (designer B-S4). Nibbles are tells only.
-- Bite: the bobber is pulled under by BiteDipDepth (>= its scaled 4.9 cm top, so the red disappears; B-S4) and tugs; the
+- Bite: the fish ducks the bobber under by BiteDipDepth (>= its scaled 4.9 cm top, so the red disappears; B-S4) and it
+  bobs back up to BiteDipMinShare x BiteDipDepth (the red dome shows again), BiteDipRate ducks a second, the first one at
+  once (BiteDipAttack 0). T-075a: the water is clear, so a bobber only held under stays visible a few px lower and a bite
+  looked like idle at 18 m; the ducking is the cue (FLureFishingRules::BiteDipShare). The bite also tugs; the
   bite sound (setting, optional) plays at the bobber and the owner's controller rumbles (BiteRumbleIntensity/Duration).
 - Hook: a press inside [bite, bite + HookWindow (+ grace)] hooks. After the window closes the bite is a miss: the rolled fish
   is gone for good. Then `MissEndsCast` decides: False (default) = the bobber stays and a new bite (a new roll) may come
@@ -91,7 +94,7 @@ The lead may overrule any of these; a change is a data edit unless marked (code)
 - Rod pose per stance and motion (DT_Movement): Stand/Sprint/Crouch = HoldRod; Prone still = ProneHold, Prone moving =
   ProneTuck (tuck at once, untuck after RodStillDelay); prone ArmsPitchFollowUp 0 (the arms stay down when looking up);
   RodHoldClearance 130 cm: a still prone player facing a wall keeps the tuck unless a line is out.
-- Bobber: SM_Bobber at BobberScale (3x), pivot on the water surface, bobs and wobbles.
+- Bobber: SM_Bobber at BobberScale (7.9x since T-075a: the red dome is ~12 px tall at 18 m at 1080p), pivot on the water surface, bobs and wobbles.
 - Line: a simulated rope (T-032, docs/specs/fishing-line.md: sags and floats when slack, straight at the snap threshold,
   recoils when it snaps) drawn as spline-mesh segments from the rod's `LineTip` (moved to where the first-person rod is
   drawn) to the bobber's `LineAttach`. Width per point = LinePixelWidth (2.5 px) at the

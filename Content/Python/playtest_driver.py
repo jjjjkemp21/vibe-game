@@ -6,6 +6,7 @@ Quick start (each block = one run_python call; `result = ...` is what you get ba
     importlib.reload(pd)                       # safe any time: live state (input, tick callback, log) survives reloads
     result = pd.begin_session("T026-swim")     # report folder Saved/AgentLogs/playtest/<stamp>-T026-swim/ + session.log
     result = pd.start_pie()                    # start_pie(players=2) = listen server + 1 client; settings restored later
+                                               # every player plays in its own 1600x900 (16:9) window by default
 
     import playtest_driver as pd
     result = pd.wait_pie()                     # {"ready": true, ...} once every player has a pawn; call again if false
@@ -34,7 +35,9 @@ Helpers (every name here exists; self_check() verifies it)
             session_log(text)                    add your own note line to session.log
             log_path()                           path of session.log
             editor_log(pattern="LogLureDev", lines=20)  last matching lines of the editor log (dev command output)
-  PIE       start_pie(players=1, level=None)     request PIE (in the level viewport); players>=2 = listen server
+  PIE       start_pie(players=1, level=None, window=(1600, 900))   request PIE; players>=2 = listen server.
+                                                 window=(w, h): every player (host and clients) in its own floating
+                                                 window of that size (16:9 screenshots); window=None: level viewport
             wait_pie()                           {"ready": bool, ...}; call until ready
             pie_status()                         running, players (role, pawn, PlayerId), frame
             stop_pie()                           stop input, end PIE, restore play settings
@@ -108,7 +111,11 @@ HELPERS = [
 _STATE_KEY = "_lure_playtest_driver_state"
 _PROJECT_DIR = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 _PLAY_SETTINGS_PATH = "/Script/UnrealEd.Default__LevelEditorPlaySettings"
-_PLAY_SETTING_NAMES = ["PlayNetMode", "PlayNumberOfClients", "RunUnderOneProcess"]
+_PLAY_SETTING_NAMES = ["PlayNetMode", "PlayNumberOfClients", "RunUnderOneProcess",
+                       "NewWindowWidth", "NewWindowHeight", "NewWindowPosition", "CenterNewWindow",
+                       "ClientWindowWidth", "ClientWindowHeight"]
+_DEFAULT_PIE_WINDOW = (1600, 900)   # 16:9 playtest view for every player (window=None plays in the level viewport)
+_PIE_WINDOW_PAD = (0, -2)           # measured (UE 5.8): a PIE window of client size w x h renders a w x (h+2) viewport
 _LOG_RESULT_CHARS = 300
 _MAX_RESULTS = 200
 _MAX_ERRORS = 20
@@ -127,6 +134,8 @@ def _new_state():
         "folder": None,                # output folder (screenshots, session.log)
         "log": None,                   # session.log path
         "saved_play_settings": None,   # what start_pie changed (restored by stop_pie)
+        "restore_after_pie": False,    # stop_pie asked the tick to restore the play settings once PIE has ended
+        "window": None,                # [w, h] start_pie asked every player's viewport to be (None: level viewport)
         "players": 1,                  # players the last start_pie asked for
         "sub_cache": {},               # player -> (world path, EnhancedInputLocalPlayerSubsystem)
     }
@@ -360,6 +369,18 @@ def _tick_error(where, exc):
 
 def _tick_impl(delta_seconds):
     S["frame"] += 1
+    if S.get("restore_after_pie"):
+        if _pie_running():
+            return
+        # The engine writes the PIE window size/position into the play settings when PIE ends, so the user's
+        # settings go back only after that.
+        S["restore_after_pie"] = False
+        try:
+            restore_play_settings()
+        except Exception as exc:
+            _tick_error("restore_play_settings", exc)
+        _stop_tick()
+        return
     if (S["holds"] or S["looks"]) and not _pie_running():
         S["holds"].clear()
         S["looks"] = []
@@ -447,9 +468,29 @@ def _set_play_settings(values):
     return _get_play_settings()
 
 
+def _begin_play_floating():
+    """Request PIE in a new floating window (size = NewWindowWidth/Height; clients use ClientWindowWidth/Height).
+    LevelEditorSubsystem.editor_request_begin_play always targets the active level viewport, so this goes through
+    Epic's EditorAppToolset.StartPIE tool (PlayMode_InEditorFloating leaves DestinationSlateViewport unset).
+    Returns None if the request was made, else the error text."""
+    options = {"options": {"bSimulate": False, "playMode": "PlayMode_InEditorFloating", "warmupSeconds": 0}}
+    try:
+        res = unreal.ToolsetRegistry.execute_tool("EditorToolset.EditorAppToolset", "StartPIE", json.dumps(options))
+    except Exception as exc:
+        return repr(exc)
+    S["start_result"] = res   # keep the async result alive while PIE starts
+    try:
+        err = res.get_editor_property("error") if res is not None else "no result"
+    except Exception:
+        err = None
+    return str(err) if err else None
+
+
 @_logged
-def start_pie(players=1, level=None):
-    """Request PIE in the level viewport. players>=2: listen server + (players-1) clients in one process.
+def start_pie(players=1, level=None, window=_DEFAULT_PIE_WINDOW):
+    """Request PIE. players>=2: listen server + (players-1) clients in one process.
+    window=(w, h) (default 1600x900, 16:9): every player (host and clients) plays in its own floating window of that
+    size, so screenshots are w x h. window=None: the host plays in the level viewport (whatever shape it has).
     Loads `level` first if given (e.g. "/Game/Maps/Dev/L_Dev_Movement"). PIE starts on the next editor tick."""
     les = _level_editor()
     if les.is_in_play_in_editor():
@@ -462,6 +503,13 @@ def start_pie(players=1, level=None):
         want = {"PlayNetMode": "PIE_Standalone", "PlayNumberOfClients": 1}
     else:
         want = {"PlayNetMode": "PIE_ListenServer", "PlayNumberOfClients": players, "RunUnderOneProcess": True}
+    S["window"] = None
+    if window:
+        w, h = int(window[0]), int(window[1])
+        S["window"] = [w, h]
+        pw, ph = w + _PIE_WINDOW_PAD[0], h + _PIE_WINDOW_PAD[1]
+        want.update({"NewWindowWidth": pw, "NewWindowHeight": ph, "ClientWindowWidth": pw, "ClientWindowHeight": ph,
+                     "CenterNewWindow": True})
     if S["saved_play_settings"] is None:
         S["saved_play_settings"] = _get_play_settings()
     now = _set_play_settings(want)
@@ -470,9 +518,21 @@ def start_pie(players=1, level=None):
     S["results"] = {}
     stop_input()
     _ensure_tick()
-    les.editor_request_begin_play()
-    return {"requested": True, "players": players, "play_settings": now, "restore_on_stop": S["saved_play_settings"],
-            "next": "call pd.wait_pie() in your next step"}
+    mode = "level viewport"
+    warning = None
+    if window:
+        warning = _begin_play_floating()
+        mode = "floating windows %dx%d" % (w, h)
+        if warning:
+            mode = "level viewport (floating window request failed)"
+            les.editor_request_begin_play()
+    else:
+        les.editor_request_begin_play()
+    out = {"requested": True, "players": players, "mode": mode, "play_settings": now,
+           "restore_on_stop": S["saved_play_settings"], "next": "call pd.wait_pie() in your next step"}
+    if warning:
+        out["warning"] = warning
+    return out
 
 
 def pie_status():
@@ -500,6 +560,17 @@ def wait_pie():
     players = status["players"]
     status["ready"] = bool(status["running"] and len(players) >= S["players"] and all(p["pawn"] for p in players))
     status["expected_players"] = S["players"]
+    if status["ready"]:
+        sizes = []
+        for index in range(len(players)):
+            try:
+                sizes.append(list(pc(index).get_viewport_size()))
+            except Exception as exc:
+                sizes.append(repr(exc))
+        status["viewport_sizes"] = sizes
+        want = S.get("window")
+        if want and any(size != want for size in sizes):
+            status["warning"] = "a player viewport is not %dx%d (screenshots take the viewport size)" % tuple(want)
     return status
 
 
@@ -516,15 +587,18 @@ def restore_play_settings():
 
 @_logged
 def stop_pie():
-    """Stop all injected input, end PIE and restore the play settings."""
+    """Stop all injected input, end PIE and restore the play settings (once PIE has really ended, a frame later)."""
     stop_input()
     was_running = _pie_running()
+    S["sub_cache"] = {}
     if was_running:
         _level_editor().editor_request_end_play()
+        S["restore_after_pie"] = True
+        _ensure_tick()
+        return {"stop_requested": True, "play_settings": "restored by the driver tick once PIE has ended"}
     restored = restore_play_settings()
-    S["sub_cache"] = {}
     _stop_tick()
-    return {"stop_requested": was_running, "play_settings": restored}
+    return {"stop_requested": False, "play_settings": restored}
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -1113,6 +1187,7 @@ _REQUIRED_API = {
     "CapsuleComponent": ["get_scaled_capsule_half_height", "get_scaled_capsule_radius"],
     "AutomationLibrary": ["take_high_res_screenshot"],
     "ToolsetLibrary": ["get_object_properties", "set_object_properties"],
+    "ToolsetRegistry": ["execute_tool"],
 }
 
 

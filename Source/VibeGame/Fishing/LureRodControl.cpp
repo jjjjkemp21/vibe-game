@@ -87,6 +87,25 @@ FRotator FLureRodControl::CameraTarget(const FVector& Eye, const FVector& Fish, 
 	return Target;
 }
 
+float FLureRodControl::ViewRodYawDeg(float Yaw01, float FullYawDeg)
+{
+	using namespace LureRodControlPrivate;
+	return Unit(Yaw01) * FMath::Max(0.f, Finite(FullYawDeg));
+}
+
+FVector2D FLureRodControl::CapViewAim(const FVector2D& Aim, float FullYawDeg, const FLureFishFightRow& Tuning)
+{
+	using namespace LureRodControlPrivate;
+	const float MaxDeg = FMath::Clamp(Finite(Tuning.CameraMaxRodYawDeg), 0.f, 90.f);
+	const float FullDeg = FMath::Max(0.f, Finite(FullYawDeg));
+	if (MaxDeg <= 0.f || FullDeg <= MaxDeg)
+	{
+		return Aim; // no cap, or the rod never turns that far
+	}
+	const double Limit = MaxDeg / FullDeg;
+	return FVector2D(FMath::Clamp(Aim.X, -Limit, Limit), Aim.Y);
+}
+
 FRotator FLureRodControl::CameraStep(const FRotator& Current, const FRotator& Target, float DeltaTime, const FLureFishFightRow& Tuning)
 {
 	const float Alpha = LureRodControlPrivate::EaseAlpha(DeltaTime, Tuning.CameraFollowTime);

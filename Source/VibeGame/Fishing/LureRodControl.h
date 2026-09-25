@@ -50,6 +50,16 @@ struct FLureRodControl
 	 */
 	static FRotator CameraTarget(const FVector& Eye, const FVector& Fish, float Pitch01, float Yaw01, const FLureFishFightRow& Tuning);
 
+	/** T-075b: the rod's yaw in the owner's view at an aim, degrees: Yaw01 (clamped to -1..1) x FullYawDeg, its turn in view at yaw 1. */
+	static float ViewRodYawDeg(float Yaw01, float FullYawDeg);
+
+	/**
+	 *  T-075b: Aim (X yaw, Y pitch; -1..1) with the yaw capped so the owner's rod points at most CameraMaxRodYawDeg from the
+	 *  center of the view, for a rod that turns FullYawDeg in view at yaw 1. The arms and the rod ride the camera, so this cap
+	 *  (not the camera's turn) keeps them on screen. Below the cap, and with CameraMaxRodYawDeg 0, the aim is returned as is.
+	 */
+	static FVector2D CapViewAim(const FVector2D& Aim, float FullYawDeg, const FLureFishFightRow& Tuning);
+
 	/** One eased camera step from Current toward Target (time constant CameraFollowTime; yaw the short way round; no roll). */
 	static FRotator CameraStep(const FRotator& Current, const FRotator& Target, float DeltaTime, const FLureFishFightRow& Tuning);
 

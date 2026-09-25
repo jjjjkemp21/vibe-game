@@ -209,7 +209,11 @@ bool FQAFishDataFishingRowsMeetDesignLimits::RunTest(const FString& Parameters)
 		TestTrue(FString::Printf(TEXT("%s: MaxLineLength %.0f > MaxCastDistance %.0f (else a full cast comes straight back in)"), *Name, Row.MaxLineLength, Row.MaxCastDistance),
 			Row.MaxLineLength > Row.MaxCastDistance);
 		TestTrue(Name + TEXT(": B-S3, the line is at least 2 px wide at 1080p"), Row.LinePixelWidth >= 2.f);
-		TestTrue(FString::Printf(TEXT("%s: ART_STYLE, bobber readability scale 3-5x (%.2f)"), *Name, Row.BobberScale), Row.BobberScale >= 2.f && Row.BobberScale <= 5.f);
+		// Design limit (designer must-fix, Saved/AgentLogs/design/20260924-2230-sprint1-build.md: "scale the bobber 1.5-2x" of 4.5 = 6.75-9;
+		// T-075a ships 7.9, ART_STYLE.md). Never smaller than the old 4.5, never above 2x of it.
+		TestTrue(FString::Printf(TEXT("%s: ART_STYLE/designer, bobber readability scale in [4.5, 9] (%.2f)"), *Name, Row.BobberScale), Row.BobberScale >= 4.5f && Row.BobberScale <= 9.f);
+		TestTrue(FString::Printf(TEXT("%s: T-075a, BiteDipMinShare is a share in [0, 1] (%.2f)"), *Name, Row.BiteDipMinShare), Row.BiteDipMinShare >= 0.f && Row.BiteDipMinShare <= 1.f);
+		TestTrue(FString::Printf(TEXT("%s: T-075a, BiteDipAttack is not negative and shorter than the hook window (%.2f s)"), *Name, Row.BiteDipAttack), Row.BiteDipAttack >= 0.f && Row.BiteDipAttack < Row.HookWindow);
 		TestTrue(FString::Printf(TEXT("%s: B-S4, the bite pulls the whole red top under (%.1f cm >= 4.9 cm x %.1f)"), *Name, Row.BiteDipDepth, Row.BobberScale),
 			Row.BiteDipDepth >= 4.9f * Row.BobberScale);
 		TestTrue(Name + TEXT(": the bite is felt (rumble > 0 for > 0 s)"), Row.BiteRumbleIntensity > 0.f && Row.BiteRumbleIntensity <= 1.f && Row.BiteRumbleDuration > 0.f);
@@ -228,7 +232,7 @@ bool FQAFishDataFishingRowsMeetDesignLimits::RunTest(const FString& Parameters)
 		TestFalse(TEXT("spec default: MissEndsCast = False (the bobber stays after a miss)"), Default->MissEndsCast);
 		TestNearlyEqual(TEXT("spec: HookLatencyGrace 0.15 s"), Default->HookLatencyGrace, 0.15f, 1.0e-4f);
 		TestNearlyEqual(TEXT("spec: NoBiteHintDelay 8 s"), Default->NoBiteHintDelay, 8.f, 1.0e-4f);
-		TestNearlyEqual(TEXT("ART_STYLE: BobberScale 4.5x (T-006 playtest, 2026-09-23)"), Default->BobberScale, 4.5f, 1.0e-4f);
+		TestTrue(FString::Printf(TEXT("designer 2026-09-24: Default BobberScale 1.5-2x of 4.5, i.e. [6.75, 9] (%.2f)"), Default->BobberScale), Default->BobberScale >= 6.75f && Default->BobberScale <= 9.f);
 	}
 	return true;
 }

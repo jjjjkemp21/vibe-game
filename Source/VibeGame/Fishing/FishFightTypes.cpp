@@ -347,7 +347,7 @@ bool FLureFishFightRow::ValidateRodSteering(FString& OutProblem) const
 	// T-028 columns (reel-fight-rules.md "Rod steering").
 	if (!LureFightTypesPrivate::AllFiniteNonNegative({ RodAimUpDeg, RodAimDownDeg, RodAimSideDeg, PitchBackPressure, PitchDipPressure, PitchDipPower, SideMinShare,
 		SideLeverage, SideTurnRate, SideTurnPull, SideDrain, ReelSpeedMin, ReelSpeedMax, ReelLoadPerSpeed, CameraFollowTime, CameraRodYawShare,
-		CameraRodPitchShare, RodAimLookPitchDeg, RodAimLookYawDeg, RodAimBlendTime }))
+		CameraRodPitchShare, RodAimLookPitchDeg, RodAimLookYawDeg, RodAimBlendTime, CameraMaxRodYawDeg }))
 	{
 		OutProblem = TEXT("every rod-steering value must be a finite number >= 0");
 		return false;
@@ -365,6 +365,11 @@ bool FLureFishFightRow::ValidateRodSteering(FString& OutProblem) const
 	if (SideMinShare > 1.f || CameraRodYawShare > 1.f || CameraRodPitchShare > 1.f)
 	{
 		OutProblem = TEXT("SideMinShare, CameraRodYawShare and CameraRodPitchShare must be in [0, 1]");
+		return false;
+	}
+	if (CameraMaxRodYawDeg > 90.f)
+	{
+		OutProblem = FString::Printf(TEXT("CameraMaxRodYawDeg %.1f must be in [0, 90] (0 = no cap)"), CameraMaxRodYawDeg);
 		return false;
 	}
 	if (ReelSteps < 1 || ReelSteps > 9 || ReelDefaultStep < 1 || ReelDefaultStep > ReelSteps)

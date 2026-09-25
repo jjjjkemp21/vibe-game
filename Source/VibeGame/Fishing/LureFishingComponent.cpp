@@ -1721,7 +1721,9 @@ void ULureFishingComponent::UpdateRod(float DeltaTime)
 		Pitch += FLureFight::RodPitch(RodBendTension01, static_cast<float>(GetLocalTime()), GetFightTuning());
 	}
 	// T-028: the rod follows the player's aim (placeholder turn, until the arms play the rod-aim aim offset and carry it).
-	const FRotator Aim = ArmsPlayRodAim() ? FRotator::ZeroRotator : FLureRodControl::RodLook(RodAimVisual.Y, RodAimVisual.X, GetFightTuning());
+	// T-075b: the owner's placeholder turn is capped like the arms (CameraMaxRodYawDeg).
+	const FVector2D ViewAim = GetViewRodAim(GetFightTuning().RodAimLookYawDeg);
+	const FRotator Aim = ArmsPlayRodAim() ? FRotator::ZeroRotator : FLureRodControl::RodLook(ViewAim.Y, ViewAim.X, GetFightTuning());
 	RodMesh->SetRelativeRotation(FRotator(Pitch + Aim.Pitch, Aim.Yaw, 0.f));
 }
 
@@ -1829,10 +1831,12 @@ void ULureFishingComponent::ComputeBobberPose(double Now, FVector& OutLocation, 
 	}
 	case ELureFishingState::Biting:
 	{
-		// Pulled under (the red top disappears) and tugged while the hook window is open.
-		const float Ramp = FMath::Clamp(Since / 0.06f, 0.f, 1.f);
+		// T-075a: the fish ducks the bobber under (the red top disappears) and it bobs back up between tugs (the red shows again),
+		// BiteDipRate times a second while the hook window is open. The water is clear, so a bobber that is only held under
+		// stays visible as a barely lower dot at 18 m: the motion is the cue (FLureFishingRules::BiteDipShare).
+		const float Ramp = Row.BiteDipAttack > 0.f ? FMath::Clamp(Since / Row.BiteDipAttack, 0.f, 1.f) : 1.f;
 		const float Tug = FMath::Sin(2.f * UE_PI * Row.BiteDipRate * Since);
-		OutLocation.Z = NetState.BobberRest.Z - Row.BiteDipDepth * Ramp * (0.85f + 0.15f * Tug);
+		OutLocation.Z = NetState.BobberRest.Z - Row.BiteDipDepth * Ramp * FLureFishingRules::BiteDipShare(Row, Since);
 		OutLocation.X += 3.f * Tug;
 		OutRotation.Pitch += 20.f * Tug;
 		break;

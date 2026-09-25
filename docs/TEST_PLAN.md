@@ -203,6 +203,26 @@ Notes for the next QA agent:
 
 Gaps: the drawn fish's full length (tail/head clipping through the walls) is not checked: the tests use the origin, LieOffsetCm and the box, because there is no API for curled-pose bounds. A per-fish bounds accessor would close this (seam request). The dedicated-server lid pitch is not asserted, because the server doesn't render. Visual confirmation of the lid and the display stays with the playtester and designer.
 
+### A3 gate independent QA: held cooler + drop under a roof (QA-A3c, qa-engineer, 2026-09-24, Standard tier)
+Items T-063 (cooler on the arms' `cooler` bone), T-064 (open/show while carried), T-064c (carrier-only lid fold), T-065 (dump), T-066 (drop under a roof). Implementer tests: `HeldCooler{Bone,Open,Lid,Dump}Test.cpp`, `DropUnderRoofTest.cpp` (23 tests) already cover every acceptance criterion, including host + 2 clients for open/show/dump/lid and a late joiner. QA added only boundaries and cross-feature cases. File `Source/VibeGame/Tests/Catch/QAS1HeldCoolerTest.cpp` (namespace `LureCatchQAS1`), 7 tests:
+
+| Test (Project.Catch.QA.S1.*) | Proves |
+|---|---|
+| `Dump.FullCoolerSpreadAndConserved` | A full cooler (capacity, 4) dumps every fish: "Dump 4 fish"; each fish exists exactly once (CountCopies); the spread is 0, +S, -S, +2S at DropForward on the dock; still carried, open and shown. |
+| `Dump.ZeroSpacingOnePile` | DumpSpacing 0 (valid data): every fish lands straight ahead at DropForward, nothing lost. |
+| `Dump.WallStopsEveryFish` | The Drop rule's wall stop applies to a dump: all fish land on the dock in front of a wall at DropForward/2. |
+| `Dump.UnderRoofLandsOnDock` | T-065 x T-066: a dump under a roof 150 cm above the eye lands on the dock, not on the roof. |
+| `Drop.ShelfBelowHandCatchesFish` | T-066 "the first surface below the hand": a 40 cm slab under the drop point (with a roof above) catches the fish on its top. |
+| `Lid.CarrierPitchWhileShowingAndReclosed` | The carrier's lid stays at CarriedOpenLidPitch while showing and after turning back; closed in hand = 0 (still carried); reopened = CarriedOpenLidPitch again. |
+| `Net.StaleDumpAfterTurnBackRefused` | Host + client: the carrier's own Dump that arrives after the server turned the cooler back is refused; both fish stay, no items appear, the client sees it carried, open and not shown. |
+
+Gaps (A3 gate):
+- T-063: the bone follow is checked with a moved bone, not by playing the CarryCooler_Idle clip headless (no anim tick in tests); the look (the fists on the handles) is up to the playtester.
+- T-064: whether the hands sit on the handles while the cooler is turned is an art need (T-064a/b show pose), not in this build; the playtester and designer judge it.
+- T-064c: the lid covering the centre view (84% -> 22%) is a visual measure; the playtester and designer check it from the screenshots.
+- T-065: dumping under a sloped or uneven roof or ground is not covered (only flat slabs); the dump's cosmetic flight from the mouth is covered by the implementer test only as its start point.
+- T-066: a roof closer than 150 cm above the eye (e.g. a low hut) is not covered; the spec range is 150-250.
+
 ## T-010 cooler, selling, money, XP and levels (lane eng5)
 (T-030 retired the cooler and sell-point tests of this section; see the T-030 section above.)
 Implementer tests: `Tests/Progression/Progression{Component,Data,Interaction,Rules}Test.cpp`, `Project.Progression.{Cooler,Level,Landed,Money,Authority,Caught,Save,Data,Sell,Interact,Net}.*`, 25 tests (unreal-engineer).
@@ -235,7 +255,7 @@ Independent tests: `Tests/Fishing/QAFishing*.cpp` + `QAFishingTestUtils.{h,cpp}`
 
 | Area (count) | Tests (`Project.Fishing.QA.` + ...) | Level | What they prove |
 |---|---|---|---|
-| Data (9) | Data.{EnumCellsImportAsNamed, FishingBuiltInProfileEqualsCsv, FishingCsvCellsAreTyped, FishingRowsMeetDesignLimits, FishingValidateRejectsBadRows, MovementBuiltInRowsEqualCsv, MovementCsvCellsAreTyped, MovementRodRules, MovementValidateRejectsBadRodColumns} | D | DT_Fishing and the DT_Movement rod columns: every cell typed (enums exact names, never _MAX), design limits (hook window, bobber scale 3x, dip depth, waits fit the ~30 s loop; AutoLandDelay read from the table, 0 allowed for T-007), Validate() rejects bad rows, the built-in rows equal the CSV. |
+| Data (9) | Data.{EnumCellsImportAsNamed, FishingBuiltInProfileEqualsCsv, FishingCsvCellsAreTyped, FishingRowsMeetDesignLimits, FishingValidateRejectsBadRows, MovementBuiltInRowsEqualCsv, MovementCsvCellsAreTyped, MovementRodRules, MovementValidateRejectsBadRodColumns} | D | DT_Fishing and the DT_Movement rod columns: every cell typed (enums exact names, never _MAX), design limits (hook window, bobber scale in [4.5, 9] and Default in [6.75, 9] (designer 2026-09-24 "1.5-2x", T-075q), dip depth, BiteDipMinShare in [0,1], BiteDipAttack in [0, HookWindow), waits fit the ~30 s loop; AutoLandDelay read from the table, 0 allowed for T-007), Validate() rejects bad rows, the built-in rows equal the CSV. |
 | Cast (15) | Cast.{AimYawSetsDirection, ArcShape, ChargeFromHoldTime, DistanceClampedForAnyCharge, DistanceEndpointsFromData, DistanceMonotoneForAnyExponent, FlightTimeClamped, InvalidProfileRowFallsBack, LandingFollowsTheTable, MissingOrBadTableUsesBuiltInProfile, ProfileRowSelection, RefusedCastKeepsTheLineIdle, SecondCastWhileLineOutIsRefused, ServerClampsRequestedCharge, SettingsPathMatchesEnvironment} | U/I | Charge from hold time; distance and flight time from the table (endpoints, monotone for any exponent, clamped for any charge); the server clamps the requested charge; aim yaw sets the direction; profile row selection, bad/missing table falls back to the built-in profile; a second cast while the line is out is refused. |
 | State (4) | State.{CastButtonPerState, CastingLastsTheFlightTime, FullSequenceInOrder, ReleasedChargeIsTheCastCharge} | U/I | Full sequence Idle -> Charging -> Casting -> Waiting -> Bite -> Hooked -> result in order; the cast button per state; Casting lasts the flight time; the released charge is the cast charge. |
 | Hook (16) | Hook.{BiteSequenceDeterministicWithSeed, BiteWaitWithinDataRange, EarlyPressDuringNibbleFollowsRule, HookedAndLandedFishIsTheBite, JustAfterTheWindowMisses, JustInsideTheWindowHooks, LatePressIsAMiss, MissLosesTheFishForGood, NibblesWithinDataRange, PressWhileHookedChangesNothing, PressWithNothingToHookReelsIn, RemoteGraceOnlyForRemotePlayers, ServerNeverForcesTheRoll, SpookDelaysBiteAndItsNibbles, WindowComesFromTheTable, WindowEdgesPure} | U/I | Hook window edges (pure and in the world, just inside/just after), remote grace only for remote players, early press per EarlyHook rule, spook, miss/late press, the hooked and landed fish is the bite (field by field), nibble and bite-wait ranges, determinism with a fixed seed, the server never forces the roll. |
@@ -339,6 +359,24 @@ object, read into the copy, RepNotifies called on change), not a property copy.
 - The binary assets (DT_Gear, DT_FightPattern, DT_FishFight) don't exist until the editor-operator imports them in main; the settings path then
   replaces the built-in fallbacks. After the import, check once in main that the component resolves the imported tables (no fallback warning).
 
+### A3 gate QA (QA-A3a, 2026-09-24): fight + line, S1 items T-044/045/046/047/049/050/061(line)/071
+- Coverage audit: implementer tests cover each item's acceptance (Line.Hang.WidthOverTime; Line.WaitTension.*; Fight.Anchor.*;
+  Fight.DockEdge.*; Fight.Even.* / LandTime.*; Cast.UnderRoof.*; Line.Hang.Wiggle.*), plus the updated QA tests (T-046q, T-045q).
+- New QA tests, `Tests/FishFight/QAS1FightAnchorTest.cpp` (pure sim, spec "The fish stays put"): `Project.Fishing.Fight.QA.S1.`
+  WalkTowardShortensTheLine (LineOut = real distance, fish put, never lengthens), WalkInToLandDistanceLands (LandDistance +1 cm on /
+  -1 cm Landed), WalkOutPastTheSpoolSpools (spool -1 cm on / +1 cm Spooled), WalkRoundPastTheSwingLimitStaysPut (player circles
+  MaxSideDeg + 40 deg: drift < 0.01 cm), NonFinitePlayerPositionIsIgnored (NaN/Inf MovePlayer: fight bit-identical).
+- `Tests/Fishing/QAS1CastLandingTest.cpp` (T-071, spec "Landing height"): `Project.Fishing.QA.S1.Cast.` DefaultSearchHeightEdges
+  (surface 5 cm under eye+500 found, 5 cm over missed), SearchHeightComesFromTheRow (row 600 finds it, row 0 misses),
+  TallSearchStillStopsUnderARoof (row 3000 under a 20 m roof lands on the ground; open-sky control reaches the slab). Dry world
+  (settings copy with bUseFallbackWaterZ off: the sea-level fallback otherwise makes every point "water").
+- Gaps (A3 gate), not covered on purpose:
+  - T-049/T-050 fight pacing and length bounds: handed to S2 (reel-fight-rules.md "Handed to S2 (T-052)"); Even.* covers the spike/cliff.
+  - T-044 width over time on a client proxy line: the proxy runs the same component (Net.ProxyLineMatchesServer); server-side 60 s test only.
+  - T-061 wiggle on a client: cosmetic, local, nothing replicates; same code on every machine; playtester 2-player check.
+  - T-047 dock edge on a client beyond the replicated Lift (Anchor.ClientsSeeTheReplicatedFishLocation, DockEdge.World.*): playtester co-op.
+  - T-071 negative LandingSearchHeight: the code clamps to 0, the spec is silent; DT_Fishing data validation owns the range.
+
 ## T-027 fish anywhere + hot spots (lane eng1)
 - Implementer: `Project.Fishing.Water.*` (FishingWaterTest/FishingHotSpotTest). 11 T-006 tests were updated to the new rules; QA reviewed each:
   all are legitimate rule updates (spot-less water now bites, NoSpecies path kept by empty fallbacks), none weakened.
@@ -423,6 +461,30 @@ the test writes, so any sequence of ids, moves and endings is cheap). Tables fro
 - A real dedicated-server process (IsRunningDedicatedServer) can't run in editor tests; only the PIE dedicated net mode is covered.
 - Binding the dynamic OnFightFishLanded from a Blueprint (tests can't declare a UFUNCTION listener): reflection-checked only.
 - Escaping fish sink with no floor clamp: fixed in 98cacba (FFightFishVisual::EscapeStep keeps FloorClearance above the seabed; test Placement.EscapeStaysAboveTheSeabed).
+
+### A3 gate QA (QA-A3b, Full tier): T-048, T-048b, T-043, T-058a, T-059a, T-061 (fish side)
+Implementer tests already cover every acceptance criterion: `MouthOnLine.{PureRules, ActorFollowsRuns, BobberOverMouth}` (T-048),
+`SwimFacing.*` (T-048b, 5), `ExhaustedUpright` (T-058a), `PlayRateByStamina.{Rules, AdapterAndActor}` (T-059a), `Fishing.Line.Hang.SideOn.*` (T-043),
+`Fishing.Line.Hang.Wiggle.*` (T-061). Independent boundary tests: `Tests/FishVisual/QAS1FightFishVisualTest.cpp`, `Project.FishVisual.QA.S1.*`, 10 tests.
+
+| Tests (`Project.FishVisual.QA.S1.` + ...) | Item | What they prove |
+|---|---|---|
+| Swing.SpeedEdges | T-048 | Just under MinFacingSpeed: no swing; just over: RunSwingDeg x speed / RunSwingFullSpeed, to the swim's side; full at RunSwingFullSpeed; capped at 10x. |
+| Swing.LimitEdges | T-048 | Validate: RunSwingDeg 0 and 80 ok, 80.5 and -1 rejected; 0 = no swing and ClampToLine pins the yaw; 120 (bad data) still clamps to 80, pitch/roll kept; facing away -> exactly the cone edge. |
+| Mouth.LagCapEdges | T-048 | MouthMaxLagCm 0 valid and pins the mouth on the line end; just inside the cap only smoothed; just outside / dt 0 / far target: never more than the cap behind. |
+| PlayRate.StaminaOutOfRange | T-059a | Every move: stamina -1 plays as 0, 2.5 as 1 (rate and alpha); alpha never above fresh; adapter clamps a negative fight stamina to 0. |
+| PlayRate.UnlistedRoleIsOne | T-059a | A role not in RoleStaminaRates (Flop; or an empty list) = factor 1 at any stamina; the alpha rule still applies. |
+| Data.RoleStaminaRatesSane | T-059a | Every DT_FishVisual row: each role once, 0 < TiredRate <= FreshRate, 0 <= TiredAmplitude <= FreshAmplitude <= 1, every fight role (MoveRoles, Unknown, Thrash) listed. |
+| SwimFacing.MoveSideEdges | T-048b | MoveSwimSide +-3 capped at RunSwingDeg on the move's side; 0.5 against a fast opposite drag = half swing to the move's side; unknown PatternId = the built-in pattern. |
+| SwimFacing.ActorSwingsToMoveSide | T-048b | Proxy actor reeled in and dragged the other way: head to the move's side, RunSwingDeg x share (+-1.5), flips with the side; mouth within MouthMaxLagCm. |
+| Hang.AdoptedFishWiggleMovesTheLine | T-061 | Item hangs with its own still mesh (line rests), then adopts the landed visual (skinned mesh on an attached actor, own mesh hidden): the 3 cm 3 Hz wiggle moves the line's middle >= 0.5 cm at 3 Hz. |
+| Hang.HiddenFishIsNotAWiggle | T-061 | A hidden skinned mesh wiggling leaves the line at rest (<= 0.01 cm); shown again, the line follows it. |
+
+Gaps (A3 gate):
+- T-043 side-on with the real adopted ALureFightFish (ABP_Fish + SK_Bonefish flop): needs the ABP asset and clips ticking in a test world; `Hang.SideOn.RealCatch` uses the item; playtester checks.
+- T-061 wiggle strength with the real landed/hang clips (HangWiggleCoupling is a feel value): playtester/designer, art S3.
+- T-048b pitch following the move (Dive) instead of the drag: not in scope (report recommends a later task); no test.
+- T-059a calm clip look at low stamina (art S3): visual only, playtester.
 
 ## T-032 physics fishing line (lane eng5)
 Spec `docs/specs/fishing-line.md`. Implementer: 17 tests `Project.Fishing.Line.{Rules,Data,Sim,Component,Fishing}.*` (`Tests/Fishing/FishingLineTest.cpp`) + T-006 `Line.AtLeastTwoPixels`.
@@ -543,3 +605,10 @@ test world, hook-and-fight, fixture tables, HUD line lookup, input firing, water
 DipIsReliefNotReeling and DippedFastPostureLosesToSkilledPlay (O1, C++ balance with QA's players), OneSlackRule and
 HudNeverContradictsItself (O2), TeleportEndsTheFight (O4), PawnSwitchEndsTheOldFight (O5), ServerRateLimitsReelSteps (O6),
 TextInANumberCellFailsValidation (O7), DefaultReelStepMustBeSpeedOne (O8). Numbers and contract changes: docs/specs/reel-fight-rules.md "T-028b".
+
+## Environment: day/night clock (T-068a) + debug menu (T-051), A3 gate audit (QA-A3d, 2026-09-24)
+- Clock tests: `Project.Environment.Clock.{Data.DayCycleRows, Pure.DayAndPhaseLengths, Pure.DayLengthFromData, World.PhaseEventsAndHud, World.BiteUsesClockHour, Net.ServerSetReachesClients, Net.LateJoinerMatchesServer}` (implementer). The audit found every Standard-tier criterion covered: phase edges just under and over each edge (4.99/5, 6.99/7, 16.99/17, 18.99/19), wrap at 0/23.99/24/-1 h, 10 bad-row cases with fallback plus a missing table or row, and a client refused on Set/Scale/Phase and SetHour. No QA tests added.
+- Debug menu: `Project.Dev.DebugMenu.{ListsEveryBind, KeysAreFree, SensitivityStepsAndClamps, SensitivitySaveLoad}` cover the clamps at min and max, NaN and corrupt saves, and save/load (Light tier, audit only).
+### Gaps (A3 gate)
+- Non-default phase layouts (e.g. a row whose Night does not cross midnight) are only checked by Validate and not by phase sampling. Low risk, only one row ships.
+- There is no scale-extreme test (e.g. TimeScale 1000) for skipped phase events in the world. Only dev commands set the scale.

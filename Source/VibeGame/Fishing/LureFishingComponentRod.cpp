@@ -202,6 +202,18 @@ void ULureFishingComponent::UpdateRodAimVisual(float DeltaTime)
 	RodAimVisual = FLureRodControl::EaseAim(RodAimVisual, GetRodAim(), DeltaTime, GetFightTuning().RodAimBlendTime);
 }
 
+FVector2D ULureFishingComponent::GetViewRodAim(float FullYawDeg) const
+{
+	// T-075b: the owner's arms and rod ride the camera, so the camera's turn never moves them on screen; their own side swing
+	// does. Cap it (cosmetic: GetRodAim, the fight and the HUD keep the full aim).
+	return IsOwnerLocallyControlled() ? FLureRodControl::CapViewAim(RodAimVisual, FullYawDeg, GetFightTuning()) : RodAimVisual;
+}
+
+FVector2D ULureFishingComponent::GetRodAimForAnimation() const
+{
+	return GetViewRodAim(GetFightTuning().RodAimSideDeg);
+}
+
 bool ULureFishingComponent::ArmsPlayRodAim() const
 {
 	const ALurePlayerCharacter* Lure = Cast<ALurePlayerCharacter>(GetOwner());

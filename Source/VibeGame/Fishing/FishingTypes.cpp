@@ -12,7 +12,7 @@ bool FLureFishingRow::Validate(FString& OutProblem) const
 	const float Values[] = { ChargeTime, ChargeExponent, MinCastDistance, MaxCastDistance, CastSpeed, CastFlightTimeMin, CastFlightTimeMax,
 		CastArcHeightRatio, MaxLineLength, LandingSearchHeight, BiteWaitMin, BiteWaitMax, NibbleInterval, NibbleDuration, HookWindow, HookLatencyGrace,
 		RebiteWaitMin, RebiteWaitMax, SpookDelay, AutoLandDelay, NoBiteHintDelay, BobberScale, BobberBobAmplitude, BobberBobFrequency,
-		BobberTiltDeg, NibbleTiltDeg, BiteDipDepth, BiteDipRate, LinePixelWidth, LineMinWidth, LineSag, BiteRumbleIntensity,
+		BobberTiltDeg, NibbleTiltDeg, BiteDipDepth, BiteDipRate, BiteDipMinShare, BiteDipAttack, LinePixelWidth, LineMinWidth, LineSag, BiteRumbleIntensity,
 		BiteRumbleDuration, CastSwingBackDeg, CastSwingForwardDeg, CastSwingTime };
 	for (const float Value : Values)
 	{
@@ -63,6 +63,10 @@ bool FLureFishingRow::Validate(FString& OutProblem) const
 	{
 		return Fail(TEXT("BiteRumbleIntensity must be in [0, 1]"));
 	}
+	if (BiteDipMinShare > 1.f)
+	{
+		return Fail(TEXT("BiteDipMinShare must be in [0, 1]"));
+	}
 	return true;
 }
 
@@ -70,6 +74,17 @@ FLureFishingRow FLureFishingRules::GetFallbackRow()
 {
 	// The struct defaults ARE the shipped DT_Fishing "Default" row (a test checks they match).
 	return FLureFishingRow();
+}
+
+float FLureFishingRules::BiteDipShare(const FLureFishingRow& Row, float SecondsSinceBite)
+{
+	const float MinShare = FMath::Clamp(Row.BiteDipMinShare, 0.f, 1.f);
+	if (!(Row.BiteDipRate > 0.f) || !FMath::IsFinite(SecondsSinceBite))
+	{
+		return 1.f;
+	}
+	const float Pull = 0.5f + 0.5f * FMath::Cos(2.f * UE_PI * Row.BiteDipRate * FMath::Max(0.f, SecondsSinceBite));
+	return MinShare + (1.f - MinShare) * Pull;
 }
 
 float FLureFishingRules::ChargeFromHoldTime(const FLureFishingRow& Row, float HeldSeconds)

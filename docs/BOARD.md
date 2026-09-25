@@ -10,7 +10,7 @@ Counts: todo 1, done 12.
 
 ## A3
 
-Counts: todo 9, ready 2, doing 12, review 5, done 25, dropped 1.
+Counts: todo 9, ready 2, doing 5, review 6, merge 2, done 29, dropped 1.
 
 - 47 obj lead - todo P0 - - - A3 Milestone A3: Jimmy's A2 playtest notes, delivered in sprint
 - 49 obj design - todo P1 - ac3d4af - S2 Sprint 2: fight redesign (limited line + snap, reel in / let
@@ -24,26 +24,22 @@ Counts: todo 9, ready 2, doing 12, review 5, done 25, dropped 1.
 - 78 task eng senior ready P2 - - - T-068 Day/night cycle (T-013)
 - 79 task eng senior ready P2 - - - T-069 Water: shore waves, ocean motion, reactive ripples
 - 48 obj eng - doing P0 - - - S1 Sprint 1: line + fight fixes, even fight, faster reel, simpl
-- 110 task qa mid doing P0 qa1 aa1ea26 - QA-A3a A3 gate QA: fight/line gap tests (T-044,045,046,047,049,050,
-- 111 task qa mid doing P0 qa2 a098caa - QA-A3b A3 gate QA: fish visual gap tests (T-048,048b,043,058a,059a,
-- 112 task qa mid doing P0 qa3 a7e9682 - QA-A3c A3 gate QA: catch/cooler gap tests (T-063,064,064c,065,066)
-- 113 task qa junior doing P0 qa4 a74c96e - QA-A3d A3 gate QA: day clock T-068a gap tests + T-051 audit
 - 50 obj art - doing P1 - - - S3 Sprint 3: fish that look alive (upright calm when tired, fas
 - 51 obj eng - doing P1 - - - S4 Sprint 4: cooler handling (bob with arms, open while held +
-- 72 task art senior doing P1 main a18cd09 55% T-062 Cast charge shown in the arms, not only the rod
-- 98 task eng mid doing P1 eng1 a6f528d - T-064b Carried cooler open/show arm poses: EFPArmsPose CarryCoolerO
 - 52 obj design - doing P2 - aade375 - S5 Sprint 5: the world comes alive (day/night cycle; shore wave
-- 87 task design mid doing P2 des1 af39d43 - T-068c Presets to DT_TimeOfDay.json, builder places sky rig + night
-- 88 task eng senior doing P2 eng2 a377a3d 30% T-069a Wave function (C++ + HLSL, one formula), DT_Water, MPC_Water
+- 88 task eng senior doing P2 eng2 a4084af 60% T-069a Wave function (C++ + HLSL, one formula), DT_Water, MPC_Water
 - 68 task art senior review P1 main ab02639 95% T-058 Exhausted fish (stamina 0) stays upright with a calm swim, n
 - 69 task art senior review P1 main ab02639 95% T-059 Fish with stamina: fast, fighting 'run' swim
 - 70 bug art senior review P1 main ab02639 95% T-060 Dangling fish: head stays fixed at the hook, only the body w
+- 72 task art senior review P1 main a18cd09 90% T-062 Cast charge shown in the arms, not only the rod
 - 96 task art mid review P1 main a35597c 90% T-064a FP arm poses: carried cooler open (tilted to eye) + show (tu
 - 90 task art junior review P2 main a19b389 50% T-069d SM_WaterGrid tiles: flat technical grid, 2 m near + coarse f
+- 98 task eng mid merge P1 eng1 a6f528d - T-064b Carried cooler open/show arm poses: EFPArmsPose CarryCoolerO
+- 87 task design mid merge P2 des1 af39d43 - T-068c Presets to DT_TimeOfDay.json, builder places sky rig + night
 
 ## (no milestone)
 
-Counts: todo 20, ready 3, doing 2, review 2, done 18, dropped 1.
+Counts: todo 27, ready 3, doing 2, review 2, merge 7, done 22, dropped 1.
 
 - 2 obj lead - todo P1 - - - P-004 Agent work board (board.py) live in the studio
 - 22 q lead - todo P2 - - - Q-03 Should losing a fish cost the bait?
@@ -59,16 +55,30 @@ Counts: todo 20, ready 3, doing 2, review 2, done 18, dropped 1.
 - 101 bug eng junior todo P2 - - - T-074 A fish that snaps the line while being lifted at the dock ed
 - 108 task eng junior todo P2 - - - T-068d Sky rig water step (T-068): push DT_TimeOfDay WaveScale + wa
 - 109 task eng junior todo P2 - - - T-048c Fighting fish pitch follows the move's Down share (a Dive no
+- 121 bug eng - todo P2 - - - T-077 PT-S1 minor: cooler put down on top of a dock piling; the li
+- 122 bug eng - todo P2 - - - T-078 PT-S1 minor: ghost strands of line while a hanging fish swin
+- 126 task eng mid todo P2 - - - T-075c Leader below the bobber: no J curl in the air; sink or hide
+- 127 task eng junior todo P2 - - - T-075d Hanging fish swing damping (designer should, Sprint 1 review
+- 128 task eng mid todo P2 - - - T-075e Fish school specks read as dark silhouettes under the surfac
+- 129 task design mid todo P2 - - - T-069e Water: blend the hard shallow-teal/deep edge with a gradient
 - 3 obj lead - todo P3 - - - BL Backlog: small follow-ups (first Engineering manager pilot b
 - 19 task design junior todo P3 - - - T-036 Optional Lure.CoolerSpawn marker in L_PalmKey (+X toward the
 - 20 q lead - todo P3 - - - Q-01 Stray janitor_exception entry in .claude/settings.json: remo
 - 34 task art junior todo P3 - - - T-038 Cooler 4-fish fills: vary the top fish yaw so orange fish do
 - 39 task art mid todo P3 - - - T-042 Visual polish from gate d: held fish near-black when backlit
 - 53 obj lead - todo P3 - - - MP Backlog: multiplayer experience (Jimmy 2026-09-24: test it,
+- 123 bug eng - todo P3 - - - T-079 PT-S1 trivial: F6 menu covers the HUD clock; client clock ov
 - 36 bug art mid ready P2 - - - T-040 Cooler: in-game shop view shows 1/4 eyes with 4 Bonefish (Bl
 - 18 task qa mid ready P3 - - - T-035 Split docs/TEST_PLAN.md into docs/test-plan/<system>.md
 - 81 bug eng junior ready P3 - - - T-070 Playtest driver: a pd.console query can end the PIE session
-- 104 task eng mid doing P1 eng6 aa06c50 - T-059b DT_FishVisual: escape RoleTailBeats to the S3 clips + design
-- 105 task eng mid doing P1 eng7 a47aed7 - T-061a FishKick notifies kick the line (hang); verify T-061 wiggle
-- 102 task eng mid review P1 eng6 aa06c50 - T-058b Exhausted fish plays the new Tired role (A_Fish_Swim_Tired),
-- 103 task eng mid review P1 eng6 aa06c50 - T-060a Hooked (dangling) fish plays Hang on every machine in Hook m
+- 119 bug eng senior doing P0 eng9 a20f479 - T-075 PT-S1 major: hooked fish never visible in the water during t
+- 120 bug eng senior doing P0 eng4 ad0b612 - T-076 PT-S1 major: own view of the open carried cooler hides the f
+- 116 task eng mid review P1 eng10 a32f6f2 - T-062a Cast arms (owner cosmetics): CastCharge01/bCastPose/strain,
+- 117 task eng mid review P1 eng10 a32f6f2 - T-062b Server delays the bobber launch to the montage's whip frame
+- 102 task eng mid merge P1 eng6 aa06c50 - T-058b Exhausted fish plays the new Tired role (A_Fish_Swim_Tired),
+- 103 task eng mid merge P1 eng6 aa06c50 - T-060a Hooked (dangling) fish plays Hang on every machine in Hook m
+- 104 task eng mid merge P1 eng6 aa06c50 - T-059b DT_FishVisual: escape RoleTailBeats to the S3 clips + design
+- 105 task eng mid merge P1 eng7 aff8ba2 - T-061a FishKick notifies kick the line (hang); verify T-061 wiggle
+- 115 task qa junior merge P1 eng6 ab6d5e6 - T-058q Update 4 fish-visual QA tests to the S3 roles (Tired for exh
+- 130 task qa junior merge P1 eng10 acf0557 - T-062q Update QA.State.CastingLastsTheFlightTime to include NetStat
+- 118 task eng junior merge P2 eng3 a0eb2d3 - T-068e Sky rig day-fill lights: tag Lure.DayFill + optional Lure.Ni
