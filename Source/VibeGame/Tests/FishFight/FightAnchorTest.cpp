@@ -56,6 +56,24 @@ namespace LureFightAnchorTest
 		return LureFightQA::MakePattern({ Run, Rest, Toward }, TEXT("Run"));
 	}
 
+	/**
+	 *  T-049f: a fish that swims across the line (a steady sideways swim, short runs and rests), built here so the Still test's
+	 *  "real sideways swing" does not depend on the shipped Run pattern's balance (the T-049 tune swings the seed-4242 bonefish
+	 *  only 3 deg before it lands). Swim: Side 1 toward one side (not random), so the swing builds up over the fight.
+	 */
+	inline FLureFightPatternRow SwingFish()
+	{
+		FLureFightMove Swim = LureRodQA::SideMove(TEXT("Swim"), 1.2f, 1.f, 0.3f, 1.f);
+		FLureFightMove Run = LureRodQA::SideMove(TEXT("Run"), 1.8f, 1.f, 1.f, 0.3f, 1000.f, /*bRandomSide*/ true);
+		FLureFightMove Rest = LureFightQA::MakeMove(TEXT("Rest"), 0.6f, 0.f, 0.f, 1000.f, true);
+		for (FLureFightMove* Move : { &Swim, &Run, &Rest })
+		{
+			Move->DurationMin = 0.8f;
+			Move->DurationMax = 1.6f;
+		}
+		return LureFightQA::MakePattern({ Swim, Run, Rest }, TEXT("Swim"));
+	}
+
 	/** The fight's physics (everything but where the fish is), bit for bit. */
 	inline bool SamePhysics(const FLureFightState& A, const FLureFightState& B)
 	{
@@ -83,11 +101,9 @@ namespace LureFightAnchorTest
 		{
 			return false;
 		}
-		const FLureFightPatternRow* Run = Data.Pattern(TEXT("Run"));
-		if (!TestNotNull(TEXT("the shipped Run pattern"), Run))
-		{
-			return false;
-		}
+		// The test's own swimming fish (T-049f): the swing must not hang on the shipped pattern's balance.
+		const FLureFightPatternRow Swing = SwingFish();
+		const FLureFightPatternRow* Run = &Swing;
 		// A: the pre-T-045 fight (Begin only: the player at the origin, the fish along +X). B: the same fight somewhere else in the world.
 		FLureFightState A;
 		FLureFight::Begin(A, LureFightQA::MakeFightFish(2.5f, 60.f, 60.f), *Run, TEXT("Run"), StarterKit(Data), *Data.Tuning(), 4242, 1000.f);
