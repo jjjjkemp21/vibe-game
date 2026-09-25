@@ -42,7 +42,9 @@ straight at tension 0 / 0.25 / 0.5 / 0.75 / 0.9 / 1 is 215 / 141 / 82 / 30 / 7.6
 | data | `data/tables/DT_FishingLine.csv` -> `/Game/Data/DT_FishingLine` | settings: `ULureFishingSettings::FishingLineTable` + `FishingLineRow` ("Default") |
 
 Unchanged from T-006 and still used: segment count, pixel width and minimum width (DT_Fishing `LineSegments`,
-`LinePixelWidth`, `LineMinWidth`); mesh, material and colour (Lure Fishing settings). The width rule keeps the line >= 2 px
+`LinePixelWidth`, `LineMinWidth`); mesh, material and colour (Lure Fishing settings). The material is `/Game/Materials/M_FishingLine`
+(T-041e: Responsive AA on, used with spline meshes, Vector param `Color`), loaded by `ULureFishingSettings::LoadLineMaterial`
+(missing: `/Engine/BasicShapes/BasicShapeMaterial` and one `LogLureFishing` warning). The width rule keeps the line >= 2 px
 at 1080p at every distance (designer B-S3), so it stays visible at 10-20 m.
 
 ## The simulation (FLureLineSim)
@@ -318,6 +320,9 @@ the mouth into the fish by more than 1 cm (measured: 0.000 cm).
 then 60 s at dt 1/60 while the player walks 9 m along the dock and sweeps the view: every point's width = the width rule for the
 eye (this or the last frame's camera, 10 %), each drawn segment that thick, and the widest point in the last second <= 1.1 x the
 first second's (measured 0.371 -> 0.316 cm). With the T-034 hunk reverted it fails: 0.41 -> 59 cm (Jimmy's A2 "massive diameter").
+
+`FishingLineMaterialTest.cpp` (T-041e), `Project.Fishing.Line.Material`: LineMaterial = M_FishingLine, it loads with
+bEnableResponsiveAA and bUsedWithSplineMeshes on, and a cast line's segments use a dynamic instance of it with Color = LineColor.
 
 QA's own suite: Project.Fishing.Line.QA.* (`QAFishingLineTest.cpp`).
 

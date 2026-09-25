@@ -66,9 +66,18 @@ public:
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category="Assets")
 	TSoftObjectPtr<UStaticMesh> LineMesh;
 
-	/** Line material; its vector parameter "Color" gets LineColor (the engine basic shape material has one). */
+	/**
+	 *  Line material; its vector parameter "Color" gets LineColor. Default /Game/Materials/M_FishingLine (T-041e: Responsive AA,
+	 *  so TSR leaves no ghost loop on fast turns). Load it with LoadLineMaterial (falls back to FallbackLineMaterialPath).
+	 */
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category="Assets")
 	TSoftObjectPtr<UMaterialInterface> LineMaterial;
+
+	/** The line material when LineMaterial is unset, missing or fails to load: the engine basic shape material (has "Color"). */
+	static const TCHAR* FallbackLineMaterialPath;
+
+	/** LineMaterial, loaded; if it is unset, missing or fails to load: the fallback material, with one LogLureFishing warning. */
+	UMaterialInterface* LoadLineMaterial() const;
 
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category="Assets")
 	FLinearColor LineColor;
