@@ -377,7 +377,7 @@ bool FLureFishingSpots::TraceCast(const UWorld* World, FHitResult& OutHit, const
 }
 
 FLureCastLanding FLureFishingSpots::ResolveLanding(const UWorld* World, const AActor* IgnoreActor, const FVector& Origin, const FVector2D& StartXY,
-	const FVector2D& Direction, float Distance, const ULureFishingSettings& Settings)
+	const FVector2D& Direction, float Distance, const ULureFishingSettings& Settings, const FLureFishingRow* Profile)
 {
 	FLureCastLanding Landing;
 	const FVector2D Dir = Direction.GetSafeNormal();
@@ -406,7 +406,18 @@ FLureCastLanding FLureFishingSpots::ResolveLanding(const UWorld* World, const AA
 	}
 
 	// Ground above the water surface = land (a dock, a beach, a rock); otherwise the bobber floats on the water.
-	const float TopZ = FMath::Max(static_cast<float>(Origin.Z), Landing.bFoundWater ? WaterZ : static_cast<float>(Origin.Z)) + 500.f;
+	// T-071: search from at most LandingSearchHeight above the origin/water, and never from above a roof over the caster:
+	// the bobber's flight starts under that roof, so it can't come down on top of it (it lands on the ground/water below).
+	const float SearchHeight = FMath::Max(0.f, Profile ? Profile->LandingSearchHeight : FLureFishingRow().LandingSearchHeight);
+	float TopZ = FMath::Max(static_cast<float>(Origin.Z), Landing.bFoundWater ? WaterZ : static_cast<float>(Origin.Z)) + SearchHeight;
+	if (World)
+	{
+		FHitResult Ceiling;
+		if (TraceCast(World, Ceiling, Origin, FVector(Origin.X, Origin.Y, TopZ), Params) && !Ceiling.bStartPenetrating)
+		{
+			TopZ = FMath::Min(TopZ, static_cast<float>(Ceiling.ImpactPoint.Z) - 1.f);
+		}
+	}
 	const float BottomZ = Landing.bFoundWater ? WaterZ - 1.f : static_cast<float>(Origin.Z) - 100000.f;
 	FHitResult Ground;
 	const bool bGround = TraceCast(World, Ground, FVector(TargetXY.X, TargetXY.Y, TopZ), FVector(TargetXY.X, TargetXY.Y, BottomZ), Params);
