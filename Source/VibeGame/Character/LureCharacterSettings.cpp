@@ -22,6 +22,33 @@ ULureCharacterSettings::ULureCharacterSettings()
 	ProneKeys = { EKeys::Z, EKeys::Gamepad_DPad_Down };
 	InteractKeys = { EKeys::E, EKeys::Gamepad_FaceButton_Left };
 	AltInteractKeys = { EKeys::F, EKeys::Gamepad_FaceButton_Top };
+	DebugMenuKeys = { EKeys::F6 }; // T-051
+	MouseSensitivityDownKeys = { EKeys::Hyphen, EKeys::Subtract };
+	MouseSensitivityUpKeys = { EKeys::Equals, EKeys::Add };
+}
+
+FLureMouseSensitivityTuning FLureMouseSensitivityTuning::Sanitized() const
+{
+	auto Finite = [](float Value, float Fallback) { return FMath::IsFinite(Value) ? Value : Fallback; };
+	FLureMouseSensitivityTuning Out;
+	Out.Min = FMath::Max(0.01f, Finite(Min, 0.1f));
+	Out.Max = FMath::Max(Out.Min, Finite(Max, 5.f));
+	Out.Default = FMath::Clamp(Finite(Default, 1.f), Out.Min, Out.Max);
+	Out.Step = Finite(Step, 0.1f) > 0.f ? Step : 0.1f;
+	return Out;
+}
+
+float FLureMouseSensitivityTuning::Clamp(float Value) const
+{
+	return FMath::IsFinite(Value) ? FMath::Clamp(Value, Min, Max) : Default;
+}
+
+float FLureMouseSensitivityTuning::StepFrom(float Current, int32 Steps) const
+{
+	const float Base = Clamp(Current);
+	// Snap to the step grid so repeated presses never drift (1.2000001) and a press always moves at least one step.
+	const float Snapped = Step > 0.f ? FMath::RoundToFloat(Base / Step + static_cast<float>(Steps)) * Step : Base;
+	return Clamp(Snapped);
 }
 
 #if WITH_EDITOR

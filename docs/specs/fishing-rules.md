@@ -74,6 +74,10 @@ The lead may overrule any of these; a change is a data edit unless marked (code)
 - `Cast` (LMB, gamepad RT): hold to charge, release to cast; while the line is out a press hooks (or reels in early).
 - `Hook`: the same hook press as its own action, no default key (a key can be added in the settings). One key drives one
   action, so the QA "no key bound to two actions" rule holds.
+- Every bind is listed in game by the debug menu (T-051): **F6** opens / closes it (F1 is the engine's wireframe debug key,
+  Shift+F1 frees the mouse in editor play, F8 is the playtest note). While it is open, `-` / `=` (or numpad - / +) step the
+  mouse sensitivity (limits in ULureCharacterSettings::MouseSensitivity, value saved per machine in GameUserSettings.ini).
+  The list comes from the live mapping context, so a new bind shows up there with no menu change.
 
 ## Rod, bobber, line (cosmetic)
 - Rod: SM_Rod_Basic on SK_FPArms' `hand_r_rod` bone (SnapToTargetNotIncludingScale + absolute scale: world scale 1 whatever
