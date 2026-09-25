@@ -314,6 +314,11 @@ segment is that thick.
 (cast, reel in, land), 6 s of reel-up, swing and view sweeps; no line point and no sampled point of a drawn segment lies past
 the mouth into the fish by more than 1 cm (measured: 0.000 cm).
 
+`FishingLineHangWidthTest.cpp` (T-044), `Project.Fishing.Line.Hang.WidthOverTime`: a real catch (cast, reel fight, land),
+then 60 s at dt 1/60 while the player walks 9 m along the dock and sweeps the view: every point's width = the width rule for the
+eye (this or the last frame's camera, 10 %), each drawn segment that thick, and the widest point in the last second <= 1.1 x the
+first second's (measured 0.371 -> 0.316 cm). With the T-034 hunk reverted it fails: 0.41 -> 59 cm (Jimmy's A2 "massive diameter").
+
 QA's own suite: Project.Fishing.Line.QA.* (`QAFishingLineTest.cpp`).
 
 ## Known limits and follow-ups
