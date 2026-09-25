@@ -26,7 +26,16 @@ struct FLureInputActionNames
 	static const FName ReelFaster;	// Boolean: T-028, one reel speed step faster while a fish is on (mouse wheel up, right bumper)
 	static const FName ReelSlower;	// Boolean: T-028, one reel speed step slower (mouse wheel down, left bumper)
 
+	// T-051 debug menu actions (not gameplay: listed by Menu(), not All() / GetInputActionNames()).
+	static const FName DebugMenu;	// Boolean: open / close the debug menu (F6)
+	static const FName MouseSensitivityDown;	// Boolean: one sensitivity step lower while the menu is open (- / numpad -)
+	static const FName MouseSensitivityUp;	// Boolean: one sensitivity step higher while the menu is open (= / numpad +)
+
+	/** The gameplay actions. */
 	static TArray<FName> All();
+
+	/** The debug menu's own actions (T-051). */
+	static TArray<FName> Menu();
 };
 
 /**
@@ -53,7 +62,8 @@ public:
 	/** The engine's instance (null before engine init or after shutdown). */
 	static ULureInputSubsystem* Get();
 
-	/** The input action for Move, Look, Jump, Sprint, Crouch, Prone, Interact, AltInteract, Cast, Hook, ReelFaster or ReelSlower; null for any other name. Same object every call. */
+	/** The input action for Move, Look, Jump, Sprint, Crouch, Prone, Interact, AltInteract, Cast, Hook, ReelFaster, ReelSlower
+	 *  or a debug menu action (DebugMenu, MouseSensitivityDown, MouseSensitivityUp); null for any other name. Same object every call. */
 	UFUNCTION(BlueprintCallable, Category="Lure|Input")
 	static UInputAction* GetInputActionByName(FName ActionName);
 
@@ -61,7 +71,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category="Lure|Input")
 	static UInputMappingContext* GetDefaultMappingContext();
 
-	/** The action names GetInputActionByName knows. */
+	/** The name Action is registered under (reverse of GetInputActionByName); NAME_None if it is not one of the Lure actions. */
+	static FName GetInputActionName(const UInputAction* Action);
+
+	/** The gameplay action names (the debug menu actions are FLureInputActionNames::Menu()). */
 	UFUNCTION(BlueprintCallable, Category="Lure|Input")
 	static TArray<FName> GetInputActionNames();
 
@@ -69,8 +82,12 @@ public:
 	UFUNCTION(BlueprintCallable, Category="Lure|Input")
 	void RebuildMappings();
 
-	/** Fills Context with the key mappings Settings describes for Actions (keys + modifiers). Used by RebuildMappings; public for tests. */
-	static void BuildMappings(UInputMappingContext& Context, const TMap<FName, TObjectPtr<UInputAction>>& InActions, const ULureCharacterSettings& Settings);
+	/** Fills Context with the key mappings Settings describes for Actions (keys + modifiers). Used by RebuildMappings; public for tests.
+	 *  MouseSensitivity (T-051) multiplies the mouse look scale on both axes (the gamepad stick is not scaled). */
+	static void BuildMappings(UInputMappingContext& Context, const TMap<FName, TObjectPtr<UInputAction>>& InActions, const ULureCharacterSettings& Settings, float MouseSensitivity = 1.f);
+
+	/** The player's saved mouse sensitivity (ULureUserSettings), or 1 when it is not running. */
+	static float GetCurrentMouseSensitivity();
 
 	/** Priority the character uses when it adds the mapping context. */
 	static constexpr int32 MappingPriority = 0;

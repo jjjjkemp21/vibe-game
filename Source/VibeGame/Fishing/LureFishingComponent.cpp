@@ -828,7 +828,7 @@ bool ULureFishingComponent::AuthorityCast(float Charge01, float AimYawDegrees)
 
 	const float Distance = FLureFishingRules::CastDistance(Row, CastCharge) * FMath::Max(0.f, GetGearStats().CastDistanceMultiplier);
 	const FLureCastLanding Landing = FLureFishingSpots::ResolveLanding(World, Owner, Origin, FVector2D(Eye.X, Eye.Y),
-		FVector2D(Aim.Vector().X, Aim.Vector().Y), Distance, *Settings);
+		FVector2D(Aim.Vector().X, Aim.Vector().Y), Distance, *Settings, &Row);
 
 	// T-027: every body of water can be fished; the water area under the bobber decides its habitat (fishing-water-rules.md).
 	WaterContext = FLureWaterQuery::DescribeWater(World, Landing.Rest, Landing.bOnWater, Landing.WaterZ);
