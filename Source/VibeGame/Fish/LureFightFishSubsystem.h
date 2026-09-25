@@ -7,6 +7,7 @@
 #include "Subsystems/WorldSubsystem.h"
 #include "Fish/FightFishVisual.h"
 #include "Fish/FishInstance.h"
+#include "Fishing/FightFishViewAdapter.h"
 #include "LureFightFishSubsystem.generated.h"
 
 class ALureFightFish;
@@ -132,6 +133,9 @@ private:
 	/** T-048b: DT_FightPattern (ULureFishingSettings FightPatternTable; null = the built-in pattern): the move's swim direction for the body swing. */
 	UPROPERTY(Transient)
 	TObjectPtr<UDataTable> PatternTable;
+
+	/** T-048b: PatternTable's rows, resolved once per PatternId (not per frame). */
+	FFightPatternCache Patterns;
 
 	bool bSpeciesOverride = false;
 	bool bVisualOverride = false;

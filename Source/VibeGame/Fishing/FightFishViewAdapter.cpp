@@ -70,7 +70,32 @@ void FFightFishViewAdapter::ApplyMove(FFightFishView& View, const FLureFightNetS
 	View.MoveSwimSide = Share * static_cast<float>(FLureRodControl::DirectionFromRunSide(Fight.RunSide));
 }
 
-FFightFishView FFightFishViewAdapter::FromComponent(const ULureFishingComponent& Fishing, const UDataTable* PatternTable)
+void FFightPatternCache::SetTable(const UDataTable* InTable)
+{
+	if (Table.Get() != InTable || (InTable == nullptr && Table.IsStale()))
+	{
+		Rows.Reset();
+	}
+	Table = InTable;
+}
+
+const FLureFightPatternRow& FFightPatternCache::Get(FName PatternId)
+{
+	if (const FLureFightPatternRow* Found = Rows.Find(PatternId))
+	{
+		return *Found;
+	}
+	++ResolveCount;
+	return Rows.Add(PatternId, FFightFishViewAdapter::FindPattern(Table.Get(), PatternId));
+}
+
+const FLureFightPatternRow& FFightFishViewAdapter::FallbackPattern()
+{
+	static const FLureFightPatternRow Fallback = FLureFightPatternRow::GetFallbackPattern();
+	return Fallback;
+}
+
+FFightFishView FFightFishViewAdapter::FromComponent(const ULureFishingComponent& Fishing, FFightPatternCache* Patterns)
 {
 	const AActor* Owner = Fishing.GetOwner();
 	const FLureFightNetState& Fight = Fishing.GetFightNet();
@@ -79,7 +104,7 @@ FFightFishView FFightFishViewAdapter::FromComponent(const ULureFishingComponent&
 		Owner && Owner->HasAuthority());
 	if (View.bFighting)
 	{
-		ApplyMove(View, Fight, FindPattern(PatternTable, Fight.PatternId));
+		ApplyMove(View, Fight, Patterns ? Patterns->Get(Fight.PatternId) : FallbackPattern());
 	}
 	return View;
 }

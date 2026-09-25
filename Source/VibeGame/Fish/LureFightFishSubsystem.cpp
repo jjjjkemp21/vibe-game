@@ -132,6 +132,7 @@ void ULureFightFishSubsystem::Resolve()
 		VisualTable = Cast<UDataTable>(LoadPath(Settings->VisualTable.ToSoftObjectPath()));
 	}
 	PatternTable = Cast<UDataTable>(LoadPath(GetDefault<ULureFishingSettings>()->FightPatternTable.ToSoftObjectPath()));
+	Patterns.SetTable(PatternTable);
 
 	Row = FFishVisualRow::GetFallbackRow();
 	const FFishVisualRow* Found = (VisualTable && VisualTable->GetRowStruct() == FFishVisualRow::StaticStruct())
@@ -340,7 +341,7 @@ void ULureFightFishSubsystem::UpdateVisuals(float DeltaTime)
 		{
 			continue;
 		}
-		const FFightFishView View = FFightFishViewAdapter::FromComponent(*Fishing, PatternTable);
+		const FFightFishView View = FFightFishViewAdapter::FromComponent(*Fishing, &Patterns);
 		const int32 Index = Active.IndexOfByPredicate([Fishing](const FEntry& Entry) { return Entry.Fishing.Get() == Fishing; });
 		if (Index != INDEX_NONE)
 		{

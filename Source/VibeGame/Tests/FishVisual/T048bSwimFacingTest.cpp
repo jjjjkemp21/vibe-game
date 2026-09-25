@@ -362,6 +362,69 @@ namespace LureT048bSwimFacingTest
 		TestTrue(TEXT("no table -> the built-in pattern"), FFightFishViewAdapter::FindPattern(nullptr, TEXT("Run")).Moves.Num() == Fallback.Moves.Num());
 		return true;
 	}
+
+	// =================================================================================================================
+	// The pattern cache (per frame no DataTable lookup): once per PatternId, a PatternId change picks up the new row
+	// =================================================================================================================
+
+	IMPLEMENT_SIMPLE_AUTOMATION_TEST(FT048bPatternCache, "Project.FishVisual.SwimFacing.PatternCache", Flags)
+	bool FT048bPatternCache::RunTest(const FString& Parameters)
+	{
+		FData Data;
+		if (!Load(*this, Data))
+		{
+			return false;
+		}
+		auto SameMoves = [](const FLureFightPatternRow& A, const FLureFightPatternRow& B)
+		{
+			if (A.Moves.Num() != B.Moves.Num())
+			{
+				return false;
+			}
+			for (int32 Index = 0; Index < A.Moves.Num(); ++Index)
+			{
+				if (A.Moves[Index].Id != B.Moves[Index].Id || A.Moves[Index].Side != B.Moves[Index].Side || A.Moves[Index].Away != B.Moves[Index].Away)
+				{
+					return false;
+				}
+			}
+			return true;
+		};
+		const FLureFightPatternRow RunRow = FFightFishViewAdapter::FindPattern(Data.PatternTable.Get(), TEXT("Run"));
+		const FLureFightPatternRow DartRow = FFightFishViewAdapter::FindPattern(Data.PatternTable.Get(), TEXT("Dart"));
+		TestFalse(TEXT("Run and Dart differ (so a change is visible)"), SameMoves(RunRow, DartRow));
+
+		FFightPatternCache Cache;
+		Cache.SetTable(Data.PatternTable.Get());
+		TestTrue(TEXT("Run: the table's Run row"), SameMoves(Cache.Get(TEXT("Run")), RunRow));
+		const FLureFightPatternRow* First = &Cache.Get(TEXT("Run"));
+		for (int32 Frame = 0; Frame < 10; ++Frame)
+		{
+			TestTrue(TEXT("the same Run every frame (no new copy)"), &Cache.Get(TEXT("Run")) == First);
+		}
+		TestEqual(TEXT("Run looked up once for 12 frames"), Cache.GetResolveCount(), 1);
+		TestTrue(TEXT("PatternId change -> Dart's row"), SameMoves(Cache.Get(TEXT("Dart")), DartRow));
+		TestTrue(TEXT("back to Run -> Run's row"), SameMoves(Cache.Get(TEXT("Run")), RunRow));
+		TestEqual(TEXT("two ids, two lookups"), Cache.GetResolveCount(), 2);
+		TestTrue(TEXT("PatternId None -> the built-in pattern"), SameMoves(Cache.Get(NAME_None), FFightFishViewAdapter::FallbackPattern()));
+
+		Cache.SetTable(Data.PatternTable.Get());
+		Cache.Get(TEXT("Run"));
+		TestEqual(TEXT("the same table again keeps the cache (Run, Dart, None: 3 lookups)"), Cache.GetResolveCount(), 3);
+		Cache.SetTable(nullptr);
+		TestTrue(TEXT("no table -> the built-in pattern for Run"), SameMoves(Cache.Get(TEXT("Run")), FFightFishViewAdapter::FallbackPattern()));
+		TestEqual(TEXT("a table change re-resolves"), Cache.GetResolveCount(), 4);
+
+		// The view from the cache equals the view from the direct lookup (ApplyMove unchanged).
+		const FLureFightNetState Fight = MakeFight(TEXT("Dart"), TEXT("Dart"), ELureFightRunSide::Right, false);
+		Cache.SetTable(Data.PatternTable.Get());
+		FFightFishView Cached = MakeView(Data, Fight, true);
+		FFightFishViewAdapter::ApplyMove(Cached, Fight, Cache.Get(Fight.PatternId));
+		const FFightFishView Direct = MakeView(Data, Fight, true);
+		TestTrue(TEXT("cached pattern: same bMoveSwims / MoveSwimSide as the direct lookup"),
+			Cached.bMoveSwims == Direct.bMoveSwims && Cached.MoveSwimSide == Direct.MoveSwimSide && Direct.MoveSwimSide > 0.f);
+		return true;
+	}
 }
 
 #endif

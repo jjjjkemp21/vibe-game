@@ -40,7 +40,7 @@ state (`RodPitch`, `RodYaw`, `ReelStep`, `RunSide`) is not the fish's and is not
   `Rest`, `Speed` > 0, fish not tired) the body swings toward the move's own side by `RunSwingDeg x |Side| / length(Away,
   Side)` of that move (Run 0.29, Swim 0.58, Dart 0.98 of 35 deg; Charge and Dive 0), the side being the replicated
   `RunSide` (the server's pick for RandomSide moves), whatever the mouth's ground velocity: a fish reeled in during a Run
-  still pulls away to its side. The adapter reads it (`ApplyMove`, `FindPattern`; the subsystem loads DT_FightPattern), so
+  still pulls away to its side. The adapter reads it (`ApplyMove`, `FindPattern`; the subsystem loads DT_FightPattern and caches each pattern once per PatternId, `FFightPatternCache`), so
   every machine gets the same swing with no new replicated field (tests `Project.FishVisual.SwimFacing.*`). Rest, Sulk
   and an unknown move keep the ground-velocity rule: while the mouth moves faster than `MinFacingSpeed` the body swings
   `RunSwingDeg x min(1, speed / RunSwingFullSpeed)` (full at 200 cm/s), the head toward the side it moves to (straight out

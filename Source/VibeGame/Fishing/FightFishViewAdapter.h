@@ -16,12 +16,32 @@
 
 #include "CoreMinimal.h"
 #include "Fish/FightFishVisual.h"
+#include "Fishing/FishFightTypes.h"
 
 struct FFishInstance;
-struct FLureFightMove;
 struct FLureFightNetState;
-struct FLureFightPatternRow;
 class UDataTable;
+
+/**
+ *  T-048b: the fight patterns the fish visuals use, resolved once per PatternId (no DataTable lookup, validation or copy
+ *  per frame). The owner (ULureFightFishSubsystem) keeps the table alive; SetTable with another table clears the cache.
+ */
+struct FFightPatternCache
+{
+	/** Use this table from now on (null = the built-in pattern for every id). A different table clears the cache. */
+	void SetTable(const UDataTable* InTable);
+
+	/** FFightFishViewAdapter::FindPattern(Table, PatternId), looked up the first time an id is asked for. Valid until the next Get or SetTable. */
+	const FLureFightPatternRow& Get(FName PatternId);
+
+	/** How many times a pattern was looked up in the table (tests: once per id). */
+	int32 GetResolveCount() const { return ResolveCount; }
+
+private:
+	TWeakObjectPtr<const UDataTable> Table;
+	TMap<FName, FLureFightPatternRow> Rows;
+	int32 ResolveCount = 0;
+};
 struct FLureFishingNetState;
 class ULureFishingComponent;
 
@@ -55,6 +75,12 @@ struct FFightFishViewAdapter
 	 */
 	static FLureFightPatternRow FindPattern(const UDataTable* PatternTable, FName PatternId);
 
-	/** Make() from a fishing component and its owner (location, forward, authority), then ApplyMove with PatternTable's row. */
-	static FFightFishView FromComponent(const ULureFishingComponent& Fishing, const UDataTable* PatternTable = nullptr);
+	/** The built-in pattern (FLureFightPatternRow::GetFallbackPattern), built once. */
+	static const FLureFightPatternRow& FallbackPattern();
+
+	/**
+	 *  Make() from a fishing component and its owner (location, forward, authority), then ApplyMove with the fight's pattern
+	 *  from Patterns (resolved once per PatternId); no cache = the built-in pattern.
+	 */
+	static FFightFishView FromComponent(const ULureFishingComponent& Fishing, FFightPatternCache* Patterns = nullptr);
 };
