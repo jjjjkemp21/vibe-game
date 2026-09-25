@@ -75,6 +75,21 @@ struct FLureRodFactors
 	float Drain = 1.f;
 };
 
+/**
+ *  T-047: something solid at the water line between the fish and the player (a dock edge, pilings, a boat, the shore), as the
+ *  server's world query found it (FLureFightEdgeQuery::Find, Fishing/FightEdge.h). The fish must stay in front of it: the
+ *  half-plane (FishXY - Point) . Normal >= 0. Point is where the fish touches it (EdgeClearance out from its face), Normal
+ *  points away from it (toward open water); both world XY. It blocks while the player is behind it ((Anchor - Point) . Normal < 0).
+ */
+struct FLureFightEdge
+{
+	bool bValid = false;
+	FVector2D Point = FVector2D::ZeroVector;
+	FVector2D Normal = FVector2D(1.0, 0.0);
+	/** The lift above the water at which the fish is clear of the edge: its top + EdgeLiftClearance (at most EdgeMaxLift), cm. */
+	float LandLift = 0.f;
+};
+
 /** One fight in progress (server). Begin() fills it; Step()/Advance() move it on. */
 struct FLureFightState
 {
@@ -110,6 +125,15 @@ struct FLureFightState
 	 */
 	FVector2D Anchor = FVector2D::ZeroVector;
 	FVector2D BaseDir = FVector2D(1.0, 0.0);
+
+	// ---- Dock edges (T-047) ----
+	/** The edge between the fish and the player (FLureFight::SetEdge; bValid false = the way is open). */
+	FLureFightEdge Edge;
+	/** How far the fish is lifted out of the water at the edge, cm (0 = in the water). */
+	float Lift = 0.f;
+	/** Seconds the fish has hung at the edge's LandLift (it lands after EdgeLandHold). */
+	float LiftHeld = 0.f;
+
 	/** Pull and swim speed of the last step. */
 	float Pull = 0.f;
 	float Speed = 0.f;
@@ -173,6 +197,13 @@ struct FLureFightState
  *  Same fish, gear, tuning, pattern, seed and inputs = the same fight on every run.
  *  The fish in the world (T-045): steps 3 and 5 move the fish about the player's position (the reel and a run along the
  *  line, the swing across it); MovePlayer between steps keeps it where it is while the player walks (see FLureFightState).
+ *  Dock edges (T-047), only while an edge blocks the way (EdgeLineOut > 0; with none every rule above holds bit for bit):
+ *   3. The line change (Taken - Gain) x dt goes through MoveOnTheLine: reeling brings the fish in to the edge, lifts it up the
+ *      edge to Edge.LandLift, then carries it in over the dock at that height; line the fish takes runs the same path back.
+ *   5. A lifted fish is never slack (its weight keeps the line taut), doesn't swing and has depth 0. A swing that would take
+ *      the fish behind the edge doesn't happen (it stops against it).
+ *   6. Landed only over the top (Lift >= Edge.LandLift) and within LandDistance, for longer than EdgeLandHold: the fish can't
+ *      come in under the dock, and the T-030 hang starts close to the rod (a hang from far out swings down through the deck).
  */
 struct FLureFight
 {
@@ -284,6 +315,30 @@ struct FLureFight
 	 *  (exactly the same XY) changes nothing, so a fight with a still player is the pre-T-045 fight bit for bit.
 	 */
 	static void MovePlayer(FLureFightState& State, const FVector2D& PlayerXY);
+
+	// ---- Dock edges (T-047; docs/specs/reel-fight-rules.md "Dock edges") ----
+
+	/** The edge the server found (bValid false = the way is open). A fish behind it is put in front of it at the next step. */
+	static void SetEdge(FLureFightState& State, const FLureFightEdge& Edge);
+
+	/** Does the edge stand between the fish and the player (valid, and the player behind it)? */
+	static bool EdgeBlocks(const FLureFightState& State);
+
+	/**
+	 *  The shortest line out along the fish's bearing now (from Anchor, BaseDir turned by SideDeg) that keeps it in front of the
+	 *  edge: ((Point - Anchor) . Normal) / (Direction . Normal). 0 = no limit: no edge, the player not behind it, or the bearing
+	 *  not toward it (then the next world query sorts it out).
+	 */
+	static float EdgeLineOut(const FLureFightState& State);
+
+	/**
+	 *  Moves the fish Change cm along the line's path (negative = toward the player). With a limit Wall = EdgeLineOut > 0 and
+	 *  Top = Edge.LandLift the path is one length S: on the water out to the edge (LineOut = S - Top, Lift 0), up the edge
+	 *  (LineOut = Wall, Lift = Top - (S - Wall)), then in over the dock (LineOut = S < Wall, Lift = Top). A fish in the water
+	 *  inside the edge's line (the player walked, a new edge) is put back at the edge first. No limit: LineOut changes (never
+	 *  below 0); a lifted fish drops back into the water unless it is over the dock (behind the edge it was lifted over).
+	 */
+	static void MoveOnTheLine(FLureFightState& State, float Change);
 
 	// ---- Cosmetic helpers (every machine) ----
 

@@ -22,7 +22,9 @@ FFightFishView FFightFishViewAdapter::Make(const FLureFightNetState& Fight, cons
 	View.DepthCm = Fight.Depth;
 	View.Tension01 = Fight.GetTension01();
 	View.PlayerLocation = PlayerLocation;
-	View.WaterZ = static_cast<float>(Line.BobberRest.Z);
+	// T-047: a fish lifted out of the water at a dock edge rides that much higher (the surface it is drawn from rises with it;
+	// the lift stays in the view after the fight, so a landed fish is handed on where it was lifted to).
+	View.WaterZ = static_cast<float>(Line.BobberRest.Z) + (FMath::IsFinite(Fight.Lift) ? FMath::Max(0.f, Fight.Lift) : 0.f);
 	View.bHasAuthority = bHasAuthority;
 	View.Fish = HookedFish;
 

@@ -149,8 +149,11 @@ queries the world: a line resting still costs no query. Reserve covers about one
   `exp(-GroundFriction x h)` of its sliding speed, so line comes to rest on a dock instead of skating.
 
 **Hanging lines don't collide**: the colliders are emptied while an actor hangs (`GetColliders()` is empty) and gathered
-afresh when the line pins again. A landed fish can start under the deck (`ComputeBobberPose` puts the bobber at
-Player + Dir x LineOut, LineOut <= LandDistance 150 cm at landing), and the hang reel would trap it there.
+afresh when the line pins again. A landed fish can start where a solid would trap it under the hang reel (before T-045/T-047
+the bobber was drawn at Player + Dir x LineOut and a fish landed from a dock started under the deck). Since T-047 the fight
+lifts a fish up a dock edge and carries it in over the deck before it lands (reel-fight-rules.md "Dock edges"), so its hang
+starts above the deck within LandDistance of the angler and swings in above it; a deck higher than the edge probe
+(EdgeProbeHeight 100 cm over the water) can still have a fish landed under it.
 
 ## Hanging actor (T-030, reel and swing guard T-032b)
 
@@ -324,7 +327,8 @@ QA's own suite: Project.Fishing.Line.QA.* (`QAFishingLineTest.cpp`).
   - Landscapes (heightfields, no body setup) are not collided: a line can pass through terrain.
   - Complex-only meshes collide as their bounds box, skipped while the tip or a pinned end is inside it.
   - Movable solids (boats) are gathered again every 0.2 s, so a fast boat can pass through a line between gathers.
-  - Hanging lines don't collide (a landed fish can swing through a dock edge).
+  - Hanging lines don't collide (a landed fish could swing through a dock edge; since T-047 a fish fought from a dock is
+    carried in over the deck before it lands, so its hang starts above the deck near the rod tip).
   - No self-collision; tapered capsules (skeletal bodies) are ignored; skinned meshes are skipped.
   - At most 64 hulls/boxes and 64 spheres/capsules near the line per Step (the first ones in the colliders' order).
   - Rotated box elements under non-uniform scale are exact here, while the physics approximates them, so the line and a

@@ -27,7 +27,9 @@ state (`RodPitch`, `RodYaw`, `ReelStep`, `RunSide`) is not the fish's and is not
   `FallbackMesh` (SK_Bonefish); none = nothing drawn. `AnimAmplitude` / `AnimRate` columns (optional, default 1).
 - **Scale**: `clamp((Weight / ReferenceWeight)^(1/3), MinScale, MaxScale)`.
 - **Placement**: line end = the fight's fish location (`FLureFightNetState::FishLocation`, T-045: the server's world XY
-  of the fish, which the player's walking never moves), at the water surface. The fish's
+  of the fish, which the player's walking never moves), at the water surface, raised by `FLureFightNetState::Lift`
+  (T-047: lifted up a dock edge and carried in over the deck; the adapter raises `WaterZ` and `LineEnd` by it, and keeps it
+  after the fight so a landed fish is handed on where it was lifted to). The fish's
   `Mouth` bone sits at the line end (body toward the player), `SurfaceDepth + min(DepthShare x Depth, MaxShownDepth)` under
   the surface, at least `FloorClearance` above the bottom. Smoothing: `AuthoritySmoothTime` on the server/standalone,
   `ProxySmoothTime` elsewhere; jumps over `SnapDistance` snap. Faces its swim when faster than `MinFacingSpeed`, else
