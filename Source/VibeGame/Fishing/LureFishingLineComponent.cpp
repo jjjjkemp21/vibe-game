@@ -286,7 +286,8 @@ void ULureFishingLineComponent::Snap()
 
 // ---- A hanging actor ----
 
-void ULureFishingLineComponent::AttachEndActor(AActor* Actor, float InHangLength, const FVector& InHookOffset, bool bOrientAlongLine)
+void ULureFishingLineComponent::AttachEndActor(AActor* Actor, float InHangLength, const FVector& InHookOffset, bool bOrientAlongLine,
+	bool bFaceViewer)
 {
 	if (!IsValid(Actor))
 	{
@@ -296,6 +297,7 @@ void ULureFishingLineComponent::AttachEndActor(AActor* Actor, float InHangLength
 	HangLength = FMath::IsFinite(InHangLength) ? FMath::Clamp(InHangLength, 1.f, 10000.f) : 100.f;
 	HookOffset = InHookOffset.ContainsNaN() ? FVector::ZeroVector : InHookOffset;
 	bOrientEndActor = bOrientAlongLine;
+	bEndActorFacesViewer = bOrientAlongLine && bFaceViewer;
 	if (Mode == ELureLineMode::Pinned)
 	{
 		// The line keeps its shape; its end lets go and becomes the actor's hook.
@@ -438,7 +440,7 @@ void ULureFishingLineComponent::UpdateLine(float DeltaTime)
 		Mode = ELureLineMode::Pinned;
 	}
 	Simulate(Dt);
-	MoveEndActor();
+	MoveEndActor(Dt);
 	Draw();
 }
 
@@ -674,7 +676,7 @@ void ULureFishingLineComponent::AddCollidersOf(UPrimitiveComponent& Component, i
 	// Tapered capsules (skeletal bodies only) are ignored.
 }
 
-void ULureFishingLineComponent::MoveEndActor() const
+void ULureFishingLineComponent::MoveEndActor(float DeltaTime) const
 {
 	AActor* Actor = EndActor.Get();
 	if (Mode != ELureLineMode::Hanging || !Actor)
@@ -682,7 +684,15 @@ void ULureFishingLineComponent::MoveEndActor() const
 		return;
 	}
 	FQuat Rotation = Actor->GetActorQuat();
-	if (bOrientEndActor)
+	if (bOrientEndActor && bEndActorFacesViewer)
+	{
+		// T-043: head up the line, its side turned (smoothly) to whoever looks at it; the same rule as the fallback pendulum.
+		FVector Viewer;
+		float Fov = 90.f;
+		ResolveViewer(Viewer, Fov);
+		Rotation = FLureFishingLineRules::SideOnHangRotation(Rotation, Sim.GetEndDirection(), Sim.GetEnd(), Viewer, DeltaTime, GetTuning().HangFaceTime);
+	}
+	else if (bOrientEndActor)
 	{
 		// Head (+X) up the line toward the rod; Y kept as close as possible to where it was, so the actor never spins.
 		Rotation = FRotationMatrix::MakeFromXY(Sim.GetEndDirection(), Rotation.GetAxisY()).ToQuat();

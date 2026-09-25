@@ -165,6 +165,11 @@ Player + Dir x LineOut, LineOut <= LandDistance 150 cm at landing), and the hang
   sideways lag of a hanging fish behind a moving rod). A jerked, reeled or pitched rod never throws the fish over the tip.
 - The swing settles in about 10 s (HangDrag 0.4), so `Component.HangingActorSwings` runs 840 frames (it was 360 before the
   reel took its ~3.6 s).
+- **Side-on (T-043)**: attached with `bFaceViewer` (the catch link does, for every landed fish on the rod's line), the actor
+  turns about the line so its right side (+Y) faces the viewer (`SetViewer`, else the local camera): each frame it closes
+  `1 - exp(-dt / HangFaceTime)` of the angle (HangFaceTime 0.25 s; 0 = at once). The nose stays up the line and the mouth on
+  the line's end. One rule for both hangs: `FLureFishingLineRules::SideOnHangRotation`, also used by the fallback pendulum
+  (GiveFish with no line out). Cosmetic and local: each machine turns the fish toward its own camera.
 
 ## The rod tip (the line never lags or cuts through the rod)
 
@@ -208,13 +213,13 @@ FVector Up = Line->GetEndDirection();                     // unit vector from th
   facing `-GetEndDirection()` (away from the rod).
 - **T-030 (landed fish)**: replace the own pendulum with
   ```cpp
-  Line->AttachEndActor(FishActor, HangLength /*cm*/, MouthOffset /*actor space*/, /*bOrientAlongLine*/ true);
+  Line->AttachEndActor(FishActor, HangLength /*cm*/, MouthOffset /*actor space*/, /*bOrientAlongLine*/ true, /*bFaceViewer*/ true);
   ...
   Line->DetachEndActor();   // grabbed into the hand: the line is gone (or back to its end if a line is out)
   ```
   The end lets go and swings under the rod tip; a longer line is reeled up at HangReelSpeed, a shorter one drops (see
   "Hanging actor"). Each frame the actor is moved so `MouthOffset` sits on the end, +X up the line (head up), keeping its
-  facing. `Hide()` does not remove a hanging actor. Rules: attach on **every** machine (it is cosmetic); the hanging actor
+  facing, or with `bFaceViewer` turning its side to the viewer (T-043). `Hide()` does not remove a hanging actor. Rules: attach on **every** machine (it is cosmetic); the hanging actor
   must **not replicate its movement** and must not simulate physics; `AddEndVelocity(v)` makes it flop. Destroying the
   actor ends the line.
 - **Viewer (T-034)**: `SetViewer` holds until the line stops (`Hide` of a pinned line, the end of a recoil, the hanging actor
@@ -265,6 +270,7 @@ One row per kind of line; "Default" today. Units, ranges and exact meaning: the 
 | | HangDrag 0.4 | share of its speed a hanging actor loses per second |
 | | **HangReelSpeed 500** | cm/s, fastest reel-up of a hanging actor (slows at g/2 near HangLength) |
 | | **HangMaxSwingDeg 70** | degrees (10..90), highest swing from straight under the tip (90 = level) |
+| | HangFaceTime 0.25 | s (0..5), how fast a hanging fish turns its side to the viewer (T-043; 0 = at once) |
 | Safety | TeleportDistance 1500 | cm; a tip or end jump farther than this in one frame resets the line |
 | Collision | **CollisionRadius 1** | cm (0..50) the line keeps from solid surfaces (0 = on the surface) |
 | | **GroundFriction 8** | share of its sliding speed line touching a solid loses per second |
@@ -314,6 +320,12 @@ segment is that thick.
 (cast, reel in, land), 6 s of reel-up, swing and view sweeps; no line point and no sampled point of a drawn segment lies past
 the mouth into the fish by more than 1 cm (measured: 0.000 cm).
 
+`FishingLineHangSideOnTest.cpp` (T-043), `Project.Fishing.Line.Hang.SideOn.*`: Rule (smoothing share, snap at 0, nose up the
+line, viewer on the axis, bad input), ComponentViewers (9 viewers around and above a hanging actor: side within 3 deg after 2 s,
+measured 0.03; the first frame turns only part of the way; mouth on the end 0.000 cm; without bFaceViewer the side stays),
+RealCatch (cast, reel in, land on another player's rod; the local viewer stands at 4 spots on the dock, two of them on opposite
+sides, so a fixed facing can't pass: settled side error <= 5 deg, measured 0.13; mouth within 1 cm of the end, measured 0.04).
+
 QA's own suite: Project.Fishing.Line.QA.* (`QAFishingLineTest.cpp`).
 
 ## Known limits and follow-ups
@@ -329,10 +341,6 @@ QA's own suite: Project.Fishing.Line.QA.* (`QAFishingLineTest.cpp`).
   - At most 64 hulls/boxes and 64 spheres/capsules near the line per Step (the first ones in the colliders' order).
   - Rotated box elements under non-uniform scale are exact here, while the physics approximates them, so the line and a
     cast can disagree slightly on such a box.
-- T-041b ("a line stub below a landed fish's tail", 09_after_land.png): not the line. The line ends exactly at the mouth
-  (Hang.NoStubPastMouth: 0.000 cm past it); the stub is the bonefish's tail fin seen edge-on. A fish on the physics line keeps
-  its facing (it does not turn its side to the viewer as the old pendulum did), so from the player's eye it often shows its
-  back and its tail fin reads as a thin dark spike. Turning the side toward the viewer is a presentation choice (open).
 - One water height per line (a line spanning two water levels floats at the end's).
 - A player who turns away from the bobber sees the line run back from the tip over the rod (no wrapping around the tip).
 - "Ghost loop for ~1 s during a fast turn" (A2 playtest, T-041c) is not the simulation: `Project.Fishing.Line.FastTurn.*`
@@ -346,5 +354,5 @@ QA's own suite: Project.Fishing.Line.QA.* (`QAFishingLineTest.cpp`).
 - Other players' lines start from an estimated rod tip (no third-person rod yet; unchanged from T-006).
 - `FLureFight::LineSag` and DT_Fishing `LineSag` no longer shape the line (only the old `SetLine` path reads a sag);
   T-028 can drop them. DT_FishFight `TautTension` shapes it again, through `FLureFight::LineTension` (T-032b).
-- `/Game/Data/DT_FishingLine` must be reimported by the editor-operator after the merge (T-032b added 6 columns; until
-  then the built-in row is used).
+- `/Game/Data/DT_FishingLine` must be reimported by the editor-operator after the merge (T-032b added 6 columns, T-043
+  HangFaceTime; until then the built-in row is used).

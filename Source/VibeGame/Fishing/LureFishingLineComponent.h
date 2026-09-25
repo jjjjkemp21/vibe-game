@@ -138,10 +138,13 @@ public:
 	/**
 	 *  Hangs Actor from the line's end: the end is let go and swings under the rod tip on HangLength cm of line (a longer line is
 	 *  reeled up smoothly, a shorter one drops). Each frame the actor is moved so HookOffset (actor space: the mouth) sits on the
-	 *  end; with bOrientAlongLine its +X axis points up the line (head up) and it keeps its facing. The actor should not replicate
-	 *  its movement (every machine swings its own). Starts the line if it was not out.
+	 *  end; with bOrientAlongLine its +X axis points up the line (head up) and it keeps its facing, or with bFaceViewer too it
+	 *  turns about the line so its +Y side faces the viewer (SetViewer, else the local camera), smoothed by HangFaceTime (T-043,
+	 *  FLureFishingLineRules::SideOnHangRotation). The actor should not replicate its movement (every machine swings its own).
+	 *  Starts the line if it was not out.
 	 */
-	void AttachEndActor(AActor* Actor, float HangLength, const FVector& HookOffset = FVector::ZeroVector, bool bOrientAlongLine = true);
+	void AttachEndActor(AActor* Actor, float HangLength, const FVector& HookOffset = FVector::ZeroVector, bool bOrientAlongLine = true,
+		bool bFaceViewer = false);
 
 	/** Lets the actor go (it stays where it is). The line goes back to its pinned end if it is still out, else it is gone. */
 	void DetachEndActor();
@@ -254,6 +257,8 @@ private:
 	float HangLength = 100.f;
 	FVector HookOffset = FVector::ZeroVector;
 	bool bOrientEndActor = true;
+	/** T-043: the hanging actor turns its +Y side to the viewer (with bOrientEndActor). */
+	bool bEndActorFacesViewer = false;
 
 	// Collision (T-032b): the line lies on and bends around what blocks a cast (docs/specs/fishing-line.md "Collision").
 	FLureLineColliders Colliders;
@@ -281,7 +286,7 @@ private:
 	FVector HookPointOf(const AActor& Actor) const;
 	bool ResolveWater(const FVector& Near, float& OutWaterZ);
 	void Simulate(float DeltaTime);
-	void MoveEndActor() const;
+	void MoveEndActor(float DeltaTime) const;
 	void Draw();
 	void ResolveViewer(FVector& OutLocation, float& OutFovDeg) const;
 	void DestroySegments();
