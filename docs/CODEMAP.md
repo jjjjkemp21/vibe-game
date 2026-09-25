@@ -110,9 +110,9 @@ Paths in the table are under `Source/VibeGame/` unless they start with a top-lev
 - `VibeGameGameMode.h` AVibeGameGameMode
 - `VibeGamePlayerController.h` AVibeGamePlayerController
 
-### Tests (`Source/VibeGame/`): folder, prefix (count): 3rd name segment count. Total 1092
+### Tests (`Source/VibeGame/`): folder, prefix (count): 3rd name segment count. Total 1100
 - `Tests/Catch/` Project.Arms.* (3): HoldFishSize 3
-- `Tests/Catch/` Project.Catch.* (118): QA 57, Cooler 7, Counter 7, Net 7, Display 5, Rules 5, Focus 4, Data 3, Hand 3, HoldFishAttach 3,...
+- `Tests/Catch/` Project.Catch.* (126): QA 57, Cooler 7, Counter 7, Net 7, Display 5, HeldCooler 5, Rules 5, Focus 4, Data 3, Drop 3, Han...
 - `Tests/Catch/` Project.FishVisual.* (2): HeldPose 2
 - `Tests/Dev/` Project.Dev.* (18): DebugMenu 6, Teleport 4, GiveFish 3, Commands 1, PlaytestDriver 1, QA 1, Screenshot 1, SetStance 1
 - `Tests/FishFight/` Project.Fishing.* (114): Fight 114
@@ -152,6 +152,7 @@ Paths in the table are under `Source/VibeGame/` unless they start with a top-lev
 - `docs/levels/L_Dev_Movement.md` L_Dev_Movement: movement test course (T-004 A28 / T-005)
 - `docs/levels/L_PalmKey.md` L_PalmKey: vertical slice island (T-005 greybox)
 - `docs/specs/catch-handling-rules.md` Catch handling rules (T-030): the fish on the hook, the hand, the physical cooler, freshness and t...
+- `docs/specs/day-night-water.md` Day/night and living water (T-067; builds T-068 = T-013 and T-069): design spec
 - `docs/specs/fight-fish-visual.md` Fighting fish visual (T-029)
 - `docs/specs/fight-v2.md` Fight v2: line length, reel in / let out, tension-driven fight length, retrieve, bobber dip (T-052): design spec
 - `docs/specs/fish-system-rules.md` Fish system rules (T-008+), lead decisions 2026-09-22
