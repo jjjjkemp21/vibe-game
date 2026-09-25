@@ -3,6 +3,8 @@
 #   -List (default)        one line per lane: name, head, ahead/behind main, dirty, FREE (clean and 0 ahead of main).
 #   -Free [-Prefix eng]    print the first FREE lane matching the prefix and fast-forward it to main;
 #                          if none is free, create the next number (eng10, ...) from main and print its name.
+#   -Free -Item <id>       also records lane=<lane> on board item <id> (board.py set; skipped while Saved/Studio/board.db
+#                          is missing, BOARD_DB overrides; a board error is a warning, the lane is still printed).
 #   -New <name> [-Base main]  git worktree add ../VibeGame-lanes/<name> -b lane/<name> <base>, copy tools/local.settings.json.
 # Safety: never deletes lanes, branches or worktrees, never resets, never force-merges, never pushes.
 # Only fast-forwards (merge --ff-only) lanes that are clean and fully merged into main.
@@ -12,7 +14,8 @@ param(
     [switch]$Free,
     [string]$Prefix = 'eng',
     [string]$New = '',
-    [string]$Base = 'main'
+    [string]$Base = 'main',
+    [string]$Item = ''
 )
 . (Join-Path $PSScriptRoot '_common.ps1')
 $name = 'lane'
@@ -62,6 +65,15 @@ function New-Lane([string]$LaneName, [string]$BaseRef) {
     return ''
 }
 
+# Records lane=<LaneName> on board item -Item. Returns a note for the status details ('' when nothing to do).
+function Set-BoardItemLane([string]$LaneName) {
+    if (-not $Item) { return '' }
+    $r = Invoke-Board @('set', $Item, ('lane=' + $LaneName))
+    if ($null -eq $r) { return 'no board DB' }
+    if ($r.ExitCode -ne 0) { Write-Host ('warning: board.py set ' + $Item + ' lane=' + $LaneName + ' failed: ' + $r.Err); return 'failed: ' + $r.Err }
+    return ('lane=' + $LaneName + ' on #' + $Item.TrimStart('#'))
+}
+
 # --- New ---
 if ($New) {
     $err = New-Lane $New $Base
@@ -83,8 +95,9 @@ if ($Free) {
             $out = (git -C $i.Path merge --ff-only main 2>&1 | Out-String)
             if ($LASTEXITCODE -ne 0) { Write-Host ('skipped ' + $i.Name + ': fast-forward failed: ' + $out.Trim()); continue }
         }
+        $boardNote = Set-BoardItemLane $i.Name
         Write-Host $i.Name
-        Write-Status -Name $name -State 'succeeded' -Message ('free lane ' + $i.Name + ' at main (' + (git -C $i.Path rev-parse --short HEAD) + ')') -Details @{ lane = $i.Name; created = $false }
+        Write-Status -Name $name -State 'succeeded' -Message ('free lane ' + $i.Name + ' at main (' + (git -C $i.Path rev-parse --short HEAD) + ')') -Details @{ lane = $i.Name; created = $false; board = $boardNote }
         exit 0
     }
     $max = 0
@@ -92,8 +105,9 @@ if ($Free) {
     $newName = $Prefix + ($max + 1)
     $err = New-Lane $newName 'main'
     if ($err) { Write-Status -Name $name -State 'failed' -Message ('no free ' + $Prefix + ' lane; creating ' + $newName + ' failed: ' + $err); exit 1 }
+    $boardNote = Set-BoardItemLane $newName
     Write-Host $newName
-    Write-Status -Name $name -State 'succeeded' -Message ('no free ' + $Prefix + ' lane; created ' + $newName + ' from main') -Details @{ lane = $newName; created = $true }
+    Write-Status -Name $name -State 'succeeded' -Message ('no free ' + $Prefix + ' lane; created ' + $newName + ' from main') -Details @{ lane = $newName; created = $true; board = $boardNote }
     exit 0
 }
 
