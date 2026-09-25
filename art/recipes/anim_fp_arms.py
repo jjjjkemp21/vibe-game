@@ -84,9 +84,11 @@ PRONE (designer B-M2 + Jimmy 2026-09-22: you can fish while lying prone; the rod
 CAST (T-062, Jimmy A2: the charge must show in the arms, not only the rod): Poser.cast_charge / cast_release build
 A_FPArms_Cast_Charge (36 frames; Unreal evaluates it at CastCharge01 * length, frame 0 = HoldRod_Idle frame 0) and
 A_FPArms_Cast_Release (24-frame one-shot montage, notify CastRelease at CAST_RELEASE_FRAME, last frame = HoldRod_Idle
-frame 0). Each frame is six channels on HoldRod_Idle frame 0 (rod swing about the grip, grip offset, chest pitch,
-shoulder reach) plus elbow poles, with both hands solved from the rod (see the CAST_* constants). Not exported yet:
-gate A of T-062 (key poses) is under review.
+frame 0). Each frame is a set of channels on HoldRod_Idle frame 0 (rod swing / lean / roll about the grip, grip offset,
+chest pitch / yaw, shoulder reach) plus elbow poles; the right fist is solved from the rod. v2 (gate A2) is a
+one-handed wind-up: the left hand lets go of the crank as the charge starts, drops out of view and re-grips the knob
+in the release settle; anim curve HandL_Free (cast_hand_l_free_curve) tells Unreal's left-hand Two Bone IK when to
+let go. Not exported yet: gate A2 of T-062 (the v2 key poses) is under review.
 """
 import importlib.util
 import math
@@ -1046,19 +1048,37 @@ def carry_targets(B, sides, t, roll_deg=None, sign=None):
 # ---------------------------------------------------------------------------------------------------------------
 # T-062 cast: A_FPArms_Cast_Charge (Unreal evaluates it at CastCharge01) + A_FPArms_Cast_Release (one-shot montage)
 # ---------------------------------------------------------------------------------------------------------------
-# A cast pose = six channels applied to HoldRod_Idle frame 0 (breath phase 0), plus the elbow poles:
+# A cast pose = channels applied to HoldRod_Idle frame 0 (breath phase 0), plus the elbow poles:
 #   swing     rod pitch about the grip (deg, + = tip back/up), about cast_swing_axis() (horizontal, across the rod)
+#   lean      the swung rod turned about the view axis +X (deg, + = tip to the right)
+#   roll      rod roll about its own axis (deg; the right fist turns with the rod)
 #   gx/gy/gz  grip offset (m, chest frame: x forward, y left, z up)
-#   cp        'arms' (chest) pitch about ARMS_PIVOT (deg, + = lean back: everything in front of the chest rises)
-#   shx       both shoulders forward (m, - = drawn back)
-# Both hands are solved from the rod exactly as in HoldRod_Idle (right fist on the grip, left fist on the crank knob),
-# so no grip slides on any frame. All channels 0 = HoldRod_Idle frame 0.
-# Why the wind-up is not bigger (T-062 gate A search): in first person the forearms and elbows are off-screen at every
-# charge, so the arms read through the fists. More grip travel back or right cuts the right fist at the right edge;
-# more lift, more lean or a rod past vertical carries the left fist (on the crank knob) into the centre 40 % box.
-CAST_CHANNELS = ("swing", "gx", "gy", "gz", "cp", "shx")
+#   cp / cy   'arms' (chest) pitch / yaw about ARMS_PIVOT (deg; cp + = lean back, cy - = turn right)
+#   shx       both shoulders forward (m, - = drawn back); rsx / rsz: the right shoulder only (reach forward / up)
+# plus lf, the left hand: 0 = on the crank knob (solved from the rod as in HoldRod_Idle), 1 = free, hanging below the
+# frame (CAST_L_FREE_*); in between, wrist, hand, curl, thumb, shoulder and elbow pole blend.
+# The right fist is solved from the rod on every frame (no sliding). All channels 0 = HoldRod_Idle frame 0.
+# v2, the one-handed wind-up (T-062 gate A2, art-mgr): the left hand lets go of the crank as the charge starts and
+# drops out of view; the right fist carries the rod up and back to the right side of the view (the forearm rises from
+# the lower-right corner, the rod leaves the top-right edge past vertical). Why not two hands (gate A search): the knob
+# rises with the reel, so a left fist kept on the crank swings the left forearm up across the right half of the view,
+# next to the centre box, and caps the wind-up at a small fist travel.
+CAST_CHANNELS = ("swing", "lean", "roll", "gx", "gy", "gz", "cp", "cy", "shx", "rsx", "rsz")
 CAST_IDLE = {ch: 0.0 for ch in CAST_CHANNELS}
-CAST_WIND = dict(swing=38.0, gx=-0.04, gy=-0.035, gz=-0.005, cp=2.0, shx=-0.01)   # charge 1 = Cast_Release frame 0
+
+
+def cast_key(**kw):
+    """A cast pose (channels): the given values, every other channel 0 (= HoldRod_Idle frame 0)."""
+    d = dict(CAST_IDLE)
+    d.update(kw)
+    return d
+
+
+# Full charge = Cast_Release frame 0 (T-062 gate A2 search, scratch t062v2/search3.py): the rod laid back over the right
+# shoulder (64 deg swing = 14 deg past vertical, leaned 18 deg right), the grip 23 cm up; on screen the fist sits at
+# (84 %, 44 %) (fist top 59 % of the height above the hold's), the forearm rises from the lower-right corner (a third
+# of it in view), the rod leaves the top-right corner and its rear grip the bottom edge right of the centre box.
+CAST_WIND = cast_key(swing=64.0, lean=18.0, roll=10.0, gx=-0.01, gy=-0.02, gz=0.23, cp=3.0, cy=-4.0)
 CAST_CHARGE_FRAMES = 36        # 1.2 s = DT_Fishing ChargeTime; Unreal samples time = CastCharge01 * length
 CAST_RELEASE_FRAMES = 24       # 0.8 s one-shot
 CAST_RELEASE_FRAME = 3         # notify CastRelease (0.100 s): rod ~38 deg up, tip at full speed = the line leaves
@@ -1069,19 +1089,50 @@ CAST_SETTLE_FROM = 9           # end of the follow-through hold; one ease from h
 # grip, which runs under the forearm like a braced butt (an extended arm put the grip through the forearm, in view).
 CAST_RELEASE_KEYS = {
     0: dict(CAST_WIND),
-    1: dict(swing=44.0, gx=0.0, gy=-0.03, gz=0.0, cp=1.0, shx=0.0),
-    2: dict(swing=24.0, gx=0.035, gy=-0.02, gz=0.01, cp=-0.3, shx=0.01),
-    3: dict(swing=4.0, gx=0.055, gy=-0.012, gz=0.022, cp=-1.0, shx=0.02),
-    4: dict(swing=-16.0, gx=0.056, gy=-0.008, gz=0.036, cp=-1.3, shx=0.05),
-    5: dict(swing=-30.0, gx=0.058, gy=-0.006, gz=0.048, cp=-1.5, shx=0.058),
-    6: dict(swing=-37.0, gx=0.06, gy=-0.005, gz=0.055, cp=-1.5, shx=0.06),
-    9: dict(swing=-35.5, gx=0.057, gy=-0.005, gz=0.053, cp=-1.3, shx=0.058),
+    1: cast_key(swing=68.0, lean=15.0, roll=8.0, gx=0.02, gy=-0.025, gz=0.17, cp=2.2, cy=-3.0, shx=0.005),
+    2: cast_key(swing=38.0, lean=7.0, roll=4.0, gx=0.045, gy=-0.018, gz=0.08, cp=0.6, cy=-1.5, shx=0.012),
+    3: cast_key(swing=4.0, gx=0.055, gy=-0.012, gz=0.022, cp=-1.0, shx=0.02),
+    4: cast_key(swing=-16.0, gx=0.056, gy=-0.008, gz=0.036, cp=-1.3, shx=0.05),
+    5: cast_key(swing=-30.0, gx=0.058, gy=-0.006, gz=0.048, cp=-1.5, shx=0.058),
+    6: cast_key(swing=-37.0, gx=0.06, gy=-0.005, gz=0.055, cp=-1.5, shx=0.06),
+    9: cast_key(swing=-35.5, gx=0.057, gy=-0.005, gz=0.053, cp=-1.3, shx=0.058),
     CAST_RELEASE_FRAMES: dict(CAST_IDLE),
 }
-CAST_R_POLE_WIND = Vector((-0.15, -1.0, -0.7))   # right elbow further out at the wind-up (hold: RIGHT_POLE_HOLD)
-CAST_L_POLE_WIND = Vector((0.1, 0.9, -0.6))      # left elbow a little forward and higher (hold: LEFT_POLE_HOLD)
+CAST_R_POLE_WIND = pole_dir(270.0)   # right elbow down under the raised fist at the wind-up (hold: RIGHT_POLE_HOLD)
+CAST_R_POLE_DRIVE = Vector((-0.15, -1.0, -0.7))   # right elbow out to the side from release frame 2 (the gate A
+                                                  # release: keeps the rear grip off the forearm in the follow-through)
 CAST_FT_POLE_AZ_DEG = 335.0    # right elbow swings out (pole_dir) through the follow-through, away from the rear grip
                                # (340-345 clear a little more but twist the forearm 52-60 deg vs 12 at the idle)
+# Charge shaping per channel: (charge where it starts, where it ends, shape); shape k > 0 = ease-out power k (fast
+# start: the press answers at once), k = 0 = smoothstep (slow in, slow out). The fist moves right before it rises
+# (gx/gy/cy/lean lead, gz follows), so the fist, the reel and the rod clear the centre box early and stay out.
+CAST_CHARGE_SHAPE = {"swing": (0.0, 1.0, 2.2), "lean": (0.0, 0.8, 2.0), "roll": (0.0, 1.0, 1.8),
+                     "gx": (0.0, 0.7, 2.0), "gy": (0.0, 0.6, 2.0), "gz": (0.05, 1.0, 1.3),
+                     "cp": (0.15, 1.0, 0.0), "cy": (0.0, 0.7, 2.0), "shx": (0.15, 1.0, 0.0),
+                     "rsx": (0.0, 1.0, 1.5), "rsz": (0.0, 1.0, 1.5)}
+# Added with sin^2(pi * charge / CAST_CHARGE_ARC_SPAN) up to the span, 0 after: the fist path bows out to the right
+# early in the charge and the rod rolls the crank knob in behind the reel, so the knob stays off the centre box corner
+# while the rod passes vertical; gone again before the raised fist nears the right edge.
+CAST_CHARGE_ARC = {"gy": -0.025, "roll": -8.0}
+CAST_CHARGE_ARC_SPAN = 0.6
+CAST_R_POLE_SHAPE = (0.0, 1.0, 1.7)
+# The free left hand (lf = 1): the wrist hangs in front of the belly below the frame (chest frame, m), the hand is the
+# Idle clip's relaxed left hand (breath phase 0), fingers half open, elbow down and a little out.
+CAST_L_FREE_WRIST = Vector((0.37, 0.0, -0.42))
+CAST_L_FREE_SHOULDER = Vector((0.0, 0.0, 0.0))
+CAST_L_FREE_POLE = Vector((0.0, 0.5, -1.0))
+CAST_L_FREE_CURL_DEG = 30.0
+# When the left hand is off the knob (lf, eased with smoothstep): the charge lets go at CAST_L_LET_GO (the hand is still
+# on the knob at frames 0-1 while the HandL_Free curve rises) and is free by CAST_L_FREE_BY; the release keeps it free
+# until CAST_L_REGRIP[0] and lands it on the knob at CAST_L_REGRIP[1] (then HandL_Free falls to 0 on the next frame).
+# Letting go, the hand drops from where it let go (the knob pose at CAST_L_LET_GO, carried by the chest), not from the
+# rising knob, so it only moves down and out; the fingers open over CAST_L_OPEN_CHARGE of charge. Re-gripping, the
+# hand tracks the moving knob and closes over the last CAST_L_CLOSE_AT of lf.
+CAST_L_LET_GO = 1.0 / CAST_CHARGE_FRAMES
+CAST_L_FREE_BY = 0.40
+CAST_L_OPEN_CHARGE = 0.10
+CAST_L_REGRIP = (9, 18)
+CAST_L_CLOSE_AT = 0.35
 
 
 def ease_out(x, k):
@@ -1122,12 +1173,39 @@ def cast_swing_axis():
     return d0.cross(Vector((0.0, 0.0, 1.0))).normalized()
 
 
+def shaped(c, shape):
+    """Charge c through a CAST_CHARGE_SHAPE entry (start, end, k) -> 0..1."""
+    a, b, k = shape
+    x = max(0.0, min(1.0, (c - a) / (b - a)))
+    return smoothstep(x) if k <= 0.0 else ease_out(x, k)
+
+
 def cast_charge_channels(c):
-    """Charge 0..1 -> channels. The rod leads (fast ease-out: the press answers at once), the grip follows, the chest
-    leans in last (smoothstep from 15 %), so the last third reads as building tension."""
-    s_rod, s_grip, s_body = ease_out(c, 1.8), ease_out(c, 1.5), smoothstep((c - 0.15) / 0.85)
-    s = {"swing": s_rod, "gx": s_grip, "gy": s_grip, "gz": s_grip, "cp": s_body, "shx": s_body}
-    return {ch: CAST_IDLE[ch] + (CAST_WIND[ch] - CAST_IDLE[ch]) * s[ch] for ch in CAST_CHANNELS}
+    """Charge 0..1 -> channels, each through its CAST_CHARGE_SHAPE: the rod and the grip lead (fast ease-out: the press
+    answers at once), the chest turns in later (smoothstep), so the last third reads as building tension."""
+    arc = math.sin(math.pi * max(0.0, min(1.0, c / CAST_CHARGE_ARC_SPAN))) ** 2
+    return {ch: CAST_IDLE[ch] + (CAST_WIND[ch] - CAST_IDLE[ch]) * shaped(c, CAST_CHARGE_SHAPE[ch])
+            + CAST_CHARGE_ARC.get(ch, 0.0) * arc for ch in CAST_CHANNELS}
+
+
+def cast_charge_left_free(c):
+    """Charge -> lf (0 = on the knob, 1 = free)."""
+    return smoothstep((c - CAST_L_LET_GO) / (CAST_L_FREE_BY - CAST_L_LET_GO))
+
+
+def cast_release_left_free(f):
+    """Release frame -> lf: free until CAST_L_REGRIP[0], back on the knob at CAST_L_REGRIP[1] (smoothstep)."""
+    a, b = CAST_L_REGRIP
+    return 1.0 - smoothstep((f - a) / float(b - a))
+
+
+def cast_hand_l_free_curve(kind, f):
+    """Anim curve HandL_Free (1 = the left hand is off the crank knob, 0 = on it) for 'charge' / 'release' frame f.
+    It switches only while the animated left fist sits exactly on the knob (charge frames 0-1, release frames
+    CAST_L_REGRIP[1] to +1), so the Two Bone IK that holds the fist on hand_l_crank can hand over without a jump."""
+    if kind == "charge":
+        return 0.0 if f <= 0 else 1.0
+    return 1.0 if f <= CAST_L_REGRIP[1] else 0.0
 
 
 def cast_release_channels(f):
@@ -1141,23 +1219,88 @@ def cast_release_channels(f):
     return {ch: pchip(keys, [CAST_RELEASE_KEYS[k][ch] for k in keys], f) for ch in CAST_CHANNELS}
 
 
-def cast_poles(s_wind, w_ft=0.0):
-    """Elbow poles: hold -> wind-up by s_wind; the right one turned towards CAST_FT_POLE_AZ_DEG by w_ft."""
-    r = RIGHT_POLE_HOLD.lerp(CAST_R_POLE_WIND, s_wind)
-    return r.lerp(pole_dir(CAST_FT_POLE_AZ_DEG), w_ft), LEFT_POLE_HOLD.lerp(CAST_L_POLE_WIND, s_wind)
+def cast_right_pole(s_wind, w_ft=0.0, wind=None):
+    """Right elbow pole: hold -> `wind` (default CAST_R_POLE_WIND) by s_wind, then turned towards
+    CAST_FT_POLE_AZ_DEG by w_ft."""
+    wind = CAST_R_POLE_WIND if wind is None else wind
+    return RIGHT_POLE_HOLD.lerp(wind, s_wind).lerp(pole_dir(CAST_FT_POLE_AZ_DEG), w_ft)
 
 
-def cast_targets(B, knob_grip, ch, r_pole, l_pole):
-    """Channels + poles -> ('arms' bone matrix, arm targets). The rod is HoldRod_Idle frame 0's, swung and moved,
-    then carried by the chest turn; shoulders and poles turn with the chest."""
+def cast_release_right_pole(f):
+    """Release frame -> right elbow pole: the wind-up pole turns into CAST_R_POLE_DRIVE over frames 0-2, which eases
+    back to the hold pole by frame 6 while the follow-through turn (CAST_FT_POLE_AZ_DEG) peaks over frames 6-12."""
+    w_ft = smoothstep((f - 2) / 4.0) * (1.0 - smoothstep((f - 12) / 12.0))
+    wind = CAST_R_POLE_WIND.lerp(CAST_R_POLE_DRIVE, smoothstep(f / 2.0))
+    return cast_right_pole(1.0 - smoothstep(f / 6.0), w_ft, wind)
+
+
+def cast_chest(ch):
+    """The 'arms' (chest) turn of a cast pose: yaw cy and pitch cp about ARMS_PIVOT (4x4, camera space)."""
+    return about_point(rot3((0.0, 0.0, 1.0), ch["cy"]) @ rot3((0.0, 1.0, 0.0), -ch["cp"]), ARMS_PIVOT)
+
+
+def cast_rod(ch):
+    """The rod (hand_r_rod) of a cast pose: HoldRod_Idle frame 0's, swung, leaned and rolled about the grip, moved,
+    then carried by the chest turn."""
     R0 = holdrod_rod(0.0)
-    D = about_point(rot3((0.0, 1.0, 0.0), -ch["cp"]), ARMS_PIVOT)
-    rod = D @ mat4(rot3(cast_swing_axis(), ch["swing"]) @ R0.to_3x3(),
-                   R0.translation + Vector((ch["gx"], ch["gy"], ch["gz"])))
+    R = rot3((1.0, 0.0, 0.0), ch["lean"]) @ rot3(cast_swing_axis(), ch["swing"]) @ R0.to_3x3() \
+        @ rot3((1.0, 0.0, 0.0), ch["roll"])
+    return cast_chest(ch) @ mat4(R, R0.translation + Vector((ch["gx"], ch["gy"], ch["gz"])))
+
+
+def blend_rot(Ra, Rb, s):
+    qa, qb = Ra.to_quaternion(), Rb.to_quaternion()
+    if qa.dot(qb) < 0.0:
+        qb.negate()
+    return qa.slerp(qb, s).to_matrix()
+
+
+def carry_target(t, M):
+    """An ArmTarget moved rigidly by the 4x4 M (wrist, hand, shoulder offset and pole)."""
+    R = M.to_3x3()
+    return ArmTarget(M @ t.wrist, R @ t.R_hand, R @ t.shoulder_off, t.curl, t.curl_tilt, t.thumb,
+                     pole=None if t.pole is None else R @ t.pole)
+
+
+def cast_left_target(B, sides, D, src, lf, s_open):
+    """The left arm target: the knob grip `src` (an ArmTarget) blended towards the free hanging hand by lf (eased by
+    the caller); s_open opens the fingers (0 = the knob grip, 1 = relaxed). The free hand rides the chest turn D."""
+    if lf <= 0.0 and s_open <= 0.0:
+        return src
+    Rb = D.to_3x3()
+    free = idle_targets(B, sides, 0.0)["l"]
+    return ArmTarget(src.wrist.lerp(D @ CAST_L_FREE_WRIST, lf), blend_rot(src.R_hand, Rb @ free.R_hand, lf),
+                     src.shoulder_off.lerp(Rb @ CAST_L_FREE_SHOULDER, lf),
+                     KNOB_CURL_DEG + (CAST_L_FREE_CURL_DEG - KNOB_CURL_DEG) * s_open,
+                     KNOB_TILT_DEG * (1.0 - s_open), blend_rot(thumb_rot(THUMB_KNOB), thumb_rot(THUMB_RELAXED), s_open),
+                     pole=src.pole.lerp(Rb @ CAST_L_FREE_POLE, lf))
+
+
+def cast_knob_target(B, knob_grip, ch):
+    """(chest turn D, left-hand knob target) of a cast pose."""
+    D = cast_chest(ch)
+    Rb = D.to_3x3()
+    tg = rod_hands_targets(B, cast_rod(ch), knob_grip, 0.0, RIGHT_SHOULDER_HOLD, RIGHT_POLE_HOLD,
+                           LEFT_SHOULDER_HOLD + Rb @ Vector((ch["shx"], 0.0, 0.0)), Rb @ LEFT_POLE_HOLD)
+    return D, tg["l"]
+
+
+def cast_targets(B, sides, knob_grip, ch, r_pole, lf=0.0, s_open=0.0, let_go=None):
+    """Channels + right pole + left hand -> ('arms' bone matrix, arm targets). Shoulders and poles turn with the
+    chest; the right fist is solved from the rod. The left fist holds the knob, blended free by lf (s_open opens
+    the fingers) from the live knob or, with let_go (the channels where the hand let go), from the knob pose there,
+    carried by the chest turn since."""
+    D = cast_chest(ch)
     Rb = D.to_3x3()
     sh = Rb @ Vector((ch["shx"], 0.0, 0.0))
-    tg = rod_hands_targets(B, rod, knob_grip, 0.0, RIGHT_SHOULDER_HOLD + sh, Rb @ r_pole, LEFT_SHOULDER_HOLD + sh,
-                           Rb @ l_pole)
+    r_sh = RIGHT_SHOULDER_HOLD + sh + Rb @ Vector((ch["rsx"], 0.0, ch["rsz"]))
+    tg = rod_hands_targets(B, cast_rod(ch), knob_grip, 0.0, r_sh, Rb @ r_pole, LEFT_SHOULDER_HOLD + sh,
+                           Rb @ LEFT_POLE_HOLD)
+    src = tg["l"]
+    if let_go is not None:
+        D0, t0 = cast_knob_target(B, knob_grip, let_go)
+        src = carry_target(t0, D @ D0.inverted())
+    tg["l"] = cast_left_target(B, sides, D, src, lf, s_open)
     return D @ B["arms"], tg
 
 
@@ -1214,8 +1357,11 @@ class Poser:
         c = f / float(CAST_CHARGE_FRAMES)
         if c <= 0.0:
             return self.hold(0, arms_M)
-        r_pole, l_pole = cast_poles(ease_out(c, 1.7))
-        body, tg = cast_targets(self.B, self.knob_grip, cast_charge_channels(c), r_pole, l_pole)
+        r_pole = cast_right_pole(shaped(c, CAST_R_POLE_SHAPE))
+        let_go = cast_charge_channels(CAST_L_LET_GO) if c > CAST_L_LET_GO else None
+        body, tg = cast_targets(self.B, self.sides, self.knob_grip, cast_charge_channels(c), r_pole,
+                                cast_charge_left_free(c), smoothstep((c - CAST_L_LET_GO) / CAST_L_OPEN_CHARGE),
+                                let_go)
         P, m = full_pose(self.B, self.sides, body, tg)
         return self._dip(P, arms_M), m
 
@@ -1223,9 +1369,9 @@ class Poser:
         """A_FPArms_Cast_Release at frame f. Frame 0 = the full wind-up; the last frame IS HoldRod_Idle frame 0."""
         if f >= CAST_RELEASE_FRAMES:
             return self.hold(0, arms_M)
-        w_ft = smoothstep((f - 2) / 4.0) * (1.0 - smoothstep((f - 12) / 12.0))
-        r_pole, l_pole = cast_poles(1.0 - smoothstep(f / 6.0), w_ft)
-        body, tg = cast_targets(self.B, self.knob_grip, cast_release_channels(f), r_pole, l_pole)
+        lf = cast_release_left_free(f)
+        body, tg = cast_targets(self.B, self.sides, self.knob_grip, cast_release_channels(f),
+                                cast_release_right_pole(f), lf, smoothstep(lf / CAST_L_CLOSE_AT))
         P, m = full_pose(self.B, self.sides, body, tg)
         return self._dip(P, arms_M), m
 

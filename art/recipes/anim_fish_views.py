@@ -15,7 +15,9 @@ Previews (Saved/AgentLogs/previews/):
                                    is the GAME-PIXEL crop around the fish (120x80 px at 5 m, 60x40 px at 12 m), zoomed
                                    x2 / x4 nearest-neighbour so the pixels stay honest. Columns = game time at the
                                    clip's in-game play rate; rows = species x view (behind = the fish faces away,
-                                   side = its right side, front = coming toward the player) and a tiring fish.
+                                   side = its right side, front = coming toward the player), a tiring fish and, for
+                                   Run / Swim_Fast / Dive, the clip at today's 0.5 floor ("TODAY's rule, reeling").
+                                   RESULT_JSON numbers per row, keyed clip|species|distance|view|stamina|rate|note.
   SK_Fish_tired_vs_run.png         the same dock view, 5 m behind: Run fresh / Run tiring / Swim_Tired / Swim_Idle
   SK_Fish_exhausted_before_after.png  today's exhausted look (Swim_Idle at 0.5 x0.5, rolled 70 deg) vs Swim_Tired
                                    upright, from behind and from the front
@@ -414,7 +416,12 @@ def film(fishes, rows, dt, name, title):
                     af.pose_fish(fish, af.clip_quats(c, f, row.amp))
                     img = render_eevee(TMP / ("%s_%d_%02d.png" % (name, i, j)), view, (W / 2.0, H / 2.0, cw, ch))
                     cells.append(zoom(img, k))
-            key = "%s|%s|%.0fm|%s|stamina %.1f" % (af.short(c.name), row.species, row.dist, row.view, row.stamina)
+            # the rate and the note are part of the key: rows that differ only there (the fresh fish vs "TODAY's rule",
+            # the tired fish from its stroke vs from its glide) must not overwrite each other
+            key = "%s|%s|%.0fm|%s|stamina %.1f|rate %.2f" % (af.short(c.name), row.species, row.dist, row.view,
+                                                              row.stamina, row.rate)
+            if row.note:
+                key += "|" + row.note
             numbers[key] = dict(screen_motion(fish, c, row.rate, row.amp, cam, start=row.start),
                                 rate=round(row.rate, 3), alpha=round(row.amp, 3), roll_deg=row.roll)
             cam.close()

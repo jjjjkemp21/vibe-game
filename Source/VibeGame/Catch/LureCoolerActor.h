@@ -22,6 +22,7 @@ class UStaticMeshComponent;
  *  it remembers the player it was made for (OwningPlayerState, CoolerGuid) for saves only.
  *  - Lid: open or closed (replicated); the contents spoil at the row's OpenDecayRate or ClosedDecayRate.
  *  - Carry: both hands (CarryCooler pose), the carrier moves at CarrySpeedMultiplier, no collision while carried.
+ *    T-064: the carrier may open it in their hands and show it (the open side turned away: bShowing, replicated to everyone).
  *  - Put down: in front of the carrier on dry, walkable ground where the box fits; forced put-downs (prone, water, caught,
  *    leaving) go to the carrier's last dry ground spot.
  *  - Look: the row's BodyMesh / LidMesh (lid on the body's LidHinge socket), else a placeholder box of the same size.
@@ -54,6 +55,10 @@ public:
 	UFUNCTION(BlueprintPure, Category="Lure|Cooler")
 	bool IsLidOpen() const { return bLidOpen; }
 
+	/** T-064: its carrier shows it (open, the open side turned away from them). Only while carried in a hand with the lid open. */
+	UFUNCTION(BlueprintPure, Category="Lure|Cooler")
+	bool IsShowing() const { return bShowing; }
+
 	UFUNCTION(BlueprintPure, Category="Lure|Cooler")
 	APlayerState* GetOwningPlayerState() const { return OwningPlayerState; }
 
@@ -77,14 +82,33 @@ public:
 
 	// ---- Server ----
 
-	/** Opens or closes the lid (not while carried): the contents switch to the open or closed spoiling speed now */
+	/** Opens or closes the lid (standing, or in its carrier's hands, T-064): the contents switch to the open or closed spoiling
+	 *  speed now. Closing ends showing. */
 	bool AuthoritySetLidOpen(bool bOpen);
+
+	/** T-064: its carrier turns the open side away (true) or back (false). Showing needs a carrier's hand and an open lid. */
+	bool AuthoritySetShowing(bool bShow);
 
 	/** Pawn's held fish goes in (record only, spoiling at the cooler's speed; the item is removed). A closed lid stays closed. */
 	bool AuthorityPutFishIn(APawn* Pawn, ALureFishItem* Fish);
 
 	/** The top fish comes out into Pawn's empty hand (the lid must be open). Null if it can't. */
 	ALureFishItem* AuthorityTakeFishOut(APawn* Pawn);
+
+	/**
+	 *  T-065: Pawn, carrying this cooler open and showing it, tips every fish out, the top one first. Each becomes a fish item
+	 *  that falls by the drop rule (ALureFishItem::AuthorityDrop, from Pawn's eye like "Drop the <fish>"), spread across the
+	 *  view (GetDumpSideOffset, DT_Catch DumpSpacing) at DropForward; its flight starts at the cooler's mouth. On water it
+	 *  is released. Pawn's player gets one notice ("Dumped 3 fish, 1 released"). The cooler stays carried, open and shown.
+	 *  Returns how many came out (0 = refused or empty); OutReleased = how many of them went into the water.
+	 */
+	int32 AuthorityDumpFish(APawn* Pawn, int32* OutReleased = nullptr);
+
+	/** T-065: the sideways place (cm, + = the carrier's right) of the Index-th dumped fish: 0, +S, -S, +2S, -2S ... */
+	static float GetDumpSideOffset(int32 Index, float Spacing);
+
+	/** T-065: the middle of the open top of the drawn body, world (where dumped fish start their flight; cosmetic) */
+	FVector GetMouthLocation() const;
 
 	/** Pawn picks it up in both hands (hands empty, no fish on the hook; the lid closes) */
 	bool AuthorityPickUp(APawn* Pawn);
@@ -119,8 +143,10 @@ public:
 
 	/** Read-only check: the world box of each fish shown inside right now, bottom of the pile first (empty while hidden).
 	 *  Skinned fish are measured per vertex in their current pose (the component bounds report the straight mesh);
-	 *  static meshes, or skinned ones without CPU vertex data, fall back to the component bounds. */
-	TArray<FBox> GetDisplayedFishBounds() const;
+	 *  static meshes, or skinned ones without CPU vertex data, fall back to the component bounds. T-064: Space = measure in
+	 *  that component's space instead (e.g. the Contents root of a tilted, carried cooler: a world box of a turned fish is
+	 *  loose; its vertices in the cooler's own space are not). */
+	TArray<FBox> GetDisplayedFishBounds(const USceneComponent* Space = nullptr) const;
 
 	/** The Contents point the shown fish lie relative to (the body's Contents socket) */
 	USceneComponent* GetContentsRoot() const { return ContentsRoot; }
@@ -134,6 +160,15 @@ public:
 
 	/** The lid's current angle on this machine, degrees (0 = closed) */
 	float GetLidPitch() const { return LidPitch; }
+
+	/** T-064, this machine: how far the carried cooler has turned to its open tilt and to its show turn (0..1 each) */
+	float GetOpenPoseAlpha() const { return OpenPoseAlpha; }
+	float GetShowPoseAlpha() const { return ShowPoseAlpha; }
+
+	/** T-064: the cooler visual's transform relative to its carry frame for the open and show blends (0..1): turned in the
+	 *  cooler's own axes about the middle of its box, then offset (ULureCatchSettings Carried* on the carrier's machine,
+	 *  ThirdPersonShow* on others). Identity at 0, 0. */
+	FTransform GetHeldPoseTransform(bool bFirstPerson, float OpenAlpha, float ShowAlpha) const;
 
 	/** Half size and center of the gameplay box (pivot space), cm */
 	FVector GetBoxHalfExtent() const { return BoxHalfExtent; }
@@ -178,6 +213,10 @@ protected:
 
 	UPROPERTY(Replicated)
 	bool bStarter = false;
+
+	/** T-064: the carrier shows it (server-set; cleared whenever it isn't carried in a hand or the lid closes). Everyone sees it. */
+	UPROPERTY(Replicated, BlueprintReadOnly, Category="Lure|Cooler")
+	bool bShowing = false;
 
 	UFUNCTION()
 	void OnRep_Lid();
@@ -224,6 +263,9 @@ private:
 	FVector BoxCenter = FVector(0.0f, 0.0f, 19.6f);
 
 	float LidPitch = 0.0f;
+	/** T-064, this machine: the carried cooler's open tilt and show turn blends (0..1) */
+	float OpenPoseAlpha = 0.0f;
+	float ShowPoseAlpha = 0.0f;
 	float LidPulseTimeLeft = 0.0f;
 	uint8 LastLidPulseId = 0;
 	bool bDisplayVisible = false;
@@ -234,6 +276,8 @@ private:
 	void RefreshDisplay();
 	void SetDisplayVisible(bool bVisible);
 	void ApplyCollision();
+	/** T-064: moves the open and show blends on by DeltaSeconds and places the visual (held in a hand), else resets them */
+	void UpdateHeldPose(float DeltaSeconds);
 	/** The floor under Above (solid level geometry, LureCast channel), within MaxFall */
 	bool FindFloor(const FVector& Above, float MaxFall, FHitResult& OutHit, const AActor* IgnoreActor) const;
 };
