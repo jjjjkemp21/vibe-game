@@ -521,7 +521,8 @@ namespace LureFightFishTest
 		{
 			return false;
 		}
-		const FFishVisualRow& Row = *RowPtr;
+		FFishVisualRow Row = *RowPtr;
+		Row.BodyAngleDeg = 0.f; // the T-048 facing this test pins; T-075's body angle: Project.FishVisual.T075.*
 		ALureFightFish* Fish = SpawnBareFish(World.World, Row);
 		ALureFightFish* ProxyFish = SpawnBareFish(World.World, Row);
 		if (!TestNotNull(TEXT("fish"), Fish) || !TestNotNull(TEXT("proxy fish"), ProxyFish))

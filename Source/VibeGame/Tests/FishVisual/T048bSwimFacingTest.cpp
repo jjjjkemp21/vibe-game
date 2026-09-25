@@ -46,6 +46,7 @@ namespace LureT048bSwimFacingTest
 			return false;
 		}
 		Out.Row = *Row;
+		Out.Row.BodyAngleDeg = 0.f; // the swing on its own (T-048 rule); T-075 adds BodyAngleDeg to it: Project.FishVisual.T075.*
 		return true;
 	}
 

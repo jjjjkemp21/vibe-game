@@ -17,7 +17,8 @@ namespace LureMouthOnLineTest
 {
 	constexpr EAutomationTestFlags Flags = EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter;
 
-	bool LoadRow(FAutomationTestBase& Test, TStrongObjectPtr<UDataTable>& Table, FFishVisualRow& OutRow)
+	/** The shipped row; bT048Rule: with BodyAngleDeg 0 (the T-048 rule these tests pin; T-075's body angle: Project.FishVisual.T075.*). */
+	bool LoadRow(FAutomationTestBase& Test, TStrongObjectPtr<UDataTable>& Table, FFishVisualRow& OutRow, bool bT048Rule = true)
 	{
 		FString Text;
 		if (!LureFightQA::ReadSource(Test, TEXT("DT_FishVisual.json"), Text)
@@ -32,6 +33,10 @@ namespace LureMouthOnLineTest
 			return false;
 		}
 		OutRow = *Row;
+		if (bT048Rule)
+		{
+			OutRow.BodyAngleDeg = 0.f;
+		}
 		return true;
 	}
 
@@ -259,7 +264,7 @@ namespace LureMouthOnLineTest
 		FishQA::FTables Fish;
 		TStrongObjectPtr<UDataTable> Visual;
 		FFishVisualRow Row;
-		if (!Data.Load(*this) || !FishQA::LoadReal(*this, Fish) || !LoadRow(*this, Visual, Row))
+		if (!Data.Load(*this) || !FishQA::LoadReal(*this, Fish) || !LoadRow(*this, Visual, Row, /*bT048Rule*/ false)) // the fish uses the shipped row
 		{
 			return false;
 		}
@@ -313,7 +318,8 @@ namespace LureMouthOnLineTest
 		TestTrue(FString::Printf(TEXT("the line end moved (fastest %.1f cm per frame)"), MaxLineMove), MaxLineMove > 0.5f);
 		// Tolerance: MouthMaxLagCm (the smoothing) + 2 cm (the Mouth bone of an imported mesh sits a little off the body axis).
 		TestTrue(FString::Printf(TEXT("the bobber stays over the mouth (worst %.2f cm, max %.0f)"), Worst, Row.MouthMaxLagCm + 2.f), Worst <= Row.MouthMaxLagCm + 2.f);
-		TestTrue(FString::Printf(TEXT("the fish faces the rod (worst %.1f deg from mouth -> player)"), WorstAngle), WorstAngle <= Row.RunSwingDeg + 0.5f);
+		TestTrue(FString::Printf(TEXT("the fish faces the rod (worst %.1f deg from mouth -> player, max %.0f)"), WorstAngle, FFightFishVisual::MaxBodyAngleDeg(Row)),
+			WorstAngle <= FFightFishVisual::MaxBodyAngleDeg(Row) + 0.5f);
 		return true;
 	}
 }

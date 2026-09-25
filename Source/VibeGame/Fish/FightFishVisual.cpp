@@ -43,6 +43,7 @@ bool FFishVisualRow::Validate(FString& OutProblem) const
 		{ TEXT("MinFacingSpeed"), MinFacingSpeed, 0.f, 100000.f },
 		{ TEXT("MaxPitchDeg"), MaxPitchDeg, 0.f, 89.f },
 		{ TEXT("RunSwingDeg"), RunSwingDeg, 0.f, 80.f },
+		{ TEXT("BodyAngleDeg"), BodyAngleDeg, 0.f, 80.f },
 		{ TEXT("RunSwingFullSpeed"), RunSwingFullSpeed, 1.f, 100000.f },
 		{ TEXT("MouthMaxLagCm"), MouthMaxLagCm, 0.f, 1000.f },
 		{ TEXT("EscapeTime"), EscapeTime, 0.f, 60.f },
@@ -362,38 +363,59 @@ namespace FightFishVisualPrivate
 	{
 		return FMath::IsFinite(Row.RunSwingDeg) ? FMath::Clamp(Row.RunSwingDeg, 0.f, 80.f) : 0.f;
 	}
+
+	/** T-075: the body angle off the line when the fish does not swing, [0, 80]. */
+	static float BodyAngle(const FFishVisualRow& Row)
+	{
+		return FMath::IsFinite(Row.BodyAngleDeg) ? FMath::Clamp(Row.BodyAngleDeg, 0.f, 80.f) : 0.f;
+	}
+}
+
+float FFightFishVisual::MaxBodyAngleDeg(const FFishVisualRow& Row)
+{
+	return FMath::Min(80.f, FightFishVisualPrivate::BodyAngle(Row) + FightFishVisualPrivate::MaxSwing(Row));
 }
 
 FRotator FFightFishVisual::FightFacing(const FFishVisualRow& Row, const FVector& MouthVelocity, const FVector& MouthLocation, const FVector& PlayerLocation,
 	const FRotator& Current, bool bExhausted, bool bMoveSwims, float MoveSwimSide)
 {
 	const float BaseYaw = FightFishVisualPrivate::YawToPlayer(MouthLocation, PlayerLocation, static_cast<float>(Current.Yaw));
-	FRotator Out(0.f, BaseYaw, 0.f);
+	// The side the body lies to, in yaw off the line (+ = larger yaw): the side it already leans to; exactly away from the
+	// player (a fish that just spawned faces away) = +, so every machine starts on the same side (T-075).
+	const float Lean = FMath::FindDeltaAngleDegrees(BaseYaw, static_cast<float>(Current.Yaw));
+	float Sign = (FMath::Abs(Lean) > 179.5f || Lean >= 0.f) ? 1.f : -1.f;
+	float Swing = 0.f;
 	const bool bFollowMove = bMoveSwims && !bExhausted;
 	if (bFollowMove && FMath::IsFinite(MoveSwimSide))
 	{
 		// T-048b: the move's own swim sets the swing. + = the player's right = toward smaller yaw from the fish's view of the
 		// player (a fish at +X from the player faces yaw 180; its head turns toward +Y, the player's right, at yaw < 180).
-		Out.Yaw = BaseYaw - FMath::Clamp(MoveSwimSide, -1.f, 1.f) * FightFishVisualPrivate::MaxSwing(Row);
+		const float Side = FMath::Clamp(MoveSwimSide, -1.f, 1.f);
+		if (Side != 0.f)
+		{
+			Sign = Side > 0.f ? -1.f : 1.f;
+		}
+		Swing = FMath::Abs(Side) * FightFishVisualPrivate::MaxSwing(Row);
 	}
 	const FVector Horizontal(MouthVelocity.X, MouthVelocity.Y, 0.f);
 	const float Speed = static_cast<float>(Horizontal.Size());
-	if (FMath::IsFinite(Speed) && FMath::IsFinite(MouthVelocity.Z) && Speed > Row.MinFacingSpeed)
+	const bool bMoving = FMath::IsFinite(Speed) && FMath::IsFinite(MouthVelocity.Z) && Speed > Row.MinFacingSpeed;
+	if (bMoving && !bExhausted && !bFollowMove)
 	{
-		if (!bExhausted && !bFollowMove)
+		// Sideways component of the swim (+ = toward larger yaw, i.e. from X toward Y).
+		const FVector ToPlayer = FRotator(0.f, BaseYaw, 0.f).Vector();
+		const FVector Side(-ToPlayer.Y, ToPlayer.X, 0.f);
+		const float Lateral = static_cast<float>(FVector::DotProduct(Horizontal, Side));
+		if (FMath::Abs(Lateral) > 0.25f * Speed)
 		{
-			// Sideways component of the swim (+ = toward larger yaw, i.e. from X toward Y).
-			const FVector ToPlayer = FRotator(0.f, BaseYaw, 0.f).Vector();
-			const FVector Side(-ToPlayer.Y, ToPlayer.X, 0.f);
-			const float Lateral = static_cast<float>(FVector::DotProduct(Horizontal, Side));
-			float Sign = FMath::FindDeltaAngleDegrees(BaseYaw, static_cast<float>(Current.Yaw)) < 0.f ? -1.f : 1.f;
-			if (FMath::Abs(Lateral) > 0.25f * Speed)
-			{
-				Sign = Lateral < 0.f ? -1.f : 1.f; // the head turns toward the side it swims to
-			}
-			const float Share = FMath::Clamp(Speed / FMath::Max(1.f, Row.RunSwingFullSpeed), 0.f, 1.f);
-			Out.Yaw = BaseYaw + Sign * FightFishVisualPrivate::MaxSwing(Row) * Share;
+			Sign = Lateral < 0.f ? -1.f : 1.f; // the head turns toward the side it swims to
 		}
+		Swing = FightFishVisualPrivate::MaxSwing(Row) * FMath::Clamp(Speed / FMath::Max(1.f, Row.RunSwingFullSpeed), 0.f, 1.f);
+	}
+	// T-075: never straight away from the rod (the fish would hide behind the bobber): BodyAngleDeg, plus the swing.
+	FRotator Out(0.f, BaseYaw + Sign * FMath::Min(80.f, FightFishVisualPrivate::BodyAngle(Row) + Swing), 0.f);
+	if (bMoving)
+	{
 		// The end that leads the swim follows the climb: head first (reeled in) = nose along the climb, tail first = against it.
 		const float Climb = static_cast<float>(FMath::RadiansToDegrees(FMath::Atan2(MouthVelocity.Z, static_cast<double>(Speed))));
 		const float Lead = FVector::DotProduct(Horizontal, Out.Vector()) >= 0.0 ? 1.f : -1.f;
@@ -406,7 +428,7 @@ FRotator FFightFishVisual::FightFacing(const FFishVisualRow& Row, const FVector&
 FRotator FFightFishVisual::ClampToLine(const FFishVisualRow& Row, const FRotator& Rotation, const FVector& MouthLocation, const FVector& PlayerLocation)
 {
 	const float BaseYaw = FightFishVisualPrivate::YawToPlayer(MouthLocation, PlayerLocation, static_cast<float>(Rotation.Yaw));
-	const float Max = FightFishVisualPrivate::MaxSwing(Row);
+	const float Max = MaxBodyAngleDeg(Row);
 	FRotator Out = Rotation;
 	Out.Yaw = BaseYaw + FMath::Clamp(FMath::FindDeltaAngleDegrees(BaseYaw, static_cast<float>(Rotation.Yaw)), -Max, Max);
 	return Out;

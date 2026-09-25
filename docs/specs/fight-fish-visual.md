@@ -32,7 +32,12 @@ state (`RodPitch`, `RodYaw`, `ReelStep`, `RunSide`) is not the fish's and is not
   after the fight so a landed fish is handed on where it was lifted to). The fish's mouth is its point nearest the rod
   (T-048, lead 2026-09-24; replaces "body toward the player", which made the bobber look hooked to the tail): the `Mouth`
   bone sits right under the line end (and the bobber, which is drawn at the same XY), the fish faces the player from there
-  and its body lies away from the player; its center is `SurfaceDepth + min(DepthShare x Depth, MaxShownDepth)` under the
+  and its body lies away from the player, **always `BodyAngleDeg` (60) off the line** (T-075, Sprint 1 playtest: straight
+  away from the rod the angler saw only the fish's head, and the 4.5x bobber pulled under at the mouth hid it at every
+  distance): on the side it swims to, else the side it already leans to (a fish that just spawned faces away: the
+  larger-yaw side, the same on every machine); the swings below add to it, 80 at most (tests `Project.FishVisual.T075.*`:
+  seen from the angler's camera, 48-71 % of the fish is outside the 4.5x bobber and 20-51 % outside T-075a's 7.9x one,
+  which is about as wide as a 0.6 kg fish is long; the T-048 rule gave 0-1 %); its center is `SurfaceDepth + min(DepthShare x Depth, MaxShownDepth)` under the
   (lifted) surface, at least `FloorClearance` above the bottom.
   Smoothing moves only that line point (`AuthoritySmoothTime` on the server/standalone, `ProxySmoothTime` elsewhere; jumps
   over `SnapDistance` snap), and it never trails the line end by more than `MouthMaxLagCm` (5 cm) horizontally; the body
@@ -45,9 +50,10 @@ state (`RodPitch`, `RodYaw`, `ReelStep`, `RunSide`) is not the fish's and is not
   and an unknown move keep the ground-velocity rule: while the mouth moves faster than `MinFacingSpeed` the body swings
   `RunSwingDeg x min(1, speed / RunSwingFullSpeed)` (full at 200 cm/s), the head toward the side it moves to (straight out
   or in: the side it already leans to). In both, while the mouth moves faster than `MinFacingSpeed`, the end that leads
-  the ground motion follows a climb or dive (pitch up to `MaxPitchDeg`). The yaw is always kept within `RunSwingDeg` (max 80) of mouth ->
-  player, so seen from above no body point is nearer the player than the mouth (tests `Project.FishVisual.MouthOnLine.*`).
-  A tired fish does not swing. An escaping fish (after the fight) faces its swim when faster than `MinFacingSpeed`, else
+  the ground motion follows a climb or dive (pitch up to `MaxPitchDeg`). The yaw is always kept within `BodyAngleDeg +
+  RunSwingDeg` (max 80) of mouth -> player, so seen from above no body point is nearer the player than the mouth (tests
+  `Project.FishVisual.MouthOnLine.*`). A tired fish does not swing (it lies `BodyAngleDeg` off the line). `BodyAngleDeg` 0
+  is the T-048 rule (the older tests pin it to 0). An escaping fish (after the fight) faces its swim when faster than `MinFacingSpeed`, else
   away from the player. Tired fish roll `ExhaustedRollDeg`, which is 0: **Jimmy, 2026-09-24: a tired fish stays upright with a
   calm swim, never on its side** (T-058a set it to 0, test `Project.FishVisual.ExhaustedUpright`; the column stays for a small
   roll with a later calm clip, S3).

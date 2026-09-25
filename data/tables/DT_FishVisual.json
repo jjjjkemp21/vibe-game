@@ -53,11 +53,12 @@
 		"MinFacingSpeed": 20.0,
 		"MaxPitchDeg": 30.0,
 		"RunSwingDeg": 35.0,
+		"BodyAngleDeg": 60.0,
 		"RunSwingFullSpeed": 200.0,
 		"MouthMaxLagCm": 5.0,
 		"EscapeTime": 1.0,
 		"EscapeSpeed": 250.0,
 		"EscapeSinkSpeed": 60.0,
-		"DevComment": "T-029 fighting fish look (cosmetic; every machine). MoveRoles: fight move id (DT_FightPattern) -> clip role (EFishAnimRole: SwimIdle, SwimFast, Thrash, Run, Dive, Dart, Flop); a new move needs a line here, unknown moves play UnknownMoveRole. Clip rules from art/export/Fish/SK_Fish.anim.md: while fighting (T-059a, effort not speed) every role plays at AnimRate x weight ^ -1/6 x lerp(TiredRate, FreshRate, stamina) (RoleStaminaRates, art's gate A table) with alpha x lerp(TiredAmplitudeScale, FreshAmplitudeScale, stamina); only the escape swim matches its tail beat to its speed (stride 0.7 body lengths per beat); Sulk holds (SwimIdle); Thrash for the first second after the hook set; a tired fish swims slowly and stays upright (ExhaustedRollDeg 0, Jimmy 2026-09-24). Placement: the mouth at the line's end (never more than MouthMaxLagCm behind it), the fish facing the rod with its body away from the player, swung sideways up to RunSwingDeg while it swims (full at RunSwingFullSpeed; T-048), SurfaceDepth under the surface plus 60 % of the fight's dive depth (capped), above the bottom; more smoothing on machines without authority. PLACEHOLDER numbers: tune in playtest."
+		"DevComment": "T-029 fighting fish look (cosmetic; every machine). MoveRoles: fight move id (DT_FightPattern) -> clip role (EFishAnimRole: SwimIdle, SwimFast, Thrash, Run, Dive, Dart, Flop); a new move needs a line here, unknown moves play UnknownMoveRole. Clip rules from art/export/Fish/SK_Fish.anim.md: while fighting (T-059a, effort not speed) every role plays at AnimRate x weight ^ -1/6 x lerp(TiredRate, FreshRate, stamina) (RoleStaminaRates, art's gate A table) with alpha x lerp(TiredAmplitudeScale, FreshAmplitudeScale, stamina); only the escape swim matches its tail beat to its speed (stride 0.7 body lengths per beat); Sulk holds (SwimIdle); Thrash for the first second after the hook set; a tired fish swims slowly and stays upright (ExhaustedRollDeg 0, Jimmy 2026-09-24). Placement: the mouth at the line's end (never more than MouthMaxLagCm behind it), the body away from the player and always BodyAngleDeg off the line so the angler sees its side, not just its head behind the bobber (T-075), plus up to RunSwingDeg more while it swims (full at RunSwingFullSpeed; T-048), 80 at most, SurfaceDepth under the surface plus 60 % of the fight's dive depth (capped), above the bottom; more smoothing on machines without authority. PLACEHOLDER numbers: tune in playtest."
 	}
 ]

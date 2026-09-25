@@ -192,11 +192,20 @@ struct FFishVisualRow : public FTableRowBase
 
 	/**
 	 *  T-048: a fighting fish faces the rod (its mouth is its point nearest the player, the body away from the player). While
-	 *  it swims, its body swings sideways up to this angle (head toward the side it swims to), so it reads as pulling away,
-	 *  degrees. At most 80: the body never gets between the line and the mouth seen from above.
+	 *  it swims, its body swings sideways by up to this angle more (head toward the side it swims to), so it reads as pulling
+	 *  away, degrees. Body angle + swing is capped at 80: the body never gets between the line and the mouth seen from above.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Placement", meta=(ClampMin="0", ClampMax="80", DataTableImportOptional))
 	float RunSwingDeg = 35.f;
+
+	/**
+	 *  T-075: the body always lies at least this far off the line (mouth -> player), on the side it swims or leans to, so
+	 *  the angler sees the fish's side and not just its head behind the bobber (straight away from the rod, the fish hid
+	 *  behind the bobber: Sprint 1 playtest). The swim swing (RunSwingDeg) adds to it. 0 = the T-048 rule (faces the rod
+	 *  straight when not swimming), degrees.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Placement", meta=(ClampMin="0", ClampMax="80", DataTableImportOptional))
+	float BodyAngleDeg = 60.f;
 
 	/** Swim speed at which the body swing is full (RunSwingDeg); slower = proportionally less, cm/s. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Placement", meta=(ClampMin="1", DataTableImportOptional))
@@ -367,20 +376,26 @@ struct FFightFishVisual
 	static FVector StepMouth(const FFishVisualRow& Row, const FVector& MouthPoint, const FVector& Target, float DeltaTime, float SmoothTime);
 
 	/**
-	 *  T-048, the fighting fish's facing: toward the player from its mouth (the body away from the rod), level.
-	 *  T-048b, the body swing: while the move swims (bMoveSwims, not tired) the head swings toward the move's own side by
-	 *  RunSwingDeg x |MoveSwimSide| (FFightFishView::MoveSwimSide: + = the player's right), whatever the mouth's ground
-	 *  velocity (a fish reeled in while it runs still pulls away to its side). Otherwise (Rest, Sulk, unknown move) the T-048
-	 *  rule: while the mouth moves faster than MinFacingSpeed the body swings RunSwingDeg x min(1, speed / RunSwingFullSpeed),
-	 *  the head toward the side it moves to (straight in or out: the side it already leans to).
+	 *  T-048, the fighting fish's facing: from its mouth toward the player (the body away from the rod), level.
+	 *  T-075: the body lies BodyAngleDeg + swing off that line (capped at 80), on one side: the head toward the swim side,
+	 *  else the side it already leans to (exactly away from the player, as when it spawns: the larger-yaw side, the same on
+	 *  every machine). BodyAngleDeg 0 = the T-048 rule.
+	 *  T-048b, the swing: while the move swims (bMoveSwims, not tired) RunSwingDeg x |MoveSwimSide| toward the move's own side
+	 *  (FFightFishView::MoveSwimSide: + = the player's right), whatever the mouth's ground velocity (a fish reeled in while it
+	 *  runs still pulls away to its side). Otherwise (Rest, Sulk, unknown move) the T-048 rule: while the mouth moves faster
+	 *  than MinFacingSpeed, RunSwingDeg x min(1, speed / RunSwingFullSpeed) toward the side it moves to (straight in or out:
+	 *  the side it already leans to).
 	 *  Pitch (both): while the mouth moves faster than MinFacingSpeed, the end that leads the ground motion follows the climb
-	 *  or dive (clamped to MaxPitchDeg). Tired: no swing, roll ExhaustedRollDeg (0 = upright).
+	 *  or dive (clamped to MaxPitchDeg). Tired: no swing (BodyAngleDeg only), roll ExhaustedRollDeg (0 = upright).
 	 */
 	static FRotator FightFacing(const FFishVisualRow& Row, const FVector& MouthVelocity, const FVector& MouthLocation, const FVector& PlayerLocation,
 		const FRotator& Current, bool bExhausted, bool bMoveSwims = false, float MoveSwimSide = 0.f);
 
-	/** Rotation with its yaw kept within RunSwingDeg (clamped to [0, 80]) of the direction mouth -> player; pitch and roll kept. */
+	/** Rotation with its yaw kept within MaxBodyAngleDeg of the direction mouth -> player; pitch and roll kept. */
 	static FRotator ClampToLine(const FFishVisualRow& Row, const FRotator& Rotation, const FVector& MouthLocation, const FVector& PlayerLocation);
+
+	/** The most the body turns off the line: min(80, BodyAngleDeg + RunSwingDeg), each clamped to [0, 80]. */
+	static float MaxBodyAngleDeg(const FFishVisualRow& Row);
 
 	/** Escaping fish's facing: along Velocity when faster than MinFacingSpeed (pitch from the climb, clamped), else away from the player, level. */
 	static FRotator FacingRotation(const FFishVisualRow& Row, const FVector& Velocity, const FVector& FishLocation, const FVector& PlayerLocation,
