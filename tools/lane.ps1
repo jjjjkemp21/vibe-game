@@ -3,6 +3,8 @@
 #   -List (default)        one line per lane: name, head, ahead/behind main, dirty, FREE (clean and 0 ahead of main).
 #   -Free [-Prefix eng]    print the first FREE lane matching the prefix and fast-forward it to main;
 #                          if none is free, create the next number (eng10, ...) from main and print its name.
+#                          Skips lanes held by an open board item (not done/dropped, lane=<lane>),
+#                          so back-to-back -Free -Item calls hand out distinct lanes (no board DB: no skip).
 #   -Free -Item <id>       also records lane=<lane> on board item <id> (board.py set; skipped while Saved/Studio/board.db
 #                          is missing, BOARD_DB overrides; a board error is a warning, the lane is still printed).
 #   -New <name> [-Base main]  git worktree add ../VibeGame-lanes/<name> -b lane/<name> <base>, copy tools/local.settings.json.
@@ -74,6 +76,16 @@ function Set-BoardItemLane([string]$LaneName) {
     return ('lane=' + $LaneName + ' on #' + $Item.TrimStart('#'))
 }
 
+# Lane names held by open board items (any status but done/dropped: a -Free -Item claim on a ready item
+# holds too, so parallel dispatch gets distinct lanes). Empty when there is no board DB (never creates it).
+function Get-HeldLanes {
+    $held = @{}
+    foreach ($it in @(Get-BoardJson @('ls', '-n', '10000'))) {
+        if ($it.lane) { $held[[string]$it.lane] = [string]$it.id }
+    }
+    return $held
+}
+
 # --- New ---
 if ($New) {
     $err = New-Lane $New $Base
@@ -86,8 +98,10 @@ if ($New) {
 # --- Free ---
 if ($Free) {
     $infos = @(Get-Lanes | Where-Object { (Get-LaneNumber $_.Name) -ge 0 } | Sort-Object { Get-LaneNumber $_.Name } | ForEach-Object { Get-LaneInfo $_ })
+    $held = Get-HeldLanes
     foreach ($i in $infos) {
         if (-not $i.Free) { continue }
+        if ($held.ContainsKey($i.Name)) { Write-Host ('skipped ' + $i.Name + ': held by board item #' + $held[$i.Name]); continue }
         # Re-check right before touching it: clean and nothing unmerged.
         $again = Get-LaneInfo $i
         if (-not $again.Free) { continue }

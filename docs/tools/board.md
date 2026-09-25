@@ -51,6 +51,7 @@ Example: `41 task eng mid doing P1 eng5 a771470 60% T-040a Line collides with do
 - `doing → review`: needs `packet` (the report exists at `<packet>/report.md`) or a `note`.
 - `review → merge`: code in a lane that is accepted and waiting for the lead's integration.
 - `review|merge → done`: needs `commit` or `evidence`. `tools/integrate.ps1` sets this automatically.
+- `todo|ready → done`: only for work merged before its item existed; the same `set` must give both `commit=` and a `note=`.
 - Any open status → `blocked`: needs a note with the reason. Leaving `blocked` restores the previous status.
 - Any status → `dropped`: needs a note.
 - `done → doing` (rework): needs a note.

@@ -502,7 +502,7 @@ class Board:
             raise BoardError(f"obj #{rec['id']} ->{target} needs every child done or dropped; open: {','.join(kids)}",
                              f"ls --parent {rec['id']}")
 
-    def guard(self, old, new, note):
+    def guard(self, old, new, note, given=()):
         a, b, i, kind = old['status'], new['status'], old['id'], new['kind']
         if b == 'dropped':
             if not note:
@@ -539,6 +539,12 @@ class Board:
             elif b == 'done' and not (note or new['evidence']):
                 raise BoardError(f'#{i} q ->done needs the answer as a note or evidence',
                                  f'set {i} status=done note="<answer>"')
+            return
+        if b == 'done' and a in ('todo', 'ready'):
+            # Work merged before its item existed: close it in one set with the commit and a note.
+            if not (note and 'commit' in given and new['commit']):
+                raise BoardError(f'#{i} {a}->done needs commit= and note= in the same set (already merged work)',
+                                 f'set {i} status=done commit=<hash> note="<where it landed>"')
             return
         if b not in FLOW[a]:
             raise BoardError(f'#{i} {a}->{b} not allowed ({a}->{"|".join(FLOW[a])})', self.hint(new, NEXT[a]))
@@ -758,7 +764,7 @@ class Board:
         new = dict(r)
         new.update(diff)
         if 'status' in diff:
-            self.guard(r, new, note)
+            self.guard(r, new, note, changes)
             if diff['status'] == 'blocked':
                 diff['prev'] = r['status']
             elif r['status'] == 'blocked':
