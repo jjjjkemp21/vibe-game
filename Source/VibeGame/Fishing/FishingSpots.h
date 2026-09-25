@@ -57,6 +57,9 @@ struct FLureFishingSpots
 	 *  Where a cast from Origin toward the horizontal Direction lands after Distance cm (measured from StartXY):
 	 *  pulled back in front of anything solid on the way, then on the water surface if the ground there is not above it,
 	 *  else on the ground (land). Ignores IgnoreActor (the caster). Traces use TraceCast (zones and triggers never block).
+	 *  T-071: the downward ground search starts at most Profile.LandingSearchHeight above the origin (or the water), and
+	 *  below the first solid surface straight above Origin (a roof over the caster): under a roof the bobber lands on the
+	 *  ground/water under it, never on the roof. Profile null = the built-in FLureFishingRow defaults.
 	 */
 	/**
 	 *  The trace channel of cast flights and landings: "LureCast" in Config/DefaultEngine.ini ([/Script/Engine.CollisionProfile],
@@ -78,5 +81,5 @@ struct FLureFishingSpots
 	static bool TraceCast(const UWorld* World, FHitResult& OutHit, const FVector& Start, const FVector& End, const FCollisionQueryParams& Params);
 
 	static FLureCastLanding ResolveLanding(const UWorld* World, const AActor* IgnoreActor, const FVector& Origin, const FVector2D& StartXY,
-		const FVector2D& Direction, float Distance, const ULureFishingSettings& Settings);
+		const FVector2D& Direction, float Distance, const ULureFishingSettings& Settings, const FLureFishingRow* Profile = nullptr);
 };
