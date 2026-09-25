@@ -413,7 +413,7 @@ bool FLureDayClockWorldTest::RunTest(const FString& Parameters)
 	Clock->SetDayCycleRow(Row);
 	TestTrue(FString::Printf(TEXT("the session starts at StartHour 08:00 (%s)"), *Clock->GetClockText()), LureDayClockTest::HourDiff(Clock->GetHour(), 8.0) < LureDayClockTest::GameMinute);
 	TestEqual(TEXT("... in the Day phase"), LureDayClockTest::Name(Clock->GetPhase()), TEXT("Day"));
-	// Until T-068b's sky rig the shipped row starts frozen (StartTimeScale 0): a fresh world stays at 08:00.
+	// Until T-068c places the sky rig the shipped row starts frozen (StartTimeScale 0): a fresh world stays at 08:00.
 	TestNearlyEqual(TEXT("... frozen (shipped StartTimeScale 0)"), Clock->GetTimeScale(), 0.f);
 	for (int32 Tick = 0; Tick < 20; ++Tick)
 	{
@@ -421,6 +421,19 @@ bool FLureDayClockWorldTest::RunTest(const FString& Parameters)
 	}
 	TestEqual(TEXT("a fresh world is still at 08:00 Day 10 s later"), Clock->GetClockText(), FString(TEXT("08:00 Day")));
 	TestTrue(TEXT("SetTimeScale 1 (run the day)"), Clock->SetTimeScale(1.f));
+	const float HourBefore = Clock->GetHour();
+	const double ServerBefore = Clock->GetServerTime();
+	for (int32 Tick = 0; Tick < 20; ++Tick)
+	{
+		Wrapper.TickTestWorld(0.5f);
+	}
+	const double FreshElapsed = Clock->GetServerTime() - ServerBefore;
+	TestTrue(FString::Printf(TEXT("a fresh world's server time moves (%.2f s)"), FreshElapsed), FreshElapsed > 1.0);
+	TestNearlyEqual(TEXT("a fresh world moves on at the Day rate (elapsed server s x 10 h / 540 s)"), static_cast<double>(Clock->GetHour() - HourBefore),
+		FreshElapsed * Clock->GetClock().GetRate(ELureDayPhase::Day), 0.5 * LureDayClockTest::GameMinute);
+	// Back to 08:00 for the whole-day sweep below.
+	TestTrue(TEXT("SetHour 8"), Clock->SetHour(8.f));
+	TestTrue(TEXT("SetTimeScale 1 (keeps running)"), Clock->SetTimeScale(1.f));
 
 	const TStrongObjectPtr<ULureDayClockTestListener> Listener(NewObject<ULureDayClockTestListener>());
 	Clock->OnPhaseChanged.AddDynamic(Listener.Get(), &ULureDayClockTestListener::OnPhaseChanged);

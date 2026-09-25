@@ -1,5 +1,5 @@
 // Lure: day/night settings (T-068a). Project Settings > Game > Lure Day/Night; stored in Config/DefaultGame.ini.
-// Rules: docs/specs/day-night-water.md §3.1 and §4. T-068b adds DT_TimeOfDay here.
+// Rules: docs/specs/day-night-water.md §3.1, §3.2 and §4. DT_DayCycle (the clock) and DT_TimeOfDay (the sky rig, T-068b).
 
 #pragma once
 
@@ -42,4 +42,11 @@ public:
 
 	/** The configured row (loads the table), or the fallback row with one warning per session. */
 	static FLureDayCycleRow LoadDayCycleRow();
+
+	/** The look per (region, phase) (row struct LureTimeOfDayRow; source data/tables/DT_TimeOfDay.json), read by ALureSkyRig (T-068b). */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category="Lure|DayNight", meta=(RequiredAssetDataTags="RowStructure=/Script/VibeGame.LureTimeOfDayRow"))
+	TSoftObjectPtr<UDataTable> TimeOfDayTable;
+
+	/** The configured DT_TimeOfDay (loaded if its package exists), or null (the caller warns). */
+	static const UDataTable* LoadTimeOfDayTable();
 };

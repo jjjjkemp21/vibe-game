@@ -653,7 +653,9 @@ bool FLureFightGearDecidesOutcome::RunTest(const FString& Parameters)
 		if (Weak.Outcome == ELureFightOutcome::Landed) { ++WeakLanded; WeakTime += Weak.Elapsed; }
 		if (Strong.Outcome == ELureFightOutcome::Landed) { ++StrongLanded; StrongTime += Strong.Elapsed; }
 	}
-	TestTrue(FString::Printf(TEXT("careful: the starter kit can land it (%d/8)"), WeakLanded), WeakLanded > 0);
+	// Lead decision 2026-09-24 (S1, StaminaPerStat 5): the 7 kg level-3 snapper needs the reef kit on careful play (a gear
+	// progression outcome; reverses the 2026-09-23 call "careful lands it with either kit"). It snaps the starter line at its first dive.
+	AddInfo(FString::Printf(TEXT("careful: the starter kit lands the 7 kg snapper %d/8 (lead decision 2026-09-24: it needs the reef kit)"), WeakLanded));
 	TestTrue(FString::Printf(TEXT("careful: the reef kit lands it (%d/8)"), StrongLanded), StrongLanded > 0);
 	const double WeakMean = WeakLanded > 0 ? WeakTime / WeakLanded : 0.0;
 	const double StrongMean = StrongLanded > 0 ? StrongTime / StrongLanded : 0.0;
@@ -700,10 +702,14 @@ bool FLureFightGearDecidesOutcome::RunTest(const FString& Parameters)
 			return Fishing->GetFishingState() != ELureFishingState::Hooked;
 		}, 60 * 180);
 		const ELureFishingResult Result = Fishing->GetNetState().LastResult;
-		// Careful play lands the 7 kg snapper with either kit (lead balance decision); gear decides via part B's rates.
-		TestEqual(FString::Printf(TEXT("%s: landed (%s)"), *Label, *OutcomeName(Fishing->GetFightNet().Outcome)), ResultName(Result), ResultName(ELureFishingResult::Landed));
-		TestEqual(Label + TEXT(": the landed fish is the hooked one"), Fishing->GetLastLandedFish().Seed, BigSnapper.Seed);
-		TestEqual(Label + TEXT(": OnFishLanded once"), Landed.Num(), 1);
+		// Careful play lands the 7 kg snapper with the reef kit and snaps the starter line (lead decision 2026-09-24, S1; was: either kit).
+		const ELureFishingResult Expected = bRightGear ? ELureFishingResult::Landed : ELureFishingResult::Snapped;
+		TestEqual(FString::Printf(TEXT("%s: %s (%s)"), *Label, *ResultName(Expected), *OutcomeName(Fishing->GetFightNet().Outcome)), ResultName(Result), ResultName(Expected));
+		if (bRightGear)
+		{
+			TestEqual(Label + TEXT(": the landed fish is the hooked one"), Fishing->GetLastLandedFish().Seed, BigSnapper.Seed);
+		}
+		TestEqual(Label + TEXT(": OnFishLanded once (reef kit) / never (starter)"), Landed.Num(), bRightGear ? 1 : 0);
 		TestFalse(Label + TEXT(": the fight is over"), Fishing->GetFightNet().bActive);
 		TestFalse(Label + TEXT(": the reel input is reset"), Fishing->IsServerReeling());
 	}
@@ -803,13 +809,17 @@ bool FLureFightPatternsDrivePull::RunTest(const FString& Parameters)
 	TestFalse(TEXT("Run and Dive pull differently"), ByPattern[TEXT("Run")].Pulls == ByPattern[TEXT("Dive")].Pulls);
 	TestFalse(TEXT("Run and Dart pull differently"), ByPattern[TEXT("Run")].Pulls == ByPattern[TEXT("Dart")].Pulls);
 
-	// A move's Pull in the data is the pull: double the opening Run's Pull, double the first step's pull.
+	// A move's Pull in the data is the pull: double the opening move's Pull (Run's opening is Shake since T-049), double the first step's pull.
 	{
 		FLureFightPatternRow Doubled = *Data.Pattern(TEXT("Run"));
-		const int32 RunIndex = Doubled.FindMove(TEXT("Run"));
-		Doubled.Moves[RunIndex].Pull *= 2.f;
+		const int32 OpeningIndex = Doubled.FindMove(Doubled.OpeningMove);
+		if (!TestTrue(TEXT("the Run pattern's OpeningMove is one of its moves"), Doubled.Moves.IsValidIndex(OpeningIndex)))
+		{
+			return false;
+		}
+		Doubled.Moves[OpeningIndex].Pull *= 2.f;
 		const FTrace Double = Record(TEXT("Run"), 42, -1.f, &Doubled);
-		TestNearlyEqual(TEXT("data: Run.Pull x2 -> the opening pull x2"), Double.Pulls[0], 2.f * A.Pulls[0], 1.0e-3f);
+		TestNearlyEqual(TEXT("data: the opening move's Pull x2 -> the opening pull x2"), Double.Pulls[0], 2.f * A.Pulls[0], 1.0e-3f);
 	}
 
 	// Aggression makes the aggressive moves more frequent (Run has AggressionWeight > 0).
@@ -1539,9 +1549,13 @@ bool FLureFightVisuals::RunTest(const FString& Parameters)
 		// T-032: the physics line's length follows the fight's tension (docs/specs/fishing-line.md): fully straight at the line's strength.
 		const TArray<FVector>& Points = Line->GetPoints();
 		const float Chord = static_cast<float>(FVector::Dist(Points[0], Points.Last()));
-		TestNearlyEqual(TEXT("the line shows the fight's tension"), Line->GetTension(), FMath::Clamp(Net.GetTension01(), 0.f, 1.f), 1.0e-4f);
+		// T-049: the check uses the line's own rule (FLureFight::LineTension: straight from TautTension of the line's strength), which
+		// the component feeds the line; it used to compare with the raw tension, which only matched while the opening Run held the
+		// tension at or over the line's strength.
+		const float Shown = FLureFight::LineTension(Net.GetTension01(), T);
+		TestNearlyEqual(FString::Printf(TEXT("the line shows the fight's tension (%.0f %% of the line)"), 100.f * Net.GetTension01()), Line->GetTension(), Shown, 1.0e-4f);
 		TestNearlyEqual(TEXT("the line's length target follows the tension rule"), Line->GetTargetRestLength(),
-			FLureFishingLineRules::TargetRestLength(Chord, Net.GetTension01(), -1.f, Line->GetTuning()), 0.5f);
+			FLureFishingLineRules::TargetRestLength(Chord, Shown, -1.f, Line->GetTuning()), 0.5f);
 		TestTrue(TEXT("the line is never shorter than the straight distance"), Line->GetRestLength() >= Chord - 0.5f);
 	}
 	else
@@ -1824,8 +1838,8 @@ bool FLureFightBonefishRunBalance::RunTest(const FString& Parameters)
 	// Weight fractions are positions in the species range (0 = WeightMin, 1 = WeightMax): Bonefish 0.5..4.5 kg.
 	auto Fraction = [](float Kg) { return (Kg - 0.5f) / 4.f; };
 
-	// 1. The playtest's fish (Rare, 2.04 kg) and a 3 kg Common: holding reel through the opening Run snaps the starter line;
-	//    the careful player (eases off above 90 % of the line) lands them within the 8-16 s fight length.
+	// 1. The playtest's fish (Rare, 2.04 kg) and a 3 kg Common: holding reel through a Run snaps the starter line; the careful
+	//    player (eases off above 90 % of the line) lands them within the 8-16 s fight length.
 	struct FCase { const TCHAR* Rarity; float Kg; int32 Seed; };
 	for (const FCase& Case : { FCase{ TEXT("Rare"), 2.04f, 31 }, FCase{ TEXT("Common"), 3.f, 32 } })
 	{
@@ -1891,9 +1905,12 @@ bool FLureFightBonefishRunBalance::RunTest(const FString& Parameters)
 	TestTrue(TEXT("fixture: the roll pipeline gave bonefish"), Rolled >= 190);
 	TestTrue(FString::Printf(TEXT("holding reel snaps a real share of bonefish (%d of %d, want 25-60 %%)"), HoldSnaps, Rolled), HoldSnaps >= Rolled / 4 && HoldSnaps <= Rolled * 3 / 5);
 	TestTrue(FString::Printf(TEXT("careful play is clearly safer (loses %d of %d)"), CarefulLosses, Rolled), CarefulLosses <= Rolled / 50);
-	TestTrue(FString::Printf(TEXT("easing off during every run is safe too (loses %d of %d)"), AwareLosses, Rolled), AwareLosses <= Rolled / 50);
-	TestTrue(FString::Printf(TEXT("careful fights take about 8-16 s (p10 %.1f s >= 7.5, p90 %.1f s <= 16)"), Percentile(CarefulTimes, 0.1f), Percentile(CarefulTimes, 0.9f)),
-		Percentile(CarefulTimes, 0.1f) >= 7.5f && Percentile(CarefulTimes, 0.9f) <= 16.f);
+	// T-049 (lead decision 2026-09-24): the fish pulls harder between runs, so easing off only for the runs without watching the bar
+	// loses clearly fewer than holding (was: at most 2 %; that bound is handed to S2's run-aware safety, T-052).
+	TestTrue(FString::Printf(TEXT("easing off during every run loses clearly fewer than holding (%d vs %d of %d, at most 60 %%)"), AwareLosses, HoldSnaps, Rolled), AwareLosses * 5 <= HoldSnaps * 3);
+	// T-050's faster reel (+50 %) shortens small-fish fights: p10 >= 6 s (was 7.5 s); p90 <= 22 s (was 16 s) for the big and rare ones.
+	TestTrue(FString::Printf(TEXT("careful fights take about 6-22 s (p10 %.1f s >= 6, p90 %.1f s <= 22)"), Percentile(CarefulTimes, 0.1f), Percentile(CarefulTimes, 0.9f)),
+		Percentile(CarefulTimes, 0.1f) >= 6.f && Percentile(CarefulTimes, 0.9f) <= 22.f);
 	TestTrue(FString::Printf(TEXT("easing off during every run: median within 16 s (%.1f s)"), Percentile(AwareTimes, 0.5f)), Percentile(AwareTimes, 0.5f) <= 16.f);
 
 	// 4. The Coral Snapper stays the harder fish: the reference snapper snaps a held line every time and a careful fight is longer.

@@ -149,6 +149,7 @@ FFishVisualRow FFishVisualRow::GetFallbackRow()
 	Move(TEXT("Charge"), EFishAnimRole::SwimFast);
 	Move(TEXT("Rest"), EFishAnimRole::SwimIdle);
 	Move(TEXT("Sulk"), EFishAnimRole::SwimIdle); // T-059a (art S3): a sulking fish holds, it does not thrash
+	Move(TEXT("Shake"), EFishAnimRole::Thrash); // T-049: the Run pattern's opener is a head shake
 	Row.UnknownMoveRole = EFishAnimRole::SwimFast;
 	auto Beat = [&Row](EFishAnimRole Role, float Hz)
 	{

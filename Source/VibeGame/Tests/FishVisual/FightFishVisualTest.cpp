@@ -128,7 +128,8 @@ namespace LureFightFishTest
 		const TPair<const TCHAR*, EFishAnimRole> Expected[] = {
 			{ TEXT("Run"), EFishAnimRole::Run }, { TEXT("Dive"), EFishAnimRole::Dive }, { TEXT("Dart"), EFishAnimRole::Dart },
 			{ TEXT("Swim"), EFishAnimRole::SwimFast }, { TEXT("Charge"), EFishAnimRole::SwimFast }, { TEXT("Rest"), EFishAnimRole::SwimIdle },
-			{ TEXT("Sulk"), EFishAnimRole::SwimIdle } }; // T-059a: Sulk holds
+			{ TEXT("Sulk"), EFishAnimRole::SwimIdle }, // T-059a: Sulk holds
+			{ TEXT("Shake"), EFishAnimRole::Thrash } }; // T-049: the Run pattern's opener plays the head-shake clip
 		for (const TPair<const TCHAR*, EFishAnimRole>& Case : Expected)
 		{
 			In.MoveId = Case.Key;

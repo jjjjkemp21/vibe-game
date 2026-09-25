@@ -2,13 +2,14 @@
 	{
 		"Name": "Run",
 		"DisplayName": "Runner",
-		"OpeningMove": "Run",
+		"OpeningMove": "Shake",
 		"Moves": [
-			{ "Id": "Run", "Label": "running!", "Weight": 1.2, "AggressionWeight": 0.08, "DurationMin": 0.8, "DurationMax": 1.5, "Pull": 2.4, "Speed": 0.7, "Away": 1.0, "Side": 0.3, "RandomSide": true, "Down": 0, "Rest": false },
-			{ "Id": "Swim", "Label": "swimming", "Weight": 3, "AggressionWeight": 0, "DurationMin": 1.5, "DurationMax": 3.0, "Pull": 1.0, "Speed": 0.7, "Away": 0.7, "Side": 0.5, "RandomSide": true, "Down": 0, "Rest": false },
-			{ "Id": "Rest", "Label": "resting", "Weight": 2, "AggressionWeight": 0, "DurationMin": 1.0, "DurationMax": 2.5, "Pull": 0.3, "Speed": 0, "Away": 0, "Side": 0, "RandomSide": false, "Down": 0, "Rest": true }
+			{ "Id": "Shake", "Label": "shaking its head", "Weight": 0, "AggressionWeight": 0, "DurationMin": 1.6, "DurationMax": 2.2, "Pull": 1.2, "Speed": 0.4, "Away": 0.5, "Side": 0, "RandomSide": false, "Down": 0, "Rest": false },
+			{ "Id": "Run", "Label": "running!", "Weight": 3, "AggressionWeight": 0.08, "DurationMin": 1.0, "DurationMax": 1.6, "Pull": 2.8, "Speed": 0.7, "Away": 1.0, "Side": 0.3, "RandomSide": true, "Down": 0, "Rest": false },
+			{ "Id": "Swim", "Label": "swimming", "Weight": 3, "AggressionWeight": 0, "DurationMin": 1.5, "DurationMax": 3.0, "Pull": 2.0, "Speed": 0.7, "Away": 0.7, "Side": 0.5, "RandomSide": true, "Down": 0, "Rest": false },
+			{ "Id": "Rest", "Label": "resting", "Weight": 2, "AggressionWeight": 0, "DurationMin": 1.0, "DurationMax": 2.5, "Pull": 1.5, "Speed": 0, "Away": 0, "Side": 0, "RandomSide": false, "Down": 0, "Rest": true }
 		],
-		"DevComment": "Sudden hard runs straight away from you (Bonefish). Run = a short burst of 2.4x pull (0.8-1.5 s): holding reel through it takes the starter line to about its limit and snaps it on bigger or rarer bonefish; ease off during a run, reel while it swims or rests. Balance model: docs/specs/reel-fight-rules.md (fishing-loop tune, 2026-09-23). PLACEHOLDER numbers."
+		"DevComment": "Sudden hard runs away from you (Bonefish). T-049/T-050 even-fight tune (2026-09-24, docs/specs/reel-fight-rules.md): the hook set opens with Shake (weight 0: only the opening move, a moderate 1.2x pull for 1.6-2.2 s) so the pressure ramps in; then the fish keeps pulling (Swim 2.0x, Rest 1.5x) and makes frequent short hard Runs (2.8x, 1.0-1.6 s): ease off during a run (holding reel through one takes the starter line to its limit and snaps it on bigger or rarer bonefish), reel while it swims or rests. With DT_FishFight StaminaPerStat 18 the fish tires over the whole fight instead of in its first second. PLACEHOLDER numbers."
 	},
 	{
 		"Name": "Dive",

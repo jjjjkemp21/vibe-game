@@ -71,6 +71,12 @@ public:
 	UPROPERTY(BlueprintAssignable, Category="Lure|DayNight")
 	FLureDayPhaseChangedSignature OnPhaseChanged;
 
+	/**
+	 *  Fired on every machine when the clock jumps or changes pace (SetHour / SetTimeScale / SetPhase, a new row, a
+	 *  replicated state arriving), not as time passes. The sky rig re-applies at once on it (T-068b).
+	 */
+	FSimpleMulticastDelegate OnClockChanged;
+
 	// ---- Changing it (server only; a client call does nothing and returns false) ----
 
 	/** Jumps to Hour (any value; wrapped into [0, 24)), keeping the time scale. */

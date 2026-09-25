@@ -707,8 +707,10 @@ bool FLureRodSkilledBeatsHolding::RunTest(const FString& Parameters)
 	TestTrue(FString::Printf(TEXT("SAFER: skilled play loses at most 2 %% (%d of %d)"), Lost.FindRef(EPlayer::Skilled), Rolled), Lost.FindRef(EPlayer::Skilled) <= Rolled / 50);
 	TestTrue(FString::Printf(TEXT("FASTER: on the fish holding lands, skilled takes <= 0.85 of the time (median %.2f, %d fish)"), Median(SkilledOverHold), SkilledOverHold.Num()),
 		SkilledOverHold.Num() >= Rolled / 3 && Median(SkilledOverHold) <= 0.85f);
-	TestTrue(FString::Printf(TEXT("steering against the runs alone snaps far fewer than holding (%d vs %d)"), Lost.FindRef(EPlayer::Side), Lost.FindRef(EPlayer::Hold)),
-		Lost.FindRef(EPlayer::Side) * 5 <= Lost.FindRef(EPlayer::Hold) * 3);
+	// T-049 (lead decision 2026-09-24): fish pull harder between runs, so steering alone saves fewer fish (was: at most 60 % of
+	// holding's losses; that bound is handed to S2, T-052). Steering is still clearly better; the bar watcher is what makes play safe.
+	TestTrue(FString::Printf(TEXT("steering against the runs alone snaps clearly fewer than holding (%d vs %d, at most 75 %%)"), Lost.FindRef(EPlayer::Side), Lost.FindRef(EPlayer::Hold)),
+		Lost.FindRef(EPlayer::Side) * 4 <= Lost.FindRef(EPlayer::Hold) * 3);
 	TestTrue(FString::Printf(TEXT("... and is faster on the same fish (median %.2f)"), Median(SideOverHold)), Median(SideOverHold) < 1.f);
 	TestTrue(FString::Printf(TEXT("steering WITH the runs loses ground: slower on the same fish (median %.2f >= 1.05)"), Median(WrongOverHold)), Median(WrongOverHold) >= 1.05f);
 	TestTrue(FString::Printf(TEXT("holding reel with the rod fully back snaps more (+%d)"), BackMoreSnaps), BackMoreSnaps > 0);

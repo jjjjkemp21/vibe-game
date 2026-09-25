@@ -8,7 +8,8 @@
 			{ "MoveId": "Swim", "Role": "SwimFast" },
 			{ "MoveId": "Charge", "Role": "SwimFast" },
 			{ "MoveId": "Rest", "Role": "SwimIdle" },
-			{ "MoveId": "Sulk", "Role": "SwimIdle" }
+			{ "MoveId": "Sulk", "Role": "SwimIdle" },
+			{ "MoveId": "Shake", "Role": "Thrash" }
 		],
 		"UnknownMoveRole": "SwimFast",
 		"RoleTailBeats": [

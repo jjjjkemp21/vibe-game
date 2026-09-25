@@ -717,8 +717,18 @@ namespace LureFightDockEdgeTest
 				TestEqual(TEXT("client: the replicated lift is the server's"), Net.Lift, Lift);
 				TestTrue(FString::Printf(TEXT("client: the fish visual's line end is lifted (z %.2f, surface %.2f, lift %.2f)"), View.LineEnd.Z, Surface, Lift),
 					FMath::IsNearlyEqual(View.LineEnd.Z, Surface + Lift, 0.01) && FMath::IsNearlyEqual(View.WaterZ, static_cast<float>(Surface) + Lift, 0.01f));
-				TestTrue(FString::Printf(TEXT("client: the bobber is lifted with it (z %.2f; the server draws %.2f)"), Copy->GetBobberLocation().Z, S.Fishing->GetBobberLocation().Z),
-					Copy->GetBobberLocation().Z > Surface + Lift - 20.0 && FMath::IsNearlyEqual(Copy->GetBobberLocation().Z, S.Fishing->GetBobberLocation().Z, 0.01));
+				// T-049f: the bobber rides the lift by the hooked-bobber rule (FishingComponent ComputeBobberPose): Surface + Lift, pulled
+				// under by BiteDipDepth x (0.5 + 0.5 x tension) and never by a dive while lifted. The old "> Surface + Lift - 20" held only
+				// while the line was slack-ish (tension < 1/3 of the line); a fish that still pulls at the lift (the T-049 tune) dips it up
+				// to BiteDipDepth (30), the same as on the water.
+				const double Dip = Copy->GetProfile().BiteDipDepth * (0.5 + 0.5 * FMath::Clamp(Net.GetTension01(), 0.f, 1.f));
+				const double Expected = Surface + Lift - Dip;
+				const double ClientZ = Copy->GetBobberLocation().Z;
+				TestEqual(TEXT("client: no dive while lifted"), Net.Depth, 0.f);
+				TestTrue(FString::Printf(TEXT("client: the bobber is lifted with it (z %.2f = surface %.2f + lift %.2f - dip %.2f at tension %.2f; the server draws %.2f)"),
+					ClientZ, Surface, Lift, Dip, Net.GetTension01(), S.Fishing->GetBobberLocation().Z),
+					FMath::IsNearlyEqual(ClientZ, Expected, 0.01) && ClientZ >= Surface + Lift - Copy->GetProfile().BiteDipDepth - 0.01
+					&& FMath::IsNearlyEqual(ClientZ, S.Fishing->GetBobberLocation().Z, 0.01));
 			}
 			return S.Fishing->GetFishingState() != ELureFishingState::Hooked;
 		}, 60 * 60);
