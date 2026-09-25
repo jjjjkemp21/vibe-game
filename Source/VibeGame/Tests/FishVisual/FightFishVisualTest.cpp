@@ -128,7 +128,7 @@ namespace LureFightFishTest
 		const TPair<const TCHAR*, EFishAnimRole> Expected[] = {
 			{ TEXT("Run"), EFishAnimRole::Run }, { TEXT("Dive"), EFishAnimRole::Dive }, { TEXT("Dart"), EFishAnimRole::Dart },
 			{ TEXT("Swim"), EFishAnimRole::SwimFast }, { TEXT("Charge"), EFishAnimRole::SwimFast }, { TEXT("Rest"), EFishAnimRole::SwimIdle },
-			{ TEXT("Sulk"), EFishAnimRole::Thrash } };
+			{ TEXT("Sulk"), EFishAnimRole::SwimIdle } }; // T-059a: Sulk holds
 		for (const TPair<const TCHAR*, EFishAnimRole>& Case : Expected)
 		{
 			In.MoveId = Case.Key;
@@ -183,10 +183,10 @@ namespace LureFightFishTest
 		In.Phase = EFightFishPhase::Fighting;
 		In.AnimAmplitude = 1.f;
 
-		// Swim roles: tail beat matched to speed. A reference Bonefish (53.5 cm) at 94 cm/s in Swim_Fast (2.5 Hz) is rate ~1.
-		In.MoveId = TEXT("Swim");
+		// The escape swim: tail beat matched to speed. A reference Bonefish (53.5 cm) at 94 cm/s in Swim_Fast (2.5 Hz) is rate ~1.
+		In.Phase = EFightFishPhase::Escaping;
 		In.SpeedCmS = 94.f;
-		TestEqual(TEXT("swim rate = Speed / (0.7 x L x Hz)"), FFightFishVisual::ComputeAnimState(Row, In).PlayRate, 94.f / (0.7f * 53.5f * 2.5f), 1.e-4f);
+		TestEqual(TEXT("escape swim rate = Speed / (0.7 x L x Hz)"), FFightFishVisual::ComputeAnimState(Row, In).PlayRate, 94.f / (0.7f * 53.5f * 2.5f), 1.e-4f);
 		In.AnimRate = 1.15f;
 		TestEqual(TEXT("... x the species' AnimRate"), FFightFishVisual::ComputeAnimState(Row, In).PlayRate, 1.15f * 94.f / (0.7f * 53.5f * 2.5f), 1.e-4f);
 		In.AnimRate = 1.f;
@@ -194,11 +194,14 @@ namespace LureFightFishTest
 		TestEqual(TEXT("a still fish: MinPlayRate"), FFightFishVisual::ComputeAnimState(Row, In).PlayRate, Row.MinPlayRate, 1.e-6f);
 		In.SpeedCmS = 100000.f;
 		TestEqual(TEXT("a rocket: MaxPlayRate"), FFightFishVisual::ComputeAnimState(Row, In).PlayRate, Row.MaxPlayRate, 1.e-6f);
+		In.Phase = EFightFishPhase::Fighting;
 
-		// Other roles: heavier = slower, (Ref / Weight)^(1/6).
-		In.MoveId = TEXT("Sulk");
+		// Fighting (T-059a): effort, not speed. A fresh fish plays at the weight rate whatever its speed; heavier = slower, (Ref / Weight)^(1/6).
+		In.MoveId = TEXT("Swim");
+		TestEqual(TEXT("fighting, fresh, fast: rate 1 (no speed coupling)"), FFightFishVisual::ComputeAnimState(Row, In).PlayRate, 1.f, 1.e-5f);
+		In.MoveId = TEXT("Run");
 		In.WeightKg = 3.f;
-		TestEqual(TEXT("a fish twice the reference weight thrashes ~11 % slower"), FFightFishVisual::ComputeAnimState(Row, In).PlayRate,
+		TestEqual(TEXT("a fish twice the reference weight beats ~11 % slower"), FFightFishVisual::ComputeAnimState(Row, In).PlayRate,
 			FMath::Pow(0.5f, Row.OtherRateWeightExponent), 1.e-5f);
 		In.WeightKg = 1.5f;
 
@@ -528,15 +531,15 @@ namespace LureFightFishTest
 		const float Mouth = Fish->GetMouthOffsetCm(); // no mesh: half the default body length
 		TestEqual(TEXT("no mesh: the nose is half a body length ahead"), Mouth, 0.5f * Row.DefaultBodyLengthCm, 1.e-4f);
 
-		// The first view snaps: nose at the line's end (the body toward the player), SurfaceDepth under the surface.
+		// The first view snaps: nose at the line's end, facing the rod with the body away from the player (T-048), SurfaceDepth under the surface.
 		FFightFishView View = MakeView(FVector(2000.f, 0.f, 0.f), TEXT("Rest"));
 		Fish->ApplyView(View, 0.f);
 		FFightFishView ProxyView = View;
 		ProxyView.bHasAuthority = false;
 		ProxyFish->ApplyView(ProxyView, 0.f);
 		TestTrue(FString::Printf(TEXT("placed at once: %s"), *Fish->GetActorLocation().ToString()),
-			Fish->GetActorLocation().Equals(FVector(2000.f - Mouth, 0.f, -Row.SurfaceDepth), 0.01));
-		TestEqual(TEXT("still fish: faces away from the player"), static_cast<float>(Fish->GetActorRotation().Yaw), 0.f, 0.5f);
+			Fish->GetActorLocation().Equals(FVector(2000.f + Mouth, 0.f, -Row.SurfaceDepth), 0.01));
+		TestEqual(TEXT("still fish: faces the player (mouth toward the rod)"), FMath::Abs(static_cast<float>(Fish->GetActorRotation().Yaw)), 180.f, 0.5f);
 
 		// A dive: the target sinks by DepthShare x Depth, capped at MaxShownDepth.
 		View.DepthCm = 100.f;
@@ -565,23 +568,26 @@ namespace LureFightFishTest
 		TestEqual(TEXT("deep dives are capped at MaxShownDepth"), static_cast<float>(Fish->GetLastTarget().Z), -Row.SurfaceDepth - Row.MaxShownDepth, 0.01f);
 		View.DepthCm = 0.f;
 
-		// Swimming sideways (a run across): it faces its swim.
+		// Swimming sideways (a run across): the body swings the full RunSwingDeg, head toward the swim (T-048).
 		for (int32 Frame = 0; Frame < 90; ++Frame)
 		{
 			View.LineEnd.Y += 4.f; // 240 cm/s to +Y
 			Fish->ApplyView(View, LureFightQA::WorldDt);
 		}
-		TestTrue(FString::Printf(TEXT("swimming to +Y: faces +Y (yaw %.1f)"), Fish->GetActorRotation().Yaw), FMath::Abs(Fish->GetActorRotation().Yaw - 90.f) < 10.f);
+		const float ToPlayerYaw = static_cast<float>((View.PlayerLocation - Fish->GetMouthLocation()).GetSafeNormal2D().Rotation().Yaw);
+		TestEqual(FString::Printf(TEXT("swimming to +Y: swung RunSwingDeg off the rod line (yaw %.1f)"), Fish->GetActorRotation().Yaw),
+			FMath::Abs(FMath::FindDeltaAngleDegrees(ToPlayerYaw, static_cast<float>(Fish->GetActorRotation().Yaw))), Row.RunSwingDeg, 2.f);
+		TestTrue(TEXT("... head toward +Y"), Fish->GetActorForwardVector().Y > 0.0);
 		TestTrue(FString::Printf(TEXT("its speed is the swim speed (%.0f cm/s)"), Fish->GetFishVelocity().Size()), FMath::Abs(Fish->GetFishVelocity().Size() - 240.f) < 25.f);
 		for (int32 Frame = 0; Frame < 180; ++Frame)
 		{
 			Fish->ApplyView(View, LureFightQA::WorldDt);
 		}
-		const FVector Away = (Fish->GetActorLocation() - View.PlayerLocation).GetSafeNormal2D();
-		TestTrue(FString::Printf(TEXT("stopped: faces away from the player again (yaw %.1f)"), Fish->GetActorRotation().Yaw),
-			FMath::Abs(FMath::FindDeltaAngleDegrees(static_cast<float>(Fish->GetActorRotation().Yaw), static_cast<float>(Away.Rotation().Yaw))) < 3.f);
+		const FVector ToPlayer = (View.PlayerLocation - Fish->GetMouthLocation()).GetSafeNormal2D();
+		TestTrue(FString::Printf(TEXT("stopped: faces the rod again (yaw %.1f)"), Fish->GetActorRotation().Yaw),
+			FMath::Abs(FMath::FindDeltaAngleDegrees(static_cast<float>(Fish->GetActorRotation().Yaw), static_cast<float>(ToPlayer.Rotation().Yaw))) < 3.f);
 
-		// Tired: rolled onto its side.
+		// Tired: upright (T-058a, ExhaustedRollDeg 0).
 		View.bExhausted = true;
 		for (int32 Frame = 0; Frame < 120; ++Frame)
 		{

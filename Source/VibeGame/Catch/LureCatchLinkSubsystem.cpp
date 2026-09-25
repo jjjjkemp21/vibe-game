@@ -133,7 +133,7 @@ void ULureCatchLinkSubsystem::HandleHookedChanged(ALureFishItem* Fish, bool bHoo
 	else
 	{
 		// A line that is out lets go of its end there (the bobber); no line out: laid from the rod tip to the fish.
-		Line->AttachEndActor(Fish, Fish->GetHangLineLength(), Fish->GetMouthOffset());
+		Line->AttachEndActor(Fish, Fish->GetHangLineLength(), Fish->GetMouthOffset(), /*bOrientAlongLine*/ true, /*bFaceViewer*/ true); // T-043: side-on
 	}
 	Fish->SetExternalHangDriver(Line);
 }
@@ -160,5 +160,5 @@ void ULureCatchLinkSubsystem::SeatOnLine(ALureFishItem& Fish, ULureFishingLineCo
 	// (casting is Busy), and if one were, its owner sets it again next frame.
 	Line.Hide();
 	Line.DetachEndActor();
-	Line.AttachEndActor(&Fish, Fish.GetHangLineLength(), Fish.GetMouthOffset());
+	Line.AttachEndActor(&Fish, Fish.GetHangLineLength(), Fish.GetMouthOffset(), /*bOrientAlongLine*/ true, /*bFaceViewer*/ true); // T-043: side-on
 }

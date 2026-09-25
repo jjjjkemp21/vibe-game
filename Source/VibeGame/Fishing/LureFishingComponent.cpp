@@ -1708,7 +1708,7 @@ void ULureFishingComponent::EnsureBobberAndLine()
 		Line = NewObject<ULureFishingLineComponent>(Owner, TEXT("FishingLine"), RF_Transient);
 		Line->SetupAttachment(Owner->GetRootComponent());
 		Line->RegisterComponent();
-		Line->Setup(Mesh, LureFishingPrivate::LoadIfExists(Settings->LineMaterial), Settings->LineColor, Row.LineSegments);
+		Line->Setup(Mesh, Settings->LoadLineMaterial(), Settings->LineColor, Row.LineSegments);
 		// T-032: the line reads the drawn rod tip when it simulates (after the camera and arms moved), so it never lags the rod.
 		Line->SetStartProvider(FLureLinePointProvider::CreateUObject(this, &ULureFishingComponent::GetLineStart));
 	}

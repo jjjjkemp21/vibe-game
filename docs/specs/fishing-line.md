@@ -15,8 +15,8 @@ and the line **pulls straight under tension** (fight tension mapping, carried re
 
 | Fishing state | Tension shown (DT_FishingLine) | Look |
 |---|---|---|
-| Casting | CastTension 0.35 | a little slack behind the flying bobber |
-| Waiting | WaitTension 0 | droops from the rod tip and lies on the water up to the bobber |
+| Casting | CastTension 0.55 | a little slack behind the flying bobber |
+| Waiting | WaitTension 0.55 (T-046; was 0) | a gentle, mostly lifted curve from the rod tip to the bobber (rod tip 150 cm up: 27 / 36 / 45 % of the line on the water at 10 / 12.5 / 15 m; 0 was 82-91 %) |
 | Biting | BiteTension 0.6 | pulls nearly straight as the bobber dips |
 | Hooked, reel fight | `FLureFight::LineTension` = clamp(`Tension01` / DT_FishFight `TautTension` 0.3, 0, 1) | sags and floats when slack, **straight once the fish pulls with 30 % of the line's strength** or more |
 | Hooked, no fight (AutoLandDelay debug) | HookedTension 0.8 | nearly straight |
@@ -42,7 +42,9 @@ straight at tension 0 / 0.25 / 0.5 / 0.75 / 0.9 / 1 is 215 / 141 / 82 / 30 / 7.6
 | data | `data/tables/DT_FishingLine.csv` -> `/Game/Data/DT_FishingLine` | settings: `ULureFishingSettings::FishingLineTable` + `FishingLineRow` ("Default") |
 
 Unchanged from T-006 and still used: segment count, pixel width and minimum width (DT_Fishing `LineSegments`,
-`LinePixelWidth`, `LineMinWidth`); mesh, material and colour (Lure Fishing settings). The width rule keeps the line >= 2 px
+`LinePixelWidth`, `LineMinWidth`); mesh, material and colour (Lure Fishing settings). The material is `/Game/Materials/M_FishingLine`
+(T-041e: Responsive AA on, used with spline meshes, Vector param `Color`), loaded by `ULureFishingSettings::LoadLineMaterial`
+(missing: `/Engine/BasicShapes/BasicShapeMaterial` and one `LogLureFishing` warning). The width rule keeps the line >= 2 px
 at 1080p at every distance (designer B-S3), so it stays visible at 10-20 m.
 
 ## The simulation (FLureLineSim)
@@ -165,6 +167,22 @@ Player + Dir x LineOut, LineOut <= LandDistance 150 cm at landing), and the hang
   sideways lag of a hanging fish behind a moving rod). A jerked, reeled or pitched rod never throws the fish over the tip.
 - The swing settles in about 10 s (HangDrag 0.4), so `Component.HangingActorSwings` runs 840 frames (it was 360 before the
   reel took its ~3.6 s).
+- **Side-on (T-043)**: attached with `bFaceViewer` (the catch link does, for every landed fish on the rod's line), the actor
+  turns about the line so its right side (+Y) faces the viewer (`SetViewer`, else the local camera): each frame it closes
+  `1 - exp(-dt / HangFaceTime)` of the angle (HangFaceTime 0.25 s; 0 = at once). The nose stays up the line and the mouth on
+  the line's end. One rule for both hangs: `FLureFishingLineRules::SideOnHangRotation`, also used by the fallback pendulum
+  (GiveFish with no line out). Cosmetic and local: each machine turns the fish toward its own camera.
+- **Wiggle (T-061)**: the hanging actor's own motion moves the line. Each frame, before the step, the line reads the body
+  centre from the pose the actor is drawn with: the centre of a visible skinned mesh's bones (on the actor, or on an actor
+  attached to it: the adopted landed fish), else the bounds centre of another visible primitive. It works in actor space, so
+  the actor's own swing and side-on turn are not a wiggle. The sideways part (square to the line) of that point's speed
+  relative to the mouth is compared with last frame's, and the free end gets the opposite change x **HangWiggleCoupling**
+  (`AddEndVelocity`): the body swinging one way pushes the mouth, and the line with it, the other way, at the clip's own
+  frequency. 1 = physical (the body centre stays put); 0 = off. No bone names and no per-clip data: any clip, including the
+  coming hang clip, works without code. A bigger fish moves more on its own (its pose is scaled with it). Safety: a body
+  centre that jumps more than 20 cm in a frame (a new look) gives no kick, one frame's kick is at most 500 cm/s, and a new
+  look (the shown mesh hidden or replaced) starts over. Cosmetic and local, from the pose each machine draws; nothing
+  replicates. The fallback pendulum (GiveFish with no line out) has no wiggle.
 
 ## The rod tip (the line never lags or cuts through the rod)
 
@@ -208,13 +226,13 @@ FVector Up = Line->GetEndDirection();                     // unit vector from th
   facing `-GetEndDirection()` (away from the rod).
 - **T-030 (landed fish)**: replace the own pendulum with
   ```cpp
-  Line->AttachEndActor(FishActor, HangLength /*cm*/, MouthOffset /*actor space*/, /*bOrientAlongLine*/ true);
+  Line->AttachEndActor(FishActor, HangLength /*cm*/, MouthOffset /*actor space*/, /*bOrientAlongLine*/ true, /*bFaceViewer*/ true);
   ...
   Line->DetachEndActor();   // grabbed into the hand: the line is gone (or back to its end if a line is out)
   ```
   The end lets go and swings under the rod tip; a longer line is reeled up at HangReelSpeed, a shorter one drops (see
   "Hanging actor"). Each frame the actor is moved so `MouthOffset` sits on the end, +X up the line (head up), keeping its
-  facing. `Hide()` does not remove a hanging actor. Rules: attach on **every** machine (it is cosmetic); the hanging actor
+  facing, or with `bFaceViewer` turning its side to the viewer (T-043). `Hide()` does not remove a hanging actor. Rules: attach on **every** machine (it is cosmetic); the hanging actor
   must **not replicate its movement** and must not simulate physics; `AddEndVelocity(v)` makes it flop. Destroying the
   actor ends the line.
 - **Viewer (T-034)**: `SetViewer` holds until the line stops (`Hide` of a pinned line, the end of a recoil, the hanging actor
@@ -232,7 +250,9 @@ FVector Up = Line->GetEndDirection();                     // unit vector from th
 - Collision: a line draped over 4 solids, 12 segments: ~7.6 us per 60 fps frame (the Collision.Allocations info line). The
   overlap query runs only when the line leaves its query box, or every 0.2 s near a Movable solid.
 - Nothing runs while no line is out: the tick is off (`Hide` turns it off; tests check it).
-- Our code allocates nothing per frame (checked with the engine's game-thread allocation hook), with or without solids.
+- Our code allocates nothing per frame (checked with the engine's game-thread allocation hook), with or without solids, and
+  with a wiggling fish hanging on it (Hang.Wiggle.Allocations). The wiggle reads one component's bones per frame; the
+  component is searched again only when it is hidden or gone (every 0.25 s while the actor shows nothing).
   `Init`/`Setup` and the collider reserve allocate once; a gather frame only grows the reserve past about one pier.
 - `ULureLineSegmentComponent` never creates a physics state. A plain spline mesh rebuilds its collision body on every
   update in worlds with trace collision (editor-created and test worlds: `UWorld::CreateWorld` enables it; PIE and packaged
@@ -254,7 +274,7 @@ One row per kind of line; "Default" today. Units, ranges and exact meaning: the 
 | | TautExponent 3 | tautness = 1 - (1 - Tension01)^TautExponent |
 | | LengthResponse 6 | per second, how fast the length shrinks toward a tighter target |
 | | StraightenTime 0.4 | s for a line with the full SlackShare to go straight at tension 1 |
-| | CastTension 0.35, WaitTension 0, BiteTension 0.6, HookedTension 0.8 | tension shown per fishing state |
+| | CastTension 0.55, WaitTension 0.55, BiteTension 0.6, HookedTension 0.8 | tension shown per fishing state (WaitTension <= CastTension, < BiteTension) |
 | Water | FloatStrength 0.5 | 0..1 per sub-step: how fast line under water rises (x (1 - tautness)) |
 | | FloatHeight 0.4 | cm above the water the floating line rests |
 | | WaterRefreshDistance 500 | cm the end moves before the water height is looked up again (no owner height) |
@@ -265,6 +285,8 @@ One row per kind of line; "Default" today. Units, ranges and exact meaning: the 
 | | HangDrag 0.4 | share of its speed a hanging actor loses per second |
 | | **HangReelSpeed 500** | cm/s, fastest reel-up of a hanging actor (slows at g/2 near HangLength) |
 | | **HangMaxSwingDeg 70** | degrees (10..90), highest swing from straight under the tip (90 = level) |
+| | HangFaceTime 0.25 | s (0..5), how fast a hanging fish turns its side to the viewer (T-043; 0 = at once) |
+| | HangWiggleCoupling 1 | 0..10, how much a hanging fish's own wiggle moves the line's end (T-061; 1 = physical, 0 = off) |
 | Safety | TeleportDistance 1500 | cm; a tip or end jump farther than this in one frame resets the line |
 | Collision | **CollisionRadius 1** | cm (0..50) the line keeps from solid surfaces (0 = on the surface) |
 | | **GroundFriction 8** | share of its sliding speed line touching a solid loses per second |
@@ -314,6 +336,30 @@ segment is that thick.
 (cast, reel in, land), 6 s of reel-up, swing and view sweeps; no line point and no sampled point of a drawn segment lies past
 the mouth into the fish by more than 1 cm (measured: 0.000 cm).
 
+`FishingLineHangSideOnTest.cpp` (T-043), `Project.Fishing.Line.Hang.SideOn.*`: Rule (smoothing share, snap at 0, nose up the
+line, viewer on the axis, bad input), ComponentViewers (9 viewers around and above a hanging actor: side within 3 deg after 2 s,
+measured 0.03; the first frame turns only part of the way; mouth on the end 0.000 cm; without bFaceViewer the side stays),
+RealCatch (cast, reel in, land on another player's rod; the local viewer stands at 4 spots on the dock, two of them on opposite
+sides, so a fixed facing can't pass: settled side error <= 5 deg, measured 0.13; mouth within 1 cm of the end, measured 0.04).
+
+`FishingLineHangWiggleTest.cpp` (T-061), `Project.Fishing.Line.Hang.Wiggle.*`, test poses only (a moving primitive; the
+engine's SkeletalCube posed bone by bone), fixed dt, the line stepped directly: Data (the column's range), MovesTheLine (4 cm
+at 2 Hz, coupling 1: end 4.17 cm, middle 2.46 cm at 2 Hz, >= 3x any other probed frequency; coupling 0: the middle stays
+within 0.01 cm), SkinnedPose (3 cm at 3 Hz: middle 1.95 cm), TurningIsNotAWiggle (the fish turns side-on to a viewer
+circling it with its body off the axis: the line stays within 0.05 cm), Allocations (none in 120 frames).
+
+`FishingLineHangWidthTest.cpp` (T-044), `Project.Fishing.Line.Hang.WidthOverTime`: a real catch (cast, reel fight, land),
+then 60 s at dt 1/60 while the player walks 9 m along the dock and sweeps the view: every point's width = the width rule for the
+eye (this or the last frame's camera, 10 %), each drawn segment that thick, and the widest point in the last second <= 1.1 x the
+first second's (measured 0.371 -> 0.316 cm). With the T-034 hunk reverted it fails: 0.41 -> 59 cm (Jimmy's A2 "massive diameter").
+
+`FishingLineMaterialTest.cpp` (T-041e), `Project.Fishing.Line.Material`: LineMaterial = M_FishingLine, it loads with
+bEnableResponsiveAA and bUsedWithSplineMeshes on, and a cast line's segments use a dynamic instance of it with Color = LineColor.
+
+`FishingLineWaitTensionTest.cpp` (T-046), `Project.Fishing.Line.WaitTension.*`: a waiting line (tip 150 cm up, bobber 10 /
+12.5 / 15 m out, 5 s at dt 1/60, built-in row) has <= 50 % of its inner points on the water and sags <= 6 % of the distance;
+its end stays where the bobber landed. `OldZeroTensionFails`: WaitTension 0 fails that check.
+
 QA's own suite: Project.Fishing.Line.QA.* (`QAFishingLineTest.cpp`).
 
 ## Known limits and follow-ups
@@ -329,10 +375,6 @@ QA's own suite: Project.Fishing.Line.QA.* (`QAFishingLineTest.cpp`).
   - At most 64 hulls/boxes and 64 spheres/capsules near the line per Step (the first ones in the colliders' order).
   - Rotated box elements under non-uniform scale are exact here, while the physics approximates them, so the line and a
     cast can disagree slightly on such a box.
-- T-041b ("a line stub below a landed fish's tail", 09_after_land.png): not the line. The line ends exactly at the mouth
-  (Hang.NoStubPastMouth: 0.000 cm past it); the stub is the bonefish's tail fin seen edge-on. A fish on the physics line keeps
-  its facing (it does not turn its side to the viewer as the old pendulum did), so from the player's eye it often shows its
-  back and its tail fin reads as a thin dark spike. Turning the side toward the viewer is a presentation choice (open).
 - One water height per line (a line spanning two water levels floats at the end's).
 - A player who turns away from the bobber sees the line run back from the tip over the rod (no wrapping around the tip).
 - "Ghost loop for ~1 s during a fast turn" (A2 playtest, T-041c) is not the simulation: `Project.Fishing.Line.FastTurn.*`
@@ -346,5 +388,5 @@ QA's own suite: Project.Fishing.Line.QA.* (`QAFishingLineTest.cpp`).
 - Other players' lines start from an estimated rod tip (no third-person rod yet; unchanged from T-006).
 - `FLureFight::LineSag` and DT_Fishing `LineSag` no longer shape the line (only the old `SetLine` path reads a sag);
   T-028 can drop them. DT_FishFight `TautTension` shapes it again, through `FLureFight::LineTension` (T-032b).
-- `/Game/Data/DT_FishingLine` must be reimported by the editor-operator after the merge (T-032b added 6 columns; until
-  then the built-in row is used).
+- `/Game/Data/DT_FishingLine` must be reimported by the editor-operator after the merge (T-032b added 6 columns, T-043
+  HangFaceTime, T-061 HangWiggleCoupling; until then the built-in row is used).

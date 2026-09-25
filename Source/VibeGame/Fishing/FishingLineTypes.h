@@ -74,10 +74,10 @@ struct FLureFishingLineRow : public FTableRowBase
 
 	/** Tension the line shows per fishing state (0..1). During a reel fight the fight's own tension is used. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Tension", meta=(ClampMin="0", ClampMax="1"))
-	float CastTension = 0.35f;
+	float CastTension = 0.55f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Tension", meta=(ClampMin="0", ClampMax="1"))
-	float WaitTension = 0.f;
+	float WaitTension = 0.55f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Tension", meta=(ClampMin="0", ClampMax="1"))
 	float BiteTension = 0.6f;
@@ -137,6 +137,23 @@ struct FLureFishingLineRow : public FTableRowBase
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Hanging", meta=(ClampMin="10", ClampMax="90"))
 	float HangMaxSwingDeg = 70.f;
+
+	/**
+	 *  A hanging fish turns about the line so its side (+Y) faces the viewer's camera (T-043): each frame it closes
+	 *  1 - exp(-DeltaTime / HangFaceTime) of the angle to that side-on facing, s (0 = at once). Used by both hangs: the rod's
+	 *  physics line and the fallback pendulum (FLureFishingLineRules::SideOnHangRotation).
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Hanging", meta=(ClampMin="0", ClampMax="5"))
+	float HangFaceTime = 0.25f;
+
+	/**
+	 *  How much a hanging fish's own wiggle moves the line (T-061): each frame the line's end gets the opposite of the change in
+	 *  the sideways speed of the fish's body centre relative to its mouth, x this (read from the pose the fish is drawn with, so
+	 *  any clip works). 1 = physical: the body centre stays put and the mouth, with the line, moves the other way; 0 = off.
+	 *  A bigger fish moves more on its own (its pose is scaled with it).
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Hanging", meta=(ClampMin="0", ClampMax="10"))
+	float HangWiggleCoupling = 1.f;
 
 	// ---- Safety ----
 
@@ -219,6 +236,15 @@ struct FLureFishingLineRules
 	 *  strength: a fish pulling on the line pulls it straight, T-032b), not the raw share of the strength.
 	 */
 	static float StateTension(ELureFishingState State, bool bFightActive, float FightTension01, const FLureFishingLineRow& Row);
+
+	/**
+	 *  The rotation of a fish hanging by its mouth at HangPoint (T-043): +X = Up (head up the line), +Y (its right side) turned
+	 *  about Up toward ViewLocation. Smoothed: from Current (its X first set to Up, keeping its Y as close as possible) it turns
+	 *  about Up by 1 - exp(-DeltaTime / FaceTime) of the angle to the side-on facing (all of it when FaceTime <= 0; none when
+	 *  DeltaTime <= 0). Keeps its Y when the viewer is on the line's axis or not finite. Up zero or not finite = +Z.
+	 */
+	static FQuat SideOnHangRotation(const FQuat& Current, const FVector& Up, const FVector& HangPoint, const FVector& ViewLocation,
+		float DeltaTime, float FaceTime);
 
 	/** 0..1 float strength per sub-step: FloatStrength x (1 - Tautness). */
 	static float FloatAmount(float Tension01, const FLureFishingLineRow& Row);

@@ -779,7 +779,7 @@ void ALureFishItem::EnsureHangLine()
 	HangLine = NewObject<ULureFishingLineComponent>(this, TEXT("HangLine"), RF_Transient);
 	HangLine->SetupAttachment(ItemRoot);
 	HangLine->RegisterComponent();
-	HangLine->Setup(Mesh, Cast<UMaterialInterface>(LureFishItemPrivate::LoadIfExists(Settings->LineMaterial.ToSoftObjectPath())), Settings->LineColor, 4);
+	HangLine->Setup(Mesh, Settings->LoadLineMaterial(), Settings->LineColor, 4);
 }
 
 void ALureFishItem::GetViewer(FVector& OutLocation, float& OutFovDeg) const
@@ -819,22 +819,13 @@ void ALureFishItem::UpdateHooked(float DeltaSeconds)
 	float Fov = 90.0f;
 	GetViewer(ViewLocation, Fov);
 
-	// Nose (+X) up the line; its right side (+Y) turned toward whoever looks at it.
-	FVector Up = (Pivot - Pendulum.Bob).GetSafeNormal();
-	if (Up.IsNearlyZero())
-	{
-		Up = FVector::UpVector;
-	}
-	FVector ToViewer = ViewLocation - Pendulum.Bob;
-	ToViewer -= Up * FVector::DotProduct(ToViewer, Up);
-	if (!ToViewer.Normalize())
-	{
-		ToViewer = Holder->GetActorRightVector();
-	}
-	const FRotator Rotation = FRotationMatrix::MakeFromXY(Up, ToViewer).Rotator();
+	// Nose (+X) up the line; its right side (+Y) turned (smoothly) toward whoever looks at it: the same rule as a fish on the
+	// rod's physics line (T-043, FLureFishingLineRules::SideOnHangRotation; HangFaceTime from the line's DT_FishingLine row).
+	EnsureHangLine();
+	const float FaceTime = HangLine ? HangLine->GetTuning().HangFaceTime : FLureFishingLineRules::GetFallbackRow().HangFaceTime;
+	const FQuat Rotation = FLureFishingLineRules::SideOnHangRotation(GetActorQuat(), Pivot - Pendulum.Bob, Pendulum.Bob, ViewLocation, DeltaSeconds, FaceTime);
 	SetActorLocationAndRotation(Pendulum.Bob - Rotation.RotateVector(GetMouthOffset()), Rotation);
 
-	EnsureHangLine();
 	if (HangLine)
 	{
 		float PixelWidth = 2.5f;

@@ -27,6 +27,8 @@ bool FFishVisualRow::Validate(FString& OutProblem) const
 		{ TEXT("ExhaustedPlayRate"), ExhaustedPlayRate, 0.f, 100.f },
 		{ TEXT("ExhaustedAmplitudeScale"), ExhaustedAmplitudeScale, 0.f, 1.f },
 		{ TEXT("ExhaustedRollDeg"), ExhaustedRollDeg, -180.f, 180.f },
+		{ TEXT("FreshAmplitudeScale"), FreshAmplitudeScale, 0.f, 1.f },
+		{ TEXT("TiredAmplitudeScale"), TiredAmplitudeScale, 0.f, 1.f },
 		{ TEXT("MinScale"), MinScale, 0.01f, 100.f },
 		{ TEXT("MaxScale"), MaxScale, 0.01f, 100.f },
 		{ TEXT("DefaultBodyLengthCm"), DefaultBodyLengthCm, 1.f, 10000.f },
@@ -40,6 +42,9 @@ bool FFishVisualRow::Validate(FString& OutProblem) const
 		{ TEXT("RotationSmoothTime"), RotationSmoothTime, 0.f, 10.f },
 		{ TEXT("MinFacingSpeed"), MinFacingSpeed, 0.f, 100000.f },
 		{ TEXT("MaxPitchDeg"), MaxPitchDeg, 0.f, 89.f },
+		{ TEXT("RunSwingDeg"), RunSwingDeg, 0.f, 80.f },
+		{ TEXT("RunSwingFullSpeed"), RunSwingFullSpeed, 1.f, 100000.f },
+		{ TEXT("MouthMaxLagCm"), MouthMaxLagCm, 0.f, 1000.f },
 		{ TEXT("EscapeTime"), EscapeTime, 0.f, 60.f },
 		{ TEXT("EscapeSpeed"), EscapeSpeed, 0.f, 100000.f },
 		{ TEXT("EscapeSinkSpeed"), EscapeSinkSpeed, 0.f, 100000.f },
@@ -104,6 +109,25 @@ bool FFishVisualRow::Validate(FString& OutProblem) const
 			return false;
 		}
 	}
+	TSet<EFishAnimRole> StaminaRoles;
+	for (const FFishRoleStaminaRate& Rate : RoleStaminaRates)
+	{
+		bool bDuplicate = false;
+		StaminaRoles.Add(Rate.Role, &bDuplicate);
+		if (bDuplicate)
+		{
+			OutProblem = FString::Printf(TEXT("RoleStaminaRates lists %s twice"), *FightFishVisualPrivate::RoleName(Rate.Role));
+			return false;
+		}
+		for (const float Value : { Rate.FreshRate, Rate.TiredRate })
+		{
+			if (!FightFishVisualPrivate::Finite(Value) || Value < 0.f || Value > 100.f)
+			{
+				OutProblem = FString::Printf(TEXT("RoleStaminaRates %s: rate %g is outside [0, 100]"), *FightFishVisualPrivate::RoleName(Rate.Role), Value);
+				return false;
+			}
+		}
+	}
 	return true;
 }
 
@@ -124,7 +148,7 @@ FFishVisualRow FFishVisualRow::GetFallbackRow()
 	Move(TEXT("Swim"), EFishAnimRole::SwimFast);
 	Move(TEXT("Charge"), EFishAnimRole::SwimFast);
 	Move(TEXT("Rest"), EFishAnimRole::SwimIdle);
-	Move(TEXT("Sulk"), EFishAnimRole::Thrash);
+	Move(TEXT("Sulk"), EFishAnimRole::SwimIdle); // T-059a (art S3): a sulking fish holds, it does not thrash
 	Row.UnknownMoveRole = EFishAnimRole::SwimFast;
 	auto Beat = [&Row](EFishAnimRole Role, float Hz)
 	{
@@ -137,6 +161,21 @@ FFishVisualRow FFishVisualRow::GetFallbackRow()
 	Beat(EFishAnimRole::SwimFast, 2.5f);
 	Beat(EFishAnimRole::Run, 3.f);
 	Beat(EFishAnimRole::Dive, 2.f);
+	auto Stamina = [&Row](EFishAnimRole Role, float Fresh, float Tired)
+	{
+		FFishRoleStaminaRate Entry;
+		Entry.Role = Role;
+		Entry.FreshRate = Fresh;
+		Entry.TiredRate = Tired;
+		Row.RoleStaminaRates.Add(Entry);
+	};
+	// T-059a, art's gate A table (Saved/AgentLogs/tasks/S3-fish/gateA_playrate_table.md).
+	Stamina(EFishAnimRole::Run, 1.f, 0.6f);
+	Stamina(EFishAnimRole::SwimFast, 1.f, 0.6f);
+	Stamina(EFishAnimRole::Dive, 1.f, 0.6f);
+	Stamina(EFishAnimRole::Dart, 1.f, 0.7f);
+	Stamina(EFishAnimRole::Thrash, 1.f, 0.7f);
+	Stamina(EFishAnimRole::SwimIdle, 1.f, 0.8f);
 	return Row; // every other number is the struct default (= the JSON)
 }
 
@@ -176,15 +215,32 @@ float FFightFishVisual::TailBeatHz(const FFishVisualRow& Row, EFishAnimRole Role
 	return 0.f;
 }
 
+float FFightFishVisual::StaminaRate(const FFishVisualRow& Row, EFishAnimRole Role, float Stamina01)
+{
+	const float Stamina = FMath::IsFinite(Stamina01) ? FMath::Clamp(Stamina01, 0.f, 1.f) : 1.f;
+	for (const FFishRoleStaminaRate& Rate : Row.RoleStaminaRates)
+	{
+		if (Rate.Role == Role)
+		{
+			const float Fresh = FMath::IsFinite(Rate.FreshRate) ? FMath::Max(0.f, Rate.FreshRate) : 1.f;
+			const float Tired = FMath::IsFinite(Rate.TiredRate) ? FMath::Max(0.f, Rate.TiredRate) : Fresh;
+			return FMath::Lerp(Tired, Fresh, Stamina);
+		}
+	}
+	return 1.f;
+}
+
 FFishAnimState FFightFishVisual::ComputeAnimState(const FFishVisualRow& Row, const FFightFishAnimInput& In)
 {
 	const float AnimRate = (FMath::IsFinite(In.AnimRate) && In.AnimRate > 0.f) ? In.AnimRate : 1.f;
 	const float Amplitude = FMath::IsFinite(In.AnimAmplitude) ? FMath::Clamp(In.AnimAmplitude, 0.f, 1.f) : 1.f;
+	const float Stamina = FMath::IsFinite(In.Stamina01) ? FMath::Clamp(In.Stamina01, 0.f, 1.f) : 1.f;
 
 	FFishAnimState State;
 	State.RoleBlendTime = Row.RoleBlendTime;
 	State.Amplitude = Amplitude;
 	float FixedRate = -1.f; // >= 0: this rate, no speed or weight rule
+	bool bEffort = false;   // T-059a: the fight's effort rule (stamina, not speed)
 
 	switch (In.Phase)
 	{
@@ -210,12 +266,27 @@ FFishAnimState FFightFishVisual::ComputeAnimState(const FFishVisualRow& Row, con
 		{
 			State.Role = RoleForMove(Row, In.MoveId);
 		}
+		if (!In.bExhausted)
+		{
+			bEffort = true;
+			const float Scale = FMath::Lerp(Row.TiredAmplitudeScale, Row.FreshAmplitudeScale, Stamina);
+			State.Amplitude = FMath::Clamp(Amplitude * (FMath::IsFinite(Scale) ? Scale : 1.f), 0.f, 1.f);
+		}
 		break;
 	}
 
+	float WeightFactor = 1.f;
+	if (FMath::IsFinite(In.WeightKg) && FMath::IsFinite(In.ReferenceWeightKg) && In.WeightKg > 0.f && In.ReferenceWeightKg > 0.f)
+	{
+		WeightFactor = FMath::Pow(In.ReferenceWeightKg / In.WeightKg, Row.OtherRateWeightExponent);
+	}
 	if (FixedRate >= 0.f)
 	{
 		State.PlayRate = FixedRate;
+	}
+	else if (bEffort)
+	{
+		State.PlayRate = AnimRate * WeightFactor * StaminaRate(Row, State.Role, Stamina);
 	}
 	else if (const float Hz = TailBeatHz(Row, State.Role); Hz > 0.f)
 	{
@@ -226,11 +297,6 @@ FFishAnimState FFightFishVisual::ComputeAnimState(const FFishVisualRow& Row, con
 	}
 	else
 	{
-		float WeightFactor = 1.f;
-		if (FMath::IsFinite(In.WeightKg) && FMath::IsFinite(In.ReferenceWeightKg) && In.WeightKg > 0.f && In.ReferenceWeightKg > 0.f)
-		{
-			WeightFactor = FMath::Pow(In.ReferenceWeightKg / In.WeightKg, Row.OtherRateWeightExponent);
-		}
 		State.PlayRate = AnimRate * WeightFactor;
 	}
 	State.DartStartTime = (State.Role == EFishAnimRole::Dart && In.bDartRight) ? Row.DartRightStartTime : 0.f;
@@ -245,15 +311,97 @@ float FFightFishVisual::ShownDepth(const FFishVisualRow& Row, float FightDepthCm
 
 FVector FFightFishVisual::TargetLocation(const FFishVisualRow& Row, const FFightFishView& View, const FVector& Forward, float MouthOffsetCm, float FloorZ)
 {
-	const FVector Flat = Forward.GetSafeNormal2D();
-	FVector Target = FVector(View.LineEnd.X, View.LineEnd.Y, 0.f) - Flat * (FMath::IsFinite(MouthOffsetCm) ? MouthOffsetCm : 0.f);
-	Target.Z = View.WaterZ - ShownDepth(Row, View.DepthCm);
+	return CenterForMouth(MouthTarget(Row, View, FloorZ), Forward, MouthOffsetCm);
+}
+
+FVector FFightFishVisual::MouthTarget(const FFishVisualRow& Row, const FFightFishView& View, float FloorZ)
+{
+	FVector Target(View.LineEnd.X, View.LineEnd.Y, View.WaterZ - ShownDepth(Row, View.DepthCm));
 	if (Row.FloorClearance >= 0.f && FloorZ > -UE_BIG_NUMBER * 0.5f)
 	{
 		// Shallow water: stay above the bottom, but never above the surface.
 		Target.Z = FMath::Min(FMath::Max(Target.Z, FloorZ + Row.FloorClearance), View.WaterZ);
 	}
 	return Target;
+}
+
+FVector FFightFishVisual::CenterForMouth(const FVector& MouthPoint, const FVector& Forward, float MouthOffsetCm)
+{
+	// The horizontal part of the 3D facing: a pitched fish's nose stays right over the line end.
+	const FVector Unit = Forward.GetSafeNormal();
+	const double Offset = FMath::IsFinite(MouthOffsetCm) ? MouthOffsetCm : 0.f;
+	return FVector(MouthPoint.X - Unit.X * Offset, MouthPoint.Y - Unit.Y * Offset, MouthPoint.Z);
+}
+
+FVector FFightFishVisual::StepMouth(const FFishVisualRow& Row, const FVector& MouthPoint, const FVector& Target, float DeltaTime, float SmoothTime)
+{
+	FVector Next = FMath::Lerp(MouthPoint, Target, static_cast<double>(SmoothAlpha(DeltaTime, SmoothTime)));
+	const double MaxLag = FMath::IsFinite(Row.MouthMaxLagCm) ? FMath::Max(0.f, Row.MouthMaxLagCm) : 0.0;
+	const FVector2D Lag(Next.X - Target.X, Next.Y - Target.Y);
+	const double LagSize = Lag.Size();
+	if (LagSize > MaxLag)
+	{
+		const FVector2D Kept = Lag * (MaxLag / LagSize);
+		Next.X = Target.X + Kept.X;
+		Next.Y = Target.Y + Kept.Y;
+	}
+	return Next;
+}
+
+namespace FightFishVisualPrivate
+{
+	/** Yaw of the direction mouth -> player, degrees; Fallback when they are on top of each other. */
+	static float YawToPlayer(const FVector& MouthLocation, const FVector& PlayerLocation, float Fallback)
+	{
+		const FVector ToPlayer = (PlayerLocation - MouthLocation).GetSafeNormal2D();
+		return ToPlayer.IsNearlyZero() ? Fallback : static_cast<float>(FMath::RadiansToDegrees(FMath::Atan2(ToPlayer.Y, ToPlayer.X)));
+	}
+
+	static float MaxSwing(const FFishVisualRow& Row)
+	{
+		return FMath::IsFinite(Row.RunSwingDeg) ? FMath::Clamp(Row.RunSwingDeg, 0.f, 80.f) : 0.f;
+	}
+}
+
+FRotator FFightFishVisual::FightFacing(const FFishVisualRow& Row, const FVector& MouthVelocity, const FVector& MouthLocation, const FVector& PlayerLocation,
+	const FRotator& Current, bool bExhausted)
+{
+	const float BaseYaw = FightFishVisualPrivate::YawToPlayer(MouthLocation, PlayerLocation, static_cast<float>(Current.Yaw));
+	FRotator Out(0.f, BaseYaw, 0.f);
+	const FVector Horizontal(MouthVelocity.X, MouthVelocity.Y, 0.f);
+	const float Speed = static_cast<float>(Horizontal.Size());
+	if (FMath::IsFinite(Speed) && FMath::IsFinite(MouthVelocity.Z) && Speed > Row.MinFacingSpeed)
+	{
+		if (!bExhausted)
+		{
+			// Sideways component of the swim (+ = toward larger yaw, i.e. from X toward Y).
+			const FVector ToPlayer = FRotator(0.f, BaseYaw, 0.f).Vector();
+			const FVector Side(-ToPlayer.Y, ToPlayer.X, 0.f);
+			const float Lateral = static_cast<float>(FVector::DotProduct(Horizontal, Side));
+			float Sign = FMath::FindDeltaAngleDegrees(BaseYaw, static_cast<float>(Current.Yaw)) < 0.f ? -1.f : 1.f;
+			if (FMath::Abs(Lateral) > 0.25f * Speed)
+			{
+				Sign = Lateral < 0.f ? -1.f : 1.f; // the head turns toward the side it swims to
+			}
+			const float Share = FMath::Clamp(Speed / FMath::Max(1.f, Row.RunSwingFullSpeed), 0.f, 1.f);
+			Out.Yaw = BaseYaw + Sign * FightFishVisualPrivate::MaxSwing(Row) * Share;
+		}
+		// The end that leads the swim follows the climb: head first (reeled in) = nose along the climb, tail first = against it.
+		const float Climb = static_cast<float>(FMath::RadiansToDegrees(FMath::Atan2(MouthVelocity.Z, static_cast<double>(Speed))));
+		const float Lead = FVector::DotProduct(Horizontal, Out.Vector()) >= 0.0 ? 1.f : -1.f;
+		Out.Pitch = FMath::Clamp(Lead * Climb, -Row.MaxPitchDeg, Row.MaxPitchDeg);
+	}
+	Out.Roll = bExhausted ? Row.ExhaustedRollDeg : 0.f;
+	return Out;
+}
+
+FRotator FFightFishVisual::ClampToLine(const FFishVisualRow& Row, const FRotator& Rotation, const FVector& MouthLocation, const FVector& PlayerLocation)
+{
+	const float BaseYaw = FightFishVisualPrivate::YawToPlayer(MouthLocation, PlayerLocation, static_cast<float>(Rotation.Yaw));
+	const float Max = FightFishVisualPrivate::MaxSwing(Row);
+	FRotator Out = Rotation;
+	Out.Yaw = BaseYaw + FMath::Clamp(FMath::FindDeltaAngleDegrees(BaseYaw, static_cast<float>(Rotation.Yaw)), -Max, Max);
+	return Out;
 }
 
 FVector FFightFishVisual::EscapeStep(const FFishVisualRow& Row, const FVector& Location, const FVector& Direction, float DeltaTime, float WaterZ, float FloorZ)
