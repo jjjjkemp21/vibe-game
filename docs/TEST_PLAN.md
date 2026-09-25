@@ -543,3 +543,10 @@ test world, hook-and-fight, fixture tables, HUD line lookup, input firing, water
 DipIsReliefNotReeling and DippedFastPostureLosesToSkilledPlay (O1, C++ balance with QA's players), OneSlackRule and
 HudNeverContradictsItself (O2), TeleportEndsTheFight (O4), PawnSwitchEndsTheOldFight (O5), ServerRateLimitsReelSteps (O6),
 TextInANumberCellFailsValidation (O7), DefaultReelStepMustBeSpeedOne (O8). Numbers and contract changes: docs/specs/reel-fight-rules.md "T-028b".
+
+## Environment: day/night clock (T-068a) + debug menu (T-051), A3 gate audit (QA-A3d, 2026-09-24)
+- Clock tests: `Project.Environment.Clock.{Data.DayCycleRows, Pure.DayAndPhaseLengths, Pure.DayLengthFromData, World.PhaseEventsAndHud, World.BiteUsesClockHour, Net.ServerSetReachesClients, Net.LateJoinerMatchesServer}` (implementer). The audit found every Standard-tier criterion covered: phase edges just under and over each edge (4.99/5, 6.99/7, 16.99/17, 18.99/19), wrap at 0/23.99/24/-1 h, 10 bad-row cases with fallback plus a missing table or row, and a client refused on Set/Scale/Phase and SetHour. No QA tests added.
+- Debug menu: `Project.Dev.DebugMenu.{ListsEveryBind, KeysAreFree, SensitivityStepsAndClamps, SensitivitySaveLoad}` cover the clamps at min and max, NaN and corrupt saves, and save/load (Light tier, audit only).
+### Gaps (A3 gate)
+- Non-default phase layouts (e.g. a row whose Night does not cross midnight) are only checked by Validate and not by phase sampling. Low risk, only one row ships.
+- There is no scale-extreme test (e.g. TimeScale 1000) for skipped phase events in the world. Only dev commands set the scale.
