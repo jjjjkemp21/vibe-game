@@ -169,7 +169,7 @@ by the server; clients only ask ("I pressed E on this cooler, expecting Put in")
   DT_FishMarket row (PalmKeyDock). `InteractionRadius` = the prompt range.
 - A fish is **on the counter** when it lands inside that box (placed with E, or dropped with F). Fish on a counter are
   part of it: they can't be picked up one by one (F takes the last one back).
-- Verbs: holding a fish, **E = Put it on the counter** (it goes to the next free spot along the counter,
+- Verbs: holding a fish, **E = Put it on the counter** (it goes to the next free spot along the counter, centre first, then outwards,
   `FishSpacing` apart). Empty hands with fish on the counter: **E = "Sell N fish (X coins)"**, F = Take back the last
   fish. Nothing on it: info "Put fish on the counter to sell them".
 - Selling (server): every fish on the counter at its current price (freshness x market), money to the **seller**, the

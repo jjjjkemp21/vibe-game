@@ -78,8 +78,12 @@ public:
 	UFUNCTION(BlueprintPure, Category="Sell Counter")
 	int32 QuoteAll() const;
 
-	/** The next free spot along the counter (world): where Interact puts a fish */
+	/** The next free spot along the counter (world): where Interact puts a fish. Centre first, then outwards; full = centre. */
 	FTransform GetPlacementSpot() const;
+
+	/** Local Y offsets of the counter's fish spots in fill order: centre first, then alternating outwards (+, -), all inside
+	 *  +-HalfLengthY (an even count starts with the two middle spots). Spacing is clamped to >= 10; at least one spot (0). */
+	static TArray<float> GetSpotOffsets(float HalfLengthY, float Spacing);
 
 	// ---- Server ----
 
