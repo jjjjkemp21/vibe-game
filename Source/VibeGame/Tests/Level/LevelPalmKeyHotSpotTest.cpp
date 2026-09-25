@@ -27,6 +27,7 @@
 #include "Fishing/LureHotSpotVisualComponent.h"
 #include "Fishing/LureWaterSettings.h"
 #include "GameFramework/PhysicsVolume.h"
+#include "GameFramework/WorldSettings.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 
@@ -142,6 +143,35 @@ namespace LurePalmKeyHotSpots
 		FVector2D PlayerXY() const
 		{
 			return FVector2D(Player->GetActorLocation().X, Player->GetActorLocation().Y);
+		}
+
+		/**
+		 *  Ticks the first Seconds of the level exactly as Map.Tick(Seconds, 0.25) does for the spawner, in about a quarter of
+		 *  the world ticks (T-039: the arrival test spent most of its time here). The spawner acts only on its check ticks:
+		 *  the level-start check on its first tick, then one each time HotSpotCheckInterval seconds have added up. So one
+		 *  0.25 s tick, then ticks of exactly HotSpotCheckInterval, then the rest in 0.25 s ticks give every check the same
+		 *  world time and the same banked seconds (0.25 and whole seconds add up exactly in floats). Nothing else here
+		 *  depends on the step: hot spots are read at a time (GetCenterAt, EndTime), and the player stands still. The
+		 *  world's MaxUndilatedFrameTime (0.4 s by default) would clamp longer ticks, so it is lifted for them and restored.
+		 *  Falls back to 0.25 s ticks if the interval is not a whole number of them.
+		 */
+		void TickLevelStart(double Seconds)
+		{
+			constexpr float Step = 0.25f;
+			const float Interval = GetDefault<ULureWaterSettings>()->HotSpotCheckInterval;
+			AWorldSettings* WorldSettings = Map.World ? Map.World->GetWorldSettings() : nullptr;
+			if (!WorldSettings || Seconds < Step || !(Interval >= Step) || FMath::Fmod(Interval, Step) != 0.f)
+			{
+				Map.Tick(Seconds, Step);
+				return;
+			}
+			const float OldMax = WorldSettings->MaxUndilatedFrameTime;
+			WorldSettings->MaxUndilatedFrameTime = FMath::Max(OldMax, Interval);
+			Map.Tick(Step, Step); // the spawner's level-start check
+			const double Whole = FMath::FloorToDouble((Seconds - Step) / Interval) * Interval;
+			Map.Tick(Whole, Interval);
+			WorldSettings->MaxUndilatedFrameTime = OldMax;
+			Map.Tick(Seconds - Step - Whole, Step);
 		}
 
 		/** Ticks for up to Seconds (0.25 s steps; the spawner checks once a second). Returns the seconds until a hot spot was
@@ -288,12 +318,14 @@ bool FLurePalmKeyHotSpotArrival::RunTest(const FString& Parameters)
 			{
 				return false;
 			}
-			Session.Map.Tick(30.0, 0.25f);
+			Session.TickLevelStart(30.0);
 			LureMapTest::FMapWorld::TeleportPlayer(Session.Player, Point.Feet);
 			const double Seconds = Session.TickUntilHotSpotInReach(20.0);
 			PointHits += Seconds >= 0.0 ? 1 : 0;
 			Results.Add(LurePalmKeyHotSpots::Describe(Seconds));
+			Session.Map.Release(/*bCollectGarbage*/ false); // one collection per cast point below (T-039: it was a fifth of the time)
 		}
+		CollectGarbage(GARBAGE_COLLECTION_KEEPFLAGS);
 		AddInfo(FString::Printf(TEXT("%s: %d of %d seeds; seconds after arrival: %s"), *Point.Id, PointHits, Seeds, *FString::Join(Results, TEXT(" "))));
 		Hits += PointHits;
 		Arrivals += Seeds;
