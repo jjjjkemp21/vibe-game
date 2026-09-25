@@ -203,6 +203,26 @@ Notes for the next QA agent:
 
 Gaps: the drawn fish's full length (tail/head clipping through the walls) is not checked: the tests use the origin, LieOffsetCm and the box, because there is no API for curled-pose bounds. A per-fish bounds accessor would close this (seam request). The dedicated-server lid pitch is not asserted, because the server doesn't render. Visual confirmation of the lid and the display stays with the playtester and designer.
 
+### A3 gate independent QA: held cooler + drop under a roof (QA-A3c, qa-engineer, 2026-09-24, Standard tier)
+Items T-063 (cooler on the arms' `cooler` bone), T-064 (open/show while carried), T-064c (carrier-only lid fold), T-065 (dump), T-066 (drop under a roof). Implementer tests: `HeldCooler{Bone,Open,Lid,Dump}Test.cpp`, `DropUnderRoofTest.cpp` (23 tests) already cover every acceptance criterion, including host + 2 clients for open/show/dump/lid and a late joiner. QA added only boundaries and cross-feature cases. File `Source/VibeGame/Tests/Catch/QAS1HeldCoolerTest.cpp` (namespace `LureCatchQAS1`), 7 tests:
+
+| Test (Project.Catch.QA.S1.*) | Proves |
+|---|---|
+| `Dump.FullCoolerSpreadAndConserved` | A full cooler (capacity, 4) dumps every fish: "Dump 4 fish"; each fish exists exactly once (CountCopies); the spread is 0, +S, -S, +2S at DropForward on the dock; still carried, open and shown. |
+| `Dump.ZeroSpacingOnePile` | DumpSpacing 0 (valid data): every fish lands straight ahead at DropForward, nothing lost. |
+| `Dump.WallStopsEveryFish` | The Drop rule's wall stop applies to a dump: all fish land on the dock in front of a wall at DropForward/2. |
+| `Dump.UnderRoofLandsOnDock` | T-065 x T-066: a dump under a roof 150 cm above the eye lands on the dock, not on the roof. |
+| `Drop.ShelfBelowHandCatchesFish` | T-066 "the first surface below the hand": a 40 cm slab under the drop point (with a roof above) catches the fish on its top. |
+| `Lid.CarrierPitchWhileShowingAndReclosed` | The carrier's lid stays at CarriedOpenLidPitch while showing and after turning back; closed in hand = 0 (still carried); reopened = CarriedOpenLidPitch again. |
+| `Net.StaleDumpAfterTurnBackRefused` | Host + client: the carrier's own Dump that arrives after the server turned the cooler back is refused; both fish stay, no items appear, the client sees it carried, open and not shown. |
+
+Gaps (A3 gate):
+- T-063: the bone follow is checked with a moved bone, not by playing the CarryCooler_Idle clip headless (no anim tick in tests); the look (the fists on the handles) is up to the playtester.
+- T-064: whether the hands sit on the handles while the cooler is turned is an art need (T-064a/b show pose), not in this build; the playtester and designer judge it.
+- T-064c: the lid covering the centre view (84% -> 22%) is a visual measure; the playtester and designer check it from the screenshots.
+- T-065: dumping under a sloped or uneven roof or ground is not covered (only flat slabs); the dump's cosmetic flight from the mouth is covered by the implementer test only as its start point.
+- T-066: a roof closer than 150 cm above the eye (e.g. a low hut) is not covered; the spec range is 150-250.
+
 ## T-010 cooler, selling, money, XP and levels (lane eng5)
 (T-030 retired the cooler and sell-point tests of this section; see the T-030 section above.)
 Implementer tests: `Tests/Progression/Progression{Component,Data,Interaction,Rules}Test.cpp`, `Project.Progression.{Cooler,Level,Landed,Money,Authority,Caught,Save,Data,Sell,Interact,Net}.*`, 25 tests (unreal-engineer).
