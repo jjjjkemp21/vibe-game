@@ -3,6 +3,7 @@
 #include "Environment/LureDayClockComponent.h"
 #include "Engine/World.h"
 #include "Environment/LureDayNightSettings.h"
+#include "Game/LureGameState.h"
 #include "GameFramework/GameStateBase.h"
 #include "Net/UnrealNetwork.h"
 #include "TimerManager.h"
@@ -24,8 +25,8 @@ ULureDayClockComponent::ULureDayClockComponent()
 ULureDayClockComponent* ULureDayClockComponent::Get(const UObject* WorldContext)
 {
 	const UWorld* World = WorldContext ? WorldContext->GetWorld() : nullptr;
-	const AGameStateBase* GameState = World ? World->GetGameState() : nullptr;
-	return GameState ? GameState->FindComponentByClass<ULureDayClockComponent>() : nullptr;
+	const ALureGameState* GameState = World ? Cast<ALureGameState>(World->GetGameState()) : nullptr;
+	return GameState ? GameState->GetDayClock() : nullptr;
 }
 
 float ULureDayClockComponent::GetHourOr(const UObject* WorldContext, float Fallback)

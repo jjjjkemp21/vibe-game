@@ -53,13 +53,8 @@ FLureDayCycleRow ULureDayNightSettings::LoadDayCycleRow()
 	TArray<FString> Problems;
 	if (!ResolveRow(Table, Settings->DayCycleRow, Row, Problems))
 	{
-		static bool bWarned = false;
-		if (!bWarned)
-		{
-			bWarned = true;
-			UE_LOG(LogLureDayNight, Warning, TEXT("Day/night: '%s' row '%s' is not usable (%s; source data/tables/DT_DayCycle.json); using the built-in row."),
-				*Settings->DayCycleTable.ToString(), *Settings->DayCycleRow.ToString(), *FString::Join(Problems, TEXT("; ")));
-		}
+		UE_LOG(LogLureDayNight, Warning, TEXT("Day/night: '%s' row '%s' is not usable (%s; source data/tables/DT_DayCycle.json); using the built-in row."),
+			*Settings->DayCycleTable.ToString(), *Settings->DayCycleRow.ToString(), *FString::Join(Problems, TEXT("; ")));
 	}
 	return Row;
 }
