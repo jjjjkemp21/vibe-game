@@ -140,6 +140,33 @@ public:
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category="Starter Cooler", meta=(ClampMin="0"))
 	float StarterCoolerSpacing = 90.0f;
 
+	// ---- T-064: a carried cooler opened and shown (cosmetic: a turn of the cooler's own visual, never its attachment) ----
+	// Each pair turns the carried cooler in its OWN axes (+X = its front, the latch; +Z = its open top) about the middle of
+	// its box, then shifts it by the offset (cm, the same axes). On the carrier's machine the cooler rides the arms' `cooler`
+	// bone with its front toward the eye; on other machines (ThirdPersonCooler*) its front points along the carrier's
+	// forward. Blended over LidOpenTime (open) and DT_Catch ShowTurnTime (show). PLACEHOLDER values, no arm pose of their own.
+
+	/** Carrier's machine, lid open, mouth toward you: the open top tilted toward the eye (negative pitch = top toward +X, the eye) */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category="Carried Cooler")
+	FRotator CarriedOpenRotation;
+
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category="Carried Cooler")
+	FVector CarriedOpenOffset;
+
+	/** Carrier's machine, showing: the open top turned away from the eye (positive pitch = top toward -X, away from you) */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category="Carried Cooler")
+	FRotator CarriedShowRotation;
+
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category="Carried Cooler")
+	FVector CarriedShowOffset;
+
+	/** Other machines, showing: the open top turned toward the carrier's forward (the cooler's +X there: negative pitch) */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category="Third Person")
+	FRotator ThirdPersonShowRotation;
+
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category="Third Person")
+	FVector ThirdPersonShowOffset;
+
 	/** Loads a table if its asset exists (game thread); null with a readable OutError otherwise (no engine load errors). */
 	static const UDataTable* LoadTable(const TSoftObjectPtr<UDataTable>& Ref, const UScriptStruct* ExpectedRow, const TCHAR* Name, FString& OutError);
 };

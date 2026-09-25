@@ -226,6 +226,11 @@ def overlaps(p1: str, s1: str, p2: str, s2: str) -> bool:
 
 
 # ---------------------------------------------------------------- orphans (isolated so tests can stub it)
+def is_agent_id(agent):
+    """Only real subagent ids (a + hex, 7+ chars) can be checked; role names like 'lead' or 'design-mgr' are owners, not transcripts."""
+    return bool(re.fullmatch(r'a[0-9a-f]{6,}', agent or ''))
+
+
 def projects_dir() -> Path:
     """~/.claude/projects/<main repo path with :, \\ and / replaced by '-'>, as tools/lead-check.ps1 computes it."""
     home = os.environ.get('USERPROFILE') or str(Path.home())
@@ -665,7 +670,7 @@ class Board:
             last = self.one('SELECT * FROM events WHERE item=? ORDER BY id DESC LIMIT 1', (r['id'],))
             items.append((r, age(since or r['updated']), last))
             # objectives and questions are owned by managers/the lead, who sleep while their workers run: never orphans
-            if r['status'] == 'doing' and r['kind'] in ('task', 'bug') and not (r['agent'] and agent_running(r['agent'])):
+            if r['status'] == 'doing' and r['kind'] in ('task', 'bug') and not (r['agent'] and (not is_agent_id(r['agent']) or agent_running(r['agent']))):
                 orphans.append(r)
         if self.js:
             self.emit(dumps({'items': [dict(r, age=ag, last=dict(e) if e else None) for r, ag, e in items],
