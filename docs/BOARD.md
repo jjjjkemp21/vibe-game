@@ -10,7 +10,7 @@ Counts: todo 1, done 12.
 
 ## A3
 
-Counts: todo 9, ready 2, doing 5, review 7, merge 1, done 29, dropped 1.
+Counts: todo 9, ready 2, doing 5, review 6, merge 2, done 29, dropped 1.
 
 - 47 obj lead - todo P0 - - - A3 Milestone A3: Jimmy's A2 playtest notes, delivered in sprint
 - 49 obj design - todo P1 - ac3d4af - S2 Sprint 2: fight redesign (limited line + snap, reel in / let
@@ -27,20 +27,21 @@ Counts: todo 9, ready 2, doing 5, review 7, merge 1, done 29, dropped 1.
 - 50 obj art - doing P1 - - - S3 Sprint 3: fish that look alive (upright calm when tired, fas
 - 51 obj eng - doing P1 - - - S4 Sprint 4: cooler handling (bob with arms, open while held +
 - 52 obj design - doing P2 - aade375 - S5 Sprint 5: the world comes alive (day/night cycle; shore wave
-- 88 task eng senior doing P2 eng2 a377a3d 60% T-069a Wave function (C++ + HLSL, one formula), DT_Water, MPC_Water
+- 88 task eng senior doing P2 eng2 a4084af 60% T-069a Wave function (C++ + HLSL, one formula), DT_Water, MPC_Water
 - 68 task art senior review P1 main ab02639 95% T-058 Exhausted fish (stamina 0) stays upright with a calm swim, n
 - 69 task art senior review P1 main ab02639 95% T-059 Fish with stamina: fast, fighting 'run' swim
 - 70 bug art senior review P1 main ab02639 95% T-060 Dangling fish: head stays fixed at the hook, only the body w
 - 72 task art senior review P1 main a18cd09 90% T-062 Cast charge shown in the arms, not only the rod
 - 96 task art mid review P1 main a35597c 90% T-064a FP arm poses: carried cooler open (tilted to eye) + show (tu
-- 87 task design mid review P2 des1 af39d43 - T-068c Presets to DT_TimeOfDay.json, builder places sky rig + night
 - 90 task art junior review P2 main a19b389 50% T-069d SM_WaterGrid tiles: flat technical grid, 2 m near + coarse f
 - 98 task eng mid merge P1 eng1 a6f528d - T-064b Carried cooler open/show arm poses: EFPArmsPose CarryCoolerO
+- 87 task design mid merge P2 des1 af39d43 - T-068c Presets to DT_TimeOfDay.json, builder places sky rig + night
 
 ## (no milestone)
 
-Counts: todo 27, ready 3, doing 5, review 1, merge 6, done 19, dropped 1.
+Counts: todo 28, ready 3, doing 3, review 2, merge 7, done 20, dropped 1.
 
+- 131 task qa junior todo P0 - - - T-075q QAFishingDataTest FishingRowsMeetDesignLimits pins BobberSca
 - 2 obj lead - todo P1 - - - P-004 Agent work board (board.py) live in the studio
 - 22 q lead - todo P2 - - - Q-03 Should losing a fish cost the bait?
 - 23 q lead - todo P2 - - - Q-04 Freshness loss rates OK?
@@ -73,10 +74,10 @@ Counts: todo 27, ready 3, doing 5, review 1, merge 6, done 19, dropped 1.
 - 81 bug eng junior ready P3 - - - T-070 Playtest driver: a pd.console query can end the PIE session
 - 119 bug eng senior doing P0 eng9 a20f479 - T-075 PT-S1 major: hooked fish never visible in the water during t
 - 120 bug eng senior doing P0 eng4 ad0b612 - T-076 PT-S1 major: own view of the open carried cooler hides the f
-- 124 task eng mid doing P0 eng5 a3da579 - T-075a Bobber reads at 18 m (scale ~1.75x) and the bite dips >= 15
-- 125 task eng mid doing P0 eng13 a9ce1a1 - T-075b Fight camera yaw clamped (~35 deg) so the rod stays on scree
-- 117 task eng mid doing P1 eng10 a32f6f2 - T-062b Server delays the bobber launch to the montage's whip frame
+- 130 task qa junior doing P1 eng10 acf0557 - T-062q Update QA.State.CastingLastsTheFlightTime to include NetStat
 - 116 task eng mid review P1 eng10 a32f6f2 - T-062a Cast arms (owner cosmetics): CastCharge01/bCastPose/strain,
+- 117 task eng mid review P1 eng10 a32f6f2 - T-062b Server delays the bobber launch to the montage's whip frame
+- 124 task eng mid merge P0 eng5 a3da579 - T-075a Bobber reads at 18 m (scale ~1.75x) and the bite dips >= 15
 - 102 task eng mid merge P1 eng6 aa06c50 - T-058b Exhausted fish plays the new Tired role (A_Fish_Swim_Tired),
 - 103 task eng mid merge P1 eng6 aa06c50 - T-060a Hooked (dangling) fish plays Hang on every machine in Hook m
 - 104 task eng mid merge P1 eng6 aa06c50 - T-059b DT_FishVisual: escape RoleTailBeats to the S3 clips + design
