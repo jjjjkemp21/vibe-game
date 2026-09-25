@@ -308,7 +308,25 @@ class TestGuards(BoardCase):
         self.ok('set', str(art), 'status=review', 'note=ok')
         self.fail_hint('set', str(art), 'status=merge', hint=f'set {art} lane=<lane> status=merge')
         self.ok('set', str(art), 'status=done', 'evidence=Saved/AgentLogs/x.png')
-        self.fail_hint('set', str(self.new()), 'status=done', hint='status=ready')
+        n = self.new()
+        self.fail_hint('set', str(n), 'status=done', hint=f'set {n} status=done commit=<hash> note="<where it landed>"')
+
+    def test_todo_ready_to_done_needs_commit_and_note_in_same_set(self):
+        t = self.new()
+        hint = f'set {t} status=done commit=<hash> note="<where it landed>"'
+        self.fail_hint('set', str(t), 'status=done', 'note=merged earlier', hint=hint)
+        self.fail_hint('set', str(t), 'status=done', 'commit=abc1234', hint=hint)
+        self.ok('set', str(t), 'commit=abc1234')
+        self.fail_hint('set', str(t), 'status=done', 'note=merged earlier', hint=hint)
+        self.ok('set', str(t), 'status=done', 'commit=abc1234', 'note=merged in abc1234 before the item existed')
+        r = self.new()
+        self.ok('set', str(r), 'status=ready')
+        self.fail_hint('set', str(r), 'status=done', 'evidence=x.png', 'note=x', hint=f'set {r} status=done commit=<hash> note="<where it landed>"')
+        self.ok('set', str(r), 'status=done', 'commit=def5678', 'note=already on main')
+        self.assertEqual([self.status(i) for i in (t, r)], ['done', 'done'])
+        d = self.new()
+        self.ok('set', str(d), 'status=ready')
+        self.assertIn('ready->review not allowed', self.fail_hint('set', str(d), 'status=review', 'note=x'))
 
     def test_blocked_needs_note_and_restores_previous(self):
         t = self.new()
