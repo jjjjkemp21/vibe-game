@@ -5,6 +5,7 @@
 #include "Animation/AnimSequenceBase.h"
 #include "Character/LureCharacterMovementComponent.h"
 #include "Character/LureCharacterSettings.h"
+#include "Dev/LureDebugMenu.h"
 #include "Character/LureInputSubsystem.h"
 #include "Catch/LureHandsComponent.h"
 #include "Interaction/LureInteractionComponent.h"
@@ -889,6 +890,7 @@ void ALurePlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInpu
 	{
 		Fishing->BindInput(*Input); // Cast (hold + release) and Hook (T-006)
 	}
+	ULureDebugMenu::BindInput(*Input, Cast<APlayerController>(Controller)); // T-051: F6 debug menu, - / = mouse sensitivity
 }
 
 void ALurePlayerCharacter::HandleMove(const FInputActionValue& Value)
