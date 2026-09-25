@@ -44,6 +44,10 @@ fishing (pillars 1, 6). Everything is data: a new region's sky, fog and waves ar
 4. **Real time per phase is data.** Each phase has `RealMinutes`, and the clock runs each phase at its own rate, so the
    day lasts the sum of the four (20 min): Dawn 2, Day 9, Dusk 2, Night 7. Nights last long enough to fish the night
    fish and short enough that a 15-25 min slice session sees a whole cycle. Rule 1's rate is the average.
+   How the two columns relate (T-068a): the phase minutes are weights, scaled so they sum to DayLengthMinutes. The
+   Default row's minutes already sum to 20, so they run as written; a row with DayLengthMinutes 10 halves every phase
+   (AC2). The row is validated (phase starts in [0, 24) and strictly ascending Dawn < Day < Dusk < Night, minutes > 0,
+   DayLengthMinutes > 0); an invalid or missing row runs the built-in row (= Default) with one warning.
 5. The HUD shows a plain-text clock, for example `06:40 Dawn` (placeholder UI).
 6. Server-only dev commands for playtests and screenshots: `Lure.Time.Set <hour>`, `Lure.Time.Scale <x>`
    (0 = frozen) and `Lure.Time.Phase <Dawn|Day|Dusk|Night>`. Every client follows them.
@@ -235,6 +239,32 @@ S5 #52; levels and dependencies are set there):
 | T-069b | eng senior | The ripple sim: render-target subsystem centred on the camera, sources from DT_WaterRipple and replicated state, the sim and splat materials created by a Python function in pipeline_unreal.py; tests AC16-17 | T-069a (MPC names) |
 | T-069c | design, level-designer senior | Water graph v5 in build_level.py (grid mesh, waves, facets, shore foam, swash, wet sand, ripple normals) + the headless shore-field bake from the layout (AC12); editor booking for the rebuild + AC13, AC14, AC18-20 shots | T-069a, T-069b, T-069d |
 | T-069d | art, model-artist junior | SM_WaterGrid tiles (flat technical grid, 2 m near and a coarse far ring, <= 60k triangles total, pivot at the center) | - |
+
+**Clock contract (T-068a, engineering):**
+- Code: `Environment/LureDayClock.h` (pure, world-free: `FLureDayClock` over one `FLureDayCycleRow`, `ELureDayPhase`,
+  replicated `FLureDayClockState`, log `LogLureDayNight`); `Environment/LureDayClockComponent.h`
+  (`ULureDayClockComponent` on `Game/LureGameState.h` `ALureGameState`, which `ALureGameMode` sets as `GameStateClass`);
+  `Environment/LureDayNightSettings.h` (`ULureDayNightSettings`: `DayCycleTable` = `/Game/Data/DT_DayCycle`, row
+  `Default`; T-068b adds DT_TimeOfDay here).
+- Reading it (every machine): `ULureDayClockComponent::Get(WorldContext)` then `GetHour()` [0, 24), `GetPhase()`,
+  `GetPhaseAlpha()` [0, 1) (game hours through the phase), `GetClockText()` ("06:40 Dawn"), `GetClock()` (the pure math:
+  phase start hours, rates, `FormatClock`). `OnPhaseChanged(New, Old)` fires on every machine when the computed phase
+  changes (a timer armed for the next boundary; no tick); a jump over several phases fires once.
+- Replication: the server replicates only `FLureDayClockState` (reference hour, reference server time, time scale), and
+  only when it changes (session start at StartHour, SetHour, SetTimeScale, SetPhase). Every machine computes
+  `HourAt(State, AGameStateBase::GetServerWorldTimeSeconds())`. The session starts at the row's `StartTimeScale`
+  (real-time multiplier; the shipped Default row has 0, so the clock stays at StartHour until `Lure.Time.Scale`, until
+  T-068b sets 1 with the sky rig). Changes are server-only (`BlueprintAuthorityOnly`; a
+  client call returns false); there is no RPC.
+- Bite: `ULureFishingComponent::MakeEnvironment` uses `TimeOfDayOverride` if >= 0, else the clock's hour
+  (`ULureDayClockComponent::GetHourOr`), else `DefaultTimeOfDayHours`.
+- HUD: `ALureHUD::GetClockText` draws one plain line top-centre.
+- Dev (non-Shipping, `Dev/LureTimeDevCommands.h`): `Lure.Time.Set <hour|HH:MM>`, `Lure.Time.Scale <x>` (0 = frozen),
+  `Lure.Time.Phase <Dawn|Day|Dusk|Night>`; server/standalone world only, a client world refuses with a message. No
+  argument prints the clock.
+- Tests `Project.Environment.Clock.*` (`Tests/Environment/DayClockTest.cpp`): Data (DT_DayCycle.json rows, fallback =
+  Default, validation), Pure (AC1, AC2, AC6 format), World (phase events + HUD, AC1/AC6; the bite hour with a night-only
+  species, AC3), Net (Set/Scale/Phase reach every client and a client can't set, AC4; a late joiner, AC5).
 
 Shared interface (the C++ and builder tasks agree on it first; engineering confirms it in this section): the material
 parameter collection `MPC_Water` (WaterZ, WaveTime, WaveScale, the ocean wave params, the shore params, the ripple area

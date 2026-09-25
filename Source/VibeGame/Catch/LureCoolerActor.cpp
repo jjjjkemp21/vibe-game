@@ -226,7 +226,7 @@ void ALureCoolerActor::BeginPlay()
 		Storage->SetDecayRate(bLidOpen ? GetRow().OpenDecayRate : GetRow().ClosedDecayRate);
 	}
 	ApplyCollision();
-	LidPitch = bLidOpen ? ULureCatchSubsystem::GetTuningFor(this).LidOpenPitch : 0.0f;
+	LidPitch = GetLidTargetPitch(ULureCatchSubsystem::GetTuningFor(this));
 	LastLidPulseId = LidPulseId;
 	LidPulseTimeLeft = 0.0f; // no clack for a pulse that happened before this machine saw the cooler
 	if (LidPivot)
@@ -1183,6 +1183,16 @@ void ALureCoolerActor::RefreshDisplay()
 	SetDisplayVisible(bDisplayVisible);
 }
 
+float ALureCoolerActor::GetLidTargetPitch(const FLureCatchRow& Tuning) const
+{
+	if (!bLidOpen)
+	{
+		return 0.0f;
+	}
+	// T-064c: in its carrier's own first-person view the open lid folds back behind the box (cosmetic, local only).
+	return bFirstPersonRendering ? Tuning.CarriedOpenLidPitch : Tuning.LidOpenPitch;
+}
+
 void ALureCoolerActor::UpdatePresentation(float DeltaSeconds)
 {
 	if (!LidPivot)
@@ -1190,7 +1200,7 @@ void ALureCoolerActor::UpdatePresentation(float DeltaSeconds)
 		return;
 	}
 	const FLureCatchRow& Tuning = ULureCatchSubsystem::GetTuningFor(this);
-	float Target = bLidOpen ? Tuning.LidOpenPitch : 0.0f;
+	float Target = GetLidTargetPitch(Tuning);
 	if (LidPulseTimeLeft > 0.0f && !bLidOpen)
 	{
 		LidPulseTimeLeft -= DeltaSeconds;
