@@ -10,7 +10,7 @@ Counts: todo 1, done 12.
 
 ## (no milestone)
 
-Counts: todo 19, ready 2, doing 1, done 8, dropped 1.
+Counts: todo 20, ready 2, review 1, done 9, dropped 1.
 
 - 2 obj lead - todo P1 - - - P-004 Agent work board (board.py) live in the studio
 - 21 q lead - todo P2 - - - Q-02 Fight feel and length OK?
@@ -31,6 +31,7 @@ Counts: todo 19, ready 2, doing 1, done 8, dropped 1.
 - 34 task art junior todo P3 - - - T-038 Cooler 4-fish fills: vary the top fish yaw so orange fish do
 - 39 task art mid todo P3 - - - T-042 Visual polish from gate d: held fish near-black when backlit
 - 44 task eng junior todo P3 - - - T-043 A fish hanging on the line turns its side toward the viewer
+- 45 task lead junior todo P3 - - - T-041d Editor check (after Jimmy plays): ghost line loop on fast tu
 - 36 bug art mid ready P2 - - - T-040 Cooler: in-game shop view shows 1/4 eyes with 4 Bonefish (Bl
 - 18 task qa mid ready P3 - - - T-035 Split docs/TEST_PLAN.md into docs/test-plan/<system>.md
-- 43 bug eng mid doing P3 eng1 a8ab034 - T-041c Line: ghost line loop for ~1 s during a fast turn (sim or TS
+- 46 task eng junior review P2 main ac8c7f8 - P-004d Pilot fixes: board allows todo|ready->done with commit+note
