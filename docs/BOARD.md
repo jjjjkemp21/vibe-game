@@ -10,7 +10,7 @@ Counts: todo 1, done 12.
 
 ## A3
 
-Counts: todo 9, ready 2, doing 8, review 5, done 25, dropped 1.
+Counts: todo 9, ready 2, doing 12, review 5, done 25, dropped 1.
 
 - 47 obj lead - todo P0 - - - A3 Milestone A3: Jimmy's A2 playtest notes, delivered in sprint
 - 49 obj design - todo P1 - ac3d4af - S2 Sprint 2: fight redesign (limited line + snap, reel in / let
@@ -24,6 +24,10 @@ Counts: todo 9, ready 2, doing 8, review 5, done 25, dropped 1.
 - 78 task eng senior ready P2 - - - T-068 Day/night cycle (T-013)
 - 79 task eng senior ready P2 - - - T-069 Water: shore waves, ocean motion, reactive ripples
 - 48 obj eng - doing P0 - - - S1 Sprint 1: line + fight fixes, even fight, faster reel, simpl
+- 110 task qa mid doing P0 qa1 aa1ea26 - QA-A3a A3 gate QA: fight/line gap tests (T-044,045,046,047,049,050,
+- 111 task qa mid doing P0 qa2 a098caa - QA-A3b A3 gate QA: fish visual gap tests (T-048,048b,043,058a,059a,
+- 112 task qa mid doing P0 qa3 a7e9682 - QA-A3c A3 gate QA: catch/cooler gap tests (T-063,064,064c,065,066)
+- 113 task qa junior doing P0 qa4 a74c96e - QA-A3d A3 gate QA: day clock T-068a gap tests + T-051 audit
 - 50 obj art - doing P1 - - - S3 Sprint 3: fish that look alive (upright calm when tired, fas
 - 51 obj eng - doing P1 - - - S4 Sprint 4: cooler handling (bob with arms, open while held +
 - 72 task art senior doing P1 main a18cd09 55% T-062 Cast charge shown in the arms, not only the rod
@@ -39,7 +43,7 @@ Counts: todo 9, ready 2, doing 8, review 5, done 25, dropped 1.
 
 ## (no milestone)
 
-Counts: todo 20, ready 3, doing 2, review 2, merge 1, done 17, dropped 1.
+Counts: todo 20, ready 3, doing 2, review 2, done 18, dropped 1.
 
 - 2 obj lead - todo P1 - - - P-004 Agent work board (board.py) live in the studio
 - 22 q lead - todo P2 - - - Q-03 Should losing a fish cost the bait?
@@ -68,4 +72,3 @@ Counts: todo 20, ready 3, doing 2, review 2, merge 1, done 17, dropped 1.
 - 105 task eng mid doing P1 eng7 a47aed7 - T-061a FishKick notifies kick the line (hang); verify T-061 wiggle
 - 102 task eng mid review P1 eng6 aa06c50 - T-058b Exhausted fish plays the new Tired role (A_Fish_Swim_Tired),
 - 103 task eng mid review P1 eng6 aa06c50 - T-060a Hooked (dangling) fish plays Hang on every machine in Hook m
-- 106 task eng mid merge P1 eng9 a623b26 - T-048b Fighting fish swings toward the move's swim direction, not i
