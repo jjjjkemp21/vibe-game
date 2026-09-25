@@ -8,6 +8,30 @@ ULureDayNightSettings::ULureDayNightSettings()
 {
 	DayCycleTable = TSoftObjectPtr<UDataTable>(FSoftObjectPath(TEXT("/Game/Data/DT_DayCycle.DT_DayCycle")));
 	DayCycleRow = TEXT("Default");
+	TimeOfDayTable = TSoftObjectPtr<UDataTable>(FSoftObjectPath(TEXT("/Game/Data/DT_TimeOfDay.DT_TimeOfDay")));
+}
+
+namespace LureDayNightSettingsPrivate
+{
+	/** The table if loaded or if its package exists (an unimported table must not log a load error in every world). */
+	const UDataTable* LoadIfExists(const TSoftObjectPtr<UDataTable>& Ref)
+	{
+		if (Ref.IsNull())
+		{
+			return nullptr;
+		}
+		if (const UDataTable* Loaded = Ref.Get())
+		{
+			return Loaded;
+		}
+		const FString Package = Ref.ToSoftObjectPath().GetLongPackageName();
+		return !Package.IsEmpty() && FPackageName::DoesPackageExist(Package) ? Ref.LoadSynchronous() : nullptr;
+	}
+}
+
+const UDataTable* ULureDayNightSettings::LoadTimeOfDayTable()
+{
+	return LureDayNightSettingsPrivate::LoadIfExists(GetDefault<ULureDayNightSettings>()->TimeOfDayTable);
 }
 
 bool ULureDayNightSettings::ResolveRow(const UDataTable* Table, FName RowName, FLureDayCycleRow& OutRow, TArray<FString>& OutProblems)

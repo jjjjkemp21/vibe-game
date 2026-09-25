@@ -253,8 +253,8 @@ S5 #52; levels and dependencies are set there):
 - Replication: the server replicates only `FLureDayClockState` (reference hour, reference server time, time scale), and
   only when it changes (session start at StartHour, SetHour, SetTimeScale, SetPhase). Every machine computes
   `HourAt(State, AGameStateBase::GetServerWorldTimeSeconds())`. The session starts at the row's `StartTimeScale`
-  (real-time multiplier; the shipped Default row has 0, so the clock stays at StartHour until `Lure.Time.Scale`, until
-  T-068b sets 1 with the sky rig). Changes are server-only (`BlueprintAuthorityOnly`; a
+  (real-time multiplier; the shipped Default row has 1, turned on with the sky rig in T-068b, so the sky and a moving
+  clock ship together; 0 keeps the clock at StartHour until `Lure.Time.Scale`). Changes are server-only (`BlueprintAuthorityOnly`; a
   client call returns false); there is no RPC.
 - Bite: `ULureFishingComponent::MakeEnvironment` uses `TimeOfDayOverride` if >= 0, else the clock's hour
   (`ULureDayClockComponent::GetHourOr`), else `DefaultTimeOfDayHours`.
@@ -265,6 +265,40 @@ S5 #52; levels and dependencies are set there):
 - Tests `Project.Environment.Clock.*` (`Tests/Environment/DayClockTest.cpp`): Data (DT_DayCycle.json rows, fallback =
   Default, validation), Pure (AC1, AC2, AC6 format), World (phase events + HUD, AC1/AC6; the bite hour with a night-only
   species, AC3), Net (Set/Scale/Phase reach every client and a client can't set, AC4; a late joiner, AC5).
+
+**Sky rig contract (T-068b, engineering):**
+- Code: `Environment/LureTimeOfDay.h` (pure, world-free): `FLureTimeOfDayRow` (DT_TimeOfDay, rows `<Region>_<Phase>`,
+  colours as sRGB hex; `FogColor` is an on-screen target), `FLureTimeOfDayLook` (the resolved numbers, colours linear) and
+  `FLureTimeOfDayBlend` (ParseRowName, ValidateRow/ValidateTable, GatherRegion, Resolve, Lerp, BuildAnchors, Evaluate,
+  SunAzimuth/SunRotation/MoonRotation, FilmicToneMap/FilmicInverse/OnScreenToScene = the port of levels/layout.py, and
+  ApplyFixedExposure). `Environment/LureSkyRig.h` `ALureSkyRig` (one per level, not replicated; tags in `LureSkyTags`).
+  `ULureDayNightSettings::TimeOfDayTable` = `/Game/Data/DT_TimeOfDay`.
+- **Anchors (engineering decision, for Design's §3.2):** each (region, phase) row is exact at its anchor hour: its
+  phase's midpoint from DT_DayCycle (Dawn 5-7 -> 06:00, Day 7-17 -> 12:00, Dusk 17-19 -> 18:00, Night 19-5 -> 00:00), or
+  the row's `AnchorHour` column when >= 0. Between anchors every value blends linearly in game hours, colours per
+  linear channel (AC7). So 12:00 = Tropical_Day and 22:00 = 2/3 of the way from Dusk to Night (lamps full, AC8).
+- **Fog colour:** the rows keep the on-screen hex targets; the blend mixes the targets (linear) and the EV, then the rig
+  undoes the blended exposure and the filmic tonemapper (`FLureTimeOfDayLook::GetFogSceneColor`), as the builder does.
+- **Sun and moon:** the sun's yaw turns steadily with the hour: azimuth 0 (east) at sunrise = the Dawn midpoint, 90 at
+  noon, 180 (west) at sunset = the Dusk midpoint, on through 270 at midnight (180 deg over the day, 180 over the night).
+  The rig's `EastYawDegrees` is the level yaw that faces east (default 0 = level +X, rule 8). The elevation is the
+  row's `SunPitch`. The moon is exactly opposite (azimuth + 180, elevation negated), dim, from its own row values.
+- Applying (every machine; skipped on a dedicated server): every `ApplyIntervalSeconds` (rig property, default 0.1 s)
+  while the clock runs, at once on `OnPhaseChanged` and on the clock's native `OnClockChanged` (Set/Scale/Phase, a new
+  row, a replicated state), and nothing while it is frozen. Targets: `EditInstanceOnly` refs (`SunLight`, `MoonLight`,
+  `SkyAtmosphere`, `SkyLight`, `HeightFog`, `PostProcessVolume`); unset ones are found once at BeginPlay (sun: tag
+  `Lure.Sun`, else the atmosphere sun light, else the first directional light without `Lure.Moon`; moon: tag
+  `Lure.Moon` only; the others: the first of their class, the volume unbound) and a missing one is skipped with one
+  warning. `Lure.NightLight` lights are gathered once at BeginPlay (their placed intensity = full) and get
+  full x NightLightIntensity (hidden at 0). Exposure: AEM_Manual, no physical camera, bias = -EV100 (never auto). The
+  SkyLight is switched to real-time capture if it isn't (time-sliced by the renderer, never recaptured by hand). No
+  DT_TimeOfDay or no rows for the region: one warning and the level keeps its built look.
+- Water: `WaveScale` -> `ULureWaterSurfaceSubsystem::SetWaveScale`, the three colours -> `SetWaterColors(Shallow, Deep,
+  Foam)` (linear); the subsystem is the only writer of MPC_Water (lands after T-069a).
+- Tests `Project.Environment.Sky.*` (`Tests/Environment/SkyRigTest.cpp`): Data (DT_TimeOfDay.json rows, validation),
+  Pure (AC7 blend = linear mean, anchors, manual exposure; the fog target vs layout.py; the sun yaw rule), World (AC8
+  night lights 0 at 12:00 and full at 22:00, every target, a clock jump applies at once, the budget; missing targets
+  and rows).
 
 Shared interface (the C++ and builder tasks agree on it first; engineering confirms it in this section): the material
 parameter collection `MPC_Water` (WaterZ, WaveTime, WaveScale, the ocean wave params, the shore params, the ripple area

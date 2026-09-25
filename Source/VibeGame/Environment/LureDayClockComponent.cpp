@@ -91,7 +91,7 @@ void ULureDayClockComponent::Rebase(double NewHour, float NewScale)
 		Owner->ForceNetUpdate();
 	}
 	UE_LOG(LogLureDayNight, Log, TEXT("Clock: %s, scale %g (server time %.2f)"), *Clock.FormatClock(State.ReferenceHour), State.TimeScale, State.ReferenceServerTime);
-	RefreshPhase();
+	RefreshPhase();	OnClockChanged.Broadcast();
 }
 
 bool ULureDayClockComponent::SetHour(float Hour)
@@ -136,6 +136,7 @@ void ULureDayClockComponent::SetDayCycleRow(const FLureDayCycleRow& Row)
 	else if (HasBegunPlay())
 	{
 		RefreshPhase();
+		OnClockChanged.Broadcast();
 	}
 }
 
@@ -177,6 +178,7 @@ void ULureDayClockComponent::OnRep_State()
 	if (HasBegunPlay())
 	{
 		RefreshPhase();
+		OnClockChanged.Broadcast();
 	}
 }
 
