@@ -73,4 +73,38 @@ Already known (no need to write these down)
    Your notes:
 
 
+--- Jimmy's Feedback---
+
+Feature changes
+ - WHEN fish stamina reaches 0, THEN do not have the fish lay sideways. This is dumb. It should remain upright, just with a calmer swimming animation
+ - WHEN a fish has stamina, I want their animation to be more fast paced, and look like they are trying to "run" or "fight"
+ - Reel in speed is way too slow. When a user reels in a fish, the speed of the battle should be dictated by the tension management (ex: allowing a fish to run as to not snap your line increases fight time). I want to have the battles feel intense for tougher fish in the future
+ - WHEN a fish is hooked and on a players fishing line after being caught, when it wiggles left or right, that should affect the physics and make the line move similar to the physics of user rotating their camera
+ - AFTER a user has cast, instead of allowing them to instantly reel in their line, it should reel in realistically and user sees the bobber moving towards them
+ - Animation for charging casting force needs to also be represented in the arms, not just the rod moving up/down
+ - User should be able to open their cooler while holding it, which results in the lid opening and showing the fish inside. He can then face the mouth of the cooler away from himself, as if he is showing it to someone
+ - WHEN fighting a fish, the fish fights strong immediately and almost breaks my rod. However after less than a second it will then calm down and the fight is easy. I dont expect the beginner fish to be difficult to catch, but the fight feels uneven
+ - During a fish fight, the bobber can dip under water which is how real fishing works
+
+Feature additions
+ - Fishing line length should be limited, if a player lets a fish "run", then they will only have a limited amount of fishing line length before it runs out and their tension exceeds 100% and the line snaps
+ - Player should have the ability to reel in, or let line out
+ - Add a debug menu that shows all key binds, and allows user to configure their mouse sensitivity. Do not make the UI fancy, I want this to be very rough and simple, since I will ask you to make a flushed out UI at a later date. For playability, I need something simple 
+ - Make a way for the user to dump fish out of a cooler while holding it
+ - Add the day/night cycle
+ - make a water animation. Near or touching the coast there should be waves, with them crashing on the beach. The water will run up the sand, then pull back as the next wave rolls in like real life. Also for water in the ocean or behind the wave line, it should have animations as well. If a bobber or line is traveling thru the water, it should create ripple effects. Not particle, but water itself should be reactive
+
+Bugs
+ - WHEN a player catches a fish and it is dangling on the rod, THEN the longer it dangles, the thicker the fishing line gets until it is a massive diameter
+ - WHEN a player walks around while reeling in a fish, THEN the bobber + fish follow the players movements. This is unrealistic. If the player moves away, the bobber and fish should remain in the same place and only be reeled towards the player's direction
+ - WHEN player casts the bobber, THEN the fishing line has 0 tension and is laying on the water. There should be some tension within the fishing line upon cast instead of the line just dangling in the water
+ - WHEN player reels in a fish while standing on a dock, AND the player moves backwards, THEN the fish will magically phase thru the dock along with the fishing line. Instead, have proper physics where the fish instead is lifted out of the water at the EDGE of the dock, where the fishing line can not phase thru
+ - WHEN player catches a fish and it is dangling on the rod, the wiggle animation results in the head not being connected to the fishing line. Instead the head should stay stationary as if HOOKED to a fixed point (the fishing hook), and the body should wiggle.
+ - WHEN holding the cooler, the "up/down" idle animation plays on the arms, BUT the cooler remains at a fixed height making the animation look strange
+ - WHEN standing under a roof like the shop, AND user drops a fish, THEN it teleports on top of the shop roof
+ - WHEN a fish gets hooked in the water, THEN the bobber looks as if the fish is hooked by the tail, rather than the mouth
+
+Notes
+ - Test multiplayer, but do not let it be a blocker to continue. Feel free to put multiplayer experience in the "backlog" so we can refine gameplay mechanics and other aspects of the core game + art + map
+
 
