@@ -24,8 +24,8 @@ The lead may overrule any of these; a change is a data edit unless marked (code)
   default 500 cm) above the cast origin (or the water, if higher), but never above the first solid surface straight above
   the cast origin (a roof over the caster): the flight starts under that roof, so under a roof the bobber lands on the
   ground/deck/water under it (or past it), never on the roof top. From open ground (nothing overhead) a cast onto a roof
-  still lands on the roof. The fish drop (`ALureFishItem`, distance 0 from the drop point) follows the same rule, so a fish
-  dropped under a roof lands on the floor. Tests: `Project.Fishing.Cast.UnderRoof.*`.
+  still lands on the roof. A zero-distance call (landing straight below the origin) follows the same rule. (The fish
+  drop has its own under-roof rule since T-066, catch-handling-rules.md.) Tests: `Project.Fishing.Cast.UnderRoof.*`.
 - "Solid" (fishing-loop playtest fix, 2026-09-23): the cast traces use the `LureCast` trace channel
   (`ECC_GameTraceChannel1`, Config/DefaultEngine.ini, default Block; the Trigger/OverlapAll/Pawn profiles ignore it) and
   `FLureFishingSpots::TraceCast`, which passes through anything that isn't solid level geometry: every volume and

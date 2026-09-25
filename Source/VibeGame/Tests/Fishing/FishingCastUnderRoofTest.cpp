@@ -1,7 +1,7 @@
 // T-071: a cast (or a fish drop) from under a roof lands under the roof, never on top of it.
 // Project.Fishing.Cast.UnderRoof.* : a transient game world with ground (top z = 0) for x <= 600, Lure.Water (top z = -30)
 // everywhere, and a box roof 300..320 cm up over x in [-500, 800]. FLureFishingSpots::ResolveLanding is called directly
-// (what ULureFishingComponent's server cast and ALureFishItem's drop use).
+// (what ULureFishingComponent's server cast uses).
 
 #include "CoreMinimal.h"
 #include "Misc/AutomationTest.h"
@@ -130,7 +130,7 @@ bool FLureCastUnderRoofDropTest::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
-	// ALureFishItem's drop: Distance 0 from hand height at the drop point. Its "flight" aims at the water under the ground, so
+	// A zero-distance landing from hand height, straight down (what the fish drop used before T-066). Its "flight" aims at the water under the ground, so
 	// it reports blocked (by the ground, pulled back 0 cm): only where it rests matters here.
 	TestLanding(*this, TEXT("a zero-distance drop under the roof"), W.Throw(FVector(300.f, 0.f, 120.f), 0.f), 300.f, false, 0.f,
 		/*bCheckNotBlocked*/ false);
