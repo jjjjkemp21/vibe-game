@@ -65,6 +65,8 @@ The lead may overrule any of these; a change is a data edit unless marked (code)
   after RebiteWait; True = the line comes in.
 - Early press (before a bite, nibbles included): `EarlyHook` = ReelIn (default: press to reel in and recast), Ignore, or
   Spook (the bite is pushed back SpookDelay). On land or with nothing biting, a press always reels in.
+  **Changed by fight-v2.md 3.4 (T-055, Jimmy 2026-09-24): no instant reel-in.** Holding Cast retrieves the bobber across
+  the water at RetrieveSpeed; the cast ends when it reaches the rod or the water's edge. Forced reel-ins stay instant.
 - Hooked: the reel fight (T-007) runs until landed, snapped or the hook is thrown: see docs/specs/reel-fight-rules.md.
   Debug only: AutoLandDelay > 0 skips the fight and lands the fish after that many seconds (shipped: 0).
 
