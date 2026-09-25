@@ -37,6 +37,7 @@ Lead / producer: priorities, task board, editor booking, integration to main, pu
 
 ## 3. Shared resources (booked through the lead)
 - **The editor** (unreal-mcp): one user at a time across the whole studio. Ask the lead for a booking with the purpose and the expected length. While you hold it, only your editor-operator or playtester may use it. Release it as soon as you're done.
+- **designer-low for art previews:** the art manager may start it directly for preview reviews before import (no shared resource involved).
 - **Main branch, push, release gate:** the lead only.
 - **Builds:** lanes build in parallel, and `-WaitMutex` serializes the compiler. Don't start a build you don't need.
 

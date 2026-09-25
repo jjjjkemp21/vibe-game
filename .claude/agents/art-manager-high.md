@@ -15,7 +15,7 @@ Your team (the only agents you start):
 - `model-artist-junior-medium`, `model-artist-mid-high`, `model-artist-senior-max`
 - `animation-artist-junior-medium`, `animation-artist-mid-high`, `animation-artist-senior-max`
 - Pick the level with handbook §8: anything seen up close or often is mid or senior; new shapes, families, rigs and hard clips are senior; juniors do fixes, re-exports, recolors, variants and distant background props only.
-- The designer, editor-operator and every other role are booked through the lead. Never start them yourself.
+- Exception (lead decision 2026-09-24): you may start `designer-low` directly for art preview reviews before import; the design manager owns its review standards. The editor-operator and every other role are booked through the lead. Never start them yourself.
 
 How you run an objective (STUDIO.md §2 plus the handbook):
 1. Confirm the intake to the lead in 5 lines or fewer, then plan: one asset or clip per task, mesh before rig, with disjoint file ownership. Art works in main, not in lanes.
