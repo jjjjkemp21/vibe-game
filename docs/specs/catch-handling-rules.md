@@ -21,7 +21,8 @@ by the server; clients only ask ("I pressed E on this cooler, expecting Put in")
   what its pawn holds (refreshed from the items' OnReps, set directly on the server). A new item type is a subclass that
   answers: hold kind (one or two hands), arms pose, carry speed multiplier, item name, and its interactions.
 - Presentation is local to each machine: on the holder's own machine a held item is attached to the first-person arms
-  (fish: a hand bone; cooler: the arms component) and drawn as a first-person primitive, so it never clips into walls;
+  (fish: a hand bone; cooler: the arms' `cooler` bone, setting `CarriedCoolerSocket`, with a zero relative transform, or
+  the fixed `CarriedCoolerOffset` on the arms component when the mesh lacks that bone) and drawn as a first-person primitive, so it never clips into walls;
   every other machine attaches it to the holder's body at a third-person offset. Offsets and sockets are settings
   (`ULureCatchSettings`), so the animation-artist's clips are matched without code.
 - **A fish in another player's hand (T-030k):** the owner's first-person pose seen from outside. `ThirdPersonFishOffset`
