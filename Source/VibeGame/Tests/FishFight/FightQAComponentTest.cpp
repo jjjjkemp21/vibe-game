@@ -383,8 +383,9 @@ namespace LureFightQA
 				bNeverSimulated &= Copy.Value->GetFightState().Steps == 0;
 				if (CopyFight.bActive && Copy.Value->GetFishingState() == ELureFishingState::Hooked)
 				{
-					const float Ride = static_cast<float>(FVector::Dist2D(Copy.Value->GetBobberLocation(), Copy.Value->GetOwner()->GetActorLocation()));
-					bBobberRides &= FMath::IsNearlyEqual(Ride, CopyFight.LineOut, 2.f);
+					// T-045: the bobber rides on the replicated FishLocation, wherever this copy's own pawn stands.
+					const float Ride = static_cast<float>(FVector::Dist2D(Copy.Value->GetBobberLocation(), FVector(CopyFight.FishLocation)));
+					bBobberRides &= Ride <= 2.f;
 					bHud &= Copy.Value->GetStatusText().Contains(TEXT("Tension ["));
 				}
 			}
@@ -392,7 +393,7 @@ namespace LureFightQA
 		}
 		TestTrue(FString::Printf(TEXT("the server landed the fish (%s)"), *ResultName(Server->GetNetState().LastResult)), Server->GetNetState().LastResult == ELureFishingResult::Landed);
 		TestTrue(FString::Printf(TEXT("both copies matched the server's fight state and fish after every update (%d updates)"), Updates), bAllMatch && Updates > 5);
-		TestTrue(TEXT("both copies draw the bobber on the fish (LineOut from their player)"), bBobberRides);
+		TestTrue(TEXT("both copies draw the bobber on the fish (at the replicated FishLocation)"), bBobberRides);
 		TestTrue(TEXT("both copies show the tension readout while it is on"), bHud);
 		TestTrue(TEXT("the copies never simulated the fight"), bNeverSimulated);
 		for (const TPair<const TCHAR*, ULureFishingComponent*>& Copy : Copies)
@@ -840,9 +841,6 @@ namespace LureFightQA
 		{
 			return false;
 		}
-		// A second platform far behind the dock (more than MaxLineLength from any bobber in front of the dock).
-		const FVector FarFeet(-4000.f, 0.f, DockTop);
-		World.AddBox(FVector(FarFeet.X, 0.f, DockTop * 0.5f), FVector(400.f, 400.f, DockTop * 0.5f));
 		ALurePlayerCharacter* Character = World.Spawn(StandAt());
 		ULureFishingComponent* Fishing = SetUpFishing(Character, Fish, Data.Gear.Get(), Data.Patterns.Get(), Data.Fight.Get());
 		if (!Fishing || !CastAndWait(*this, World, Fishing) || !TestTrue(TEXT("hook"), Fishing->AuthorityHookFish(Bonefish)))
@@ -851,9 +849,22 @@ namespace LureFightQA
 		}
 		const FVector Offset = Character->GetActorLocation() - StandAt();
 		const float MaxLine = Fishing->GetProfile().MaxLineLength;
+		// T-045: walking away pays out line, and past SpoolLength the fish is Spooled. So the walk goes beyond MaxLineLength
+		// but stays inside the spool (midway between the two): a second platform behind the dock, placed from the bobber.
+		const float Spool = Fishing->GetFightNet().SpoolLength;
+		if (!TestTrue(FString::Printf(TEXT("fixture: SpoolLength %.0f leaves room past MaxLineLength %.0f"), Spool, MaxLine), Spool > MaxLine + 400.f))
+		{
+			return false;
+		}
+		const FVector FarFeet(Fishing->GetNetState().BobberRest.X - Offset.X - 0.5f * (MaxLine + Spool), 0.f, DockTop);
+		World.AddBox(FVector(FarFeet.X, 0.f, DockTop * 0.5f), FVector(400.f, 400.f, DockTop * 0.5f));
 		Character->SetActorLocation(FarFeet + Offset, false, nullptr, ETeleportType::TeleportPhysics);
 		const float Away = static_cast<float>(FVector::Dist2D(Character->GetActorLocation(), Fishing->GetNetState().BobberRest));
 		if (!TestTrue(FString::Printf(TEXT("fixture: %.0f cm from the bobber, beyond MaxLineLength %.0f"), Away, MaxLine), Away > MaxLine))
+		{
+			return false;
+		}
+		if (!TestTrue(FString::Printf(TEXT("fixture: %.0f cm away stays inside the spool %.0f"), Away, Spool), Away < Spool - 200.f))
 		{
 			return false;
 		}

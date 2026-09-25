@@ -739,10 +739,12 @@ namespace LureFightFishQA
 			{
 				continue;
 			}
-			const double ToAfter = FMath::Abs(FVector::Dist2D(Actor->GetLastTarget(), After.LineEnd) - Actor->GetMouthOffsetCm() * Actor->GetFishScale())
-				+ FVector::Dist2D(Actor->GetLastTarget(), After.LineEnd - (After.LineEnd - After.PlayerLocation).GetSafeNormal2D() * Actor->GetMouthOffsetCm() * Actor->GetFishScale());
-			const double ToBefore = FMath::Abs(FVector::Dist2D(Actor->GetLastTarget(), Before.LineEnd) - Actor->GetMouthOffsetCm() * Actor->GetFishScale())
-				+ FVector::Dist2D(Actor->GetLastTarget(), Before.LineEnd - (Before.LineEnd - Before.PlayerLocation).GetSafeNormal2D() * Actor->GetMouthOffsetCm() * Actor->GetFishScale());
+			// T-048 mouth-on-line: the placement's mouth target (the center target plus the mouth offset along the fish's facing)
+			// is on this frame's line end; no body layout toward the player is assumed (T-045 fish position). The drawn mouth is
+			// smoothed, so the target is compared, not GetMouthLocation.
+			const FVector Mouth = Actor->GetLastTarget() + Actor->GetActorForwardVector() * Actor->GetMouthOffsetCm() * Actor->GetFishScale();
+			const double ToAfter = FVector::Dist2D(Mouth, After.LineEnd);
+			const double ToBefore = FVector::Dist2D(Mouth, Before.LineEnd);
 			++Compared;
 			Current += ToAfter < ToBefore ? 1 : 0;
 			Previous += ToBefore < ToAfter ? 1 : 0;
@@ -994,16 +996,19 @@ namespace LureFightFishQA
 		FLureFishingNetState Line;
 		Line.State = ELureFishingState::Hooked;
 		Line.BobberRest = FVector(0.f, 1500.f, -2.f);
+		Fight.FishLocation = FVector(300.f, 1000.f, 0.f); // T-045: the fish's own world XY, not the player + direction x LineOut
 		FFightFishView View = FFightFishViewAdapter::Make(Fight, Line, Hooked, Player, FVector::ForwardVector, false);
-		TestTrue(TEXT("line end toward the bobber (+Y), LineOut away, at the bobber's height"), View.LineEnd.Equals(FVector(0.f, 1000.f, -2.f), 0.05));
+		TestTrue(TEXT("line end at the replicated FishLocation, at the bobber's height"), View.LineEnd.Equals(FVector(300.f, 1000.f, -2.f), 0.05));
 		TestTrue(TEXT("LineStrength 0: tension share finite"), FMath::IsFinite(View.Tension01));
 		Fight.SideDeg = 180.f;
 		View = FFightFishViewAdapter::Make(Fight, Line, Hooked, Player, FVector::ForwardVector, false);
-		TestTrue(TEXT("SideDeg 180: behind the player"), View.LineEnd.Equals(FVector(0.f, -1000.f, -2.f), 0.05));
+		TestTrue(TEXT("SideDeg is cosmetic: the line end stays at FishLocation"), View.LineEnd.Equals(FVector(300.f, 1000.f, -2.f), 0.05));
 		Fight.SideDeg = 0.f;
 		Fight.LineOut = -50.f;
 		View = FFightFishViewAdapter::Make(Fight, Line, Hooked, Player, FVector::ForwardVector, false);
-		TestTrue(TEXT("negative LineOut: at the player, never behind"), FVector2D(View.LineEnd).Equals(FVector2D(Player), 0.05));
+		TestTrue(TEXT("negative LineOut: the line end stays at FishLocation"), View.LineEnd.Equals(FVector(300.f, 1000.f, -2.f), 0.05));
+		View = FFightFishViewAdapter::Make(Fight, Line, Hooked, Player + FVector(-2000.f, 500.f, 0.f), FVector::RightVector, false);
+		TestTrue(TEXT("the player walking elsewhere does not move the line end"), View.LineEnd.Equals(FVector(300.f, 1000.f, -2.f), 0.05));
 		TestEqual(TEXT("the record is passed through"), View.Fish.WeightKg, 2.f, 1.e-6f);
 		return true;
 	}
