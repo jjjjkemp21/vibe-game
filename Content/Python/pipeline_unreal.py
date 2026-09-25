@@ -170,6 +170,23 @@ def import_datatable(src_path, dest_path, row_struct):
     return result
 
 
+def import_new_table(src_path, dest_path):
+    """Import a NEW DataTable (no asset yet) from its CSV/JSON source, finding the row struct by the naming convention:
+    DT_<Name> uses F<Name>Row or FLure<Name>Row (CLAUDE.md). Fails if neither or both exist. Used by tools/integrate.ps1."""
+    base = dest_path.rsplit("/", 1)[1]
+    if base.startswith("DT_"):
+        base = base[3:]
+    found = []
+    for cand in (base + "Row", "Lure" + base + "Row"):
+        path = "/Script/VibeGame." + cand
+        if unreal.find_object(None, path) or unreal.load_object(None, path):
+            found.append(path)
+    if len(found) != 1:
+        raise RuntimeError("Row struct for %s: expected one of F%sRow / FLure%sRow, found %s" % (dest_path, base, base, found or "none"))
+    result = import_datatable(src_path, dest_path, found[0])
+    return {"table": result["table"], "row_struct": result["row_struct"], "rows": len(result["rows"])}
+
+
 def reimport_table(dest_path, src_path):
     """Re-import an existing DataTable (dest_path, e.g. /Game/Data/DT_Catch) from its CSV/JSON source, keeping its row struct.
     Used by tools/integrate.ps1 in the batch lane, so a lane that changes a table's source (and maybe its row struct)

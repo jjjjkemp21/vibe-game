@@ -20,6 +20,7 @@ Paths in the table are under `Source/VibeGame/` unless they start with a top-lev
 | Interaction | `Interaction/LureInteractable.h` (interface), `Interaction/LureInteractionComponent.h`, `Interaction/LureInteractionSubsystem.h` | docs/specs/progression-rules.md | - | Project.Progression.Interact | - |
 | Game frame + HUD | `Game/LureGameMode.h`, `Game/LureGameState.h` ALureGameState (holds the day clock), `Game/LureHUD.h` (placeholder text HUD; draws the debug menu top-right, the clock top-centre) | - | - | - | - |
 | Day/night clock | `Environment/LureDayClock.h` FLureDayClock (pure), ELureDayPhase, FLureDayCycleRow, FLureDayClockState; `Environment/LureDayClockComponent.h` ULureDayClockComponent (on ALureGameState; Get/GetHour/GetPhase/GetPhaseAlpha, OnPhaseChanged); `Environment/LureDayNightSettings.h`; `Dev/LureTimeDevCommands.h` | docs/specs/day-night-water.md | DT_DayCycle | Project.Environment.Clock.* | Lure.Time.Set, Lure.Time.Scale, Lure.Time.Phase |
+| Day/night sky rig (look per time of day) | `Environment/LureTimeOfDay.h` FLureTimeOfDayRow, FLureTimeOfDayLook, FLureTimeOfDayBlend (pure: anchors, blend, sun yaw, fog on-screen target, fixed exposure); `Environment/LureSkyRig.h` ALureSkyRig (sun, moon, sky, fog, exposure, `Lure.NightLight` lights; tags in LureSkyTags) | docs/specs/day-night-water.md | DT_TimeOfDay | Project.Environment.Sky.* | Lure.Time.* (clock) |
 | Dev / playtest tools | `Dev/LureDevCommands.h`, `Dev/LureDebugMenu.h` ULureDebugMenu (F6: every key bind + mouse sensitivity, T-051), `Playtest/PlaytestFeedbackSubsystem.h` (F8 note key), `Content/Python/playtest_driver.py` (PIE driver) | .claude/skills/playtest-feedback | - | Project.Dev.*, Project.Playtest.* | Lure.Teleport, Lure.SetStance, Lure.GiveFish, Lure.Screenshot, Lure.Water.*, Lure.HotSpot.*, Lure.Time.* |
 | Levels | `Content/Python/levels/build_level.py` (builder), `levels/layout.py` (shared expansion), layouts `data/levels/*.json` | docs/levels/*.md | - | - | - |
 | Editor Python | `Content/Python/pipeline_unreal.py` (reusable editor ops), `vibegame_tools.py` (MCP toolset, run_python), `pipeline_cli.py`, `init_unreal.py` | .claude/skills/unreal-pipeline | - | - | - |
@@ -67,6 +68,8 @@ Paths in the table are under `Source/VibeGame/` unless they start with a top-lev
 - `Environment/LureDayClock.h` ELureDayPhase, FLureDayCycleRow, FLureDayClockState | the day/night clock math (T-068a). Pure and world-fr...
 - `Environment/LureDayClockComponent.h` ULureDayClockComponent | the server-owned day/night clock (T-068a), a component on ALureGameState.
 - `Environment/LureDayNightSettings.h` ULureDayNightSettings | day/night settings (T-068a). Project Settings > Game > Lure Day/Night; sto...
+- `Environment/LureSkyRig.h` ALureSkyRig | the sky rig (T-068b). Applies the blended DT_TimeOfDay look for the clock's hour to the level'...
+- `Environment/LureTimeOfDay.h` FLureTimeOfDayRow, FLureTimeOfDayLook | the look per time of day (T-068b). DT_TimeOfDay rows and the pure...
 - `Fish/FightFishVisual.h` FFishMoveAnimRole, FFishRoleTailBeat, FFishRoleStaminaRate, FFishVisualRow | the fish you see fighting on the...
 - `Fish/FishAnimInstance.h` EFishAnimRole, FFishAnimState, UFishAnimInstance | fish anim instance (T-029). Parent class of ABP_Fish (grap...
 - `Fish/FishDataValidator.h`
@@ -117,12 +120,12 @@ Paths in the table are under `Source/VibeGame/` unless they start with a top-lev
 - `VibeGameGameMode.h` AVibeGameGameMode
 - `VibeGamePlayerController.h` AVibeGamePlayerController
 
-### Tests (`Source/VibeGame/`): folder, prefix (count): 3rd name segment count. Total 1161
+### Tests (`Source/VibeGame/`): folder, prefix (count): 3rd name segment count. Total 1167
 - `Tests/Catch/` Project.Arms.* (3): HoldFishSize 3
 - `Tests/Catch/` Project.Catch.* (141): QA 57, HeldCooler 20, Cooler 7, Counter 7, Net 7, Display 5, Rules 5, Focus 4, Data 3, Drop 3, Ha...
 - `Tests/Catch/` Project.FishVisual.* (2): HeldPose 2
 - `Tests/Dev/` Project.Dev.* (18): DebugMenu 6, Teleport 4, GiveFish 3, Commands 1, PlaytestDriver 1, QA 1, Screenshot 1, SetStance 1
-- `Tests/Environment/` Project.Environment.* (7): Clock 7
+- `Tests/Environment/` Project.Environment.* (13): Clock 7, Sky 6
 - `Tests/FishFight/` Project.Fishing.* (126): Fight 126
 - `Tests/FishVisual/` Project.FishVisual.* (50): QA 29, Lifecycle 3, MouthOnLine 3, Adapter 2, Anim 2, Data 2, HeldPose 2, Placement 2, P...
 - `Tests/Fishing/` Project.Fishing.* (274): QA 96, Line 85, Water 78, Fight 7, Cast 4, CastTrace 4
@@ -156,6 +159,7 @@ Paths in the table are under `Source/VibeGame/` unless they start with a top-lev
 - `data/tables/DT_HotSpot.json` FLureHotSpotRow (Fishing/FishingWaterTypes.h)
 - `data/tables/DT_Movement.csv` FLureMovementRow (Character/LureMovementTypes.h)
 - `data/tables/DT_PlayerLevel.csv` FPlayerLevelRow (Progression/LureProgressionTypes.h)
+- `data/tables/DT_TimeOfDay.json` FLureTimeOfDayRow (Environment/LureTimeOfDay.h)
 
 ### Specs and level plans: path, first heading
 - `docs/levels/L_Dev_Movement.md` L_Dev_Movement: movement test course (T-004 A28 / T-005)

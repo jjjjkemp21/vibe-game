@@ -40,7 +40,7 @@ struct FLureDayCycleRow : public FTableRowBase
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Lure|DayNight", meta=(ClampMin="0", ClampMax="24"))
 	float StartHour = 8.f;
 
-	/** Real-time multiplier at session start; 0 = the clock stays at StartHour until Lure.Time.Scale; T-068b sets 1 with the sky rig. */
+	/** Real-time multiplier at session start (1 = the data's pace). 0 = the clock stays at StartHour until Lure.Time.Scale; T-068c sets 1 when the builder places the sky rig. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Lure|DayNight", meta=(ClampMin="0"))
 	float StartTimeScale = 0.f;
 
