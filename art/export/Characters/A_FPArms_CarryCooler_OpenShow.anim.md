@@ -70,19 +70,20 @@ and `_show_fp.png`.
 3. **The turn now comes from the arms.** On the owner's machine set `CarriedOpenRotation` / `CarriedShowRotation` to
    (0,0,0) and `CarriedOpenOffset` / `CarriedShowOffset` to (0,0,0) (LureCatchSettings): the cooler stays on `cooler`
    with a zero relative transform in all three poses. `ThirdPerson*` (other machines) are unchanged.
-4. **Owner-only lid pitch 235.** New DT_Catch column **`CarriedLidPitchFP` = 235** (data, a feel value). While the
+4. **Owner-only lid pitch 235.** DT_Catch column **`CarriedOpenLidPitch` = 235**, already on main (T-064c) (data, a
+   feel value). While the
    carried cooler is open, the OWNER's first-person cooler opens its lid to this pitch in Open and in Show; other
    players keep seeing `LidOpenPitch` (100, replicated). Why: at 100 the lid stands up at the far edge and covers 84 %
    of the centre box in Open; at 235 it folds back behind the cooler (22 %). In Show the lid is out of the owner's view
    at either value, so using 235 in both avoids a 135 deg lid swing on every Open <-> Show turn.
    Fallback without this: the clips work unchanged with lid 100 (`SK_FPArms_cooler_open_lid100_fp.png`).
-5. **Keep the fists on the ropes during the blends: a small C++ skeletal-control node** (e.g.
-   `FAnimNode_LureCarriedCoolerGrip : FAnimNode_SkeletalControlBase`), placed right after `Blend Poses by EFPArmsPose`.
-   Why: `cooler`'s pivot is the cooler's base, 30.6 cm below the handle axis. A plain crossfade lerps that pivot while
+5. **Keep the fists on the ropes during the blends: a C++ grip correction after the pose blend (engineering,
+   T-064b).** It runs as a pure C++ solver after the ABP graph, in the arms anim instance proxy. The only ABP change is
+   the two Sequence Players on pins 6 / 7 (sync group `FPArmsBreath`, item 1). Why: `cooler`'s pivot is the cooler's base, 30.6 cm below the handle axis. A plain crossfade lerps that pivot while
    it turns, so the handles swing off the fists: up to **8.2 cm (Carry <-> Open), 3.6 cm (Carry <-> Show), 13.8 cm
    (Open <-> Show)**. The gate A plan (Two Bone IK of the hands to cooler-space targets) fixes Carry <-> Open (0.7 cm)
    but NOT the Show blends (5.6 / 5.2 cm). The Show pose is straight-armed, so the arms clamp at full reach and the
-   forearm sinks up to 4 cm into the cooler. The node instead moves the cooler to the fists, then closes the rest:
+   forearm sinks up to 4 cm into the cooler. The correction instead moves the cooler to the fists, then closes the rest:
    - Grip points: `G_r` = `hand_r` CS transform applied to its local grip offset, and the same for `G_l`. Local offset
      = RefPoseCS(hand)^-1 applied to the bind-pose grip point. Bind-pose values in component space: grip `hand_r`
      (54.1, 13.8, -24.1) cm (= `hand_r_rod`'s head), grip `hand_l` (54.1, -13.8, -24.1) cm; wrists `hand_r`
@@ -102,7 +103,7 @@ and `_show_fp.png`.
      pairs, no clamping. The cooler moves up to 8.2 / 3.5 / 13.6 cm from the plain blend and turns about its handles.
      Contact at mid-blend: only fingers and thumbs touch the wall behind the rope, up to 21 mm (the plain blend itself
      has 23; steady poses 13-15). A test idea: blend Open -> Show at alpha 0.5, frame 0 and expect |grip - socket|
-     < 1 mm with the node (13.8 cm without).
+     < 1 mm with the correction (13.8 cm without).
 6. StanceDip (additive on `arms`) still moves arms and cooler together. Nothing else changes.
 
 ## Compromises
