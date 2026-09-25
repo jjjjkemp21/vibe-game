@@ -707,8 +707,10 @@ bool FLureRodSkilledBeatsHolding::RunTest(const FString& Parameters)
 	TestTrue(FString::Printf(TEXT("SAFER: skilled play loses at most 2 %% (%d of %d)"), Lost.FindRef(EPlayer::Skilled), Rolled), Lost.FindRef(EPlayer::Skilled) <= Rolled / 50);
 	TestTrue(FString::Printf(TEXT("FASTER: on the fish holding lands, skilled takes <= 0.85 of the time (median %.2f, %d fish)"), Median(SkilledOverHold), SkilledOverHold.Num()),
 		SkilledOverHold.Num() >= Rolled / 3 && Median(SkilledOverHold) <= 0.85f);
-	TestTrue(FString::Printf(TEXT("steering against the runs alone snaps far fewer than holding (%d vs %d)"), Lost.FindRef(EPlayer::Side), Lost.FindRef(EPlayer::Hold)),
-		Lost.FindRef(EPlayer::Side) * 5 <= Lost.FindRef(EPlayer::Hold) * 3);
+	// T-049 (2026-09-24): fish keep their stamina and pull harder between runs, so steering alone saves fewer fish than in the T-028
+	// tune (was: at most 60 % of holding's losses). Steering is still clearly better; the bar watcher is what makes play safe.
+	TestTrue(FString::Printf(TEXT("steering against the runs alone snaps clearly fewer than holding (%d vs %d, at most 75 %%)"), Lost.FindRef(EPlayer::Side), Lost.FindRef(EPlayer::Hold)),
+		Lost.FindRef(EPlayer::Side) * 4 <= Lost.FindRef(EPlayer::Hold) * 3);
 	TestTrue(FString::Printf(TEXT("... and is faster on the same fish (median %.2f)"), Median(SideOverHold)), Median(SideOverHold) < 1.f);
 	TestTrue(FString::Printf(TEXT("steering WITH the runs loses ground: slower on the same fish (median %.2f >= 1.05)"), Median(WrongOverHold)), Median(WrongOverHold) >= 1.05f);
 	TestTrue(FString::Printf(TEXT("holding reel with the rod fully back snaps more (+%d)"), BackMoreSnaps), BackMoreSnaps > 0);
@@ -724,12 +726,15 @@ bool FLureRodSkilledBeatsHolding::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
+	// T-050 (2026-09-24): easing off through a Run now costs time (Jimmy: "allowing a fish to run increases fight time"), so on a fight
+	// where holding reel happens to survive every Run it can be the quicker one; skilled play is faster on most seeds (was: every seed).
+	int32 SkilledFaster = 0;
 	for (int32 Seed = 1; Seed <= 6; ++Seed)
 	{
 		const FPlay Hold = Play(RealFight(Data, Typical, Run, Starter, Seed), EPlayer::Hold);
 		const FPlay Skilled = Play(RealFight(Data, Typical, Run, Starter, Seed), EPlayer::Skilled);
-		TestTrue(FString::Printf(TEXT("1.5 kg Common, seed %d: skilled lands it faster than holding (%.1f s vs %.1f s)"), Seed, Skilled.Elapsed, Hold.Elapsed),
-			Skilled.Landed() && Hold.Landed() && Skilled.Elapsed < Hold.Elapsed);
+		TestTrue(FString::Printf(TEXT("1.5 kg Common, seed %d: both land (skilled %.1f s, holding %.1f s)"), Seed, Skilled.Elapsed, Hold.Elapsed), Skilled.Landed() && Hold.Landed());
+		SkilledFaster += Skilled.Elapsed < Hold.Elapsed ? 1 : 0;
 		const FPlay RareHold = Play(RealFight(Data, Rare, Run, Starter, Seed), EPlayer::Hold);
 		const FPlay RareCareful = Play(RealFight(Data, Rare, Run, Starter, Seed), EPlayer::Careful);
 		const FPlay RareSkilled = Play(RealFight(Data, Rare, Run, Starter, Seed), EPlayer::Skilled);
@@ -737,6 +742,7 @@ bool FLureRodSkilledBeatsHolding::RunTest(const FString& Parameters)
 		TestTrue(FString::Printf(TEXT("Rare 2.04 kg, seed %d: skilled lands it faster than careful (%.1f s vs %.1f s)"), Seed, RareSkilled.Elapsed, RareCareful.Elapsed),
 			RareSkilled.Landed() && RareCareful.Landed() && RareSkilled.Elapsed < RareCareful.Elapsed);
 	}
+	TestTrue(FString::Printf(TEXT("1.5 kg Common: skilled is faster than holding on most seeds (%d of 6)"), SkilledFaster), SkilledFaster >= 4);
 
 	// 3. The Coral Snapper stays the harder fish: skilled play is no less safe than careful play, and a skilled snapper fight is longer
 	//    than a skilled bonefish fight.

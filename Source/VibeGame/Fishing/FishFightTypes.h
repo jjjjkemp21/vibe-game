@@ -79,7 +79,7 @@ struct FLureGearRow : public FTableRowBase
 
 	/** Line gained per second while reeling a fish that does not pull back, cm/s. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Rod", meta=(ClampMin="0"))
-	float ReelSpeed = 120.f;
+	float ReelSpeed = 180.f;
 
 	/** While you are NOT reeling, the drag lets line out at this tension (letting the fish run keeps the tension at or below it). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Rod", meta=(ClampMin="0"))
@@ -161,7 +161,7 @@ struct FLureGearStats
 	float RodPower = 8.f;
 
 	UPROPERTY(BlueprintReadOnly, Category="Gear")
-	float ReelSpeed = 120.f;
+	float ReelSpeed = 180.f;
 
 	UPROPERTY(BlueprintReadOnly, Category="Gear")
 	float Drag = 5.f;
@@ -344,7 +344,7 @@ struct FLureFishFightRow : public FTableRowBase
 
 	/** Stamina pool = stamina stat x this, in tension-seconds (the fish tires by working against the line's tension). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Fish", meta=(ClampMin="0"))
-	float StaminaPerStat = 3.f;
+	float StaminaPerStat = 18.f;
 
 	/** Multiply the pull by UFishSettings::LevelScaling (fish level vs player level; fish above your level pull harder). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Fish")

@@ -71,17 +71,18 @@ last-run bolt (T-057), the retrieve after a cast (T-055) and the bobber dip (T-0
 
 ## Tuning columns
 - **DT_FishFight** (`data/tables/DT_FishFight.csv`, row `Default`, struct `LureFishFightRow`): StrengthStat, StaminaStat,
-  SpeedStat, AggressionStat (tags), PullPerStrength 0.25, SpeedPerStat 5, StaminaPerStat 3, ApplyLevelScaling True,
+  SpeedStat, AggressionStat (tags), PullPerStrength 0.25, SpeedPerStat 5, StaminaPerStat 18 (T-049; was 3), ApplyLevelScaling True,
   RestDifficultyExponent 1.0, TiredPull 0.3, ExhaustedStamina 0.02, StaminaRecovery 0.04, ReelStrain 1.3, ReelLoad 0.15,
   DragHold 0.5, TensionRiseTime 0.12, TensionFallTime 0.25, SnapGraceTime 0.6, SlackShare 0.35, SlackGraceTime 2.5,
   LandDistance 150, SimRate 60, MaxDepth 300, DepthRecovery 80, MaxSideDeg 50, DiveBobberShare 0.1,
   RodTensionPitchDeg 25, RodShakeDeg 2.5, TautTension 0.3, DragLineCap 0.9 (optional, in (0, 1]).
   The four stat columns must be tags under `Fish.Stat.*`.
-- **DT_Gear** (`data/tables/DT_Gear.csv`, struct `LureGearRow`): Rod_Starter (power 8, reel 120, drag 5),
-  Rod_Reef (16, 150, 12, cast x1.15, 250 coins), Line_Mono (strength 10, spool 40 m), Line_Braid (22, 60 m, 180 coins),
+- **DT_Gear** (`data/tables/DT_Gear.csv`, struct `LureGearRow`): Rod_Starter (power 8, reel 180 (T-050; was 120), drag 5),
+  Rod_Reef (16, 225 (was 150), 12, cast x1.15, 250 coins), Line_Mono (strength 10, spool 40 m), Line_Braid (22, 60 m, 180 coins),
   Hook_Shrimp (security 1.0, shrimp), Hook_Squid (1.6, squid, luck 0.5, 60 coins).
 - **DT_FightPattern** (`data/tables/DT_FightPattern.json`, struct `LureFightPatternRow`): Run, Dive, Dart (moves above).
-  Run's `Run` move after the fishing-loop tune: Weight 1.2, AggressionWeight 0.08, 0.8-1.5 s, Pull 2.4, Speed 0.7.
+  Run pattern since T-049: OpeningMove `Shake` (Weight 0: only the opening; 1.6-2.2 s, Pull 1.2, Speed 0.4, Away 0.5, no side);
+  `Run` Weight 3, AggressionWeight 0.08, 1.0-1.6 s, Pull 2.8, Speed 0.7, Side 0.3; `Swim` Pull 2.0; `Rest` Pull 1.5.
 - Table pointers: `ULureFishingSettings` (GearTable, FightPatternTable, FishFightTable, FishFightRow, DefaultLoadout).
 
 ## Fishing-loop tune (2026-09-23, unreal-engineer): holding reel through a Run is a real risk
@@ -118,7 +119,49 @@ Common snap when held and land carefully in 8-16 s; a 1.5 kg Common peaks at 80-
 hold snaps 25-60 %, careful and run-aware lose at most 2 %, careful p10 >= 7.5 s and p90 <= 16 s, run-aware median
 <= 16 s; the reference snapper snaps when held and a careful snapper fight takes longer than a careful bonefish fight).
 
-## What the numbers do today (Python prototype + tests)
+## T-049 + T-050: an even fight and a faster reel (2026-09-24, unreal-engineer)
+Jimmy (A2 playtest): "the fish fights strong immediately and almost breaks my rod; after less than a second it calms down and
+the fight is easy" and "reel in speed is way too slow; the speed of the battle should be dictated by the tension management
+(letting a fish run so it doesn't snap your line increases fight time)". Data only (no rule changed).
+
+**The cause, from a sim trace** (1.5 kg Common bonefish, starter kit, well-played player below, 18 m out; old tune):
+the pattern opened with its Run (2.4x pull at full stamina): reeling from the hook set took the bar to 81 % of the line in
+0.3 s (a 2.0 kg: 92 %, a 2.5 kg: 102 %, while a 0.3 s reaction can't ease off in time). The stamina pool (Stamina 14 x
+StaminaPerStat 3 = 42 tension-seconds) drained at ~8/s: the fish had spent a quarter of it in the first second and half by 3 s,
+so its pull (x TiredPull + (1 - TiredPull) x stamina) sank; then the Run ended into a Rest of 0.3x pull: the fish's pull fell
+by 92 % within a second, and every later Run was weaker. After that the fight was the crank: 1650 cm at ~110 cm/s (87 % of
+the 15.8 s fight), almost the same for every seed (15.5-16.5 s) and for a timid player (17.1 s).
+
+**The tune.** Pressure ramps in: the Run pattern opens with `Shake` (weight 0, so only the opening: 1.2x pull for 1.6-2.2 s), the
+bar starts near 50 %. The fish keeps pulling between runs (Swim 1.0 -> 2.0, Rest 0.3 -> 1.5) and runs often and short (Run Weight
+1.2 -> 3, 0.8-1.5 s -> 1.0-1.6 s, Pull 2.4 -> 2.8). It tires over the whole fight: StaminaPerStat 3 -> 18 (all species). The reel is
+50 % faster: Rod_Starter ReelSpeed 120 -> 180, Rod_Reef 150 -> 225 (the reel steps can't do it: the default step must be speed 1).
+
+**Well-played** (the tests' policy, `Tests/Fishing/FightEvenTest.cpp`): reacts 0.3 s late; every 0.3 s reads the bar: reels below
+85 % (room for the reaction and the tension's rise before 100 %), eases off at 85 %+, reels again under 60 %; steers the rod
+against every sideways run; rod level, default reel step. Fights start 18 m out (MaxCastDistance; 8 of Jimmy's 14 A2 fights).
+
+| Measure (1.5 kg Common unless noted, 30 seeds) | Old tune | Now | Test |
+|---|---|---|---|
+| Peak bar in the first 1.5 s (1.0 / 1.5 / 2.0 kg Commons) | 91 % | 57 % | `Even.HookSetRampsIn` (<= 75 %) |
+| Largest drop of the fish's pull within 1 s, before exhaustion | 92 % | 50 % | `Even.NoCliff` (<= 60 %) |
+| Stamina 5 s into the fight | <= 0.49 | >= 0.76 | `Even.PressureLasts` (>= 0.5) |
+| Reference snapper (2.5 kg, level 3): hold at the fastest step / well-played | - | snaps 30 of 30 / lands 30 (median 36.3 s) | `Even.ToughFishNeedsTensionManagement` |
+| Well-played landing time from 18 m | median 15.8 s (15.5-16.5) | median 16.0 s (14.3-18.0) | `LandTime.WellPlayedBeginnerBonefish` (15-20, all 12-25) |
+| Cranking the 16.5 m in at the default step, nothing pulling | 13.8 s = 87 % of the fight | 9.2 s = 57 % | `LandTime.TensionSetsThePace` (<= 60 %) |
+| Timid (eases at 60 %, reels under 40 %) / bold (95 % / 80 %) | 17.1 s (x1.08) / 15.8 s | 22.4 s (x1.40) / 15.3 s | same (timid >= x1.3, bold <= well-played) |
+
+Note: the median landing time at 18 m is about what it was (the lead's 15-20 s target); what changed is where the time goes: the
+crank is fast, and the time is spent on a fish that keeps fighting (holding line against the reel, runs to ease off for).
+Bigger and rarer bonefish are now long fights (200 rolled, careful bar-watcher without steering, 10 m: median 17.5 s, p90 50 s;
+old p90 ~15 s): intense for tougher fish, but ask Jimmy whether that is too long. The 7 kg level-3 snapper no longer lands on the
+starter kit for the careful player (it did before: the lead's 2026-09-23 decision); the reef kit lands it. Scale knob: Rod_Starter
+ReelSpeed (every fight's crank), StaminaPerStat (how long fish keep fighting).
+
+Other results (C++ tests): holding reel on 200 rolled bonefish snaps 116-119 (was 82-86; QA bound 25-60 %); skilled play loses
+0-1 (median 9.8-10.6 s from 10 m); the T-028b posture still loses clearly (bonefish x5.6 slower, snapper 81 lost of 100).
+
+## What the numbers do today (before T-049; see the T-049 section above for the current tune)
 - Bonefish (0.5-4.5 kg) on the starter kit: small ones (under ~2 kg Common) land even when you hold reel (8-10 s);
   bigger or rarer ones snap it if you hold reel through a Run (see the fishing-loop tune above).
 - A reference Coral Snapper snaps the starter line in under a second if you hold reel from the hook; easing off during
@@ -276,6 +319,11 @@ within about 10 % of before.
   `Project.Fishing.QA.Net.OnlyChargeAndYawCrossTheWire` (byte parameters are plain numbers; renamed in T-028b to
   `Project.Fishing.QA.Net.ServerRpcsTakeOnlyPlainNumbers`),
   `Project.Movement.QA.Input.AllSixActionsResolveByName` (ReelFaster, ReelSlower).
+- T-049/T-050: re-import `DT_FishFight.csv` (StaminaPerStat 18), `DT_FightPattern.json` (Run pattern: Shake opening, pulls) and
+  `DT_Gear.csv` (ReelSpeed 180 / 225). Tests updated for the new tune (reasons in each): `Fight.GearDecidesOutcome` (the 7 kg snapper
+  needs the reef kit), `Fight.BonefishRunPunishesHoldReel` (fight lengths, run-aware losses), `Fight.Rod.SkilledPlayBeatsHolding`
+  (steering-alone share, skilled faster on most seeds), `Fight.PatternsDrivePullDeterministically` (the opening is Shake),
+  `Fight.RodAndLineFollowTension` (compares with the line's own LineTension rule). No QA test changed.
 - T-028b: re-import `DT_FishFight.csv` (new optional column PitchDipPower; an old asset uses the default 0.8). Tests updated
   for the new contract: the QA rod oracle (`Rod.QA.Sim.StepMatchesSpecWithRodInput`: dip power, one slack rule, O8-valid
   random tuning), the T-007 oracle (`Fight.QA.Sim.StepMatchesSpecFormulas`: one slack rule), `Rod.QA.Timers.SlackWholeStepsWhenTheRodDips` (reeling dipped
