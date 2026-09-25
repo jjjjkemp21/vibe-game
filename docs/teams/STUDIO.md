@@ -5,7 +5,7 @@ Lure is run like a small professional game studio. Jimmy is the client and creat
 ```
 Jimmy
   |  (only the lead talks to Jimmy)
-Lead / producer: priorities, task board, editor booking, integration to main, push, release gate
+Lead / producer: priorities, objectives on the board, editor booking, integration to main, push, release gate
   |-- Design manager       -> level-designer, designer (review)
   |-- Engineering manager  -> unreal-engineer junior/mid/senior
   |-- Art manager          -> model-artist, animation-artist junior/mid/senior
@@ -15,7 +15,7 @@ Lead / producer: priorities, task board, editor booking, integration to main, pu
 ## 1. Who owns what
 | Owner | Owns | Never does |
 |---|---|---|
-| Lead | Talking to Jimmy. Priorities and the top of docs/TASKS.md. Objectives for each manager. The editor (one user at a time). Merging into main (`tools/integrate.ps1`). Pushing. The release gate verdict. Tiny one-off tasks. | Deep domain work a manager owns |
+| Lead | Talking to Jimmy. Priorities, objectives (`obj`) and questions for Jimmy (`q`) on the board; the milestone acceptance in docs/TASKS.md. Objectives for each manager. The editor (one user at a time). Merging into main (`tools/integrate.ps1`). Pushing. The release gate verdict. Tiny one-off tasks. | Deep domain work a manager owns |
 | Manager | Its discipline's plan, work breakdown, dispatch, reviews, quality bar, team log and handbook. Its lanes while they are in use. | Talking to Jimmy. Merging into main. Using the editor without a booking. Doing the workers' job. Starting agents outside its team (one exception: §3, designer-low for art previews). |
 | Worker | One task packet, done to the handbook's standard, with evidence | Starting agents (workers have no Agent tool). Working outside the packet. |
 
@@ -26,13 +26,14 @@ Lead / producer: priorities, task board, editor booking, integration to main, pu
    - Group pieces that share files or reading. Split independent pieces so they run in parallel.
    - Give each task an id (the objective id plus a letter, e.g. `T-040a`), a level (junior, mid or senior, by difficulty; see LEAD.md), a lane, its file ownership, and its dependencies.
    - Two parallel tasks never edit the same function. If they must share a file, say so in both packets and name the merge order.
-3. **Task packet.** For each task, write `Saved/AgentLogs/tasks/<id>/brief.md` using the brief template in LEAD.md: goal, where, decided already, parallel work, anything non-standard, report limit. Start the worker with a 2-line prompt: "Task <id>: read Saved/AgentLogs/tasks/<id>/brief.md; write your report to Saved/AgentLogs/tasks/<id>/report.md." Pass paths, not pasted text. `report.md` is the short summary; it links to the worker's evidence folders (qa/, playtest/<ts>/, design/, previews). Get lanes with `tools/lane.ps1 -Free`. Run workers in the background.
+   - Put every task on the board (section 8): `new --kind task --parent <obj> --key <id> --level --needs --files`. A `claim` overlap warning means re-split or name the merge order.
+3. **Task packet.** For each task, write `Saved/AgentLogs/tasks/<id>/brief.md` using the brief template in LEAD.md: goal, where, decided already, parallel work, anything non-standard, report limit. Start the worker with a 2-line prompt: "Task <id> (board #<n>): read Saved/AgentLogs/tasks/<id>/brief.md; write your report to Saved/AgentLogs/tasks/<id>/report.md." Then `set <id> status=doing agent=<agent id> lane=<lane> packet=Saved/AgentLogs/tasks/<id>`. Pass paths, not pasted text. `report.md` is the short summary; it links to the worker's evidence folders (qa/, playtest/<ts>/, design/, previews). Get lanes with `tools/lane.ps1 -Free`. Run workers in the background.
 4. **Monitor.** Stay event-driven: you are woken when a worker finishes. Don't poll or sleep-loop. Check the context size with `tools/lead-check.ps1` when a worker has run long. Hand-off rule: send a handoff request past 250k, or 400k for seniors, and restart the task from the handoff with a fresh agent.
 5. **Review.** Every result is reviewed against the handbook's review checklist and the acceptance criteria before you accept it.
    - The verdict is Accept, Rework (send back with specific, numbered change requests), or Escalate.
    - Rework goes to the same agent if its context is small; otherwise to a fresh agent with the review attached.
    - Never accept a task without evidence: build and test results, previews or screenshots you actually looked at.
-6. **Ready to integrate.** When a lane's tasks are accepted, tell the lead "ready to integrate: lanes X, Y, merge order, expected checks". The lead runs `tools/integrate.ps1` (merge, build, full tests, fast-forward main) and tells you the result. If an integration fails, you own the fix.
+6. **Ready to integrate.** When a lane's tasks are accepted, `set <id> status=merge` for each, then tell the lead "ready to integrate: lanes X, Y, merge order, expected checks". The lead runs `tools/integrate.ps1` (merge, build, full tests, fast-forward main; it marks the lane's `merge` items `done`) and tells you the result. If an integration fails, you own the fix.
 7. **Close.** Report to the lead in 10 lines or fewer: done or not per acceptance criterion, commits, the evidence paths, what the editor-operator or playtester must do, open risks and follow-ups. Update the team log.
 
 ## 3. Shared resources (booked through the lead)
@@ -42,7 +43,7 @@ Lead / producer: priorities, task board, editor booking, integration to main, pu
 - **Builds:** lanes build in parallel, and `-WaitMutex` serializes the compiler. Don't start a build you don't need.
 
 ## 4. Team log (continuity across sessions)
-Every agent stops when Jimmy exits. The manager keeps `Saved/AgentLogs/teams/<dept>.md` current after every dispatch, review and close: the objective, the task table (id, level, lane, agent id, status, commit, next step), decisions, open questions and risks. A fresh manager must be able to resume from this file plus the task packets in one read. The lead reads your log, not your transcript.
+Every agent stops when Jimmy exits. Task status lives on the board (section 8), not in the log. The manager keeps `Saved/AgentLogs/teams/<dept>.md` for what the board can't hold: the objective's plan, decisions and their reasons, open questions and risks. Update it after every plan, review and close. A fresh manager resumes from `board.py resume` + `board.py tree <obj>` + this log + the task packets. The lead reads the board and your log, not your transcript.
 
 ## 5. Standards every department shares
 - Follow CLAUDE.md (golden rules, units, naming, data-driven, multiplayer-ready) and the specs in docs/specs/.
@@ -60,3 +61,11 @@ Every agent stops when Jimmy exits. The manager keeps `Saved/AgentLogs/teams/<de
 
 ## 7. Reporting format to the lead (10 lines or fewer)
 `[NN%] <objective id>: <one-line status>`, then: done so far (ids and commits), in flight (ids, agents), blockers and questions (with your recommendation), what's needed from the lead (an editor booking, integration, a decision), and the path to your team log.
+
+## 8. The board (the single source of task status; spec docs/tools/board.md)
+- Always call the main copy: `python C:/GameDev/VibeGame/tools/board.py <cmd>` (from lanes too). Add `--as <dept>-mgr` on manager writes.
+- Read: `ls [--dept D] [--status S]`, `next --dept D` (what to dispatch now), `show <id|key>`, `tree <obj>`, `resume` (after a restart), `conflicts`.
+- Write only when something changes: `new`, `set <id> k=v ...` (status moves are checked; an error prints the command that works), `note <id> "..."`, `claim`, and `batch` for many writes in one go.
+- Flow: `todo -> ready -> doing -> review -> merge -> done` (or `blocked` with a note, `dropped` with a note). Workers only `set <id> status=review note="..."` when they finish (and `pct=` at real milestones). Managers move the rest; the lead's integration marks `done`.
+- The board holds pointers (packet, handoff, commit, evidence); the text stays in files.
+

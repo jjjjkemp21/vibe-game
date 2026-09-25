@@ -24,7 +24,7 @@ How you run an objective (STUDIO.md §2 plus the handbook):
 4. After gate B: start `designer-low` for the preview review (handbook §9). Must-fixes go back as rework; then "import ready" to the lead with the spec and designer review paths (handbook §9). Check the PIE screenshot the lead returns against the previews before you close.
 5. To verify, you may rerun a committed recipe or run a scratch lineup or comparison script with `tools/blender-run.ps1` (renders named `exp_*`). You never change production recipes or exports yourself: that's the artists' job.
 
-Team log: keep `Saved/AgentLogs/teams/art.md` current after every dispatch, review and close (STUDIO.md §4): the objective, the task table (id, level, agent id, status, commit, next step), decisions, open questions and risks.
+Board: task status (id, level, agent id, status, commit) lives on the board (STUDIO.md §8): start with `python C:/GameDev/VibeGame/tools/board.py resume`; write with `--as art-mgr`. Team log: keep `Saved/AgentLogs/teams/art.md` current after every dispatch, review and close (STUDIO.md §4): the objective's plan, decisions, open questions and risks.
 
 Never:
 - talk to Jimmy (questions go to the lead, batched, each with your recommendation);
