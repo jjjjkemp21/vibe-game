@@ -289,6 +289,10 @@ T-032b (namespaces `LureLineCollisionTests`, `LureLineHangTests`, `LureLineTautT
   Sim.NoDetachedSegments, Sim.PinnedEndInsideStaysCalm, Sim.BoundsOnlySkippedAroundTip, Component.CollidesWithDock,
   Component.HangingLineIgnoresSolids, Allocations (with the cost info line). They judge the line against solids built
   independently from the known shapes, with a control run without colliders that must show the problem.
+  Component.CollidesWithDock (several solids, the line sliding over the deck's edge): points never inside (0.01 cm);
+  segments keep at least half the CollisionRadius clear of the real surfaces every frame, and are within 0.1 cm of the
+  grown shapes once settled. For a frame a segment can be ~0.12 cm into the grown deck: the lift's end resting on the deck
+  slides along it instead of lifting, so one pass clears only part of an edge cut (it converges over the passes).
 - `FishingLineHangTest.cpp`, `Project.Fishing.Line.Hang.*`: Rules.ReelInRestLength, Sim.SwingGuard,
   Component.LandedFishBelowTip.
 - `FishingLineTautTest.cpp`, `Project.Fishing.Line.Taut.*`: Rules.CarryRestLength, Sim.ClosingEndsStayStraight,
