@@ -25,7 +25,11 @@ param(
     [Parameter(Mandatory = $true)][string[]]$Lanes,
     [string]$Batch = '',
     [switch]$DryRun,
-    [int]$MaxRounds = 2
+    [int]$MaxRounds = 2,
+    # Exact test paths allowed to fail in this integration (e.g. a test that can only pass after an editor step in main
+    # that needs this merge first). Any other failure, an incomplete run, or a crash still fails. The evidence line
+    # names them; the lead reruns the full suite in main after the editor step, before any push.
+    [string[]]$ExpectFail = @()
 )
 . (Join-Path $PSScriptRoot '_common.ps1')
 $name = 'integrate'
@@ -360,7 +364,17 @@ while ($true) {
         $err = Sync-DataTables $bl.Path $mergedMain
         if ($err) { Fail $err }
         $tests = Invoke-LaneScript $bl.Path 'run-tests' '-Filter Project'
-        if (-not $tests.Ok) { Fail ('tests failed in ' + $Batch + ' (round ' + $round + '): ' + $tests.Message) @{ testLog = $tests.LogPath } }
+        $expectedHit = @()
+        if ((-not $tests.Ok) -and ($ExpectFail.Count -gt 0) -and $tests.Status -and $tests.Status.details) {
+            $d = $tests.Status.details
+            $failedNames = @(@($d.failed) | Where-Object { $_ } | ForEach-Object { ([string]$_ -split ' \[')[0] })
+            $unexpected = @($failedNames | Where-Object { $ExpectFail -notcontains $_ })
+            if (($failedNames.Count -gt 0) -and ($unexpected.Count -eq 0) -and (@($d.problems).Count -eq 0) -and ([int]$d.notRun -eq 0)) {
+                $expectedHit = $failedNames
+                Write-Host ('  accepted EXPECTED failures (-ExpectFail): ' + ($expectedHit -join ', '))
+            }
+        }
+        if ((-not $tests.Ok) -and ($expectedHit.Count -eq 0)) { Fail ('tests failed in ' + $Batch + ' (round ' + $round + '): ' + $tests.Message) @{ testLog = $tests.LogPath } }
         $needBuild = $false
     }
     $mainNow = (git -C $root rev-parse main)
@@ -396,6 +410,7 @@ if ($round -eq 0) {
     $reportDir = ([string]$d.reportDir).Replace('\', '/')
     $testsText = ('' + $passedN + '/' + $totalN); $testLog = $tests.LogPath; $buildLog = $build.LogPath
     $evidence = ('Integrated ' + ($laneNames -join ',') + ' (batch ' + $Batch + ') into main ' + $mainShort + ': build green, tests ' + $passedN + '/' + $totalN + ' (' + $round + ' round' + $(if ($round -gt 1) { 's' } else { '' }) + '), report ' + $reportDir)
+    if ($expectedHit.Count -gt 0) { $evidence += ('; EXPECTED failures (rerun the full suite in main after the editor step): ' + ($expectedHit -join ', ')) }
 }
 Write-Host $evidence
 Write-Status -Name $name -State 'running' -Message ('main fast-forwarded to ' + $mainShort + '; updating the board')
