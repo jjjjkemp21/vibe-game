@@ -12,6 +12,8 @@ Lead / producer: priorities, objectives on the board, editor booking, integratio
   '-- QA manager           -> qa-engineer junior/mid/senior, playtester (with an editor booking)
 ```
 
+Scaling (2026-09-24): a department can run more than one manager at once. Each one runs a separate objective in a separate code area (for example, S1 in Fishing/ and S4 in Catch/), like feature-team leads in a studio. The lead starts a second manager only when both objectives are big enough to need a manager, are independent, and would otherwise wait in line. They split files through `board.py claim` and `conflicts`. When one team finds a problem in the other's area, it hands it to the lead rather than fixing it. Objectives that share code stay with one manager.
+
 ## 1. Who owns what
 | Owner | Owns | Never does |
 |---|---|---|
