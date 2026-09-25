@@ -186,7 +186,8 @@ at its end, again only after the end moved WaterRefreshDistance (5 m). One water
 ```cpp
 ULureFishingLineComponent* Line = Fishing->GetLine();   // null only if the line mesh is missing
 
-// The fishing component already does this every frame while a line is out (UpdateVisuals):
+// The fishing component already does this every frame while a line is out (UpdateVisuals), and the first two also while
+// a fish hangs on it with no line out (T-034):
 Line->SetViewer(ViewLocation, Fov);
 Line->SetWidthRule(Row.LinePixelWidth, Settings->LineReferenceScreenWidth, Row.LineMinWidth);
 Line->SetTension(FLureFishingLineRules::StateTension(State, FightNet.bActive,
@@ -216,6 +217,10 @@ FVector Up = Line->GetEndDirection();                     // unit vector from th
   facing. `Hide()` does not remove a hanging actor. Rules: attach on **every** machine (it is cosmetic); the hanging actor
   must **not replicate its movement** and must not simulate physics; `AddEndVelocity(v)` makes it flop. Destroying the
   actor ends the line.
+- **Viewer (T-034)**: `SetViewer` holds until the line stops (`Hide` of a pinned line, the end of a recoil, the hanging actor
+  let go); a new line then draws for the local camera until someone sets the viewer again. Whoever draws a line keeps its
+  viewer current **every frame it is drawn**: a stale viewer sizes the widths for the wrong distance (the GiveFish bug: the
+  eye of the last cast 10 m away drew the hang line ~2.9 cm thick instead of ~0.3 cm).
 - **Collision**: nothing to call. To make something solid for the line, give it simple collision that blocks
   `CastChannel` (the same thing that stops a cast). `GetColliders()` shows what the line gathered (tests, debugging).
 
@@ -297,6 +302,10 @@ T-032b (namespaces `LureLineCollisionTests`, `LureLineHangTests`, `LureLineTautT
   Component.LandedFishBelowTip.
 - `FishingLineTautTest.cpp`, `Project.Fishing.Line.Taut.*`: Rules.CarryRestLength, Sim.ClosingEndsStayStraight,
   Sim.RestLerpNoPop, Component.StraightensUnderTension (43 % and 84 % of the strength).
+
+`FishingLineGiveFishHangTest.cpp` (T-034), `Project.Fishing.Line.GiveFishHang.WidthMatchesRule`: cast, reel in, walk 10 m,
+land a fish with no line out (GiveFish's path); every point's width = the width rule for the eye now (10 %), and each drawn
+segment is that thick.
 
 QA's own suite: Project.Fishing.Line.QA.* (`QAFishingLineTest.cpp`).
 
