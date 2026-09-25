@@ -441,6 +441,21 @@ QA (independent, black-box from the spec and headers): 25 tests `Project.Fishing
 | Allocations | Alloc.SteadyStateEveryMode | U/I | Solver, 900 frames (water, tension changes, teleport resets, NaN inputs, snap recoil, hanging with kicks, hitches): 0 allocations; component per-frame API incl. legacy SetLine and the ClearWaterSurfaceZ lookup cache: 0 allocations |
 | Back-compat | Compat.SetLineAndHideStillWork | I | SetLine sag 0/0.05/0.1/0.2: length = chord x (1 + 8/3 sag^2), droop ~ sag x length (25 %), monotone, 13 points/widths, >= 2.5 px; Hide stops it; SetLine restarts; NaN/negative/Inf sag stay finite |
 
+### T-032b part A line collision, QA (T-032e, Standard tier)
+Implementer: 14 `Project.Fishing.Line.Collision.*` (`Tests/Fishing/FishingLineCollisionTest.cpp`). QA (independent, from spec "Collision"/"Known limits" and `FishingLineSim.h`): 6 `Project.Fishing.QA.LineCollision.*` in `Tests/Fishing/QAFishingLineCollisionTest.cpp` (namespace LureQALineCollisionTests). Shapes are judged by the test's own geometry (placed-corner face planes, point-to-segment distance), not by `FLureLineColliders::Penetration`.
+
+| Tests (Project.Fishing.QA.LineCollision.) | Level | What they prove |
+|---|---|---|
+| NoTunnelAtMaxSubsteps | U | A free end thrown at 60 m/s onto a 1 cm plank with 1/15 s and 0.25 s frames (MaxSubsteps sub-steps, slow motion), straight and at an angle: never below the top + CollisionRadius, rests on it; control falls through |
+| RotatedScaledBox | U | A tipped (pitch/yaw/roll), non-uniformly scaled crate, and a turned box element in a turned, 2x-X-scaled owner (a sheared box): points keep CollisionRadius from the faces every frame, no drawn sample enters, the line rests on it and is held up; control sags through the centre |
+| SphereAndTiltedCapsule | U | Buoy (sphere r 20 off-centre), tilted rail (capsule r 6, rising 50 cm), rope rail (r 1.5): points >= r + CollisionRadius every frame, drawn samples never inside and >= r + R - 0.1 settled, lies over it; control below it |
+| BoundsOnlyGrownBoundary | U | Stand-in box skipped (line bit-identical to the free line) with the tip / a pinned end 0.5 R outside the real box (inside the grown box); collided with them 1.5 R outside; a FREE end inside is no reason to skip |
+| NearSolidsCapPerKind | U | 63 near boxes + blocker collides, 64 + blocker (65th) ignored, blocker first then 64 collides; the cap is per kind (64 boxes + a sphere blocker, 64 spheres + a box blocker collide; 63/64 spheres + sphere blocker collide/ignored); 64 far (100 m) solids don't use up the cap |
+| NoCollidersSameAsFreeSim | U | 300-frame script (moving tip, water, length change, 0.3 s hitch, snap + recoil, free end): empty colliders, solids 100 m away, and a seabed 30 cm under the line's lowest point (near, never touched) give every point of every frame bit-identical to the free sim |
+
+Not repeated: DT_FishingLine's new columns (CollisionRadius, GroundFriction, CollisionQueryMargin, CollisionRefreshTime) are covered by the reflective `Line.QA.Data.EveryRowValid` / `ValidateMatchesFieldRanges` (every field, ClampMin/ClampMax); hanging lines not colliding by the implementer's `Collision.Component.HangingLineIgnoresSolids`.
+Gaps: the component gather (which components BlocksCast keeps, convex/instanced/complex-only bodies, the re-gather on leaving the query box or every CollisionRefreshTime near a Movable) is covered only by the implementer's `Component.CollidesWithDock`; Movable boats, landscapes (not collided, known limit) and a whole segment crossing a slab after a teleport (known limit) are for the playtester.
+
 ### T-032 open bugs (failing tests; each test is the regression test for its bug; owner unreal-engineer)
 - T032-B1 (low; acceptance "exactly straight at the snap threshold"): through the component, a line at tension >= 1 stays 0.68 cm off straight at 15 m and 1.33 cm at 30 m, for any segment count (even 2). Measured cause: the rest length follows its target in float and stalls 5 float steps above the chord (rest - chord = 0.000610 cm at 1500 cm); the solver turns any excess into sag (+1 ulp = 0.30 cm, +5 ulp = 0.68 cm). The implementer's 0.00 cm was measured on the solver with an exact rest length. Failing: `Taut.ExactlyStraightAtSnapThreshold`, `Sag.MonotoneAcrossTensionRange` (its last check). Fix idea: FollowRestLength snaps to Target within ~1e-5 x Target, or the solver treats RestLength <= chord x (1 + 1e-5) as taut. Sub-pixel on screen.
 
@@ -452,7 +467,7 @@ QA (independent, black-box from the spec and headers): 25 tests `Project.Fishing
 - Review of the implementer's tests: they prove the rules, the solver and the component's main paths, but (1) "straight at the threshold" was measured only on the solver with an exact rest length (missed B1); (2) floating only with a fixed water Z on the solver (not the lookup, fallback, level changes); (3) nothing proved proxies (only the unchanged T-006 net test); (4) NoNaNAtExtremeInputs checks finiteness, not bounds; (5) no many-cast leak check; (6) Fishing.CastWaitFightSnap's taut check is only "straighter than slack".
 
 ### T-032 gaps (not covered by automation)
-- No ground collision (known limit in the spec): a slack line can pass through a dock or beach between the rod and the water. Untested by design; the playtester looks at dock-edge casts.
+- Ground collision came with T-032b (see above); landscapes (heightfields) are still not collided: a slack line can pass through a beach. The playtester looks at dock-edge and beach casts.
 - One water height per line (a line across two water levels floats at the end's); a line turned away from the bobber runs back over the rod (no wrap).
 - Real rendering cost (render proxies, one render command per segment) and the look (>= 2 px at 10-20 m, no popping, attachment to the drawn rod tip when turning fast, TG_PostUpdateWork ordering with a real camera): playtester + designer in PIE.
 - Real 2-player PIE (net driver, latency): the proxy tests use the wire format in one world; other players' lines start at an estimated rod tip.
