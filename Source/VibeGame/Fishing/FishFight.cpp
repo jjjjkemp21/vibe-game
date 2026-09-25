@@ -373,6 +373,7 @@ ELureFightOutcome FLureFight::Step(FLureFightState& State, const FLureFightInput
 	}
 
 	// Cosmetic: depth and swing (a fish turned by side pressure swings back toward the middle).
+	const float SideBefore = State.SideDeg;
 	if (Move)
 	{
 		State.Depth += Speed * FMath::Clamp(Move->Down, -1.f, 1.f) * Dt;
@@ -384,7 +385,10 @@ ELureFightOutcome FLureFight::Step(FLureFightState& State, const FLureFightInput
 		State.Depth -= FMath::Max(0.f, Tuning.DepthRecovery) * Dt;
 	}
 	State.Depth = FMath::Clamp(State.Depth, 0.f, FMath::Max(0.f, Tuning.MaxDepth));
-	State.SideDeg = FMath::Clamp(State.SideDeg, -Tuning.MaxSideDeg, Tuning.MaxSideDeg);
+	// The swing limit holds the fish's own swing (T-045): a player who walked round the fish may leave it past the limit, and
+	// then it stays where it is (never pulled back in) and only its swing back toward the middle is free. A still player's
+	// fish is always within the limit, so this is the old clamp.
+	State.SideDeg = FMath::Clamp(State.SideDeg, FMath::Min(-Tuning.MaxSideDeg, SideBefore), FMath::Max(Tuning.MaxSideDeg, SideBefore));
 
 	// 6. Outcome.
 	if (State.LineOut <= Tuning.LandDistance)
@@ -449,6 +453,45 @@ ELureFightOutcome FLureFight::Advance(FLureFightState& State, const FLureFightIn
 		State.Accumulator = 0.f; // a long hitch: drop the backlog rather than spiral
 	}
 	return State.Outcome;
+}
+
+// ---- The fish in the world (T-045) ----
+
+void FLureFight::PlaceFish(FLureFightState& State, const FVector2D& PlayerXY, const FVector2D& FishXY, const FVector2D& FallbackDir)
+{
+	auto Finite2 = [](const FVector2D& V) { return FMath::IsFinite(V.X) && FMath::IsFinite(V.Y); };
+	State.Anchor = Finite2(PlayerXY) ? PlayerXY : FVector2D::ZeroVector;
+	const FVector2D Fish = Finite2(FishXY) ? FishXY : State.Anchor;
+	const FVector2D Offset = Fish - State.Anchor;
+	const double Distance = Offset.Size();
+	FVector2D Direction = Distance > UE_KINDA_SMALL_NUMBER ? Offset / Distance : (Finite2(FallbackDir) ? FallbackDir.GetSafeNormal() : FVector2D::ZeroVector);
+	State.BaseDir = Direction.IsNearlyZero() ? FVector2D(1.0, 0.0) : Direction;
+	State.LineOut = static_cast<float>(Distance);
+	State.SideDeg = 0.f;
+}
+
+FVector2D FLureFight::FishLocation(const FLureFightState& State)
+{
+	return State.Anchor + State.BaseDir.GetRotated(static_cast<double>(State.SideDeg)) * static_cast<double>(FMath::Max(0.f, State.LineOut));
+}
+
+void FLureFight::MovePlayer(FLureFightState& State, const FVector2D& PlayerXY)
+{
+	if (PlayerXY == State.Anchor || !FMath::IsFinite(PlayerXY.X) || !FMath::IsFinite(PlayerXY.Y))
+	{
+		return; // a still player: nothing changes (bit for bit)
+	}
+	const FVector2D Fish = FishLocation(State);
+	State.Anchor = PlayerXY;
+	const FVector2D Offset = Fish - PlayerXY;
+	const double Distance = Offset.Size();
+	State.LineOut = static_cast<float>(Distance);
+	if (Distance > UE_KINDA_SMALL_NUMBER)
+	{
+		// The fish's bearing from the player now, from BaseDir (+ = turned the way FVector2D::GetRotated turns: toward the right).
+		const FVector2D Direction = Offset / Distance;
+		State.SideDeg = static_cast<float>(FMath::RadiansToDegrees(FMath::Atan2(FVector2D::CrossProduct(State.BaseDir, Direction), FVector2D::DotProduct(State.BaseDir, Direction))));
+	}
 }
 
 float FLureFight::RodPitch(float Tension01, float TimeSeconds, const FLureFishFightRow& Tuning)

@@ -8,7 +8,7 @@
 #include "GameFramework/Actor.h"
 
 FFightFishView FFightFishViewAdapter::Make(const FLureFightNetState& Fight, const FLureFishingNetState& Line, const FFishInstance& HookedFish,
-	const FVector& PlayerLocation, const FVector& PlayerForward, bool bHasAuthority)
+	const FVector& PlayerLocation, const FVector& /*PlayerForward: unused since T-045*/, bool bHasAuthority)
 {
 	FFightFishView View;
 	View.bFighting = Fight.bActive && Line.State == ELureFishingState::Hooked;
@@ -26,18 +26,8 @@ FFightFishView FFightFishViewAdapter::Make(const FLureFightNetState& Fight, cons
 	View.bHasAuthority = bHasAuthority;
 	View.Fish = HookedFish;
 
-	FVector Direction = (FVector(Line.BobberRest) - PlayerLocation).GetSafeNormal2D();
-	if (Direction.IsNearlyZero())
-	{
-		Direction = PlayerForward.GetSafeNormal2D();
-	}
-	if (Direction.IsNearlyZero())
-	{
-		Direction = FVector::ForwardVector;
-	}
-	Direction = Direction.RotateAngleAxis(Fight.SideDeg, FVector::UpVector);
-	View.LineEnd = PlayerLocation + Direction * FMath::Max(0.f, Fight.LineOut);
-	View.LineEnd.Z = View.WaterZ;
+	// T-045: the fish is where the server's fight has it in the world (FishLocation), not placed from this machine's player.
+	View.LineEnd = FVector(Fight.FishLocation.X, Fight.FishLocation.Y, View.WaterZ);
 	return View;
 }
 

@@ -250,6 +250,46 @@ within about 10 % of before.
 | Model bonefish 200 rolled: advice / posture | 0 lost 9.4 s / 1 lost 8.3 s | 0 lost 9.4 s / 3 lost 13.7 s |
 | Model snapper 200 rolled: advice / posture | 12 lost 16.4 s / 145 lost 12.5 s | 9 lost 16.3 s / 165 lost 31.0 s |
 
+## The fish stays put (T-045, 2026-09-24)
+Jimmy (A2 playtest): "WHEN a player walks around while reeling in a fish, THEN the bobber + fish follow the players movements.
+... If the player moves away, the bobber and fish should remain in the same place and only be reeled towards the player's
+direction". Before, the fish was drawn at `player + direction x LineOut`, so it moved with the player.
+- **The server holds the fish's world position** (water plane XY; its depth stays the cosmetic `Depth`). `FLureFightState`
+  keeps `LineOut` and `SideDeg` measured from `Anchor` (the player's XY the fight last saw) and `BaseDir` (the line's
+  direction at the hook); `FLureFight::FishLocation` = `Anchor + (BaseDir turned by SideDeg) x LineOut`. The fight starts
+  with the fish at the bobber (`PlaceFish`).
+- **Only the fish's own swimming and the reel move it.** The step is unchanged: a run or the reel changes `LineOut` (along
+  the line), the swing changes `SideDeg` (across it), both about the player's current position. So **reeling pulls the
+  fish toward where the player is now**. "The player" is the pawn's location (`GetActorLocation`), not the rod tip: the
+  start distance and `LandDistance` were always measured from the pawn, and the server has no rod mesh.
+- **Walking** (`FLureFight::MovePlayer`, each server update before the steps): when the pawn moved, `LineOut` and `SideDeg`
+  are measured again from the new place, so the fish stays where it is. `LineOut` is always the real horizontal distance:
+  walking away pays out line with no extra tension; walking toward the fish shortens the line (the simplest consistent
+  rule: no slack is stored or drawn). The tension, stamina and moves never depend on where the player is. Consequences:
+  walking to within `LandDistance` of the fish lands it (Sprint 2's T-057 makes landing need a tired fish), and walking
+  away past `SpoolLength` spools the line (fight-v2.md rule 11: walked-out line is off the spool).
+- **The swing limit** (`MaxSideDeg`) holds the fish's own swing only. A player who walks round the fish can leave it past
+  the limit: it stays where it is (never pulled back), and only its swing back toward the middle is free. A still player's
+  fish is always inside the limit, so for a still player the fight is the pre-T-045 fight **bit for bit** (every T-007 and
+  T-028 number above holds).
+- **Replication**: `FLureFightNetState::FishLocation` (`FVector_NetQuantize10`, Z = the water surface = `BobberRest.Z`).
+  The server publishes it already rounded the way the wire rounds it (0.1 cm steps), so its `FightNet` equals every
+  client's copy bit for bit and the host draws exactly what clients draw.
+  Every machine draws the bobber (`ComputeBobberPose`), the fish visual (`FFightFishViewAdapter`: `LineEnd`) and the line's
+  end there, and the owner's camera follows it; a client's own pawn position no longer matters. A late joiner gets it
+  with the rest of `FightNet`. `LineOut` and `SideDeg` still replicate (HUD, rod hint). The owner leaving mid-fight ends
+  the fight as before (T-028b O5).
+- QA tests that pinned the old "fish at player + direction x LineOut" contract and need updating (qa-engineer):
+  `Fishing.Fight.QA.Replication.ProxyFollowsServerFight` ("bobber on the fish, LineOut from their player": copies now
+  draw it at `FishLocation`, whoever stands where), `Fishing.Fight.QA.Component.FightSuspendsBobberDistanceRule` (walks
+  ~50 m away: now past `SpoolLength`, so Spooled; walk to between MaxLineLength 2600 and SpoolLength 4000 cm instead),
+  `FishVisual.QA.Adapter.EveryStateAndEnding` (hand-built state without `FishLocation`).
+- Tests: `Project.Fishing.Fight.Anchor.*` (`Tests/FishFight/FightAnchorTest.cpp`): a still player is the old fight bit for
+  bit; walking 5 m to the side and 5 m back leaves a still fish exactly put and a swimming fish moving only by its own
+  swim (compared with the same seed and a still player); the reel pulls toward the moved player; the world repro (bobber,
+  replicated location and fish visual stay put while the angler walks, then it is reeled in and lands); host and clients
+  (the owner's copy and another player's copy standing elsewhere, a late joiner, the owner leaving).
+
 ## Open questions (for Jimmy after playtest A)
 1. Snap speed: holding reel on a snapper with starter gear snaps the line in under a second. Too punishing, or the right
    "you need better gear" signal? (Knob: SnapGraceTime.)

@@ -430,6 +430,7 @@ namespace LureFightFishTest
 		Fight.Depth = 120.f;
 		Fight.SideDeg = 90.f;
 		Fight.LineOut = 1000.f;
+		Fight.FishLocation = FVector(0.f, 1000.f, -3.f); // T-045: where the server's fight has the fish
 		Fight.Tension = 5.f;
 		Fight.LineStrength = 10.f;
 		FLureFishingNetState Line;
@@ -449,17 +450,15 @@ namespace LureFightFishTest
 		TestEqual(TEXT("depth"), View.DepthCm, 120.f, 1.e-6f);
 		TestEqual(TEXT("tension 0..1"), View.Tension01, 0.5f, 1.e-6f);
 		TestEqual(TEXT("water height = the bobber's rest height"), View.WaterZ, -3.f, 1.e-4f);
-		TestTrue(TEXT("the line end: LineOut from the player toward the bobber, swung by SideDeg, at the surface"),
-			View.LineEnd.Equals(FVector(0.f, 1000.f, -3.f), 0.05));
+		TestTrue(TEXT("the line end: the fight's fish location, at the surface"), View.LineEnd.Equals(FVector(0.f, 1000.f, -3.f), 0.05));
 		TestTrue(TEXT("player location"), View.PlayerLocation.Equals(Player));
 		TestFalse(TEXT("authority passed through"), View.bHasAuthority);
 		TestEqual(TEXT("the fish record"), View.Fish.SpeciesId, FName(TEXT("CoralSnapper")));
 		TestEqual(TEXT("... its weight"), View.Fish.WeightKg, 3.25f, 1.e-6f);
 
-		Line.BobberRest = FVector(0.f, 0.f, -3.f); // right under the player: the player's forward is the fallback direction
-		View = FFightFishViewAdapter::Make(Fight, Line, Hooked, Player, FVector(0.f, -1.f, 0.f), true);
-		TestTrue(TEXT("bobber under the player: direction from the player's forward"), View.LineEnd.Equals(FVector(1000.f, 0.f, -3.f), 0.05));
-		Line.BobberRest = FVector(1500.f, 0.f, -3.f);
+		// T-045: wherever this machine's player stands (or faces), the fish is where the fight says.
+		View = FFightFishViewAdapter::Make(Fight, Line, Hooked, FVector(-700.f, 450.f, 190.f), FVector(0.f, -1.f, 0.f), true);
+		TestTrue(TEXT("another player position: the same line end"), View.LineEnd.Equals(FVector(0.f, 1000.f, -3.f), 0.05));
 
 		Line.State = ELureFishingState::Waiting;
 		TestFalse(TEXT("an active fight on a line that is not Hooked is not shown"), FFightFishViewAdapter::Make(Fight, Line, Hooked, Player, FVector::ForwardVector, true).bFighting);

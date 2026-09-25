@@ -26,7 +26,8 @@ state (`RodPitch`, `RodYaw`, `ReelStep`, `RunSide`) is not the fish's and is not
 - **Mesh**: DT_FishSpecies `SkeletalMesh` (new optional column), else `Mesh` if it is a skeletal mesh, else the settings'
   `FallbackMesh` (SK_Bonefish); none = nothing drawn. `AnimAmplitude` / `AnimRate` columns (optional, default 1).
 - **Scale**: `clamp((Weight / ReferenceWeight)^(1/3), MinScale, MaxScale)`.
-- **Placement**: line end = player + (direction to the bobber's rest point turned by `SideDeg`) x `LineOut`. The fish's
+- **Placement**: line end = the fight's fish location (`FLureFightNetState::FishLocation`, T-045: the server's world XY
+  of the fish, which the player's walking never moves), at the water surface. The fish's
   `Mouth` bone sits at the line end (body toward the player), `SurfaceDepth + min(DepthShare x Depth, MaxShownDepth)` under
   the surface, at least `FloorClearance` above the bottom. Smoothing: `AuthoritySmoothTime` on the server/standalone,
   `ProxySmoothTime` elsewhere; jumps over `SnapDistance` snap. Faces its swim when faster than `MinFacingSpeed`, else

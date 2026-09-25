@@ -9,6 +9,7 @@
 
 #include "CoreMinimal.h"
 #include "Engine/DataTable.h"
+#include "Engine/NetSerialization.h"
 #include "GameplayTagContainer.h"
 #include "FishFightTypes.generated.h"
 
@@ -597,10 +598,19 @@ struct FLureFightNetState
 	UPROPERTY(BlueprintReadOnly, Category="Fight")
 	float LineOut = 0.f;
 
+	/**
+	 *  T-045: where the hooked fish is in the world: its XY, at the water surface (Z = the bobber's rest height). The server's
+	 *  fight moves it only by the fish's own swimming and the reel, never with the player, and every machine draws the fish,
+	 *  the bobber and the line end here (a late joiner gets it with the rest of this struct). Depth is below this point.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category="Fight")
+	FVector_NetQuantize10 FishLocation = FVector::ZeroVector;
+
 	UPROPERTY(BlueprintReadOnly, Category="Fight")
 	float SpoolLength = 0.f;
 
-	/** Cosmetic: how deep the fish is, cm, and how far it swung around the player, degrees. */
+	/** Cosmetic: how deep the fish is, cm, and how far it swung around the player, degrees (T-045: its bearing from the player
+	 *  measured from the line's direction when the fight began; FishLocation is where it is). */
 	UPROPERTY(BlueprintReadOnly, Category="Fight")
 	float Depth = 0.f;
 
