@@ -21,6 +21,7 @@ FFightFishView FFightFishViewAdapter::Make(const FLureFightNetState& Fight, cons
 	View.bExhausted = Fight.bExhausted;
 	View.DepthCm = Fight.Depth;
 	View.Tension01 = Fight.GetTension01();
+	View.Stamina01 = FMath::Clamp(Fight.Stamina, 0.f, 1.f); // T-059a: the clip rate and alpha follow the fish's effort
 	View.PlayerLocation = PlayerLocation;
 	// T-047: a fish lifted out of the water at a dock edge rides that much higher (the surface it is drawn from rises with it;
 	// the lift stays in the view after the fight, so a landed fish is handed on where it was lifted to).

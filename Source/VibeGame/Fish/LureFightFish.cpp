@@ -70,6 +70,7 @@ void ALureFightFish::Setup(const FLureFightFishSetup& InSetup)
 
 	Phase = EFightFishPhase::Fighting;
 	Seconds = 0.f;
+	Stamina01 = 1.f;
 	EndSeconds = 0.f;
 	bPlaced = false;
 	Velocity = FVector::ZeroVector;
@@ -114,22 +115,30 @@ void ALureFightFish::ApplyView(const FFightFishView& View, float DeltaTime)
 	const FFishVisualRow& Row = Setup_.Row;
 	Seconds += FMath::Max(0.f, DeltaTime);
 	bExhausted = View.bExhausted;
+	Stamina01 = View.Stamina01;
 	LastWaterZ = View.WaterZ;
 	bHasWaterZ = FMath::IsFinite(View.WaterZ);
 
-	FVector Away = (View.LineEnd - View.PlayerLocation).GetSafeNormal2D();
-	if (Away.IsNearlyZero())
-	{
-		Away = GetActorForwardVector().GetSafeNormal2D();
-	}
+	// T-048: the mouth is the point that follows the line end (the bobber is over it); the body hangs back from it, away
+	// from the rod, swung sideways while the fish swims. Only the line point is smoothed, so the mouth never leaves the line.
 	const float FloorZ = Row.FloorClearance >= 0.f ? TraceFloorZ(View.LineEnd, View.WaterZ) : -UE_BIG_NUMBER;
-	LastTarget = FFightFishVisual::TargetLocation(Row, View, Away, MouthOffsetCm * FishScale, FloorZ);
+	const FVector Target = FFightFishVisual::MouthTarget(Row, View, FloorZ);
+	const FVector Before = MouthPoint;
+	const bool bSnap = !bPlaced || FVector::Dist(Target, Before) > Row.SnapDistance;
+	const float SmoothTime = View.bHasAuthority ? Row.AuthoritySmoothTime : Row.ProxySmoothTime;
+	MouthPoint = bSnap ? Target : FFightFishVisual::StepMouth(Row, Before, Target, DeltaTime, SmoothTime);
+	Velocity = (bSnap || DeltaTime <= 0.f) ? FVector::ZeroVector : (MouthPoint - Before) / DeltaTime;
 
-	const FVector Before = GetActorLocation();
-	const bool bSnap = !bPlaced || FVector::Dist(LastTarget, Before) > Row.SnapDistance;
-	MoveTo(LastTarget, View.PlayerLocation, DeltaTime, View.bHasAuthority ? Row.AuthoritySmoothTime : Row.ProxySmoothTime, bSnap);
+	const FRotator Desired = FFightFishVisual::FightFacing(Row, Velocity, MouthPoint, View.PlayerLocation, GetActorRotation(), bExhausted);
+	const FQuat Smoothed = bSnap ? Desired.Quaternion()
+		: FQuat::Slerp(GetActorQuat(), Desired.Quaternion(), FFightFishVisual::SmoothAlpha(DeltaTime, Row.RotationSmoothTime));
+	const FRotator Rotation = FFightFishVisual::ClampToLine(Row, Smoothed.Rotator(), MouthPoint, View.PlayerLocation);
+	const FVector Forward = Rotation.Vector();
+	const float Offset = MouthOffsetCm * FishScale;
+	LastTarget = FFightFishVisual::CenterForMouth(Target, Forward, Offset);
+	SetActorLocationAndRotation(FFightFishVisual::CenterForMouth(MouthPoint, Forward, Offset), Rotation);
 	bPlaced = true;
-	UpdateAnim(EFightFishPhase::Fighting, View.MoveId, LastTarget - Before);
+	UpdateAnim(EFightFishPhase::Fighting, View.MoveId, MouthPoint - Before);
 }
 
 void ALureFightFish::UpdateAnim(EFightFishPhase InPhase, FName MoveId, const FVector& TurnToward)
@@ -146,6 +155,7 @@ void ALureFightFish::UpdateAnim(EFightFishPhase InPhase, FName MoveId, const FVe
 	In.AnimRate = Setup_.AnimRate;
 	In.AnimAmplitude = Setup_.AnimAmplitude;
 	In.bDartRight = bDartRight;
+	In.Stamina01 = Stamina01;
 	FFishAnimState State = FFightFishVisual::ComputeAnimState(Setup_.Row, In);
 	if (State.Role == EFishAnimRole::Dart && LastRole != EFishAnimRole::Dart)
 	{

@@ -15,8 +15,8 @@ and the line **pulls straight under tension** (fight tension mapping, carried re
 
 | Fishing state | Tension shown (DT_FishingLine) | Look |
 |---|---|---|
-| Casting | CastTension 0.35 | a little slack behind the flying bobber |
-| Waiting | WaitTension 0 | droops from the rod tip and lies on the water up to the bobber |
+| Casting | CastTension 0.55 | a little slack behind the flying bobber |
+| Waiting | WaitTension 0.55 (T-046; was 0) | a gentle, mostly lifted curve from the rod tip to the bobber (rod tip 150 cm up: 27 / 36 / 45 % of the line on the water at 10 / 12.5 / 15 m; 0 was 82-91 %) |
 | Biting | BiteTension 0.6 | pulls nearly straight as the bobber dips |
 | Hooked, reel fight | `FLureFight::LineTension` = clamp(`Tension01` / DT_FishFight `TautTension` 0.3, 0, 1) | sags and floats when slack, **straight once the fish pulls with 30 % of the line's strength** or more |
 | Hooked, no fight (AutoLandDelay debug) | HookedTension 0.8 | nearly straight |
@@ -42,7 +42,9 @@ straight at tension 0 / 0.25 / 0.5 / 0.75 / 0.9 / 1 is 215 / 141 / 82 / 30 / 7.6
 | data | `data/tables/DT_FishingLine.csv` -> `/Game/Data/DT_FishingLine` | settings: `ULureFishingSettings::FishingLineTable` + `FishingLineRow` ("Default") |
 
 Unchanged from T-006 and still used: segment count, pixel width and minimum width (DT_Fishing `LineSegments`,
-`LinePixelWidth`, `LineMinWidth`); mesh, material and colour (Lure Fishing settings). The width rule keeps the line >= 2 px
+`LinePixelWidth`, `LineMinWidth`); mesh, material and colour (Lure Fishing settings). The material is `/Game/Materials/M_FishingLine`
+(T-041e: Responsive AA on, used with spline meshes, Vector param `Color`), loaded by `ULureFishingSettings::LoadLineMaterial`
+(missing: `/Engine/BasicShapes/BasicShapeMaterial` and one `LogLureFishing` warning). The width rule keeps the line >= 2 px
 at 1080p at every distance (designer B-S3), so it stays visible at 10-20 m.
 
 ## The simulation (FLureLineSim)
@@ -257,7 +259,7 @@ One row per kind of line; "Default" today. Units, ranges and exact meaning: the 
 | | TautExponent 3 | tautness = 1 - (1 - Tension01)^TautExponent |
 | | LengthResponse 6 | per second, how fast the length shrinks toward a tighter target |
 | | StraightenTime 0.4 | s for a line with the full SlackShare to go straight at tension 1 |
-| | CastTension 0.35, WaitTension 0, BiteTension 0.6, HookedTension 0.8 | tension shown per fishing state |
+| | CastTension 0.55, WaitTension 0.55, BiteTension 0.6, HookedTension 0.8 | tension shown per fishing state (WaitTension <= CastTension, < BiteTension) |
 | Water | FloatStrength 0.5 | 0..1 per sub-step: how fast line under water rises (x (1 - tautness)) |
 | | FloatHeight 0.4 | cm above the water the floating line rests |
 | | WaterRefreshDistance 500 | cm the end moves before the water height is looked up again (no owner height) |
@@ -316,6 +318,18 @@ segment is that thick.
 `FishingLineHangNoStubTest.cpp` (T-041b), `Project.Fishing.Line.Hang.NoStubPastMouth`: a fish hung on the rod's line
 (cast, reel in, land), 6 s of reel-up, swing and view sweeps; no line point and no sampled point of a drawn segment lies past
 the mouth into the fish by more than 1 cm (measured: 0.000 cm).
+
+`FishingLineHangWidthTest.cpp` (T-044), `Project.Fishing.Line.Hang.WidthOverTime`: a real catch (cast, reel fight, land),
+then 60 s at dt 1/60 while the player walks 9 m along the dock and sweeps the view: every point's width = the width rule for the
+eye (this or the last frame's camera, 10 %), each drawn segment that thick, and the widest point in the last second <= 1.1 x the
+first second's (measured 0.371 -> 0.316 cm). With the T-034 hunk reverted it fails: 0.41 -> 59 cm (Jimmy's A2 "massive diameter").
+
+`FishingLineMaterialTest.cpp` (T-041e), `Project.Fishing.Line.Material`: LineMaterial = M_FishingLine, it loads with
+bEnableResponsiveAA and bUsedWithSplineMeshes on, and a cast line's segments use a dynamic instance of it with Color = LineColor.
+
+`FishingLineWaitTensionTest.cpp` (T-046), `Project.Fishing.Line.WaitTension.*`: a waiting line (tip 150 cm up, bobber 10 /
+12.5 / 15 m out, 5 s at dt 1/60, built-in row) has <= 50 % of its inner points on the water and sags <= 6 % of the distance;
+its end stays where the bobber landed. `OldZeroTensionFails`: WaitTension 0 fails that check.
 
 QA's own suite: Project.Fishing.Line.QA.* (`QAFishingLineTest.cpp`).
 

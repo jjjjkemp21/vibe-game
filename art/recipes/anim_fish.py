@@ -24,7 +24,7 @@ The clips seen from the player's camera (dock at 5 / 12 m, first person on the h
 Previews (Saved/AgentLogs/previews/):
   SK_Fish_anim.png           overview: both species x every clip, 3/4 view from the concave side at each clip's
                              tightest bend (also the pinch check)
-  A_Fish_<Clip>_anim.png     per clip: 8-11 key frames x (Bonefish top, side; CoralSnapper top, side at amplitude
+  A_Fish_<Clip>_anim.png     per clip: 8-13 key frames x (Bonefish top, side; CoralSnapper top, side at amplitude
                              0.8); A_Fish_Hooked_Hang adds the hanging views (nose up: its right side, its back)
   SK_Fish_seams.png          every loop across its seam: frames N-2, N-1, N (= 0), 1, 2 (Bonefish, top view)
   A_Fish_Curled_anim.png     the 1-frame pose, both species: lying on each side seen from above (the cooler view,

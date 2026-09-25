@@ -391,7 +391,7 @@ void ALureFishItem::AuthorityRelease(APawn* Pawn)
 		return;
 	}
 	UE_LOG(LogLureCatch, Log, TEXT("%s released %s into the water."), *GetNameSafe(Pawn), *Catch.Fish.SpeciesId.ToString());
-	if (ULureHandsComponent* Hands = ULureHandsComponent::Get(Pawn))
+	if (ULureHandsComponent* Hands = bQuietRelease ? nullptr : ULureHandsComponent::Get(Pawn))
 	{
 		Hands->ClientNotice(FText::Format(LOCTEXT("Released", "Released the {0}"), GetItemName()).ToString());
 	}
@@ -779,7 +779,7 @@ void ALureFishItem::EnsureHangLine()
 	HangLine = NewObject<ULureFishingLineComponent>(this, TEXT("HangLine"), RF_Transient);
 	HangLine->SetupAttachment(ItemRoot);
 	HangLine->RegisterComponent();
-	HangLine->Setup(Mesh, Cast<UMaterialInterface>(LureFishItemPrivate::LoadIfExists(Settings->LineMaterial.ToSoftObjectPath())), Settings->LineColor, 4);
+	HangLine->Setup(Mesh, Settings->LoadLineMaterial(), Settings->LineColor, 4);
 }
 
 void ALureFishItem::GetViewer(FVector& OutLocation, float& OutFovDeg) const

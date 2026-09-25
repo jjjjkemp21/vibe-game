@@ -1603,7 +1603,16 @@ namespace LureQALineTest
 			if (!bHooked)
 			{
 				TestEqual(Label + TEXT(": the proxy shows WaitTension"), P->GetTension(), P->GetTuning().WaitTension);
-				TestTrue(Label + TEXT(": the proxy's line floats on the water too"), PointsNear(P->GetPoints(), P->GetTuning().FloatHeight, 1.5) >= 2);
+				// T-046: the waiting line holds some tension (lifted, not lying on the water). The proxy must match the server's
+				// share of inner points at the float height and never sink below it.
+				const double FloatZ = P->GetTuning().FloatHeight;
+				const int32 Inner = FMath::Max(1, P->GetPoints().Num() - 2);
+				const int32 ServerNear = PointsNear(S->GetPoints(), FloatZ, 1.5);
+				const int32 ProxyNear = PointsNear(P->GetPoints(), FloatZ, 1.5);
+				TestTrue(FString::Printf(TEXT("%s: waiting, the proxy has the server's share of points at the float height (server %d, proxy %d of %d)"), *Label, ServerNear, ProxyNear, Inner),
+					FMath::Abs(ServerNear - ProxyNear) <= FMath::Max(1, Inner / 10));
+				TestTrue(FString::Printf(TEXT("%s: waiting, the proxy's line never sinks below the float height (lowest %.2f)"), *Label, LowestInner(P->GetPoints())),
+					LowestInner(P->GetPoints()) >= FloatZ - 1.5);
 			}
 			else
 			{

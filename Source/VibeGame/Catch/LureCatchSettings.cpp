@@ -39,6 +39,15 @@ ULureCatchSettings::ULureCatchSettings()
 
 	CoolerSpawnTag = TEXT("Lure.CoolerSpawn");
 	StarterCoolerOffset = FVector(150.0f, 100.0f, 0.0f);
+
+	// T-064 (PLACEHOLDER): the cooler bone carries the top tilted 18.5 deg away from the eye; open = the top about level
+	// and tilted about 16 deg toward the eye (the lone fish at the back seen over the front rim); show = the top turned to face ahead (18.5 + 72 = about 90 deg from up), a little higher.
+	CarriedOpenRotation = FRotator(-35.0f, 0.0f, 0.0f);
+	CarriedOpenOffset = FVector::ZeroVector;
+	CarriedShowRotation = FRotator(72.0f, 0.0f, 0.0f);
+	CarriedShowOffset = FVector(0.0f, 0.0f, 8.0f);
+	ThirdPersonShowRotation = FRotator(-90.0f, 0.0f, 0.0f);
+	ThirdPersonShowOffset = FVector(0.0f, 0.0f, 10.0f);
 }
 
 const UDataTable* ULureCatchSettings::LoadTable(const TSoftObjectPtr<UDataTable>& Ref, const UScriptStruct* ExpectedRow, const TCHAR* Name, FString& OutError)

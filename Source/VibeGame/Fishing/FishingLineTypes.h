@@ -74,10 +74,10 @@ struct FLureFishingLineRow : public FTableRowBase
 
 	/** Tension the line shows per fishing state (0..1). During a reel fight the fight's own tension is used. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Tension", meta=(ClampMin="0", ClampMax="1"))
-	float CastTension = 0.35f;
+	float CastTension = 0.55f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Tension", meta=(ClampMin="0", ClampMax="1"))
-	float WaitTension = 0.f;
+	float WaitTension = 0.55f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Tension", meta=(ClampMin="0", ClampMax="1"))
 	float BiteTension = 0.6f;
