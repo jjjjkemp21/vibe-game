@@ -2,7 +2,8 @@
 
 Owner: `design-manager-high`. Builds on `docs/teams/STUDIO.md` (roles, objective flow, team log, escalation, reporting);
 this file adds only the design standards. Team: `level-designer-junior-low`, `level-designer-mid-medium`,
-`level-designer-senior-max`, and `designer-low` (screenshot/preview reviewer, changes nothing).
+`level-designer-senior-max`, and `designer-low` (screenshot/preview reviewer, changes nothing; the art manager may also
+start it for art preview reviews, STUDIO.md §3, using the standards in §5 here).
 
 The department turns Jimmy's ideas and playtest feedback (always relayed by the lead) into specs with testable acceptance
 criteria, designs the play spaces, and runs design reviews. It does not write C++, make art or use the editor.
@@ -110,14 +111,14 @@ idea). Agent notes starting with `[AGENT TEST]` are never feedback.
 
 | Kind | Test | Output |
 |---|---|---|
-| Bug | Breaks a spec rule or AC, or the game misbehaves | Task for Engineering (via the lead) citing the spec rule and the note folder |
+| Bug | Breaks a spec rule or AC, or the game misbehaves | Task for the owning department (via the lead) citing the spec rule and the note folder |
 | Feel | Works as specced but Jimmy dislikes how it plays | A data change: table, row, column, from -> to, one-line reason |
 | Content | Missing or wrong thing in a level or table | Layout JSON or table row task for a level-designer or the owning department |
 | Idea / taste | New feature, direction, look, pacing target | Short proposal + one plain question for the lead to ask Jimmy; no work until answered |
 
-Severity (impact): **S1** blocks play or loses progress; **S2** breaks a core loop (fishing, selling, hiding) or reads
-wrong; **S3** annoying but playable; **S4** polish. Priority (when): **P0** before the next build to Jimmy; **P1** this
-milestone; **P2** next milestone; **P3** backlog. Default mapping S1->P0, S2->P1; the lead sets final priority.
+Severity (impact): blocker / major / minor / trivial, as defined in docs/teams/qa.md §4. Priority (when): **P0** before
+the next build to Jimmy; **P1** this milestone; **P2** next milestone; **P3** backlog. Default mapping blocker->P0,
+major->P1. Design proposes severity and priority; the lead sets them and adds the tasks to docs/TASKS.md.
 
 Taste versus fact: if two good designers could disagree and Jimmy's opinion decides it (look, feel target, scope,
 pacing, difficulty curve), it is taste: ask through the lead with a recommendation. If the spec, data or metrics

@@ -32,7 +32,8 @@ How you work:
   own. GAME_DESIGN.md changes only to record a decision Jimmy made, relayed by the lead with its date.
 - Review every result with the handbook's checklist and the acceptance criteria. LOOK at every preview or screenshot
   you judge. Verdict: Accept, Rework (numbered change requests with owner and from/to values), or Escalate.
-- Feedback triage: classify each note (bug / feel / content / idea), set severity and a proposed priority, and turn
+- Feedback triage: classify each note (bug / feel / content / idea), propose a severity and a priority (the lead sets
+  them, handbook §6), and turn
   feel notes into concrete data changes (table, row, column, from -> to).
 - Scope guard: nothing from GAME_DESIGN.md "Out of scope for now" gets specced or built without Jimmy's OK via the lead.
 
@@ -46,8 +47,6 @@ Hard limits:
 - Commit only your own files with `git commit -- <paths>`; never stage `.claude/settings.json` or
   `Config/DefaultEditor.ini`. End commit messages with the session's Co-Authored-By line.
 
-Team log: keep `Saved/AgentLogs/teams/design.md` current after every dispatch, review and close (objective, task table
-with id / level / lane / agent id / status / commit / next step, decisions, open questions, risks), so a fresh manager
-can resume from it in one read.
+Team log: keep `Saved/AgentLogs/teams/design.md` current per STUDIO.md §4.
 
 Report to the lead in the STUDIO.md §7 format, 10 lines or fewer, with evidence paths and your team log path.

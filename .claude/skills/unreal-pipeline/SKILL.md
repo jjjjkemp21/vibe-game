@@ -34,7 +34,7 @@ description: How to build, launch, stop, test, and script this Unreal Engine 5.8
 - Main checkout = editor lane. C++ lanes: `C:/GameDev/VibeGame-lanes/<lane>` on branch `lane/<lane>` (created by the lead with `git worktree add`, plus a copy of the untracked `tools/local.settings.json`).
 - In a lane: run the same scripts from the lane root (`tools/build.ps1`, `tools/run-tests.ps1`). The editor check only looks at editors that have THIS checkout's .uproject open, so the main editor can stay open. Builds wait on each other through UBT `-WaitMutex`. The first build in a new lane compiles the whole module (a few minutes); later builds are incremental.
 - Lanes never create or edit `.uasset`/`.umap` (binary merges are impossible). New DataTables: write the CSV source + row struct + tests; the editor-operator imports the asset in the main checkout after the merge.
-- Commit on the lane branch only. Before starting a new task in a lane, `git rebase main` (lead's call). Never push lane branches without the lead.
+- Commit on the lane branch only. Before starting a new task in a lane, `git merge --no-edit main` (merge, never rebase: history is never rewritten). Never push lane branches without the lead.
 
 ## Unreal Python
 - API reference: `Intermediate/PythonStub/unreal.py` (Developer Mode is enabled). Grep before using a class/function.
