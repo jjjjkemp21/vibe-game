@@ -198,7 +198,9 @@ function Sync-DataTables([string]$Path, [string]$BaseRef) {
         $argsJson = '{"dest_path":"/Game/Data/' + $tbl + '","src_path":"' + ($Path + '/' + $f) + '"}'
         Write-Host ('  re-importing ' + $tbl + ' from ' + $f + ' (headless, batch lane build)')
         $since = Get-Date
-        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File ($Path + '/tools/unreal-python.ps1') -Function reimport_table -ArgsJson $argsJson | Out-Host
+        # Windows PowerShell 5.1 strips embedded double quotes from native-command arguments: escape them there.
+        $passJson = if ($PSVersionTable.PSVersion.Major -lt 7) { $argsJson -replace '"', '\"' } else { $argsJson }
+        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File ($Path + '/tools/unreal-python.ps1') -Function reimport_table -ArgsJson $passJson | Out-Host
         $st = $null; $statusPath = $Path + '/Saved/AgentLogs/status/unreal-python.json'
         if (Test-Path $statusPath) { try { $st = Get-Content -Path $statusPath -Raw -Encoding UTF8 | ConvertFrom-Json } catch { $st = $null } }
         $fresh = $false
