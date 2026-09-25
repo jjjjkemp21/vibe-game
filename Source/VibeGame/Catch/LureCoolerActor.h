@@ -95,6 +95,21 @@ public:
 	/** The top fish comes out into Pawn's empty hand (the lid must be open). Null if it can't. */
 	ALureFishItem* AuthorityTakeFishOut(APawn* Pawn);
 
+	/**
+	 *  T-065: Pawn, carrying this cooler open and showing it, tips every fish out, the top one first. Each becomes a fish item
+	 *  that falls by the drop rule (ALureFishItem::AuthorityDrop, from Pawn's eye like "Drop the <fish>"), spread across the
+	 *  view (GetDumpSideOffset, DT_Catch DumpSpacing) at DropForward; its flight starts at the cooler's mouth. On water it
+	 *  is released. Pawn's player gets one notice ("Dumped 3 fish, 1 released"). The cooler stays carried, open and shown.
+	 *  Returns how many came out (0 = refused or empty); OutReleased = how many of them went into the water.
+	 */
+	int32 AuthorityDumpFish(APawn* Pawn, int32* OutReleased = nullptr);
+
+	/** T-065: the sideways place (cm, + = the carrier's right) of the Index-th dumped fish: 0, +S, -S, +2S, -2S ... */
+	static float GetDumpSideOffset(int32 Index, float Spacing);
+
+	/** T-065: the middle of the open top of the drawn body, world (where dumped fish start their flight; cosmetic) */
+	FVector GetMouthLocation() const;
+
 	/** Pawn picks it up in both hands (hands empty, no fish on the hook; the lid closes) */
 	bool AuthorityPickUp(APawn* Pawn);
 

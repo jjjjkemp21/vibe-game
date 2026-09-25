@@ -107,7 +107,7 @@ by the server; clients only ask ("I pressed E on this cooler, expecting Put in")
 | a fish | full | nothing (info "Cooler full (4/4)") | Drop the fish |
 | this cooler (you carry it, T-064) | lid closed | Open ("Open the cooler (3/4)") | Put down |
 | this cooler | lid open, mouth toward you | Show it ("Show the fish": turn the open side away) | Close |
-| this cooler | showing (mouth away) | Turn it back | Close (T-065: "Dump 3 fish" when it has fish) |
+| this cooler | showing (mouth away) | Turn it back | Dump ("Dump 3 fish", T-065); empty: Close |
 
 - **Carry:** both hands, arms pose **CarryCooler**, rod stowed (no fishing), move speed x `CarrySpeedMultiplier` of
   the row on land (Starter 0.8; sprint too). The lid closes when you pick it up. Put down = in front of you at
@@ -125,6 +125,18 @@ by the server; clients only ask ("I pressed E on this cooler, expecting Put in")
   you show it to), set only while it is carried in a hand with the lid open, and cleared whenever it is not carried or
   the lid closes. **Any put-down** (F, prone, water, getting caught, leaving) ends showing and keeps the lid as it is
   (an open cooler put down stands open). Pick-up still closes the lid.
+- **Dump while showing (T-065, Jimmy A2 notes):** F on a shown cooler with fish ("Dump 3 fish") tips every fish out,
+  the top one first (`AuthorityDumpFish`, server). Each record becomes a fish item that falls by the **Drop** rule of
+  "The hand" (`ALureFishItem::AuthorityDrop`, from the carrier's eye like "Drop the <fish>"): the top one `DropForward`
+  straight ahead, the next ones `DumpSpacing` across the view (right, left, 2 x right, ...). On land it lies there loose
+  (anyone can pick it up; it spoils at the out-of-cooler rate from now, its exposure kept; on a sell counter's area it
+  joins the counter as a single drop does); on water it is released. The flight starts at the cooler's mouth
+  (cosmetic; the landing uses the eye). One summary notice: "Dumped 3 fish" (+ ", 1 released" when some went into the
+  water; no per-fish "Released the ..." notice). Nothing is copied or lost (records out = items on the ground +
+  released), no XP changes, and the cooler stays carried, open and shown, now empty (F = Close). **No contents token:**
+  only the carrier can change a carried cooler (nobody else can put in, take out or sell from it), so what the server
+  holds when the request arrives is what the carrier's prompt counted, apart from server-side adds (e.g. debug), which
+  are dumped too.
 - **The turn (cosmetic, every rendering machine):** the cooler's own visual (`VisualRoot`) turns in the cooler's own
   axes about the middle of its box, then shifts (never its attachment, so it composes with the arms' `cooler` bone):
   carrier's machine, open toward you = `CarriedOpenRotation/Offset` (the top tilted toward the eye, blended over
@@ -293,7 +305,7 @@ by the server; clients only ask ("I pressed E on this cooler, expecting Put in")
 - Status line: `Money 120   Level 3 (XP 40/110)   Cooler 3/4`: the cooler you carry (anyone's, so it matches the
   `Carrying:` line), else your own (T-030g: carrying a friend's 1/4 cooler showed your own 0/4 next to it).
 - `Holding: Bonefish (Rare), 2.04 kg, 45 coins, fresh 87%` (value and freshness now), the E/F prompt line(s), and the
-  info line (e.g. `Cooler full (4/4)`). Notices: "Released the Bonefish", "Sold 3 fish for 123 coins".
+  info line (e.g. `Cooler full (4/4)`). Notices: "Released the Bonefish", "Sold 3 fish for 123 coins", "Dumped 3 fish, 1 released".
 
 ## Data
 - `data/tables/DT_Cooler.csv` (FCoolerRow): Starter (4 slots, the starter meshes, open 1.0, closed 0.0, carry 0.8),
@@ -302,7 +314,8 @@ by the server; clients only ask ("I pressed E on this cooler, expecting Put in")
 - `data/tables/DT_Catch.csv` (FLureCatchRow, row Default): HangLineLength 40 cm, HangDamping 1.2 /s, ReachDistance
   250 cm, FocusAngleDeg 20, DropForward 60 cm, DropArcTime 0.35 s, PutDownDistance 80 cm,
   PutDownMaxFall 300 cm, LidOpenPitch 100 deg, LidOpenTime 0.25 s, LidPulsePitch 30 deg, ShowTurnTime 0.4 s (T-064,
-  optional column: older CSVs import with the default; the data test validates it in [0, 10] s).
+  optional column: older CSVs import with the default; the data test validates it in [0, 10] s), DumpSpacing 25 cm
+  (T-065, optional column, default 25, validated in [0, 200] cm; 0 = one pile).
 - `data/tables/DT_CoolerDisplay.json` (FLureCoolerDisplayRow, rows Starter and Large): the 4-slot table of
   SK_Fish.anim.md (`anim_fish_cooler.py`, 2026-09-23), FishPose `/Game/Art/Fish/A_Fish_Curled`, PoseTime 0,
   MaxFishScale 1.0, LieOffsetCm 4.25 (Bonefish 4.24, CoralSnapper 4.26: one value until the species table has look

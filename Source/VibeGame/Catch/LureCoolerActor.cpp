@@ -397,6 +397,84 @@ ALureFishItem* ALureCoolerActor::AuthorityTakeFishOut(APawn* Pawn)
 	return Item;
 }
 
+int32 ALureCoolerActor::AuthorityDumpFish(APawn* Pawn, int32* OutReleased)
+{
+	if (OutReleased)
+	{
+		*OutReleased = 0;
+	}
+	ULureHandsComponent* Hands = ULureHandsComponent::Get(Pawn);
+	UWorld* World = GetWorld();
+	if (!HasAuthority() || !World || !Hands || !IsHeldBy(Pawn, ELureHoldMode::Hand) || !bLidOpen || !bShowing || !Storage || GetNumFish() == 0)
+	{
+		return 0; // only its carrier, while showing it (the carrier alone changes a carried cooler: no contents token)
+	}
+	const FLureCatchRow& Tuning = ULureCatchSubsystem::GetTuningFor(this);
+	// The server's drop origin is the carrier's eye, as for "Drop the <fish>"; the cooler's mouth only starts the flight.
+	const FVector Eye = Pawn->GetPawnViewLocation();
+	const FVector Origin = Eye - FVector::UpVector * 25.0f;
+	const FRotator ViewYaw(0.0f, Pawn->GetViewRotation().Yaw, 0.0f);
+	const FVector2D Forward(ViewYaw.Vector());
+	const FVector2D Right(ViewYaw.RotateVector(FVector::RightVector));
+	const FTransform Mouth(ViewYaw, GetMouthLocation());
+	int32 Dumped = 0;
+	int32 Released = 0;
+	FLureCaughtFish Record;
+	while (Storage->RemoveLastFish(Record)) // the top first; the record keeps its exposure, the item spoils at rate 1 from now
+	{
+		ALureFishItem* Item = ALureFishItem::SpawnFish(World, Record, Mouth);
+		if (!Item)
+		{
+			Storage->AddFish(Record); // back on top: nothing is lost
+			break;
+		}
+		const FVector2D Offset = Forward * Tuning.DropForward + Right * GetDumpSideOffset(Dumped, Tuning.DumpSpacing);
+		Item->AuthoritySetQuietRelease(true); // one summary notice below instead of one per fish
+		if (Item->AuthorityDrop(Pawn, Origin, FVector2D(Eye.X, Eye.Y), Offset, static_cast<float>(Offset.Size())))
+		{
+			Item->AuthoritySetQuietRelease(false);
+		}
+		else
+		{
+			++Released;
+		}
+		++Dumped;
+	}
+	if (Dumped > 0)
+	{
+		FString Notice = FText::Format(LOCTEXT("Dumped", "Dumped {0} fish"), FText::AsNumber(Dumped)).ToString();
+		if (Released > 0)
+		{
+			Notice += FText::Format(LOCTEXT("DumpedReleased", ", {0} released"), FText::AsNumber(Released)).ToString();
+		}
+		Hands->ClientNotice(Notice);
+		UE_LOG(LogLureCatch, Log, TEXT("%s dumped %d fish out of %s (%d released)."), *GetNameSafe(Pawn), Dumped, *GetName(), Released);
+		ForceNetUpdate();
+	}
+	if (OutReleased)
+	{
+		*OutReleased = Released;
+	}
+	return Dumped;
+}
+
+float ALureCoolerActor::GetDumpSideOffset(int32 Index, float Spacing)
+{
+	if (Index <= 0)
+	{
+		return 0.0f;
+	}
+	const float Step = static_cast<float>((Index + 1) / 2) * FMath::Max(0.0f, Spacing);
+	return Index % 2 ? Step : -Step; // right first, then left
+}
+
+FVector ALureCoolerActor::GetMouthLocation() const
+{
+	// The body box's top face (actor frame = the visual root's frame when unturned), moved with the drawn visual (the show turn).
+	const FVector TopLocal(BoxCenter.X, BoxCenter.Y, BoxCenter.Z + BoxHalfExtent.Z);
+	return GetVisualTransform().TransformPosition(TopLocal);
+}
+
 bool ALureCoolerActor::AuthorityPickUp(APawn* Pawn)
 {
 	ULureHandsComponent* Hands = ULureHandsComponent::Get(Pawn);
@@ -658,7 +736,7 @@ FLureInteraction ALureCoolerActor::GetInteraction(const APawn* Pawn, ELureIntera
 	if (IsHeldBy(Pawn, ELureHoldMode::Hand))
 	{
 		// T-064: the cooler in your hands. Closed: E opens, F puts it down. Open toward you: E shows it, F closes.
-		// Showing: E turns it back, F closes (T-065: F dumps the fish when there are any).
+		// Showing: E turns it back, F dumps the fish (T-065; an empty one: F closes).
 		const bool bPrimary = Key == ELureInteractKey::Primary;
 		if (!bLidOpen)
 		{
@@ -669,6 +747,10 @@ FLureInteraction ALureCoolerActor::GetInteraction(const APawn* Pawn, ELureIntera
 		{
 			return bShowing ? FLureInteraction::Make(ELureInteractVerb::TurnBackCooler, LOCTEXT("TurnBack", "Turn it back"))
 				: FLureInteraction::Make(ELureInteractVerb::ShowCooler, LOCTEXT("Show", "Show the fish"));
+		}
+		if (bShowing && GetNumFish() > 0)
+		{
+			return FLureInteraction::Make(ELureInteractVerb::DumpCooler, FText::Format(LOCTEXT("Dump", "Dump {0} fish"), FText::AsNumber(GetNumFish())));
 		}
 		return FLureInteraction::Make(ELureInteractVerb::CloseCooler, FText::Format(LOCTEXT("Close", "Close the cooler ({0})"), Count));
 	}
@@ -729,6 +811,8 @@ bool ALureCoolerActor::PerformInteraction(APawn* Pawn, ELureInteractVerb Verb)
 			return false;
 		}
 		return AuthoritySetShowing(Verb == ELureInteractVerb::ShowCooler);
+	case ELureInteractVerb::DumpCooler:
+		return IsHeldBy(Pawn, ELureHoldMode::Hand) && AuthorityDumpFish(Pawn) > 0;
 	case ELureInteractVerb::PutFishInCooler:
 		return AuthorityPutFishIn(Pawn, Hands->GetHeldFish());
 	case ELureInteractVerb::TakeFishFromCooler:

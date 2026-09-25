@@ -116,6 +116,7 @@ bool FLureCatchRow::Validate(FString& OutProblem) const
 		{ TEXT("HoldFishScaleSmall"), HoldFishScaleSmall, 0.0f, 10.0f, true },
 		{ TEXT("HoldFishScaleLarge"), HoldFishScaleLarge, 0.0f, 10.0f, true },
 		{ TEXT("ShowTurnTime"), ShowTurnTime, 0.0f, 10.0f, false },
+		{ TEXT("DumpSpacing"), DumpSpacing, 0.0f, 200.0f, false },
 	};
 	for (const FCheck& Check : Checks)
 	{
