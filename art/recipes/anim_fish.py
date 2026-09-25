@@ -17,11 +17,16 @@ Exports (art/export/Fish/), all CENTIMETERS through pb.export_skeletal_fbx (Unit
   A_Fish_Curled.fbx                      the same kind of file, a 1-frame pose (2 identical keys, frames 0-1): the
                                          iced catch lying curled in a cooler (T-030; layout proof and slot table:
                                          art/recipes/anim_fish_cooler.py)
+  A_Fish_Swim_Tired, _Hooked_Hang .fbx   S3 (T-058 / T-060): the exhausted fish, upright; the landed fish dangling on
+                                         the hook with its head locked (the Mouth never moves; never held at Grip)
 Spec for Unreal: art/export/Fish/SK_Fish.anim.md. RESULT_JSON: Saved/AgentLogs/blender/anim_fish.result.json.
+The clips seen from the player's camera (dock at 5 / 12 m, first person on the hook): art/recipes/anim_fish_views.py.
 Previews (Saved/AgentLogs/previews/):
-  SK_Fish_anim.png           overview: both species x 7 clips, 3/4 view from the concave side at each clip's
+  SK_Fish_anim.png           overview: both species x every clip, 3/4 view from the concave side at each clip's
                              tightest bend (also the pinch check)
-  A_Fish_<Clip>_anim.png     per clip: 8 frames x (Bonefish top, side; CoralSnapper top, side at amplitude 0.8)
+  A_Fish_<Clip>_anim.png     per clip: 8-11 key frames x (Bonefish top, side; CoralSnapper top, side at amplitude
+                             0.8); A_Fish_Hooked_Hang adds the hanging views (nose up: its right side, its back)
+  SK_Fish_seams.png          every loop across its seam: frames N-2, N-1, N (= 0), 1, 2 (Bonefish, top view)
   A_Fish_Curled_anim.png     the 1-frame pose, both species: lying on each side seen from above (the cooler view,
                              over the pale straight fish), from the back (it stays flat) and 3/4
   SK_Fish_strobe.png         midline strobes (top view) per clip + the ambient WPO wave for comparison
@@ -46,7 +51,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 
 import bpy  # noqa: E402
-from mathutils import Euler, Matrix, Vector  # noqa: E402
+from mathutils import Euler, Matrix, Quaternion, Vector  # noqa: E402
 
 import fishkit as fk  # noqa: E402
 import fishrig as fr  # noqa: E402
@@ -68,7 +73,7 @@ ONLY = {s.strip() for s in os.environ.get("FISH_ANIM_CLIPS", "").split(",") if s
 # Acceptance numbers for the checks (RESULT_JSON "verdict")
 LIMITS = {"ring_area_min": 0.80, "fold_min": 0.30, "pec_in_mm": 1.0, "flop_drop_mm": 1.0, "weight_sum_error": 1e-4,
           "max_influences": 3, "rest_skin_mm": 0.01, "keyed_error_mm": 0.01, "reimport_mm": 0.05,
-          "additive_mm": 0.05, "seam_mm": 0.001}
+          "additive_mm": 0.05, "seam_mm": 0.001, "hang_mouth_mm": 0.01, "anchor_mm": 0.01, "anchor_deg": 0.01}
 T0 = time.time()
 
 
@@ -234,6 +239,108 @@ def keyed_check(fish, clips):
                 err_deg = max(err_deg, math.degrees(a.to_quaternion().rotation_difference(b.to_quaternion()).angle))
     fr.mute_all(arm)
     return {"max_bone_error_mm": round(err_mm, 5), "max_bone_error_deg": round(err_deg, 5)}
+
+
+def nlerp_alpha(quats, a):
+    """Unreal's Apply Additive alpha (FTransform::BlendFromIdentityAndAccumulate): every local rotation lerped from the
+    identity along the shorter arc, then normalized (personality() slerps for the previews; < 0.2 deg apart)."""
+    if a >= 0.9999:
+        return quats
+    out = {}
+    for n, q in quats.items():
+        s = 1.0 if q.w >= 0.0 else -1.0
+        r = Quaternion(((1.0 - a) + a * s * q.w, a * s * q.x, a * s * q.y, a * s * q.z))
+        r.normalize()
+        out[n] = r
+    return out
+
+
+def hang_check(fishes, clip):
+    """A_Fish_Hooked_Hang: the Mouth (the hook) in component space on every frame at Apply Additive alpha 1.0 and 0.8
+    (Unreal's nlerp): largest distance from its reference position, mm. The head is the chest's inverse and a rotation
+    and its inverse scale to inverses, so it must stay 0 at any alpha."""
+    out = {}
+    for fish in fishes:
+        rest = fish.arm.data.bones["Mouth"].head_local.copy()
+        worst = {}
+        for a in (1.0, 0.8):
+            d = 0.0
+            for f in range(clip.frames + 1):
+                pose_fish(fish, nlerp_alpha(clip.pose(f).quats(), a))
+                d = max(d, (fish.arm.pose.bones["Mouth"].head - rest).length * 1000.0)
+            worst["alpha_%.1f" % a] = round(d, 5)
+        out[fish.species] = worst
+        pose_fish(fish, fr.Pose().quats())
+    return out
+
+
+def anchor_check(fishes, clips):
+    """The anchored chest (every clip that can be held at Grip, i.e. all but the Hang): Grip's component position (mm)
+    and the chest's spine axis (Spine_01 X, deg: roll keeps it, yaw or pitch would turn it) on every frame."""
+    out = {}
+    for fish in fishes:
+        rest = fish.arm.data.bones["Grip"].head_local.copy()
+        for clip in clips:
+            if clip.role == "Hang":
+                continue
+            d, ang = 0.0, 0.0
+            for f in range(clip.frames + 1):
+                pose_fish(fish, clip.pose(f).quats())
+                d = max(d, (fish.arm.pose.bones["Grip"].head - rest).length * 1000.0)
+                ax = fish.arm.pose.bones["Spine_01"].matrix.to_3x3() @ Vector((1.0, 0.0, 0.0))
+                ang = max(ang, math.degrees(ax.angle(Vector((1.0, 0.0, 0.0)))))
+            out.setdefault(fish.species, {})[clip.name] = {"grip_mm": round(d, 5), "chest_axis_deg": round(ang, 5)}
+        pose_fish(fish, fr.Pose().quats())
+    return out
+
+
+def tired_upright(clip):
+    """A_Fish_Swim_Tired must read upright (T-058): the largest body roll (Spine_01, deg) over the clip."""
+    return round(max(abs(math.degrees(clip.pose(f).roll)) for f in range(clip.frames + 1)), 3)
+
+
+def body_centre(fish, co):
+    """Volume centroid of the body (armature space): slices between neighbouring body rings, each with its mean area
+    and its centroid at the mid-point of the two ring centroids (fins have next to no volume)."""
+    cents = [sum((co[i] for i in r), Vector()) / len(r) for r in fish.probe.rings]
+    areas = [fish.probe._area([co[i] for i in r]) for r in fish.probe.rings]
+    num, den = Vector(), 0.0
+    for c0, c1, a0, a1 in zip(cents, cents[1:], areas, areas[1:]):
+        v = 0.5 * (a0 + a1) * (c1 - c0).length
+        num += v * 0.5 * (c0 + c1)
+        den += v
+    return num / den
+
+
+def hang_offsets(fishes, clip):
+    """T-061 (the wiggle moves the line): while the head hangs still, where the body goes. Component space, Unreal cm
+    and axes (+X = the nose = up the line, +Y = the fish's right = toward the viewer, +Z = its back), reference size,
+    alpha 1, as offsets from the reference pose, every frame: the body centre (volume centroid), the Tail bone (J5,
+    the tail root) and the tail tip (on the spine line). Scale by the fish's actor scale."""
+    out = {"frames": clip.frames, "columns": ["frame", "centre_dx", "centre_dy", "centre_dz", "tail_dx", "tail_dy",
+                                              "tail_dz", "tip_dx", "tip_dy", "tip_dz"]}
+    for fish in fishes:
+        def points():
+            co = fish.probe.coords()
+            return [body_centre(fish, co), fish.arm.pose.bones["Tail"].head.copy(),
+                    skin_matrix(fish, "Tail") @ Vector((fish.geo.tip_x, 0.0, 0.0))]
+        pose_fish(fish, fr.Pose().quats())
+        rest = points()
+        rows, peak = [], [0.0, 0.0, 0.0]
+        for f in range(clip.frames + 1):
+            pose_fish(fish, clip.pose(f).quats())
+            row = [f]
+            for k, (p, p0) in enumerate(zip(points(), rest)):
+                d = ue_cm(p - p0)
+                row += d
+                peak[k] = max(peak[k], math.sqrt(sum(c * c for c in d)))
+            rows.append(row)
+        out[fish.species] = {"rest_ue_cm": {"centre": ue_cm(rest[0]), "tail": ue_cm(rest[1]), "tip": ue_cm(rest[2])},
+                             "peak_offset_cm": {"centre": round(peak[0], 2), "tail": round(peak[1], 2),
+                                                "tip": round(peak[2], 2)},
+                             "offsets_ue_cm": rows}
+        pose_fish(fish, fr.Pose().quats())
+    return out
 
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -432,10 +539,15 @@ CELL = (240, 180)
 BG = "#0E6F7A"          # palette deep water: the silver bonefish and the coral snapper both read on it
 BG_LIGHT = style.UI.PARCHMENT
 ORTHO = 0.80
-STRIP_FRAMES = {
+STRIP_FRAMES = {        # the key poses of each choreographed clip (the others: 8 even frames)
+    "A_Fish_Swim_Fast": [0, 3, 5, 8, 13, 18, 23, 28],
+    "A_Fish_Fight_Run": [0, 3, 6, 10, 18, 25, 27, 29, 37, 40],
+    "A_Fish_Fight_Dive": [0, 2, 7, 12, 15, 22, 34, 41, 47, 52],
     "A_Fish_Fight_Dart": [0, 2, 4, 6, 8, 11, 22, 26],
-    "A_Fish_Hooked_Thrash": [0, 4, 8, 22, 26, 30, 67, 71],
+    "A_Fish_Hooked_Thrash": [0, 4, 7, 10, 13, 20, 22, 25, 29, 65, 67, 70],
     "A_Fish_Landed_Flop": [0, 7, 10, 13, 16, 27, 50, 58],
+    "A_Fish_Swim_Tired": [0, 14, 26, 36, 46, 56, 66, 72, 76, 84],
+    "A_Fish_Hooked_Hang": [0, 9, 14, 16, 19, 24, 29, 44, 60, 80, 82, 85, 109],
 }
 STROBE_FRAMES = {       # one phrase per clip, bonefish at amplitude 1
     "A_Fish_Swim_Idle": list(range(0, 30, 3)),
@@ -445,6 +557,8 @@ STROBE_FRAMES = {       # one phrase per clip, bonefish at amplitude 1
     "A_Fish_Fight_Dart": list(range(0, 19, 2)),
     "A_Fish_Hooked_Thrash": list(range(16, 41, 3)),
     "A_Fish_Landed_Flop": list(range(0, 21, 2)),
+    "A_Fish_Swim_Tired": list(range(20, 64, 4)),
+    "A_Fish_Hooked_Hang": list(range(8, 37, 2)),
 }
 
 
@@ -607,25 +721,93 @@ def solo_render(fishes, fish):
             m.hide_render = h
 
 
+# A_Fish_Hooked_Hang also shows the fish hanging (nose up on screen, as LureFishItem::UpdateHooked turns it): from its
+# RIGHT side (Blender -Y; the side the game turns to the viewer) and from its back (+Z, the edge view). The fish stays
+# at the armature origin; the camera is turned so +X (the nose, up the line) is up on screen. Ink ring = the hook
+# (the reference-pose Mouth), ink line = the fishing line.
+HANG_VIEWS = {"hang_player": (Vector((0.0, -3.0, 0.0)), Vector((0.0, 1.0, 0.0))),
+              "hang_back": (Vector((0.0, 0.0, 3.0)), Vector((0.0, 0.0, -1.0)))}
+HANG_CENTER_X = 0.02
+HANG_ORTHO = 0.85
+
+
+def hang_camera(view):
+    """(location, rotation) of an ortho camera looking at the hanging fish with the nose up on screen."""
+    offset, fwd = HANG_VIEWS[view]
+    loc = offset + Vector((HANG_CENTER_X, 0.0, 0.0))
+    up = Vector((1.0, 0.0, 0.0))
+    right = fwd.cross(up).normalized()
+    up = right.cross(fwd).normalized()
+    return loc, Matrix((right, up, -fwd)).transposed().to_euler()
+
+
+def hook_marks(fish):
+    """Hook ring at the reference Mouth + the line up the fish's +X axis (the hang views)."""
+    import bmesh
+    m = fish.arm.data.bones["Mouth"].head_local.copy()
+    me = bpy.data.meshes.new("PV_Hook")
+    bm = bmesh.new()
+    bmesh.ops.create_uvsphere(bm, u_segments=12, v_segments=8, radius=0.009)
+    bm.to_mesh(me)
+    bm.free()
+    me.materials.append(flat_mat(style.UI.INK))
+    ob = bpy.data.objects.new("PV_Hook", me)
+    bpy.context.scene.collection.objects.link(ob)
+    ob.location = m
+    return [ob, add_polyline("PV_Line", [m, m + Vector((0.6, 0.0, 0.0))], style.UI.INK, radius=0.0015)]
+
+
 def clip_sheet(fishes, clip, tmp):
     cells = []
     rows = [(f, v) for f in fishes for v in ("top", "side")]
+    if clip.role == "Hang":
+        rows += [(f, "hang_player") for f in fishes] + [(fishes[0], "hang_back")]
     frames = strip_frames(clip)
     for fish, view in rows:
         amp = PREVIEW_AMPLITUDE[fish.species]
-        stage = ref_lines(fish, view)
+        hang = view in HANG_VIEWS
+        stage = hook_marks(fish) if hang else ref_lines(fish, view)
         with solo_render(fishes, fish):
             for col, f in enumerate(frames):
                 pose_fish(fish, clip_quats(clip, f, amp))
                 text = "f%d" % f
                 if col == 0:
                     text = "%s\n%s %s x%.1f f%d" % (short(clip.name), fish.species, view, amp, f)
-                loc, rot = VIEWS[view]
+                loc, rot = hang_camera(view) if hang else VIEWS[view]
                 cells.append(render(tmp / ("%s_%s_%s_%02d.png" % (clip.name, fish.species, view, col)), loc, rot,
-                                    ortho=ORTHO, label=text))
+                                    ortho=HANG_ORTHO if hang else ORTHO, label=text,
+                                    bg=style.TROPICAL.SKY_DAY if hang else BG))
         remove_objects(stage)
         pose_fish(fish, fr.Pose().quats())
     return pb.contact_sheet(cells, PREVIEW_DIR / ("%s_anim.png" % clip.name), cols=len(frames), cell=CELL)
+
+
+def seam_sheet(fishes, clips, metrics, tmp):
+    """Every loop across its seam (Bonefish, top view, amplitude 1): frames N-2, N-1, N (Unreal's last key, = frame 0),
+    1, 2, labelled with the seam numbers from clip_metrics (seam distance, the seam's second difference vs the median)."""
+    fish = next(f for f in fishes if f.species == REFERENCE)
+    cells, cols = [], 5
+    loops = [c for c in clips if c.loop and c.frames > 2]
+    with solo_render(fishes, fish):
+        for c in loops:
+            n = c.frames
+            m = metrics[fish.species][c.name]
+            stage = ref_lines(fish, "top")
+            for j, f in enumerate([n - 2, n - 1, n, 1, 2]):
+                pose_fish(fish, clip_quats(c, f))
+                if j == 0:
+                    text = "%s seam\nf%d" % (short(c.name), f)
+                elif f == n:
+                    text = "f%d = f0 (last key)\nseam %.4f mm" % (f, m["seam_mm"])
+                elif j == 3:
+                    text = "f%d\nseam 2nd diff %.1f mm\n(median %.1f)" % (f, m["seam_accel_mm"], m["median_accel_mm"])
+                else:
+                    text = "f%d" % f
+                loc, rot = VIEWS["top"]
+                cells.append(render(tmp / ("seam_%s_%d.png" % (short(c.name), j)), loc, rot, ortho=ORTHO, label=text))
+            remove_objects(stage)
+    pose_fish(fish, fr.Pose().quats())
+    return pb.contact_sheet(cells, PREVIEW_DIR / "SK_Fish_seams.png", cols=cols, cell=CELL)
 
 
 def fit_2d(co):
@@ -890,6 +1072,7 @@ def render_previews(fishes, clips, bend_frames, lies, metrics):
             out["clips"][clip.name] = clip_sheet(fishes, clip, tmp)
         log("strip " + clip.name)
     out["strobe"] = strobe_sheet(fishes, [c for c in clips if c.frames > 1], tmp)
+    out["seams"] = seam_sheet(fishes, clips, metrics, tmp)
     flop = next((c for c in clips if c.role == "Flop"), None)
     if flop is not None:
         out["flop_dock"] = flop_dock_sheet(fishes, flop, lies, tmp)
@@ -922,7 +1105,8 @@ def species_report(fish, lie):
     }
 
 
-VERIFY = [("A_Fish_Fight_Dart", 4), ("A_Fish_Swim_Idle", 15), ("A_Fish_Curled", 0)]
+VERIFY = [("A_Fish_Fight_Dart", 4), ("A_Fish_Swim_Idle", 15), ("A_Fish_Curled", 0), ("A_Fish_Hooked_Hang", 16),
+          ("A_Fish_Swim_Tired", 36)]
 
 
 def verify_points(fishes):
@@ -983,6 +1167,13 @@ def main():
         log("metrics %s done" % fish.species)
     keyed = keyed_check(ref, clips)
     log("keyed check %s" % keyed)
+    anchors = anchor_check(fishes, clips)
+    hang = next((c for c in clips if c.role == "Hang"), None)
+    tired = next((c for c in clips if c.role == "Tired"), None)
+    hang_mouth = hang_check(fishes, hang) if hang else None
+    offsets = hang_offsets(fishes, hang) if hang else None
+    lean = tired_upright(tired) if tired else None
+    log("anchor, hang %s, tired lean %s" % (hang_mouth, lean))
     for fish in fishes:                      # back to the bind pose (bounds and the exports read the rest pose)
         fr.mute_all(fish.arm)
         pose_fish(fish, fr.Pose().quats())
@@ -1001,7 +1192,13 @@ def main():
         "flop_dock": all(m.get("drop_below_lie_mm", 0.0) <= LIMITS["flop_drop_mm"]
                          for s in metrics.values() for m in s.values()),
         "keyed": keyed["max_bone_error_mm"] <= LIMITS["keyed_error_mm"],
+        "anchor": all(v["grip_mm"] <= LIMITS["anchor_mm"] and v["chest_axis_deg"] <= LIMITS["anchor_deg"]
+                      for s in anchors.values() for v in s.values()),
     }
+    if hang_mouth is not None:
+        checks["hang_mouth"] = all(v <= LIMITS["hang_mouth_mm"] for s in hang_mouth.values() for v in s.values())
+    if lean is not None:
+        checks["tired_upright"] = lean <= fr.TIRED_MAX_LEAN_DEG
 
     extra = {
         "quick": QUICK, "clips_checked": [c.name for c in clips],
@@ -1015,6 +1212,8 @@ def main():
         "clips": [{"name": c.name, "frames": [0, c.frames], "seconds": round(c.seconds, 3), "loop": c.loop,
                    "role": c.role, "cycle_hz": c.cycle_hz, "notes": c.notes} for c in [fr.REST_CLIP] + fr.CLIPS],
         "metrics": metrics, "keyed_check": keyed, "limits": LIMITS,
+        "anchor_check": anchors, "hang_mouth_mm": hang_mouth, "hang_offsets_t061": offsets,
+        "tired_max_lean_deg": lean,
     }
     curled = next((c for c in clips if c.role == "Curled"), None)
     if curled is not None:
